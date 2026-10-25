@@ -216,12 +216,15 @@ def fold_attributes(
         covered = ex_all(col(c) == col(f"_o_{c}") for c in ("attribute", *mask))
         kept = kept.join(drop, covered, how="anti")
     patterns = named_sets(kept, dims) if any(masks) else []
-    pairs = [(p, o) for o in masks for p in patterns if not o <= p]
-    _refuse_unfilled(kept, own, pairs, schema, source)
+    pairs = {
+        (p, o): _pair(kept, own, p, o, schema)
+        for o in masks
+        for p in patterns
+        if not o <= p
+    }
+    _refuse_unfilled(pairs, own, schema, source)
     overlaps = [
-        _overlaps(_pair(kept, own, p, o, schema), o, schema)
-        for p, o in pairs
-        if not p <= o
+        _overlaps(pair, o, schema) for (p, o), pair in pairs.items() if not p <= o
     ]
     if not overlaps:
         return union_all_by_name([kept, own], con)
@@ -283,7 +286,7 @@ def _overlaps(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     return pairs.project(
-        *(col(f"_o_{d}" if d in o else d).alias(d) for d in schema.partial_dims),
+        *_met(o, schema),
         *(
             col(f"_o_{c}").alias(c)
             for c in ("attribute", LAYER_COLUMN, "varies", "broadcast", "breakpoints")
@@ -291,16 +294,21 @@ def _overlaps(
     )
 
 
+def _met(o: frozenset[str], schema: Schema) -> list[Expression]:
+    """A crossing pair's overlap key: the own row's label on each dim of `o`, the parent row's elsewhere."""
+    return [col(f"_o_{d}" if d in o else d).alias(d) for d in schema.partial_dims]
+
+
 def _refuse_unfilled(
-    kept: DuckDBPyRelation,
+    pairs: Mapping[tuple[frozenset[str], frozenset[str]], DuckDBPyRelation],
     own: DuckDBPyRelation,
-    pairs: Sequence[tuple[frozenset[str], frozenset[str]]],
     schema: Schema,
     source: LayerSource,
 ) -> None:
     """Refuse a layer leaving a dim outside `partial` NULL over a parent row naming it, unfilled.
 
     The layer must hold a row naming the dim at the key the two share.
+    `pairs` is `_pair` per `(p, o)`.
 
     Raises
     ------
@@ -318,20 +326,19 @@ def _refuse_unfilled(
 
     unset = lit(False)  # noqa: FBT003
 
-    def keyed(p: frozenset[str], o: frozenset[str]) -> DuckDBPyRelation:
-        pair = _pair(kept, own, p, o, schema)
+    def keyed(o: frozenset[str], pair: DuckDBPyRelation) -> DuckDBPyRelation:
         need = {
             d: struct_field(pair, "varies", d, unset)
             & ~struct_field(pair, "_o_varies", d, unset)
             for d in others
         }
         return pair.filter(reduce(operator.or_, need.values())).project(
-            *(col(f"_o_{d}" if d in o else d).alias(d) for d in dims),
+            *_met(o, schema),
             col("attribute"),
             *(need[d].alias(f"_need_{d}") for d in others),
         )
 
-    open_ = reduce(DuckDBPyRelation.union, (keyed(p, o) for p, o in pairs))
+    open_ = reduce(DuckDBPyRelation.union, (keyed(o, r) for (_, o), r in pairs.items()))
     open_ = open_.set_alias("k")
     filled = own.project(
         *(col(c) for c in ("attribute", *dims)),
@@ -586,8 +593,9 @@ def _table(
     which never needs invalidating since layers are write-once. Whatever follows
     it is folded on top per call and handed back as a relation, so a staging
     area's edits are picked up with no bookkeeping at all: a relation over a
-    staging table reads whatever the table holds when it is collected. `prefix` is the frozen
-    prefix's coords, which a restatement after it removes labels from.
+    staging table reads whatever the table holds when it is collected.
+    `prefix` is the frozen prefix's coords, which a restatement after it
+    removes labels from.
 
     Notes
     -----

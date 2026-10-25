@@ -1490,8 +1490,7 @@ def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not():
     record = SimpleNamespace(attributes={"scenario_weight": con.from_df(rows)})
     index = pd.Index(["low", "mid", "high"], name="scenario")
     equal = pd.DataFrame({"weight": 1 / 3}, index=index)
-    flags = {"scenario_weight": Flags(frozenset({"scenario"}), frozenset({"scenario"}))}
-    weights = _weightings(record, "scenario", equal, flags, con)  # type: ignore[arg-type]
+    weights = _weightings(record, "scenario", equal, con)  # type: ignore[arg-type]
     assert weights["weight"].to_dict() == {"low": 0.25, "mid": 0.25, "high": 0.5}, (
         "a NULL-scenario row broadcasts; a scenario's own row wins"
     )

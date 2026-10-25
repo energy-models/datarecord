@@ -60,7 +60,7 @@ def settle(
     Raises
     ------
     duckdb.Error
-        Where no row names every coordinate the rows reaching it name.
+        On fetch, where no row names every coordinate the rows reaching it name.
 
     Notes
     -----

@@ -1265,16 +1265,14 @@ class WorkingRecord(Record):
             return
         coordinate = [c for c in self._long_key(attribute) if c != "breakpoint"]
         staged = self.con.table(table)
-        axes = {
-            d: (self.dims if d in self.schema.dims else self.groups).get(d)
-            for d in present
-        }
-        labelled = [
-            c
-            for c in scope
-            if (self._base.dims if c in self.schema.dims else self._base.groups).get(c)
-            is not None
-        ]
+
+        def axis(record: RecordLike, name: str) -> DuckDBPyRelation | None:
+            return (record.dims if name in self.schema.dims else record.groups).get(
+                name
+            )
+
+        axes = {d: axis(self, d) for d in present}
+        labelled = [c for c in scope if axis(self._base, c) is not None]
         keys = staged.filter(
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
@@ -1856,12 +1854,7 @@ def _reaching(
                 for c in (*base.columns, "_named")
             )
         )
-    by = ", ".join(str(col(c)) for c in (*scope, *axes))
-    return (
-        rel.project(star(), sql(f"max(_named) OVER (PARTITION BY {by})").alias("_most"))
-        .filter(col("_named") == col("_most"))
-        .project(*(col(c) for c in base.columns))
-    )
+    return _most_named(rel, (*scope, *axes), base.columns)
 
 
 def _uncovered(
@@ -1933,15 +1926,24 @@ def _spread(
             )
     if not parts:
         return None
-    by = ", ".join(str(col(c)) for c in columns)
-    rel = (
-        reduce(DuckDBPyRelation.union, parts)
-        .project(star(), sql(f"max(_named) OVER (PARTITION BY {by})").alias("_most"))
-        .filter(col("_named") == col("_most"))
-        .project(*(col(c) for c in staged.columns))
-    )
+    rel = _most_named(reduce(DuckDBPyRelation.union, parts), columns, staged.columns)
     return (
         rel.set_alias("r")
         .join(staged.set_alias("t"), null_safe("r", "t", columns), how="anti")
         .distinct()
+    )
+
+
+def _most_named(
+    rel: DuckDBPyRelation, by: Sequence[str], columns: Sequence[str]
+) -> DuckDBPyRelation:
+    """`rel`'s `columns`, keeping per `by` the rows whose `_named` is the largest."""
+    # A window stays SQL text: DuckDB's expression API has no window construct.
+    over = ", ".join(str(col(c)) for c in by)
+    return (
+        rel.project(
+            star(), sql(f"max(_named) OVER (PARTITION BY {over})").alias("_most")
+        )
+        .filter(col("_named") == col("_most"))
+        .project(*(col(c) for c in columns))
     )

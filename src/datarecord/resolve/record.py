@@ -136,12 +136,11 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     different sets of `partial` dims, read off `varies`. A flag field missing
     from a map folded before the dim was declared is unset.
     """
-    dims = [d for d in schema.partial_dims if d in schema.broadcast_dims]
+    dims = schema.partial_dims
     contested = "false"
     if dims:
-        named = struct_of(
-            {d: struct_field(om, "varies", d, lit(False)) for d in dims}  # noqa: FBT003
-        )
+        unset = lit(False)  # noqa: FBT003
+        named = struct_of({d: struct_field(om, "varies", d, unset) for d in dims})
         ways = struct_of({"l": col(LAYER_COLUMN), "n": named})
         contested = f"count(DISTINCT {ways}) > count(DISTINCT {LAYER_COLUMN})"
     rows = om.aggregate(
@@ -560,7 +559,7 @@ class Record:
         #
         # Of those that are, each - a dim or a group - matches NULL-aware
         # (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
-        coordinates = set(schema.coordinates_of(attribute))
+        coordinates = schema.coordinates_of(attribute)
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)
         owners, contested = self._owners(attribute, om)
         layers: list[DuckDBPyRelation] = []
@@ -574,7 +573,7 @@ class Record:
             layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
             if source.frozen:
                 continue
-            crossing = _crossings(rel, schema.coordinates_of(attribute), attribute)
+            crossing = _crossings(rel, coordinates, attribute)
             if crossing is not None:
                 crossed.append(crossing)
         if not layers:
@@ -599,9 +598,7 @@ class Record:
             )
         )
         if contested:
-            resolved = _most_specific(
-                resolved, schema.coordinates_of(attribute), attribute
-            )
+            resolved = _most_specific(resolved, coordinates, attribute)
         resolved = _living(resolved, fold.dead, unkeyed)
         if not crossed:
             return resolved

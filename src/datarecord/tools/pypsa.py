@@ -428,9 +428,8 @@ def _assign_static(
         if addressed and SNAPSHOT not in flags.broadcast:
             continue
         rows = long
-        if shape.stochastic:
-            if SCENARIO not in rows.columns:
-                rows = rows.project(f"*, CAST(NULL AS VARCHAR) AS {SCENARIO}")
+        if shape.stochastic and SCENARIO not in rows.columns:
+            rows = rows.project(f"*, CAST(NULL AS VARCHAR) AS {SCENARIO}")
             rows = scenarios.expand(rows, SCENARIO)
         picked[attr] = rows
         if addressed:
@@ -542,8 +541,6 @@ def _series_frame(
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    if shape.stochastic:
-        rows = scenarios.expand(rows, SCENARIO)
     group_by = [SNAPSHOT]
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
@@ -850,10 +847,7 @@ def _apply_network_attributes(n: pypsa.Network, attrs: dict[str, Any]) -> None:
 
 
 def _new_network(
-    record: RecordLike,
-    shape: NetworkShape,
-    flags: Mapping[str, Flags],
-    con: DuckDBPyConnection,
+    record: RecordLike, shape: NetworkShape, con: DuckDBPyConnection
 ) -> pypsa.Network:
     """An empty network with the record's axes already established."""
     import pypsa
@@ -870,11 +864,11 @@ def _new_network(
     if shape.multiperiod:
         n.periods = shape.periods[PERIOD]
         n.investment_period_weightings = _weightings(
-            record, PERIOD, n.investment_period_weightings, flags, con
+            record, PERIOD, n.investment_period_weightings, con
         )
     labels = pd.Index(shape.snapshots[SNAPSHOT], name=SNAPSHOT)
     n.snapshot_weightings = _weightings(
-        record, SNAPSHOT, n.snapshot_weightings.set_axis(labels), flags, con
+        record, SNAPSHOT, n.snapshot_weightings.set_axis(labels), con
     ).set_axis(n.snapshots)
     if shape.stochastic:
         index = pd.Index(shape.scenarios[SCENARIO].astype(str), name=SCENARIO)
@@ -883,16 +877,12 @@ def _new_network(
         # each component's empty `static`/`dynamic` frames with the `scenario`
         # level, so later imports union against a correctly named 2-level index
         # instead of the single-level one a fresh component carries.
-        n.set_scenarios(_weightings(record, SCENARIO, equal, flags, con)["weight"])
+        n.set_scenarios(_weightings(record, SCENARIO, equal, con)["weight"])
     return n
 
 
 def _weightings(
-    record: RecordLike,
-    dim: str,
-    table: pd.DataFrame,
-    flags: Mapping[str, Flags],
-    con: DuckDBPyConnection,
+    record: RecordLike, dim: str, table: pd.DataFrame, con: DuckDBPyConnection
 ) -> pd.DataFrame:
     """`table`, PyPSA's weightings of `dim` by label, with each one `record` stores in place.
 
@@ -904,13 +894,12 @@ def _weightings(
     """
     restored = table.copy()
     labels = {dim: Index.of(table.index.rename(dim), con).rel}
+    overstated = Flags(frozenset({dim}), frozenset({dim}))
     for attribute, weighting in _WEIGHTINGS.items():
         frame = record.attributes.get(attribute)
         if weighting.dim != dim or frame is None:
             continue
-        rows = (
-            settle(frame, labels, flags[attribute]).project(col(dim), col("value")).df()
-        )
+        rows = settle(frame, labels, overstated).project(col(dim), col("value")).df()
         values = rows.set_index(dim)["value"].reindex(table.index)
         restored[weighting.column] = values.fillna(table[weighting.column])
     return restored
@@ -1432,8 +1421,8 @@ class PyPSATool(Tool):
         con = _connection(record)
         schema = record.schema
         shape = NetworkShape(record.dims, record.properties)
+        n = _new_network(record, shape, con)
         flagged = record.flags()
-        n = _new_network(record, shape, flagged, con)
 
         over_entity = [a for a in schema.attributes if schema.addresses(a, ENTITY)]
         scenarios = {SCENARIO: record.dims[SCENARIO]} if shape.stochastic else {}
