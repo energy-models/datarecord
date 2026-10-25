@@ -34,7 +34,7 @@ from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation
+from duckdb import DuckDBPyRelation, Expression
 
 from datarecord.duck import (
     distinct_values,
@@ -203,51 +203,33 @@ class Fold:
         twice changes no flag.
         """
         om = self.owner_map.set_alias("o")
-        reached = []
-        over = [
-            a for a in self.schema.attributes if dim in self.schema.coordinates_of(a)
+        named = labels.set_alias("l")
+        paths: list[tuple[str, str | None]] = [(dim, None)]
+        paths += [
+            (g, f) for g in self.schema.groups if (f := self.schema.field_over(g, dim))
         ]
-        if dim in om.columns:
-            reached.append(
-                om.join(
-                    labels.set_alias("l"), col("o", dim) == col("l", dim), how="semi"
-                )
-            )
-            if over and labels.limit(1).fetchone() is not None:
-                reached.append(
-                    om.filter(
-                        col("o", dim).isnull()
-                        & col("o", "attribute").isin(*(lit(a) for a in over))
-                    )
-                )
-        for group in self.schema.groups:
-            field = self.schema.field_over(group, dim)
-            if group not in om.columns or field is None:
+        reached = []
+        for column, field in paths:
+            if column not in om.columns:
                 continue
-            reached.append(
-                om.join(
-                    labels.set_alias("l"),
-                    fn.struct_extract(col("o", group), lit(field)) == col("l", dim),
-                    how="semi",
-                )
-            )
-            held = self.groups.get(group)
+            on = _path("o", column, field) == col("l", dim)
+            reached.append(om.join(named, on, how="semi"))
+            if field is None:
+                hit = labels
+            elif (held := self.groups.get(column)) is not None:
+                on = _path("g", column, field) == col("l", dim)
+                hit = held.set_alias("g").join(named, on, how="semi")
+            else:
+                continue
             over = [
                 a
                 for a in self.schema.attributes
-                if group in self.schema.coordinates_of(a)
+                if column in self.schema.coordinates_of(a)
             ]
-            if held is None or not over:
-                continue
-            tuples = held.set_alias("g").join(
-                labels.set_alias("l"),
-                fn.struct_extract(col("g", group), lit(field)) == col("l", dim),
-                how="semi",
-            )
-            if tuples.limit(1).fetchone() is not None:
+            if over and hit.limit(1).fetchone() is not None:
                 reached.append(
                     om.filter(
-                        col("o", group).isnull()
+                        col("o", column).isnull()
                         & col("o", "attribute").isin(*(lit(a) for a in over))
                     )
                 )
@@ -301,16 +283,16 @@ class Fold:
         )
 
 
+def _path(alias: str, column: str, field: str | None) -> Expression:
+    """`column` under `alias`, or its struct's `field` where one is given."""
+    c = col(alias, column)
+    return c if field is None else fn.struct_extract(c, lit(field))
+
+
 def read_owner_map(
     revision_id: UUID, con: DuckDBPyConnection, schema: Schema, store: Store
 ) -> DuckDBPyRelation | None:
     """`revision_id`'s persisted owner map, `None` where it is absent or keyed otherwise than `schema` keys one.
-
-    A map persisted before a dim joined `partial` holds NULL in that dim's
-    column for a row varying along it, and one persisted before a dim left it
-    holds a key per label where the read wants one. Neither is read: the node
-    then folds from its layers as if never materialised, so a change of
-    `partial` changes no answer.
 
     Notes
     -----

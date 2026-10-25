@@ -21,10 +21,10 @@ from dataclasses import dataclass, field
 from functools import reduce
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
+from duckdb import CaseExpression, DuckDBPyConnection, DuckDBPyRelation, sqltypes
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
@@ -54,9 +54,8 @@ def settle(
         Per coordinate, a relation holding its labels, or its tuples for a
         group, in a column of the coordinate's name.
     flags
-        The attribute's `Flags`. Only a coordinate in `broadcast` is
-        expanded, and rows are picked only where one is also in `varies`:
-        elsewhere every row names the same coordinates, one row per key.
+        The attribute's `Flags`, or flags overstating them; they only spare
+        work, so overstating changes no value.
 
     Raises
     ------
@@ -66,6 +65,7 @@ def settle(
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [settling rows](https://energy-models.github.io/datarecord/design/tools/#settling-rows)
     """
     over = [d for d in labels if d in rel.columns and d in flags.broadcast]
     if not over:
@@ -129,8 +129,8 @@ def settle(
             ),
         )
     )
-    keep = sql(
-        f"CASE WHEN bit_count(_all) <> _most THEN {crossed} ELSE _named = _all END"
+    keep = CaseExpression(fn.bit_count(col("_all")) != col("_most"), crossed).otherwise(
+        col("_named") == col("_all")
     )
     return ranked.filter(keep).project(star(exclude=("_named", "_all", "_most")))
 
@@ -277,18 +277,17 @@ class Attr:
         labels: Mapping[str, DuckDBPyRelation],
         flags: Mapping[str, Flags],
     ) -> DuckDBPyRelation:
-        """This attribute's long relation, each source settled over `labels` by its `flags` (`settle`).
+        """This attribute's long relation, each source settled (`settle`) before `compute`.
 
-        `flags` is `record.flags()` or a superset of each source's rows.
-
-        Read through the `Record` interface, so a tool builds from any backing,
-        and a computed attribute combines one row per coordinate of each
-        source.
+        Parameters
+        ----------
+        flags
+            Per source, its `Flags` as `settle` takes them.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [settling rows](https://energy-models.github.io/datarecord/design/tools/#settling-rows)
         """
         rels = [settle(record.attributes[s], labels, flags[s]) for s in self.source]
         if self.compute is None:

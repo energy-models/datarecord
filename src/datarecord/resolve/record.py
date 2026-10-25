@@ -50,6 +50,8 @@ from datarecord.resolve.owner_map import (
     _frozen_coords,
     _table,
     frozen_prefix,
+    named_sets,
+    names_exactly,
     with_columns,
 )
 from datarecord.resolve.sources import LayerSource, ParquetLayer
@@ -235,32 +237,19 @@ def _crossings(
 ) -> DuckDBPyRelation | None:
     """Rows failing the read at each key two rows of `rel` cover and neither names every dim of, unless a third names both.
 
-    `rel` is one layer's rows as written. Two rows cover a common key where
-    they agree on every coordinate both name; neither naming every dim the
-    other names, the broadcast rule picks a row there only if the layer holds
-    one naming the labels of both. The pairs are found by one equi-join per
-    pair of named sets, so no join compares every row with every other.
-    `None` where no two named sets are incomparable, sparing the read the
-    joins.
+    `rel` is one layer's rows as written. One equi-join per pair of named
+    sets, so no join compares every row with every other; `None` where no two
+    named sets are incomparable, sparing the read the joins.
 
     Notes
     -----
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    masks = {
-        frozenset(c for c, named in zip(coordinates, row, strict=True) if named)
-        for row in rel.project(*(col(c).isnotnull() for c in coordinates))
-        .distinct()
-        .fetchall()
-    }
+    masks = set(named_sets(rel, coordinates))
 
     def exactly(mask: frozenset[str]) -> DuckDBPyRelation:
-        return rel.filter(
-            ex_all(
-                col(c).isnotnull() if c in mask else col(c).isnull()
-                for c in coordinates
-            )
-        )
+        return rel.filter(names_exactly(coordinates, mask))
 
     crossed = []
     for a, b in combinations(masks, 2):
@@ -574,24 +563,22 @@ class Record:
         coordinates = set(schema.coordinates_of(attribute))
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)
         owners, contested = self._owners(attribute, om)
-        held = [
-            (layer_uuid, source.frozen, with_columns(schema, rel, *columns))
-            for layer_uuid in owners
-            if (rel := (source := self._source_for(layer_uuid)).attribute(attribute))
-            is not None
-        ]
-        if not held:
+        layers: list[DuckDBPyRelation] = []
+        crossed: list[DuckDBPyRelation] = []
+        for layer_uuid in owners:
+            source = self._source_for(layer_uuid)
+            rel = source.attribute(attribute)
+            if rel is None:
+                continue
+            rel = with_columns(schema, rel, *columns)
+            layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
+            if source.frozen:
+                continue
+            crossing = _crossings(rel, schema.coordinates_of(attribute), attribute)
+            if crossing is not None:
+                crossed.append(crossing)
+        if not layers:
             raise KeyError(attribute)
-        layers = [
-            rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star())
-            for layer_uuid, _, rel in held
-        ]
-        crossings = (
-            _crossings(rel, schema.coordinates_of(attribute), attribute)
-            for _, frozen, rel in held
-            if not frozen
-        )
-        crossed = [rel for rel in crossings if rel is not None]
         unkeyed = [c for c in columns if c not in partial_dims]
         named = [_named_mask("l", broadcast_over).alias("_named")] if contested else []
         resolved = (
@@ -626,11 +613,11 @@ class Record:
         return reduce(DuckDBPyRelation.union, failing, resolved)
 
     def _owners(self, attribute: str, om: DuckDBPyRelation) -> tuple[list[UUID], bool]:
-        """Return the layers owning a key of `attribute`, and whether one key is owned both ways.
+        """Return the layers owning a key of `attribute`, and whether one holds keys both ways.
 
-        A key is owned both ways where one layer holds a row naming a label of
-        a `partial` dim there and another row leaving that dim NULL. Only then
-        does `_relation` have to pick the more specific row.
+        A layer holds keys both ways where its rows name different sets of
+        `partial` dims. Only then does `_relation` have to pick the more
+        specific row.
 
         Where every source is frozen, one scan of the map answers every
         attribute and is kept; otherwise the map may change under the reader,
@@ -641,9 +628,7 @@ class Record:
         return _owners(om, self.schema).get(attribute, ([], False))
 
     @cached_property
-    def _cached_owners(
-        self,
-    ) -> dict[str, tuple[list[UUID], bool]]:
+    def _cached_owners(self) -> dict[str, tuple[list[UUID], bool]]:
         """Return `_owners` for every attribute, where every source is frozen.
 
         Plain data any thread computes the same, so it is kept on the record

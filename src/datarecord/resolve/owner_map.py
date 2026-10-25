@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import operator
 import time
-from collections.abc import Callable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from functools import reduce
 from hashlib import sha256
@@ -207,20 +207,21 @@ def fold_attributes(
         kept = kept.join(gone, col(name) == col("_gone"), how="anti")
     if own is None:
         return kept
-    masks = _masks(own, schema)
+    dims = schema.partial_dims
+    masks = named_sets(own, dims)
     for mask in masks:
-        drop = _exactly(own, mask, schema).project(
+        drop = own.filter(names_exactly(dims, mask)).project(
             *(col(c).alias(f"_o_{c}") for c in ("attribute", *mask))
         )
         covered = ex_all(col(c) == col(f"_o_{c}") for c in ("attribute", *mask))
         kept = kept.join(drop, covered, how="anti")
-    patterns = _masks(kept, schema) if any(masks) else []
-    pairs = [(p, o) for o in masks for p in patterns if not set(o) <= set(p)]
+    patterns = named_sets(kept, dims) if any(masks) else []
+    pairs = [(p, o) for o in masks for p in patterns if not o <= p]
     _refuse_unfilled(kept, own, pairs, schema, source)
     overlaps = [
         _overlaps(_pair(kept, own, p, o, schema), o, schema)
         for p, o in pairs
-        if not set(p) <= set(o)
+        if not p <= o
     ]
     if not overlaps:
         return union_all_by_name([kept, own], con)
@@ -228,25 +229,30 @@ def fold_attributes(
     return union_all_by_name([kept, own, crossed], con)
 
 
-def _exactly(
-    rel: DuckDBPyRelation, mask: tuple[str, ...], schema: Schema
-) -> DuckDBPyRelation:
-    """The rows of `rel` naming exactly the `partial` dims in `mask`."""
-    if not schema.partial_dims:
-        return rel
-    return rel.filter(
-        ex_all(
-            col(d).isnotnull() if d in mask else col(d).isnull()
-            for d in schema.partial_dims
-        )
+def named_sets(rel: DuckDBPyRelation, columns: Sequence[str]) -> list[frozenset[str]]:
+    """The distinct sets of `columns` the rows of `rel` hold a non-NULL value in."""
+    if not columns:
+        return [frozenset()]
+    rows = rel.project(*(col(c).isnotnull() for c in columns)).distinct().fetchall()
+    return [
+        frozenset(c for c, n in zip(columns, row, strict=True) if n) for row in rows
+    ]
+
+
+def names_exactly(columns: Sequence[str], named: Set[str]) -> Expression:
+    """Whether a row holds a non-NULL value in exactly the `named` of `columns`."""
+    return reduce(
+        operator.and_,
+        (col(c).isnotnull() if c in named else col(c).isnull() for c in columns),
+        lit(True),  # noqa: FBT003
     )
 
 
 def _pair(
     kept: DuckDBPyRelation,
     own: DuckDBPyRelation,
-    p: tuple[str, ...],
-    o: tuple[str, ...],
+    p: frozenset[str],
+    o: frozenset[str],
     schema: Schema,
 ) -> DuckDBPyRelation:
     """Each parent row naming exactly `p` beside each row of `own` naming exactly `o` it covers a common key with.
@@ -254,16 +260,15 @@ def _pair(
     The own row's columns are prefixed `_o_`. Two rows cover a common key
     where they agree on every dim both name, an equi-join on those alone.
     """
-    mine = _exactly(own, o, schema)
+    dims = schema.partial_dims
+    mine = own.filter(names_exactly(dims, o))
     mine = mine.project(*(col(c).alias(f"_o_{c}") for c in mine.columns))
-    on = ex_all(
-        col(c) == col(f"_o_{c}") for c in ("attribute", *(d for d in o if d in p))
-    )
-    return _exactly(kept, p, schema).join(mine, on)
+    on = ex_all(col(c) == col(f"_o_{c}") for c in ("attribute", *(o & p)))
+    return kept.filter(names_exactly(dims, p)).join(mine, on)
 
 
 def _overlaps(
-    pairs: DuckDBPyRelation, o: tuple[str, ...], schema: Schema
+    pairs: DuckDBPyRelation, o: frozenset[str], schema: Schema
 ) -> DuckDBPyRelation:
     """The overlap row of each crossing pair: every label either row names, owned as the own row is.
 
@@ -289,16 +294,13 @@ def _overlaps(
 def _refuse_unfilled(
     kept: DuckDBPyRelation,
     own: DuckDBPyRelation,
-    pairs: Sequence[tuple[tuple[str, ...], tuple[str, ...]]],
+    pairs: Sequence[tuple[frozenset[str], frozenset[str]]],
     schema: Schema,
     source: LayerSource,
 ) -> None:
     """Refuse a layer leaving a dim outside `partial` NULL over a parent row naming it, unfilled.
 
-    Where a parent row names such a dim and an own row reaching it does not,
-    the two cross on that dim, which an overlap row cannot settle: its key
-    holds `partial` dims only. The layer must hold a row naming the dim at
-    the key the two share, as `WorkingRecord` writes one.
+    The layer must hold a row naming the dim at the key the two share.
 
     Raises
     ------
@@ -307,7 +309,7 @@ def _refuse_unfilled(
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [a dim outside `partial`](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
     """
     dims = schema.partial_dims
     others = [d for d in schema.broadcast_dims if d not in dims]
@@ -316,7 +318,7 @@ def _refuse_unfilled(
 
     unset = lit(False)  # noqa: FBT003
 
-    def keyed(p: tuple[str, ...], o: tuple[str, ...]) -> DuckDBPyRelation:
+    def keyed(p: frozenset[str], o: frozenset[str]) -> DuckDBPyRelation:
         pair = _pair(kept, own, p, o, schema)
         need = {
             d: struct_field(pair, "varies", d, unset)
@@ -340,10 +342,7 @@ def _refuse_unfilled(
     ).filter(
         reduce(
             operator.or_,
-            (
-                col(f"_need_{d}") & ~coalesce(col(f"_has_{d}"), lit(False))  # noqa: FBT003
-                for d in others
-            ),
+            (col(f"_need_{d}") & ~coalesce(col(f"_has_{d}"), unset) for d in others),
         )
     )
     row = (
@@ -378,10 +377,6 @@ def _own(source: LayerSource, schema: Schema) -> DuckDBPyRelation | None:
     rel = source.all_attributes()
     if rel is None:
         return None
-    # Every declared dim and group column too, not just `breakpoint`: one
-    # file carries only its own attribute's columns, so a coordinate another
-    # attribute uses is absent here and must read as NULL rather than fail
-    # to bind.
     broadcast = schema.broadcast_dims
     rel = cast_declared(
         schema,
@@ -397,9 +392,6 @@ def _own(source: LayerSource, schema: Schema) -> DuckDBPyRelation | None:
     return tagged.aggregate(
         [
             *(col(c) for c in (*schema.owner_map_key, LAYER_COLUMN)),
-            # A field aggregating to NULL - what a map written before the
-            # dim was declared yields - reads as "not set", the same as
-            # false.
             struct_of(
                 {d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
             ).alias("varies"),
@@ -428,18 +420,6 @@ def _over(schema: Schema, dim: str) -> Expression:
     return ~col("attribute").isin(*(lit(a) for a in lacking))
 
 
-def _masks(own: DuckDBPyRelation, schema: Schema) -> list[tuple[str, ...]]:
-    """The distinct sets of `partial` dims the rows of `own` name, in dim order."""
-    dims = schema.partial_dims
-    if not dims:
-        return [()]
-    rows = own.project(*(col(d).isnotnull().alias(d) for d in dims)).distinct()
-    return sorted(
-        tuple(d for d, named in zip(dims, row, strict=True) if named)
-        for row in rows.fetchall()
-    )
-
-
 def _fold_map(
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
@@ -449,10 +429,11 @@ def _fold_map(
 ) -> DuckDBPyRelation:
     """A record's owner map, folded down over `sources`, checkpointed into `made` as `_fold_onto` does.
 
-    The axes fold to a resolved copy instead (`resolve_coords`). The deepest materialised source's map is the fold's
-    *seed* rather than a step of it: it is already folded over everything at or
-    below it, so it is read as the starting relation (`_frozen_table`) and only
-    the sources above it are folded on top.
+    The axes fold to a resolved copy instead (`resolve_coords`). The deepest
+    materialised source's map is the fold's *seed* rather than a step of it: it
+    is already folded over everything at or below it, so it is read as the
+    starting relation (`_frozen_table`) and only the sources above it are
+    folded on top.
 
     Notes
     -----
@@ -603,9 +584,9 @@ def _table(
 
     The frozen prefix is folded once and kept as a connection-scoped table,
     which never needs invalidating since layers are write-once. Whatever follows
-    it is folded on top per call and handed back as a relation, so a staging area's edits are picked
-    up with no bookkeeping at all: a relation over a staging table reads
-    whatever the table holds when it is collected. `prefix` is the frozen
+    it is folded on top per call and handed back as a relation, so a staging
+    area's edits are picked up with no bookkeeping at all: a relation over a
+    staging table reads whatever the table holds when it is collected. `prefix` is the frozen
     prefix's coords, which a restatement after it removes labels from.
 
     Notes

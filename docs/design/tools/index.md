@@ -83,7 +83,7 @@ A row NULL on a coordinate in `labels` takes each label there, and a row reachin
 At each coordinate the row naming every coordinate in `labels` that the other rows there name is kept, and where none does the query fails, naming the coordinate.
 A coordinate outside `labels` is kept as written, a NULL there being one more label, so a constant `p_max_pu` stays one row with `snapshot` NULL.
 
-`flags` spares the work a record does not need.
+`flags` spares the work a record does not need, and flags overstating the rows change no value.
 Only a coordinate in `broadcast` is expanded, and rows are picked only where one is in `varies` as well.
 Elsewhere every row names the same coordinates, one row per key.
 

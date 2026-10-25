@@ -1464,16 +1464,8 @@ class PyPSATool(Tool):
             for attr, flags in flagged.items():
                 if attr not in carried:
                     continue
-                # Both sets empty no longer means "no rows": the flags are
-                # scoped to what an attribute is addressed by (https://energy-models.github.io/datarecord/design/use/reading/#flags), so an
-                # attribute over `entity` alone has no broadcast dim to report
-                # and still has values. An attribute with no rows at all is
-                # absent from the map entirely, which is what this filtered.
-                # Through the schema, so a renamed or computed attribute
-                # reaches the pivot below as an ordinary long relation, settled
-                # over this type's members, so a NULL entity reaches each of
-                # them; a named row of another type's entity is left to the
-                # joins on `entity` (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim).
+                # A named row of another type's entity is left to the joins on
+                # `entity` (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim).
                 long = _unpack_connection(
                     self.schema.resolve(record, ctype, attr, labels, flagged)
                 )

@@ -45,6 +45,7 @@ from datarecord.duck import (
 from datarecord.protocols import RecordLike
 from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_map import named_sets, names_exactly
 from datarecord.resolve.record import Record
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
@@ -1202,8 +1203,8 @@ class WorkingRecord(Record):
     def _long_key(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one long table is keyed on - what an edit replaces.
 
-        The fold partitions on these too (`_collapsed_attribute` before this change),
-        so replacing them per edit removes at least what it would have discarded.
+        The fold partitions on these too (`_collapsed_attribute`), so replacing
+        them per edit removes at least what it would have discarded.
 
         Notes
         -----
@@ -1230,8 +1231,7 @@ class WorkingRecord(Record):
         every coordinate a staged row reaches is dropped (`_uncovered`), so no
         fill sits beside a staged row neither of which is the more specific.
         A staged row leaving a whole-owned dim NULL is itself written out along
-        the labels the base rows it crosses name there (`_spread`), which the
-        fold cannot do, its key holding the `partial` dims alone.
+        the labels the base rows it crosses name there (`_spread`).
 
         Idempotent, which is what lets it run per insert instead of once: the
         anti-join drops any coordinate the table already reaches, so a second
@@ -1244,6 +1244,7 @@ class WorkingRecord(Record):
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [a dim outside `partial`](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
         - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
         """
         whole = self._owned_whole(attribute)
@@ -1262,7 +1263,7 @@ class WorkingRecord(Record):
             # No column for any whole-owned dim, so the file holds one row per
             # key and there is no extent to complete.
             return
-        coordinate = self._long_key(attribute)
+        coordinate = [c for c in self._long_key(attribute) if c != "breakpoint"]
         staged = self.con.table(table)
         axes = {
             d: (self.dims if d in self.schema.dims else self.groups).get(d)
@@ -1277,18 +1278,10 @@ class WorkingRecord(Record):
         keys = staged.filter(
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
-        carried = _reaching(self._base.attributes[attribute], keys, scope, axes)
-        carried = _uncovered(
-            carried, staged, [c for c in coordinate if c != "breakpoint"]
-        )
+        base = self._base.attributes[attribute]
+        carried = _uncovered(_reaching(base, keys, scope, axes), staged, coordinate)
         self._insert(carried, table, {})
-        spread = _spread(
-            self.con.table(table),
-            self._base.attributes[attribute],
-            scope,
-            present,
-            [c for c in coordinate if c != "breakpoint"],
-        )
+        spread = _spread(self.con.table(table), base, scope, present, coordinate)
         if spread is not None:
             self._insert(spread, table, {})
 
@@ -1820,9 +1813,8 @@ def _reaching(
 
     A base row NULL on a `scope` column reaches every staged key there and
     takes its label; NULL on a dim of `axes`, every label of that axis, and
-    stays NULL where the dim holds none. Of the
-    rows reaching one coordinate the one naming the most of those columns is
-    kept. A match on "NULL or equal" cannot hash, so `base` is split by which
+    stays NULL where the dim holds none. Of the rows reaching one coordinate
+    the one naming the most of those columns is kept. A match on "NULL or equal" cannot hash, so `base` is split by which
     `scope` columns it leaves NULL and each part joins on the columns it
     names, as `_delete_covered` does.
 
@@ -1831,16 +1823,15 @@ def _reaching(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     keys = staged.project(*(col(c).alias(f"_k_{c}") for c in scope)).distinct()
-    flags = ", ".join(f"{col(c)} IS NULL" for c in scope)
-    patterns = base.query("b", f"SELECT DISTINCT {flags} FROM b").fetchall()
-    named = " + ".join(f"({col(c)} IS NOT NULL)::INTEGER" for c in (*scope, *axes))
+    named = reduce(
+        operator.add,
+        (col(c).isnotnull().cast(sqltypes.INTEGER) for c in (*scope, *axes)),
+    )
     parts = []
-    for pattern in patterns:
-        nulls = {c for c, null in zip(scope, pattern, strict=True) if null}
-        part = base.filter(
-            ex_all(col(c).isnull() if c in nulls else col(c).isnotnull() for c in scope)
-        ).project(star(), sql(named).alias("_named"))
-        on = [col(c) == col(f"_k_{c}") for c in scope if c not in nulls]
+    for mask in named_sets(base, scope):
+        part = base.filter(names_exactly(scope, mask))
+        part = part.project(star(), named.alias("_named"))
+        on = [col(c) == col(f"_k_{c}") for c in scope if c in mask]
         parts.append(
             part.join(keys, ex_all(on)).project(
                 *(
@@ -1885,18 +1876,11 @@ def _uncovered(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    flags = ", ".join(f"{col(c)} IS NULL" for c in columns)
-    patterns = staged.query("s", f"SELECT DISTINCT {flags} FROM s").fetchall()
-    for pattern in patterns:
-        nulls = {c for c, null in zip(columns, pattern, strict=True) if null}
-        part = staged.filter(
-            ex_all(
-                col(c).isnull() if c in nulls else col(c).isnotnull() for c in columns
-            )
-        )
+    for mask in named_sets(staged, columns):
+        part = staged.filter(names_exactly(columns, mask))
         rel = rel.set_alias("r").join(
             part.set_alias("s"),
-            null_safe("r", "s", [c for c in columns if c not in nulls]),
+            null_safe("r", "s", [c for c in columns if c in mask]),
             how="anti",
         )
     return rel
@@ -1914,38 +1898,28 @@ def _spread(
     A base row it reaches names a `whole` dim the staged row leaves NULL and is
     not covered by it on `scope`: the staged row names a `scope` column the
     base row leaves NULL. The row written takes every label either names, and
-    the staged row's value: it then names a strict superset of the base row,
-    so the broadcast rule lets it win where the two cross. Of the staged rows
-    reaching one coordinate the one naming the most `scope` columns is kept,
-    and a coordinate `staged` already holds is skipped, which keeps it
-    idempotent. `None` where no pair reaches.
+    the staged row's value. Of the staged rows reaching one coordinate the one
+    naming the most `scope` columns is kept, and a coordinate `staged` already
+    holds is skipped, which keeps it idempotent. `None` where no pair reaches.
 
     Split by which columns each side leaves NULL, each part an equi-join over
     the columns both name, as `_delete_covered` does.
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [a dim outside `partial`](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     keys = [*scope, *whole]
-    flags = ", ".join(f"{col(c)} IS NOT NULL" for c in keys)
-
-    def patterns(rel: DuckDBPyRelation, where: str) -> list[set[str]]:
-        rows = rel.query("r", f"SELECT DISTINCT {flags} FROM r WHERE {where}")
-        return [
-            {c for c, n in zip(keys, row, strict=True) if n} for row in rows.fetchall()
-        ]
-
-    open_ = " OR ".join(f"{col(c)} IS NULL" for c in whole)
-    named = " OR ".join(f"{col(c)} IS NOT NULL" for c in whole)
+    open_ = reduce(operator.or_, (col(c).isnull() for c in whole))
+    named = reduce(operator.or_, (col(c).isnotnull() for c in whole))
     parts = []
-    for s in patterns(staged, open_):
-        for b in patterns(base, named):
+    for s in named_sets(staged.filter(open_), keys):
+        for b in named_sets(base.filter(named), keys):
             if s & set(scope) <= b or not any(d in b and d not in s for d in whole):
                 continue
-            left = staged.filter(_exact(keys, s)).set_alias("s")
-            right = base.filter(_exact(keys, b)).set_alias("b")
+            left = staged.filter(names_exactly(keys, s)).set_alias("s")
+            right = base.filter(names_exactly(keys, b)).set_alias("b")
             on = [col("s", c) == col("b", c) for c in keys if c in s and c in b]
             joined = left.join(right, ex_all(on)) if on else left.cross(right)
             parts.append(
@@ -1971,8 +1945,3 @@ def _spread(
         .join(staged.set_alias("t"), null_safe("r", "t", columns), how="anti")
         .distinct()
     )
-
-
-def _exact(keys: Sequence[str], named: set[str]) -> Expression:
-    """Whether a row names exactly the columns `named` of `keys`."""
-    return ex_all(col(c).isnotnull() if c in named else col(c).isnull() for c in keys)
