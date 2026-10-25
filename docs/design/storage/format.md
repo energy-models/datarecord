@@ -92,6 +92,7 @@ A fixed prefix such as `entity | bus` would put an all-NULL `entity` on a record
 The same rule reads a file written before a dim was declared ([resolving a relation](../layers/resolution.md#resolving-a-relation)).
 The fold's key is uniform across files: [`partial_dims`](../layers/tree.md#partial-the-granularity-of-an-override) plus `attribute`, one fixed tuple over every attribute.
 A coordinate that an attribute does not carry reads as NULL in that key.
+The [owner map](../layers/resolution.md#owner-map) holds each key as its layer wrote it, so a NULL there means every label, as it does in the file.
 
 Each file holds one attribute, so `value` carries that attribute's dtype.
 

@@ -44,7 +44,7 @@ The properties `entity.ctype` and `entity.carrier` refer back to their dimension
 
 `Record` is the one class that implements the protocol. It reads a fold across layers:
 
-- A tree of layers, each adding a partial record on top of its parent, resolved last-writer-wins. `Revision.record` gives one ([a tree of layers](layers/tree.md)).
+- A tree of layers, each adding a partial record on top of its parent, a deeper layer's row winning where it crosses a shallower one. `Revision.record` gives one ([a tree of layers](layers/tree.md)).
 - One parquet directory, through `Workspace.at(uri)`. It folds as a tree with one layer, which [degenerates to a scan of it](layers/resolution.md#one-record-over-one-fold).
 - A [`WorkingRecord`](use/editing.md), whose last layer stages edits, so pending edits read back before anything is written.
 

@@ -20,8 +20,9 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord import Workspace
+from datarecord.protocols import Flags
 from datarecord.store.manifest import read_schema
-from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
+from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError, settle
 from datarecord.tools.pypsa import (
     CTYPE,
     PyPSA,
@@ -271,6 +272,91 @@ def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision
     assert (n.c.Link.static["p_max_pu"] == 0.9).all()
     assert "p_max_pu" not in n.c.Load.static
     assert "p_max_pu" not in n.c.Load.dynamic
+
+
+def _add_generator(w, name: str) -> None:
+    w.add("entity", [name], ctype="Generator")
+    w.add_group(
+        "connection",
+        pd.DataFrame(
+            [{"connection": {"entity": name, "bus": "b"}, "role": "attached"}]
+        ),
+    )
+
+
+@pytest.mark.parametrize(
+    ("layers", "built"),
+    [
+        (
+            [
+                lambda w: (
+                    w.set("p_max_pu", 0.5, entity="g1"),
+                    w.set("p_max_pu", 0.6, entity="g2"),
+                ),
+                lambda w: w.set("p_max_pu", 0.9, scenario="high"),
+            ],
+            {
+                ("low", "g1"): 0.5,
+                ("low", "g2"): 0.6,
+                ("high", "g1"): 0.9,
+                ("high", "g2"): 0.9,
+            },
+        ),
+        (
+            [
+                lambda w: w.set("p_max_pu", 0.9, scenario="high"),
+                lambda w: w.set("p_max_pu", 0.5, entity="g1"),
+            ],
+            {
+                ("low", "g1"): 0.5,
+                ("low", "g2"): 1.0,
+                ("high", "g1"): 0.5,
+                ("high", "g2"): 0.9,
+            },
+        ),
+        (
+            [
+                lambda w: w.set("p_max_pu", 0.9),
+                lambda w: _add_generator(w, "g3"),
+            ],
+            {
+                ("low", "g1"): 0.9,
+                ("low", "g2"): 0.9,
+                ("low", "g3"): 0.9,
+                ("high", "g1"): 0.9,
+                ("high", "g2"): 0.9,
+                ("high", "g3"): 0.9,
+            },
+        ),
+    ],
+    ids=["scenario-crosses-entities", "entity-crosses-a-scenario", "added-member"],
+)
+def test_a_build_settles_rows_of_several_layers_by_the_broadcast_rule(
+    store, layers, built
+):
+    """Rows as written, a deeper layer crossing a shallower one, build each member's value.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    import pypsa
+
+    from datarecord.mutable import WorkingRecord
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "b")
+    n.add("Generator", ["g1", "g2"], bus="b")
+    n.set_scenarios({"low": 0.5, "high": 0.5})
+    revision = export_network(n, store)
+    for edit in layers:
+        w = WorkingRecord(revision.record)
+        edit(w)
+        revision = revision.child(w.edits)
+
+    static = PyPSA.build(revision.record).c.Generator.static
+    assert static["p_max_pu"].to_dict() == built
 
 
 def test_verify_reports_an_entity_attached_to_no_bus(single_revision):
@@ -709,7 +795,8 @@ def test_pypsa_schema_is_the_identity(single_revision):
     """
     assert PyPSA.schema.attrs == {}
     assert PyPSA.schema.sources("Generator", "p_max_pu") == ("p_max_pu",)
-    identity = PyPSA.schema.resolve(single_revision.record, "Generator", "p_max_pu")
+    record = single_revision.record
+    identity = PyPSA.schema.resolve(record, "Generator", "p_max_pu", {}, record.flags())
     assert identity.fetchall() == relation(single_revision, "p_max_pu").fetchall()
 
 
@@ -936,7 +1023,9 @@ def test_a_result_a_re_solve_leaves_out_reads_as_null(exported, solved, ctype, a
     resolved = _results_over(base, n)
 
     def read(revision, name):
-        return revision.record.attributes[name].df()
+        df = revision.record.attributes[name].df()
+        by = [c for c in df.columns if c not in ("breakpoint", "value")]
+        return df.sort_values(by).reset_index(drop=True)
 
     stale = read(base, attr)
     keys = [c for c in stale.columns if c not in ("breakpoint", "value")]
@@ -1359,14 +1448,50 @@ def test_schema_dims_stay_generic(exported):
     assert "vintage" in record.schema.long_columns
 
 
+@pytest.mark.parametrize(
+    "rows",
+    [
+        [("a", "x", 1.0), ("b", "x", 2.0), ("a", "y", 3.0)],
+        [(None, "x", 1.0), (None, "y", 2.0)],
+        [(None, None, 1.0)],
+        [(None, None, 1.0), ("a", None, 2.0), ("a", "x", 3.0)],
+        [("a", None, 1.0), (None, "x", 2.0), ("a", "x", 3.0)],
+    ],
+    ids=["named", "entity-broadcast", "full-broadcast", "nested", "crossing"],
+)
+def test_settle_reads_the_same_whatever_flags_overstate(rows):
+    """Flags only let `settle` skip work: over-reporting them changes no value.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    """
+    con = duckdb.connect()
+    frame = pd.DataFrame(rows, columns=["entity", "scenario", "value"])
+    rel = con.from_df(frame.astype({"entity": object, "scenario": object}))
+    labels = {
+        "entity": con.from_df(pd.DataFrame({"entity": ["a", "b"]})),
+        "scenario": con.from_df(pd.DataFrame({"scenario": ["x", "y"]})),
+    }
+    dims = ("entity", "scenario")
+    exact = Flags(
+        frozenset(d for d in dims if frame[d].notna().any()),
+        frozenset(d for d in dims if frame[d].isna().any()),
+    )
+    every = Flags(frozenset(dims), frozenset(dims))
+    settled = [sorted(settle(rel, labels, f).fetchall()) for f in (exact, every)]
+    assert settled[0] == settled[1], "the flags of the rows read as every dim mixed"
+
+
 def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not():
     rows = pd.DataFrame({"scenario": [None, "high"], "value": [0.25, 0.5]})
-    record = SimpleNamespace(
-        attributes={"scenario_weight": duckdb.connect().from_df(rows)}
-    )
+    con = duckdb.connect()
+    record = SimpleNamespace(attributes={"scenario_weight": con.from_df(rows)})
     index = pd.Index(["low", "mid", "high"], name="scenario")
     equal = pd.DataFrame({"weight": 1 / 3}, index=index)
-    weights = _weightings(record, "scenario", equal)  # type: ignore[arg-type]
+    flags = {"scenario_weight": Flags(frozenset({"scenario"}), frozenset({"scenario"}))}
+    weights = _weightings(record, "scenario", equal, flags, con)  # type: ignore[arg-type]
     assert weights["weight"].to_dict() == {"low": 0.25, "mid": 0.25, "high": 0.5}, (
         "a NULL-scenario row broadcasts; a scenario's own row wins"
     )

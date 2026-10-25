@@ -26,7 +26,7 @@ datarecord/
 │   ├── fold.py        # Fold
 │   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
 │   ├── coords.py      # resolve_coords, resolve_one, Coords, mortal
-│   ├── owner_map.py   # fold_attributes, the owner-map fold and its shared tables
+│   ├── owner_map.py   # fold_attributes, the owner-map fold over keys as written, and its shared tables
 │   └── record.py      # Record, PinnedRecord
 ├── mutable.py         # WorkingRecord, StagedSource
 ├── store/
@@ -37,7 +37,7 @@ datarecord/
 │   ├── manifest.py    # read_schema, reconcile_schema
 │   └── write.py       # write_layer, layer_data
 └── tools/
-    ├── base.py        # Tool, Schema, Attr, Requirements, UnsupportedRecordError
+    ├── base.py        # Tool, Schema, Attr, settle, Requirements, UnsupportedRecordError
     └── pypsa.py       # PyPSA
 ```
 

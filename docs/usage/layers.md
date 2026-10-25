@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-4.0
 # Layers
 
 A `Revision` is a node in a tree of layers.
-Each revision adds one layer, and it reads as that layer over its ancestors' layers, the deepest layer winning ([design](../design/layers/tree.md)).
+Each revision adds one layer, and it reads as that layer over its ancestors' layers, a deeper layer's row winning where it crosses a shallower one ([design](../design/layers/tree.md)).
 
 ```python
 from datarecord import Workspace
@@ -26,6 +26,37 @@ A `Revision` serialises as its id, its parent and its store's location ([design]
 
 A layer's data is write-once, so any revision may be a parent and no cache needs invalidating ([design](../design/layers/tree.md#a-layers-data-is-write-once)).
 Branching is several children that share a parent by pointing at it.
+
+## Reading across layers
+
+An attribute reads as its rows as written, and the more specific row wins at each coordinate.
+Where a child's row crosses a parent's, the child also holds a row naming both, so that row wins there ([design](../design/layers/resolution.md#why-the-map-holds-keys-as-written)):
+
+```python
+w.set("x", 50.0, entity="gas")  # the root
+w.set("x", 100.0, entity="wind")
+v.set("x", 999.0, scenario="high")  # its child
+child.record.attributes["x"]
+# (gas, NULL) 50, (wind, NULL) 100, (NULL, high) 999, (gas, high) 999, (wind, high) 999
+```
+
+A broadcast reaches every label the record holds, including one added below a materialised revision or staged in a `WorkingRecord`:
+
+```python
+c = rev.child(w.edits)  # w.set("p_max_pu", 0.9)
+c.materialise()
+w = WorkingRecord(c.record)
+w.add("entity", ["n"], ctype="Generator")
+w.attributes["p_max_pu"]  # (NULL) 0.9, which n takes by the broadcast rule
+```
+
+A constant set over a parent's series is written out along the series' snapshots, so it wins at each of them ([design](../design/layers/resolution.md#a-dim-outside-partial)):
+
+```python
+w.set("p_max_pu", [0.2, 0.5], snapshot=[0, 1])  # the root, every entity
+v.set("p_max_pu", 0.9, entity="wind")  # its child
+# the child holds (wind, NULL), (wind, 0) and (wind, 1) at 0.9
+```
 
 ## Materialising
 

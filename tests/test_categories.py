@@ -15,7 +15,7 @@ import pytest
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from tests.fixtures import empty_root, write_schema
+from tests.fixtures import broadcast, empty_root, write_schema
 
 
 @pytest.fixture
@@ -60,11 +60,9 @@ def root(store, categorized):
 EVERY = {"g1", "w1", "l1", "b1"}
 
 
-def _values(record, attribute: str) -> dict:
-    """`record.attributes[attribute]` as `entity -> value`."""
-    frame = record.attributes[attribute].df()
-    assert frame["entity"].is_unique, f"one row per entity, got {frame}"
-    return dict(zip(frame["entity"], frame["value"], strict=True))
+def _values(record, attribute: str, dim: str = "entity") -> dict:
+    """`attribute` resolved per label of `dim`."""
+    return {label: v for (label,), v in broadcast(record, attribute, dim).items()}
 
 
 def test_a_null_reaches_a_label_added_in_the_same_staged_record(root):
@@ -119,20 +117,16 @@ def buses(store):
     return revision.child(staged.edits)
 
 
-def _by_bus(record, attribute: str) -> dict:
-    """`record.attributes[attribute]` as `bus -> value`."""
-    frame = record.attributes[attribute].df()
-    return dict(zip(frame["bus"], frame["value"], strict=True))
-
-
 def test_a_category_keyword_scopes_a_value_on_another_dim_than_entity(buses):
     staged = WorkingRecord(buses.record)
     staged.set("frequency", 60.0, bus_type="AC")
     staged.set("v_nom", 380.0)
     record = buses.child(staged.edits).record
 
-    assert _by_bus(record, "frequency") == {"ac1": 60.0, "ac2": 60.0}
-    assert set(_by_bus(record, "v_nom")) == {"ac1", "ac2", "dc1"}, "a NULL reaches all"
+    assert _values(record, "frequency", "bus") == {"ac1": 60.0, "ac2": 60.0}
+    assert set(_values(record, "v_nom", "bus")) == {"ac1", "ac2", "dc1"}, (
+        "a NULL reaches all"
+    )
     assert set(record.flags(bus_type="AC")) == {"frequency", "v_nom"}
     assert set(record.flags(bus_type="DC")) == {"v_nom"}, "no DC bus has a frequency"
 
@@ -141,6 +135,6 @@ def test_attributes_leave_a_default_by_unapplied(buses):
     staged = WorkingRecord(buses.record)
     staged.set("frequency", 60.0, bus="ac1")
     record = buses.child(staged.edits).record
-    assert _by_bus(record, "frequency") == {"ac1": 60.0}, (
+    assert _values(record, "frequency", "bus") == {"ac1": 60.0}, (
         "ac2 has no row, so it is absent rather than its default_by 50.0"
     )

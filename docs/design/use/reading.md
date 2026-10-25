@@ -68,6 +68,11 @@ A `Record` hands back bare DuckDB relations, each a plan on the record's connect
 Every record is DuckDB underneath, so a value handed over as itself costs no wrapping per read, and a caller who wants SQL needs no unwrapping.
 A consumer filters, joins and aggregates with relation calls or SQL, and fetches with `.df()`, `.pl()` or `.to_arrow_table()`.
 
+An attribute's relation holds its rows as written, in no promised order.
+A NULL coordinate stays NULL, and two rows may cover one coordinate, of one layer or of two.
+The consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule): the row naming every dim the others there name wins.
+The record guarantees such a row wherever two rows cross ([resolution](../layers/resolution.md#crossing-rows)), so a consumer needs no knowledge of layers or of `partial`.
+
 `LazyRelations` builds each relation on first access.
 Building a relation is itself I/O: `read_parquet` opens the file to read the footer that binds the relation's columns.
 Locally that is a page-cache hit.
@@ -94,7 +99,7 @@ Only attributes with rows are present, so `set(record.flags())` also says which 
 
 `flags(**categories)` answers for one category.
 The keywords are categorizing properties of one dim by their plain names, such as `ctype="Generator"`, each with one category or a list ([categories](#properties-and-categories)).
-Only rows that reach a matching label count, through the dim's own column or through a group's single field over the dim.
+Only rows that reach a matching label count: a row naming it through the dim's own column or a group's single field over the dim, and a row leaving that column NULL, which reaches every label or tuple.
 An attribute is present where such a row exists.
 Keywords that categorize several dims are refused, and so is a group that reaches the dim through two fields, since a row would then count towards no single label.
 
@@ -118,6 +123,7 @@ A dim one attribute uses reads NULL in the rows of another attribute that lacks 
 Counting it as broadcast would mislead every consumer into building a constant container along an axis with no values.
 
 `p_nom` set per entity puts `entity` in `varies`, and a single `entity = NULL` row puts it in `broadcast`.
+The flags describe the rows the record holds, so a broadcast that more specific rows shadow at every label still puts its dim in `broadcast`.
 
 `flags` covers attributes alone.
 Properties are columns of their subject's file, read from `properties`.

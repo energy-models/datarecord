@@ -31,12 +31,12 @@ A relation and a `WorkingRecord` belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
 
 A fold caches its results as shared tables.
-The frozen prefix's folded axes and groups are the tables `dims_<dim>_<id>` and `group_<name>_<id>`, beside the [owner map](../layers/resolution.md#owner-map) `owner_map_<id>`.
+The frozen prefix's folded axes and groups are the tables `dims_<dim>_<id>` and `group_<name>_<id>`, beside the [owner map](../layers/resolution.md#owner-map) `owner_map_<key>_<id>`.
 A last table, `coords_<id>`, lists them and is created after them, so a reader that finds it finds them all.
-A dim or group name is a caller's string, so the table name holds its hash.
+A dim or group name is a caller's string, so the table name holds its hash, and `<key>` is the hash of the owner map's key columns.
 `<id>` is the node whose frozen layers were folded: a revision's id, the base's id for a `WorkingRecord`, or the [id in the manifest](../model/schema.md#one-schema-per-record) for a standalone directory.
 
-The schema is no part of the key, so a fold made before the manifest widened is read as it is under the wider schema.
+The schema is no part of the key beyond `partial`, so a fold made before the manifest widened is read as it is under the wider schema, while one made before a dim joined or left `partial` is folded again.
 A [compatible widening](../model/schema.md#versioning) only adds, and changes no column a table already has.
 The one addition a table can lack is the new dim's field in the [flag structs](../layers/resolution.md#owner-map).
 Each reader of a flag takes a missing field as unset, and decides this from the struct's type when it builds the query.

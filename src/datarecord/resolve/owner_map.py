@@ -15,23 +15,28 @@ Notes
 
 from __future__ import annotations
 
+import operator
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager, nullcontext
+from functools import reduce
 from hashlib import sha256
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import duckdb
+from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation, sqltypes
+from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
     empty_relation,
+    ex_all,
     fn,
     null_safe,
+    struct_field,
     struct_of,
-    try_read_parquet,
     union_all_by_name,
 )
 from datarecord.resolve.coords import (
@@ -40,6 +45,7 @@ from datarecord.resolve.coords import (
     resolve_coords,
     restatement,
 )
+from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import LAYER_COLUMN, Schema
 
@@ -48,12 +54,12 @@ from datarecord.schema.schema import LAYER_COLUMN, Schema
 LAYER_UUID_TYPE = "UUID"
 
 
-def _table_name(revision_id: UUID) -> str:
-    return f"owner_map_{revision_id.hex}"
+def _table_name(revision_id: UUID, schema: Schema) -> str:
+    return _coord_table("owner_map", ",".join(schema.owner_map_key), revision_id)
 
 
 def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
-    """The shared table one folded axis or group is kept in.
+    """The shared table one folded axis, group or owner map is kept in.
 
     The name is hashed rather than spelled, being a caller's string that becomes
     an identifier.
@@ -63,16 +69,19 @@ def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
 
 
 def _shared(
-    con: DuckDBPyConnection, name: str, build: Callable[[], DuckDBPyRelation]
+    con: DuckDBPyConnection,
+    name: str,
+    build: Callable[[], AbstractContextManager[DuckDBPyRelation]],
 ) -> DuckDBPyRelation:
     """Table `name`, built by whichever cursor misses it first.
 
-    Two cursors missing at once both build, and DuckDB fails the second
-    `create` with a write-write conflict rather than a name clash; what it
-    would have created is the winner's table, so that is read instead. The
-    conflict can come before the winner commits, when its table is not yet
-    visible, so the `create` is retried until it either lands or meets the
-    committed table.
+    `build` enters the relation the table is made of, and exits once the
+    table holds it, releasing whatever the relation read. Two cursors missing
+    at once both build, and DuckDB fails the second `create` with a
+    write-write conflict rather than a name clash; what it would have created
+    is the winner's table, so that is read instead. The conflict can come
+    before the winner commits, when its table is not yet visible, so the
+    `create` is retried until it either lands or meets the committed table.
 
     Notes
     -----
@@ -82,18 +91,19 @@ def _shared(
         return con.table(name)
     except duckdb.CatalogException:
         pass
-    rel = build()
-    while True:
-        try:
-            rel.create(name)
-        except duckdb.TransactionException as e:
-            if "conflict" not in str(e).lower():
-                raise
-            time.sleep(0.001)
-            continue
-        except duckdb.CatalogException:
-            pass
-        return con.table(name)
+    with build() as rel:
+        while True:
+            try:
+                rel.create(name)
+            except duckdb.TransactionException as e:
+                if "conflict" not in str(e).lower():
+                    raise
+                time.sleep(0.001)
+                continue
+            except duckdb.CatalogException:
+                pass
+            break
+    return con.table(name)
 
 
 def cast_declared(
@@ -162,96 +172,282 @@ def with_columns(
 
 def fold_attributes(
     source: LayerSource,
-    keys: Coords,
+    schema: Schema,
     con: DuckDBPyConnection,
-    parent: DuckDBPyRelation,
+    parent: DuckDBPyRelation | None,
     removed: Mapping[str, DuckDBPyRelation],
-) -> DuckDBPyRelation:
-    """This layer's owner map: its `attributes/` keys, folded over `parent`.
+) -> DuckDBPyRelation | None:
+    """This layer's owner map: its `attributes/` keys as written, folded over `parent`.
 
     The parent rows naming a label `removed` holds are dropped first, per
     `partial` dim or keyed group. A label inside a struct is reached through
-    its tuple, which the layer removed with it.
+    its tuple, which the layer removed with it. A parent row this layer's rows
+    cover whole is dropped; one they cross stays as written, and the layer
+    owns an overlap row for each crossing pair (`_overlaps`). `None` where
+    neither side holds a row.
+
+    Raises
+    ------
+    ValueError
+        Where a row of this layer leaves a dim outside `partial` NULL over a
+        parent row naming it, and the layer holds no row naming it there
+        (`_refuse_unfilled`).
 
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    schema = keys.schema
-    rel = source.all_attributes()
-    if rel is None:
-        own = _empty_relation(schema, con, *schema.owner_map_columns)
-    else:
-        # Every declared dim and group column too, not just `breakpoint`: one
-        # file carries only its own attribute's columns, so a coordinate another
-        # attribute uses is absent here and must read as NULL rather than fail
-        # to bind.
-        broadcast = schema.broadcast_dims
-        rel = cast_declared(
-            schema,
-            with_columns(
-                schema, rel, "breakpoint", *schema.group_columns, *schema.dims
-            ),
+    own = _own(source, schema)
+    if parent is None:
+        return own
+    kept = parent
+    for name, gone in removed.items():
+        gone = gone.project(col(name).alias("_gone"))
+        kept = kept.join(gone, col(name) == col("_gone"), how="anti")
+    if own is None:
+        return kept
+    masks = _masks(own, schema)
+    for mask in masks:
+        drop = _exactly(own, mask, schema).project(
+            *(col(c).alias(f"_o_{c}") for c in ("attribute", *mask))
         )
-        rel, dims = keys.expand_dims(
-            rel.set_alias("i"),
-            tuple(d for d in schema.partial_dims if d in broadcast),
-            con,
+        covered = ex_all(col(c) == col(f"_o_{c}") for c in ("attribute", *mask))
+        kept = kept.join(drop, covered, how="anti")
+    patterns = _masks(kept, schema) if any(masks) else []
+    pairs = [(p, o) for o in masks for p in patterns if not set(o) <= set(p)]
+    _refuse_unfilled(kept, own, pairs, schema, source)
+    overlaps = [
+        _overlaps(_pair(kept, own, p, o, schema), o, schema)
+        for p, o in pairs
+        if not set(p) <= set(o)
+    ]
+    if not overlaps:
+        return union_all_by_name([kept, own], con)
+    crossed = reduce(DuckDBPyRelation.union, overlaps).distinct()
+    return union_all_by_name([kept, own, crossed], con)
+
+
+def _exactly(
+    rel: DuckDBPyRelation, mask: tuple[str, ...], schema: Schema
+) -> DuckDBPyRelation:
+    """The rows of `rel` naming exactly the `partial` dims in `mask`."""
+    if not schema.partial_dims:
+        return rel
+    return rel.filter(
+        ex_all(
+            col(d).isnotnull() if d in mask else col(d).isnull()
+            for d in schema.partial_dims
         )
-        # Each broadcast dim is carried twice: the (possibly broadcast) key
-        # value, and `_raw_<dim>` as the row stored it. The flags describe the
-        # stored form - whether a row set the dim or left it NULL - so they
-        # cannot be read off the expanded value, which is never NULL once
-        # broadcast (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
-        # `dims` covers the partial ones, expanded; the rest pass through as
-        # stored. Together they are every declared dim, exactly once.
-        expanded = set(dims)
-        tagged = rel.project(
-            *(
-                col("i", d)
-                for d in (*schema.group_columns, *schema.dims)
-                if d not in expanded
-            ),
-            *(expr.alias(d) for d, expr in dims.items()),
-            *(col("i", d).alias(f"_raw_{d}") for d in broadcast),
-            col("i", "attribute"),
-            lit(str(source.layer_id)).cast(LAYER_UUID_TYPE).alias(LAYER_COLUMN),
-            col("i", "breakpoint"),
-        )
-        own = tagged.aggregate(
-            [
-                *(col(c) for c in (*schema.owner_map_key, LAYER_COLUMN)),
-                # A field aggregating to NULL - what a map written before the
-                # dim was declared yields - reads as "not set", the same as
-                # false.
-                struct_of(
-                    {d: fn.bool_or(col(f"_raw_{d}").isnotnull()) for d in broadcast}
-                ).alias("varies"),
-                struct_of(
-                    {d: fn.bool_or(col(f"_raw_{d}").isnull()) for d in broadcast}
-                ).alias("broadcast"),
-                fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
-            ]
+    )
+
+
+def _pair(
+    kept: DuckDBPyRelation,
+    own: DuckDBPyRelation,
+    p: tuple[str, ...],
+    o: tuple[str, ...],
+    schema: Schema,
+) -> DuckDBPyRelation:
+    """Each parent row naming exactly `p` beside each row of `own` naming exactly `o` it covers a common key with.
+
+    The own row's columns are prefixed `_o_`. Two rows cover a common key
+    where they agree on every dim both name, an equi-join on those alone.
+    """
+    mine = _exactly(own, o, schema)
+    mine = mine.project(*(col(c).alias(f"_o_{c}") for c in mine.columns))
+    on = ex_all(
+        col(c) == col(f"_o_{c}") for c in ("attribute", *(d for d in o if d in p))
+    )
+    return _exactly(kept, p, schema).join(mine, on)
+
+
+def _overlaps(
+    pairs: DuckDBPyRelation, o: tuple[str, ...], schema: Schema
+) -> DuckDBPyRelation:
+    """The overlap row of each crossing pair: every label either row names, owned as the own row is.
+
+    The own row's layer and flags go with it, so a value row of that layer
+    finds it by the same NULL-safe join as its own key and takes the parent
+    row's labels. It names a strict superset of both rows, which is what lets
+    the broadcast rule pick it where they cross.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    return pairs.project(
+        *(col(f"_o_{d}" if d in o else d).alias(d) for d in schema.partial_dims),
+        *(
+            col(f"_o_{c}").alias(c)
+            for c in ("attribute", LAYER_COLUMN, "varies", "broadcast", "breakpoints")
+        ),
+    )
+
+
+def _refuse_unfilled(
+    kept: DuckDBPyRelation,
+    own: DuckDBPyRelation,
+    pairs: Sequence[tuple[tuple[str, ...], tuple[str, ...]]],
+    schema: Schema,
+    source: LayerSource,
+) -> None:
+    """Refuse a layer leaving a dim outside `partial` NULL over a parent row naming it, unfilled.
+
+    Where a parent row names such a dim and an own row reaching it does not,
+    the two cross on that dim, which an overlap row cannot settle: its key
+    holds `partial` dims only. The layer must hold a row naming the dim at
+    the key the two share, as `WorkingRecord` writes one.
+
+    Raises
+    ------
+    ValueError
+        Naming the attribute, the dim and the key.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    """
+    dims = schema.partial_dims
+    others = [d for d in schema.broadcast_dims if d not in dims]
+    if not others or not pairs:
+        return
+
+    unset = lit(False)  # noqa: FBT003
+
+    def keyed(p: tuple[str, ...], o: tuple[str, ...]) -> DuckDBPyRelation:
+        pair = _pair(kept, own, p, o, schema)
+        need = {
+            d: struct_field(pair, "varies", d, unset)
+            & ~struct_field(pair, "_o_varies", d, unset)
+            for d in others
+        }
+        return pair.filter(reduce(operator.or_, need.values())).project(
+            *(col(f"_o_{d}" if d in o else d).alias(d) for d in dims),
+            col("attribute"),
+            *(need[d].alias(f"_need_{d}") for d in others),
         )
 
-    kept = parent.set_alias("p")
-    for name, gone in removed.items():
-        on = null_safe("x", "p", (name,))
-        kept = kept.join(gone.set_alias("x"), on, how="anti").set_alias("p")
-    # Parent minus what this layer restates, union this layer's own.
-    kept = kept.join(
-        own.set_alias("o"), null_safe("p", "o", schema.owner_map_key), how="anti"
+    open_ = reduce(DuckDBPyRelation.union, (keyed(p, o) for p, o in pairs))
+    open_ = open_.set_alias("k")
+    filled = own.project(
+        *(col(c) for c in ("attribute", *dims)),
+        *(struct_field(own, "varies", d, unset).alias(f"_has_{d}") for d in others),
+    ).set_alias("f")
+    unfilled = open_.join(
+        filled, null_safe("k", "f", ("attribute", *dims)), how="left"
+    ).filter(
+        reduce(
+            operator.or_,
+            (
+                col(f"_need_{d}") & ~coalesce(col(f"_has_{d}"), lit(False))  # noqa: FBT003
+                for d in others
+            ),
+        )
     )
-    return union_all_by_name([kept, own], con)
+    row = (
+        unfilled.project(
+            col("k", "attribute"),
+            *(col("k", d).cast(sqltypes.VARCHAR) for d in dims),
+            *(col(f"_need_{d}") for d in others),
+        )
+        .limit(1)
+        .fetchone()
+    )
+    if row is None:
+        return
+    attribute, *key = row[: 1 + len(dims)]
+    dim = next(d for d, n in zip(others, row[1 + len(dims) :], strict=True) if n)
+    at = {d: k for d, k in zip(dims, key, strict=True) if k is not None}
+    msg = (
+        f"layer {source.layer_id} leaves {dim!r} NULL for {attribute!r} at {at} "
+        f"where a parent row names it; write it along the parent's {dim!r} "
+        f"labels there, as `WorkingRecord.set` does"
+    )
+    raise ValueError(msg)
+
+
+def _own(source: LayerSource, schema: Schema) -> DuckDBPyRelation | None:
+    """`source`'s owner-map rows: one per key as written, `None` without attributes.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    """
+    rel = source.all_attributes()
+    if rel is None:
+        return None
+    # Every declared dim and group column too, not just `breakpoint`: one
+    # file carries only its own attribute's columns, so a coordinate another
+    # attribute uses is absent here and must read as NULL rather than fail
+    # to bind.
+    broadcast = schema.broadcast_dims
+    rel = cast_declared(
+        schema,
+        with_columns(schema, rel, "breakpoint", *schema.group_columns, *schema.dims),
+    )
+    tagged = rel.project(
+        *(col(d) for d in broadcast),
+        col("attribute"),
+        lit(str(source.layer_id)).cast(LAYER_UUID_TYPE).alias(LAYER_COLUMN),
+        col("breakpoint"),
+    )
+    over = {d: _over(schema, d) for d in broadcast}
+    return tagged.aggregate(
+        [
+            *(col(c) for c in (*schema.owner_map_key, LAYER_COLUMN)),
+            # A field aggregating to NULL - what a map written before the
+            # dim was declared yields - reads as "not set", the same as
+            # false.
+            struct_of(
+                {d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
+            ).alias("varies"),
+            struct_of(
+                {d: fn.bool_or(col(d).isnull() & over[d]) for d in broadcast}
+            ).alias("broadcast"),
+            fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
+        ]
+    )
+
+
+def _over(schema: Schema, dim: str) -> Expression:
+    """Whether a row's attribute is over `dim`: declared over it, or not declared at all.
+
+    A declared attribute not over `dim` holds NULL there for want of the
+    column, which is neither a label nor a broadcast. An undeclared one keeps
+    every dim, its shape not being the schema's to say.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    """
+    lacking = [a for a in schema.attributes if dim not in schema.coordinates_of(a)]
+    if not lacking:
+        return lit(True)  # noqa: FBT003
+    return ~col("attribute").isin(*(lit(a) for a in lacking))
+
+
+def _masks(own: DuckDBPyRelation, schema: Schema) -> list[tuple[str, ...]]:
+    """The distinct sets of `partial` dims the rows of `own` name, in dim order."""
+    dims = schema.partial_dims
+    if not dims:
+        return [()]
+    rows = own.project(*(col(d).isnotnull().alias(d) for d in dims)).distinct()
+    return sorted(
+        tuple(d for d, named in zip(dims, row, strict=True) if named)
+        for row in rows.fetchall()
+    )
 
 
 def _fold_map(
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
     schema: Schema,
+    *,
+    made: list[str] | None = None,
 ) -> DuckDBPyRelation:
-    """A record's owner map, folded down over `sources`.
+    """A record's owner map, folded down over `sources`, checkpointed into `made` as `_fold_onto` does.
 
     The axes fold to a resolved copy instead (`resolve_coords`). The deepest materialised source's map is the fold's
     *seed* rather than a step of it: it is already folded over everything at or
@@ -264,21 +460,46 @@ def _fold_map(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    base, above = split = _base_and_above(sources, con, schema)
-    keys = resolve_coords(schema, sources, con, split)
+    base, above = _base_and_above(sources, con, schema)
     if base is None:
-        rel = _empty_relation(keys.schema, con, *keys.schema.owner_map_columns)
+        rel = None
     else:
         seed = sources[: len(sources) - len(above)]
-        rel = _frozen_table(
-            seed[-1].layer_id, seed, con, keys.schema, read=base.owner_map
-        )
+        rel = _frozen_table(seed[-1].layer_id, seed, con, schema, read=base.owner_map)
 
     held = {
         name: None if base is None else (base.groups | base.axes).get(name)
         for name in _pruned(schema)
     }
-    return _fold_onto(rel, above, held, keys, con)
+    return _fold_onto(rel, above, held, schema, con, made=made)
+
+
+@contextmanager
+def _checkpointed(
+    sources: Sequence[LayerSource], con: DuckDBPyConnection, schema: Schema
+) -> Iterator[DuckDBPyRelation]:
+    """`_fold_map` with each source's fold kept in a table, every one dropped on exit.
+
+    The relation entered reads the last table, so it is read before exit.
+    """
+    made: list[str] = []
+    try:
+        yield _fold_map(sources, con, schema, made=made)
+    finally:
+        for name in made:
+            con.execute(f"DROP TABLE IF EXISTS {name}")
+
+
+def _checkpoint(
+    rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
+) -> DuckDBPyRelation:
+    """`rel` as a table, dropping the tables in `made` and leaving its name there."""
+    name = f"_fold_{uuid4().hex}"
+    rel.create(name)
+    for previous in made:
+        con.execute(f"DROP TABLE {previous}")
+    made[:] = [name]
+    return con.table(name)
 
 
 def _pruned(schema: Schema) -> tuple[str, ...]:
@@ -298,25 +519,32 @@ def _pruned(schema: Schema) -> tuple[str, ...]:
 
 
 def _fold_onto(
-    rel: DuckDBPyRelation,
+    rel: DuckDBPyRelation | None,
     sources: Sequence[LayerSource],
     held: dict[str, DuckDBPyRelation | None],
-    keys: Coords,
+    schema: Schema,
     con: DuckDBPyConnection,
+    *,
+    made: list[str] | None = None,
 ) -> DuckDBPyRelation:
-    """Fold each of `sources` onto the owner map `rel`.
+    """Fold each of `sources` onto the owner map `rel`, `None` being no map yet.
 
     A source restating a membership removes the labels the previous
     restatement held and its own omits. `held` is that previous restatement
     per `_pruned` membership as of the first source, `None` where there is
     none, so a first restatement removes nothing.
 
+    Where `made` is a list, each source's fold is kept in a table of its own
+    before the next folds onto it, since DuckDB binds a relation's whole
+    tree at every step, which makes a long chain quadratic to build. The
+    table the map is read from is left named in `made`, for the caller to
+    drop once it has read the map (`_checkpointed`).
+
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    schema = keys.schema
     held = dict(held)
     for source in sources:
         removed = {}
@@ -335,7 +563,11 @@ def _fold_onto(
                     )
                 )
             held[name] = now
-        rel = fold_attributes(source, keys, con, rel, removed)
+        rel = fold_attributes(source, schema, con, rel, removed)
+        if made is not None and rel is not None:
+            rel = _checkpoint(rel, made, con)
+    if rel is None:
+        return _empty_relation(schema, con, *schema.owner_map_columns)
     return rel
 
 
@@ -364,15 +596,14 @@ def _table(
     revision_id: UUID,
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
-    keys: Coords,
+    schema: Schema,
     prefix: Coords,
 ) -> DuckDBPyRelation:
     """The owner map for `revision_id`, materialised as far as `frozen` allows.
 
     The frozen prefix is folded once and kept as a connection-scoped table,
     which never needs invalidating since layers are write-once. Whatever follows
-    it is folded on top per call, against `keys`, the coords folded over every
-    source, and handed back as a relation, so a staging area's edits are picked
+    it is folded on top per call and handed back as a relation, so a staging area's edits are picked
     up with no bookkeeping at all: a relation over a staging table reads
     whatever the table holds when it is collected. `prefix` is the frozen
     prefix's coords, which a restatement after it removes labels from.
@@ -383,11 +614,10 @@ def _table(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    schema = keys.schema
     frozen = frozen_prefix(sources)
     rel = _frozen_table(revision_id, sources[:frozen], con, schema)
     held = {name: (prefix.groups | prefix.axes).get(name) for name in _pruned(schema)}
-    return _fold_onto(rel, sources[frozen:], held, keys, con)
+    return _fold_onto(rel, sources[frozen:], held, schema, con)
 
 
 def _frozen_table(
@@ -397,15 +627,16 @@ def _frozen_table(
     schema: Schema,
     *,
     read: DuckDBPyRelation | None = None,
-) -> DuckDBPyRelation:
-    """The frozen prefix's owner map, its own materialised one or a cached fold.
+) -> DuckDBPyRelation | None:
+    """The frozen prefix's owner map, its own materialised one or a cached fold, `None` over no source.
 
     Keyed by `revision_id` rather than by the prefix: the prefix *is* what that
     node resolves from, a staged source only ever being appended after it. The
-    table is shared by every cursor on the workspace and carries no schema in
-    its name, so a schema widened since the fold reads it as it is, a column it
-    lacks padded as unset. A persisted map is cast, parquet not carrying the
-    declared types.
+    table is shared by every cursor on the workspace and carries the owner-map
+    key in its name, so a schema whose `partial` changed folds afresh, while
+    one only declaring more reads it as it is, a flag field it lacks read as
+    unset. A persisted map is read only where keyed as the schema keys one
+    (`read_owner_map`), and cast, parquet not carrying the declared types.
 
     The one place a cached map enters a fold: a materialised seed is read here
     too (`_fold_map`).
@@ -428,18 +659,18 @@ def _frozen_table(
         and isinstance(last, ParquetLayer)
         and last.revision_id == revision_id
     ):
-        rel = try_read_parquet(last.store.owner_map_uri(revision_id), con)
+        rel = read_owner_map(revision_id, con, schema, last.store)
     if rel is not None:
-        rel = cast_declared(schema, rel)
-    elif not sources:
+        return cast_declared(schema, rel)
+    if not sources:
         # Nothing frozen to fold, which is a `WorkingRecord` over a base that is
-        # itself unfrozen; the tail folds onto an empty map.
-        return _empty_relation(schema, con, *schema.owner_map_columns)
-    else:
-        rel = _shared(
-            con, _table_name(revision_id), lambda: _fold_map(sources, con, schema)
-        )
-    return with_columns(schema, rel, *schema.owner_map_key)
+        # itself unfrozen; the tail folds onto no map.
+        return None
+    return _shared(
+        con,
+        _table_name(revision_id, schema),
+        lambda: _checkpointed(sources, con, schema),
+    )
 
 
 def _frozen_coords(
@@ -467,11 +698,13 @@ def _frozen_coords(
         ]
         for kind, name, rel in made:
             table = _coord_table(kind, name, revision_id)
-            _shared(con, table, lambda: rel)  # noqa: B023 - called before `rel` moves on
+            _shared(con, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
         return con.sql(
             "SELECT unnest($kinds::VARCHAR[]) AS kind, unnest($names::VARCHAR[]) AS name",
             params={"kinds": [k for k, _, _ in made], "names": [n for _, n, _ in made]},
         )
 
-    rows = _shared(con, f"coords_{revision_id.hex}", fold).fetchall()
+    rows = _shared(
+        con, f"coords_{revision_id.hex}", lambda: nullcontext(fold())
+    ).fetchall()
     return [(kind, name) for kind, name in rows]

@@ -26,6 +26,7 @@ from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from datarecord.store.manifest import read_schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
+    broadcast,
     empty_child,
     empty_root,
     export_network,
@@ -839,16 +840,13 @@ def _rows_layer(
     )
 
 
-def _read(revision, attribute: str = "p_nom") -> list:
-    """Return `attribute` as sorted `((first coordinate, scenario), value)` pairs."""
-    df = revision.record.attributes[attribute].df()
-    first = df["connection" if attribute == "efficiency" else "entity"]
-    keys = zip(
-        (v["entity"] if isinstance(v, dict) else v for v in first),
-        df["scenario"],
-        strict=True,
-    )
-    return sorted(zip(keys, df["value"], strict=True))
+def _read(revision, attribute: str = "p_nom") -> dict[tuple, float]:
+    """Return `attribute` resolved per `(entity, scenario)`, a connection read by its entity."""
+    first = "connection" if attribute == "efficiency" else "entity"
+    resolved = broadcast(revision.record, attribute, first, "scenario")
+    return {
+        (c[0] if isinstance(c, tuple) else c, s): v for (c, s), v in resolved.items()
+    }
 
 
 @pytest.mark.parametrize("via", ["set", "write_layer"])
@@ -907,9 +905,7 @@ def test_a_layer_reads_its_more_specific_row(store, via, attribute, rows, read):
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     got = _read(_rows_layer(store, rows, via, attribute), attribute)
-    assert got == sorted(read.items()), (
-        "one value per coordinate, the most specific row's"
-    )
+    assert got == read, "one value per coordinate, the most specific row's"
 
 
 _ALL_TWO = {("a", "x"): 2.0, ("a", "y"): 2.0, ("b", "x"): 2.0, ("b", "y"): 2.0}
@@ -973,7 +969,7 @@ def test_a_later_set_replaces_what_it_covers(store, attribute, rows, read):
     - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     got = _read(_rows_layer(store, rows, "set", attribute), attribute)
-    assert got == sorted(read.items()), "the later set wins where it covers"
+    assert got == read, "the later set wins where it covers"
 
 
 _T2 = pd.Timestamp("2031-01-01")
@@ -1128,7 +1124,7 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override,
     lower = _rows_layer(store, rows, via)
     staged = WorkingRecord(lower.record)
     staged.set("p_nom", 5.0, **override)
-    assert _read(lower.child(staged.edits)) == sorted(read.items())
+    assert _read(lower.child(staged.edits)) == read
 
 
 @pytest.mark.parametrize("via", ["set", "write_layer"])
@@ -1151,8 +1147,17 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override,
             ],
             "entity=b, scenario=y",
         ),
+        (
+            [
+                {"entity": "a", "value": 1.0},
+                {"scenario": "x", "value": 2.0},
+                {"scenario": "y", "value": 2.0},
+                {"entity": "a", "scenario": "x", "value": 3.0},
+            ],
+            "entity=a, scenario=y",
+        ),
     ],
-    ids=["entity-scenario", "entity-snapshot", "beside-a-default"],
+    ids=["entity-scenario", "entity-snapshot", "beside-a-default", "settled-elsewhere"],
 )
 def test_a_layer_with_two_rows_neither_more_specific_is_refused(
     store, via, rows, coordinate
@@ -1165,6 +1170,41 @@ def test_a_layer_with_two_rows_neither_more_specific_is_refused(
     """
     with pytest.raises(ValueError, match=rf"p_nom\.parquet.*{coordinate}"):
         _rows_layer(store, rows, via)
+
+
+@pytest.mark.parametrize(
+    ("rows", "dims"),
+    [
+        (
+            [
+                {"entity": "a", "value": 1.0},
+                {"scenario": "x", "value": 2.0},
+                {"entity": "a", "scenario": "x", "value": 3.0},
+            ],
+            ("entity", "scenario"),
+        ),
+        (
+            [
+                {"entity": "a", "value": 1.0},
+                {"snapshot": _T, "value": 2.0},
+                {"entity": "a", "snapshot": _T, "value": 3.0},
+            ],
+            ("entity", "snapshot"),
+        ),
+    ],
+    ids=["entity-scenario", "entity-snapshot"],
+)
+def test_two_rows_crossing_where_a_row_names_both_are_written(store, rows, dims):
+    """A record flattened from several layers holds a row naming both wherever two cross.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    record = _rows_layer(store, rows, "write_layer").record
+    assert broadcast(record, "p_nom", *dims)[("a", rows[1][dims[1]])] == 3.0, (
+        "the row naming both wins where the two cross"
+    )
 
 
 def test_a_staged_pair_neither_more_specific_fails_the_read(store):
@@ -1220,7 +1260,7 @@ def test_a_curve_is_no_pair_of_rows(store):
     """The rows of one curve differ in `breakpoint`, so each is its own row."""
     rows: list[dict] = [{"entity": "a", "breakpoint": b, "value": b} for b in (0, 1)]
     df = _rows_layer(store, rows, "write_layer").record.attributes["p_nom"].df()
-    assert sorted(df["breakpoint"]) == [0, 0, 1, 1], "each point in each scenario"
+    assert sorted(df["breakpoint"]) == [0, 1], "both points held as written"
 
 
 def test_a_stored_pair_naming_the_same_dims_fails_the_read(store, tmp_path):
@@ -1418,9 +1458,7 @@ def test_widening_a_single_dim_attribute_reads_old_rows_in_every_scenario(store)
     staged.add("scenario", ["low", "high"])
     child = store.revision(layer.id).child(staged.edits)
 
-    rows = child.record.attributes["p_nom"].df()
-    got = dict(zip(zip(rows["entity"], rows["scenario"]), rows["value"]))
-    assert got == {
+    assert broadcast(child.record, "p_nom", "entity", "scenario") == {
         ("g1", "low"): 1.0,
         ("g1", "high"): 1.0,
         ("g2", "low"): 2.0,

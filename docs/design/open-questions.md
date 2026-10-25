@@ -13,12 +13,6 @@ SPDX-License-Identifier: CC-BY-4.0
 [The schema](layers/tree.md#partial-the-granularity-of-an-override) puts it on the axis because it is true of every attribute varying over that axis.
 A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot. None is known. Permitting it would make the fold's key vary per attribute, and the owner-map key is fixed.
 
-### Whether a broadcast survives materialisation
-
-A materialised ancestor's owner map stores a NULL row already expanded to the labels that existed then, and seeds a child's fold without re-expanding.
-So `set("p_max_pu", 0.9)` reaches an entity added in a child only while the ancestor is unmaterialised.
-One level down, a `WorkingRecord` folds its committed prefix once, so a parent's NULL does not reach a label staged there, even while the parent is unmaterialised.
-
 ### Whether results should be invalidated by a later input edit
 
 A result is [an attribute](model/attributes.md) and inherits, so a child that edits an input holds results computed from its parent's inputs, describing a record that no longer exists.
@@ -97,6 +91,10 @@ It is a fold bug with any two whole-owned dims on one series.
 Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none. The tool adds the one and stores the other as NULL today ([PyPSA](tools/pypsa.md#buses-and-carriers-are-dims)).
 
 ## Settled
+
+### Whether a broadcast survives materialisation
+
+It does. The owner map holds keys as written and the fold reads no axis, so a NULL reaches every label the axis holds at the node read: one added below a materialised revision and one staged in a `WorkingRecord` alike ([what a row reaches](layers/resolution.md#what-a-row-reaches)). A map materialised before `partial` changed is no cache, and the read folds from the layers again ([materialised node caches](layers/resolution.md#materialised-node-caches)).
 
 ### Whether `flags` needs a record-level counterpart
 

@@ -74,3 +74,18 @@ A solve's results are written as a [thin layer](pypsa.md#writing-results).
 The tool's own `Schema` holds that mapping per entity type.
 An entry names the record attribute that a tool attribute is renamed from, or the several attributes it is computed from.
 An attribute without an entry is read under its own name.
+
+## Settling rows
+
+A record answers an attribute's rows as written, and a tool settles them by [the broadcast rule](../model/attributes.md#the-broadcast-rule) ([relations](../use/reading.md#relations)).
+`settle(rel, labels, flags)` returns one row per coordinate.
+A row NULL on a coordinate in `labels` takes each label there, and a row reaching none is dropped.
+At each coordinate the row naming every coordinate in `labels` that the other rows there name is kept, and where none does the query fails, naming the coordinate.
+A coordinate outside `labels` is kept as written, a NULL there being one more label, so a constant `p_max_pu` stays one row with `snapshot` NULL.
+
+`flags` spares the work a record does not need.
+Only a coordinate in `broadcast` is expanded, and rows are picked only where one is in `varies` as well.
+Elsewhere every row names the same coordinates, one row per key.
+
+`Attr.resolve(record, labels, flags)` and `Schema.resolve(record, ctype, name, labels, flags)` settle each source before a rename or a computation, so a computed attribute combines one row per coordinate of each.
+The PyPSA tool passes a type's members as `entity`, their connections as `connection`, and the scenarios of a stochastic network, so a NULL `entity` reaches each member of the type it builds.

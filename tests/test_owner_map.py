@@ -25,6 +25,7 @@ from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
+    broadcast,
     drop_entities,
     empty_child,
     empty_root,
@@ -365,12 +366,12 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     )
 
 
-def test_the_fold_broadcasts_by_hash_join(store):
-    """Expanding a broadcast NULL over its axis is a hash join, not a nested loop.
+def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
+    """The fold pairs crossing rows, and the read finds its owned keys, by hash join.
 
-    The join matched on `dim IS NULL` alone, which DuckDB runs as a nested loop
-    comparing every row with every label - even a row that sets the dim and so
-    matches none. Row counts stay right, so only the plan shows it.
+    A join matching on `dim IS NULL` alone runs as a nested loop comparing
+    every row with every other - even a row that sets the dim and so matches
+    none. Row counts stay right, so only the plan shows it.
 
     Notes
     -----
@@ -393,15 +394,201 @@ def test_the_fold_broadcasts_by_hash_join(store):
     )
     base = empty_root(store)
     staged = WorkingRecord(base.record)
-    staged.add("entity", ["wind"], ctype="Generator")
+    staged.add("entity", ["wind", "solar"], ctype="Generator")
     staged.add("snapshot", [0, 1])
-    staged.set("weight", {0: 1.0, 1: 1.0})
-    staged.set(
-        "p_max_pu",
-        pd.DataFrame({"entity": ["wind", "wind"], "snapshot": [0, 1], "value": 0.5}),
-    )
-    record = base.child(staged.edits).record
+    staged.set("weight", 1.0)
+    staged.set("p_max_pu", 0.5, entity="wind")
+    root = base.child(staged.edits)
+    staged = WorkingRecord(root.record)
+    staged.set("weight", 2.0, snapshot=1)
+    staged.set("p_max_pu", 0.7, snapshot=1)
+    record = root.child(staged.edits).record
 
-    plan = _fold_map(record.sources, record.con, record.schema).explain()
-    assert "HASH_JOIN" in plan, "the fold joins at all"
-    assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan
+    for plan in (
+        _fold_map(record.sources, record.con, record.schema).explain(),
+        record.attributes["weight"].explain(),
+    ):
+        assert "HASH_JOIN" in plan, "it joins at all"
+        assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan
+    assert _rows(record._fold.owner_map, "attribute", "entity", "snapshot") == {
+        ("weight", None, None),
+        ("weight", None, 1),
+        ("p_max_pu", "wind", None),
+        ("p_max_pu", None, 1),
+        ("p_max_pu", "wind", 1),
+    }, "crossed rows stay as written beside the overlap naming both"
+    assert broadcast(record, "weight", "snapshot") == {
+        (0,): 1.0,
+        (1,): 2.0,
+    }, "the deeper, more specific row owns the key both cover"
+    assert broadcast(record, "p_max_pu", "entity", "snapshot") == {
+        ("wind", 0): 0.5,
+        ("wind", 1): 0.7,
+        ("solar", 1): 0.7,
+    }
+
+
+def _rows(rel, *columns):
+    """`rel`'s rows over `columns`, NULL as None, as a set."""
+    df = rel.project(", ".join(columns)).df()
+    return {
+        tuple(None if pd.isna(v) else v for v in r)
+        for r in df.itertuples(index=False, name=None)
+    }
+
+
+@pytest.fixture
+def entity_series_schema():
+    """`p_nom` over `entity` and `p_max_pu` over `(entity, snapshot)`, `entity` alone partial."""
+    return Schema(
+        dimensions={
+            "entity": {"dtype": "str"},
+            "ctype": {"one_of": ["Generator", "Load"]},
+            "snapshot": {"dtype": "int"},
+        },
+        properties={"entity": {"ctype": {"one_of": "ctype"}}},
+        attributes={
+            "p_nom": {"dtype": "float", "dims": ["entity"], "default": 0.0},
+            "p_max_pu": {
+                "dtype": "float",
+                "dims": ["entity", "snapshot"],
+                "default": 1.0,
+            },
+        },
+        partial=frozenset({"entity"}),
+    )
+
+
+def test_a_broadcast_reaches_every_label_a_named_row_leaves(
+    store, entity_series_schema
+):
+    """A broadcast reads as written and reaches every label no named row takes.
+
+    `p_nom`'s broadcast reaches every entity but `gas`, which names its own
+    value. `p_max_pu`'s reaches every entity and snapshot but those `wind`'s
+    series names, which a consumer lays over it.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    """
+    write_schema(entity_series_schema, store)
+    base = empty_root(store)
+    w = WorkingRecord(base.record)
+    w.add("ctype", ["Generator", "Load"])
+    w.add("entity", ["wind", "gas", "house"], ctype=["Generator", "Generator", "Load"])
+    w.add("snapshot", [0, 1, 2, 3, 4, 5])
+    w.set("p_nom", 100.0)
+    w.set("p_nom", 50.0, entity="gas")
+    w.set("p_max_pu", 0.9)
+    w.set("p_max_pu", [0.2, 0.7, 0.4, 0.6], entity="wind", snapshot=[0, 1, 2, 3])
+
+    for record in (w, base.child(w.edits).record):
+        assert broadcast(record, "p_nom", "entity") == {
+            ("wind",): 100.0,
+            ("house",): 100.0,
+            ("gas",): 50.0,
+        }
+        assert broadcast(record, "p_max_pu", "entity", "snapshot") == {
+            **{(e, t): 0.9 for e in ("wind", "gas", "house") for t in range(6)},
+            ("wind", 0): 0.2,
+            ("wind", 1): 0.7,
+            ("wind", 2): 0.4,
+            ("wind", 3): 0.6,
+        }
+        flags = record.flags()
+        assert (flags["p_nom"].varies, flags["p_nom"].broadcast) == (
+            {"entity"},
+            {"entity"},
+        )
+        assert (flags["p_max_pu"].varies, flags["p_max_pu"].broadcast) == (
+            {"entity", "snapshot"},
+            {"entity", "snapshot"},
+        )
+
+
+def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
+    """Across layers the deeper row wins the keys it covers, named or not.
+
+    The root names each entity with `scenario` NULL, the child names one
+    scenario with `entity` NULL. The child owns `(*, high)`, the root keeps
+    `(*, low)`.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    """
+    write_schema(
+        Schema(
+            dimensions={"entity": {"dtype": "str"}, "scenario": {"dtype": "str"}},
+            attributes={
+                "p_nom": {
+                    "dtype": "float",
+                    "dims": ["entity", "scenario"],
+                    "default": 0.0,
+                }
+            },
+            partial=frozenset({"entity", "scenario"}),
+        ),
+        store,
+    )
+    base = empty_root(store)
+    root = WorkingRecord(base.record)
+    root.add("entity", ["wind", "gas"])
+    root.add("scenario", ["low", "high"])
+    root.set("p_nom", 100.0, entity="wind")
+    root.set("p_nom", 50.0, entity="gas")
+    staged = WorkingRecord(root)
+    staged.set("p_nom", 999.0, scenario="high")
+    committed = base.child(root.edits)
+    child = WorkingRecord(committed.record)
+    child.set("p_nom", 999.0, scenario="high")
+
+    expected = {
+        ("gas", "high"): 999.0,
+        ("gas", "low"): 50.0,
+        ("wind", "high"): 999.0,
+        ("wind", "low"): 100.0,
+    }
+    for record in (staged, child, committed.child(child.edits).record):
+        assert broadcast(record, "p_nom", "entity", "scenario") == expected
+
+
+def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_schema):
+    """A deeper row crossing a parent's series on a dim outside `partial` is written along it.
+
+    The root sets a series for every entity, `(NULL, snapshot)`; the child sets
+    `wind` for every snapshot, `(wind, NULL)`. Neither names a superset of the
+    other's dims, so staging writes the child's value along the series'
+    snapshots too, and the root's series reaches `gas` only.
+
+    Notes
+    -----
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    write_schema(entity_series_schema, store)
+    base = empty_root(store)
+    root = WorkingRecord(base.record)
+    root.add("ctype", ["Generator"])
+    root.add("entity", ["wind", "gas"], ctype="Generator")
+    root.add("snapshot", [0, 1, 2])
+    root.set("p_max_pu", [0.2, 0.5, 0.8], snapshot=[0, 1, 2])
+    staged = WorkingRecord(root)
+    staged.set("p_max_pu", 0.9, entity="wind")
+    committed = base.child(root.edits)
+    child = WorkingRecord(committed.record)
+    child.set("p_max_pu", 0.9, entity="wind")
+
+    expected = {
+        ("wind", 0): 0.9,
+        ("wind", 1): 0.9,
+        ("wind", 2): 0.9,
+        ("gas", 0): 0.2,
+        ("gas", 1): 0.5,
+        ("gas", 2): 0.8,
+    }
+    for record in (staged, child, committed.child(child.edits).record):
+        assert broadcast(record, "p_max_pu", "entity", "snapshot") == expected

@@ -247,16 +247,19 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
 
     Two rows cover one coordinate where they agree on every dim both name. A
     row is more specific than another where it names every dim the other
-    names, and more. Of two rows of one layer covering a coordinate, a read
-    keeps the more specific one, so where both name the same dims, or each
-    names a dim the other leaves NULL, it has none to keep. `breakpoint` is
-    part of a row, so the rows of one curve are no such pair.
+    names, and more. Of the rows covering a coordinate, a read keeps the one
+    naming every dim the others name, so where two name the same dims, or each
+    names a dim the other leaves NULL and no row there names both, it has none
+    to keep. A record holding rows of several layers, flattened into one,
+    holds such a row wherever two of them cross. `breakpoint` is part of a
+    row, so the rows of one curve are no such pair.
 
     Rows naming the same dims are found by `refuse_twice` over the coordinates.
     Only the distinct NULL patterns are paired, and they are few. Each pair is
     joined on the distinct coordinates its rows name, so one series is not
-    multiplied against another. `rel` is the file as written, so the source
-    is built only once, and only its dims and `breakpoint` are read.
+    multiplied against another, and anti-joined against the rows naming the
+    union of both. `rel` is the file as written, so the source is built only
+    once, and only its dims and `breakpoint` are read.
 
     Raises
     ------
@@ -294,19 +297,25 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
             else rows_a.cross(rows_b)
         )
         union = [d for d in dims if d in a or d in b]
-        row = (
-            joined.project(*(col("a" if d in a else "b", d) for d in union))
-            .limit(1)
-            .fetchone()
-        )
+        crossed = joined.project(
+            *(col("a" if d in a else "b", d) for d in union)
+        ).set_alias("x")
+        if tuple(union) in patterns:
+            crossed = crossed.join(
+                _named_rows(rel, dims, union, "u"),
+                ex_all(col("x", d) == col("u", d) for d in union),
+                how="anti",
+            )
+        row = crossed.limit(1).fetchone()
         if row is None:
             continue
         coordinate = ", ".join(f"{d}={v}" for d, v in zip(union, row, strict=True))
         msg = (
             f"attributes/{attribute}.parquet holds a row naming {list(a)} and one "
             f"naming {list(b)} that both cover {coordinate}; neither names every "
-            f"dim the other does, so neither is the more specific there. Name the "
-            f"labels of one of them row by row, leaving that coordinate out (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+            f"dim the other does and no row there names both, so neither is the "
+            f"more specific there. Name the labels of one of them row by row, "
+            f"leaving that coordinate out, or add a row naming both (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
         )
         raise ValueError(msg)
 

@@ -66,7 +66,9 @@ One `p_max_pu` row with `entity = NULL` reaches every entity, loads included.
 A group column broadcasts the same way: a NULL `connection` means every connection.
 `breakpoint` carries the abscissa of a piecewise-linear value.
 
-`attributes` shows stored rows only.
+`attributes` shows stored rows only, in no promised order.
+Two rows may cover one coordinate, of one layer or of two, and the row naming every dim the others there name gives its value.
+A tool settles them with `settle` ([design](../design/tools/index.md#settling-rows)).
 A coordinate that no row covers takes the attribute's default, which `Schema.default_for(name, **categories)` gives per category.
 
 An attribute row holds no property, so `attributes["p_max_pu"]` holds every entity's rows together.

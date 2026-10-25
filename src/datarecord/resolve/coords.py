@@ -16,7 +16,6 @@ from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import reduce
 
-from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
@@ -421,71 +420,3 @@ class Coords:
     axes: dict[str, DuckDBPyRelation]
     groups: dict[str, DuckDBPyRelation] = field(default_factory=dict)
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
-
-    def expand_dims(
-        self,
-        rel: DuckDBPyRelation,
-        layer_keys: tuple[str, ...],
-        con: DuckDBPyConnection,
-    ) -> tuple[DuckDBPyRelation, dict[str, Expression]]:
-        """Join `rel` against each of `layer_keys`' axis, broadcasting NULLs.
-
-        Only a row of an attribute whose `dims` name the dim broadcasts: any
-        other is NULL there in every layer, so its key needs no
-        expansion, and expanding it would multiply its owner-map rows by the
-        axis length for no change in ownership. A NULL reaches every label of
-        the dim, categorized or not.
-
-        Parameters
-        ----------
-        rel : DuckDBPyRelation
-            Carries an `attribute` column.
-        layer_keys : tuple of str
-            The broadcast coordinates of `schema.partial_dims`; a group's
-            axis is its resolved relation.
-
-        Returns
-        -------
-        DuckDBPyRelation
-            `rel`, joined.
-        dict of str to Expression
-            Per dim, the expression to project for its (possibly broadcast)
-            value - referencing `rel`'s original alias, since each join
-            wraps the relation in a new auto-generated alias.
-
-        Notes
-        -----
-        `rel` must carry a column for every dim in `layer_keys`, which
-        `write_layer` enforces: a record whose frames do not is one the
-        writer rejected, and binding here would resolve it as though the dim
-        were broadcast everywhere.
-
-        Notes
-        -----
-        - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-        """
-        alias = rel.alias
-        exprs = {}
-        for dim in layer_keys:
-            axis = self.axes.get(dim, self.groups.get(dim))
-            over = [
-                a
-                for a in self.schema.attributes
-                if dim in self.schema.coordinates_of(a)
-            ]
-            if axis is None or not over:
-                exprs[dim] = col(alias, dim)
-                continue
-            # `... = true` rather than the bare condition: an equality hashes,
-            # a one-sided condition is a nested loop over every row and label.
-            # An attribute not over `dim` holds NULL there for want of the
-            # column, which is no broadcast.
-            broadcasts = col(alias, dim).isnull() & col(alias, "attribute").isin(
-                *(lit(a) for a in over)
-            )
-            key = axis.project(col(dim), lit(True).alias("_broadcast"))  # noqa: FBT003
-            rel = rel.join(key, broadcasts == col(key.alias, "_broadcast"), how="left")
-            exprs[dim] = coalesce(col(alias, dim), col(key.alias, dim))
-        return rel, exprs

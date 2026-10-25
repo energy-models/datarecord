@@ -16,15 +16,123 @@ Notes
 
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass, field
+from functools import reduce
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from duckdb import DuckDBPyConnection, DuckDBPyRelation
+from duckdb import CoalesceOperator as coalesce
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
+from duckdb import DuckDBPyConnection, DuckDBPyRelation, sqltypes
+from duckdb import SQLExpression as sql
+from duckdb import StarExpression as star
+
+from datarecord.duck import fn
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
-    from datarecord.protocols import RecordLike
+    from datarecord.protocols import Flags, RecordLike
+
+
+def settle(
+    rel: DuckDBPyRelation, labels: Mapping[str, DuckDBPyRelation], flags: Flags
+) -> DuckDBPyRelation:
+    """Settle the long rows of `rel` by the broadcast rule, one row per coordinate.
+
+    A row NULL on a coordinate in `labels` takes each label there, and a row
+    reaching none is dropped. At each coordinate the row naming every
+    coordinate in `labels` that the other rows there name is kept. A
+    coordinate outside `labels` is kept as written, a NULL there being one
+    more label, and `breakpoint` is no coordinate, so a curve is kept or
+    dropped whole.
+
+    Parameters
+    ----------
+    labels
+        Per coordinate, a relation holding its labels, or its tuples for a
+        group, in a column of the coordinate's name.
+    flags
+        The attribute's `Flags`. Only a coordinate in `broadcast` is
+        expanded, and rows are picked only where one is also in `varies`:
+        elsewhere every row names the same coordinates, one row per key.
+
+    Raises
+    ------
+    duckdb.Error
+        Where no row names every coordinate the rows reaching it name.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    over = [d for d in labels if d in rel.columns and d in flags.broadcast]
+    if not over:
+        return rel
+    mixed = [d for d in over if d in flags.varies]
+    if mixed:
+        named = reduce(
+            operator.add,
+            (
+                col(d).isnotnull().cast(sqltypes.INTEGER) * lit(1 << i)
+                for i, d in enumerate(mixed)
+            ),
+        )
+        rel = rel.project(star(), named.alias("_named"))
+    for d in over:
+        # `IS NULL = true` hashes; the one-sided `IS NULL` is a nested loop.
+        axis = labels[d].project(col(d), lit(True).alias("_broadcast"))  # noqa: FBT003
+        rows = rel.set_alias("_r")
+        rel = (
+            rows.join(
+                axis.set_alias("_ax"),
+                col("_r", d).isnull() == col("_ax", "_broadcast"),
+                how="left",
+            )
+            .project(
+                *(
+                    coalesce(col("_r", d), col("_ax", d)).alias(c)
+                    if c == d
+                    else col("_r", c)
+                    for c in rows.columns
+                )
+            )
+            .filter(col(d).isnotnull())
+        )
+    if not mixed:
+        return rel
+    coordinates = [c for c in rel.columns if c not in ("_named", "breakpoint", "value")]
+    over_sql = f"OVER (PARTITION BY {', '.join(str(col(c)) for c in coordinates)})"
+    # A window stays SQL text: DuckDB's expression API has no window construct.
+    ranked = rel.project(
+        star(),
+        sql(f"bit_or(_named) {over_sql}").alias("_all"),
+        sql(f"max(bit_count(_named)) {over_sql}").alias("_most"),
+    )
+    coordinate = fn.concat_ws(
+        lit(", "),
+        *(
+            fn.concat(
+                lit(f"{c}="), coalesce(col(c).cast(sqltypes.VARCHAR), lit("NULL"))
+            )
+            for c in coordinates
+        ),
+    )
+    crossed = fn.error(
+        fn.concat(
+            lit("two rows cross at "),
+            coordinate,
+            lit(
+                " and no row reaching it names both, so neither is the more specific "
+                "there (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+            ),
+        )
+    )
+    keep = sql(
+        f"CASE WHEN bit_count(_all) <> _most THEN {crossed} ELSE _named = _all END"
+    )
+    return ranked.filter(keep).project(star(exclude=("_named", "_all", "_most")))
 
 
 @dataclass(frozen=True)
@@ -141,8 +249,8 @@ class Attr:
     source : tuple of str
         Record attribute name(s) it is read from. A rename has one.
     compute : callable, optional
-        Maps one resolved long relation per `source`, in order, to this
-        attribute's long relation; `None` for a plain rename, which requires
+        Maps one settled long relation per `source` (`settle`), in order, to
+        this attribute's long relation; `None` for a plain rename, which requires
         exactly one `source`. A relation in, a relation out, so the plan stays
         unmaterialised and a computed attribute needs no special case downstream.
 
@@ -163,16 +271,26 @@ class Attr:
             )
             raise ValueError(msg)
 
-    def resolve(self, record: RecordLike) -> DuckDBPyRelation:
-        """This attribute's long relation, read through the `Record` interface.
+    def resolve(
+        self,
+        record: RecordLike,
+        labels: Mapping[str, DuckDBPyRelation],
+        flags: Mapping[str, Flags],
+    ) -> DuckDBPyRelation:
+        """This attribute's long relation, each source settled over `labels` by its `flags` (`settle`).
 
-        The record rather than the record, so a tool builds from any backing.
+        `flags` is `record.flags()` or a superset of each source's rows.
+
+        Read through the `Record` interface, so a tool builds from any backing,
+        and a computed attribute combines one row per coordinate of each
+        source.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
-        rels = [record.attributes[s] for s in self.source]
+        rels = [settle(record.attributes[s], labels, flags[s]) for s in self.source]
         if self.compute is None:
             return rels[0]
         return self.compute(*rels)
@@ -214,9 +332,16 @@ class Schema:
         """
         return self.attr(ctype, name).source
 
-    def resolve(self, record: RecordLike, ctype: str, name: str) -> DuckDBPyRelation:
-        """`ctype`'s `name` as a long relation over `record`, mapping applied."""
-        return self.attr(ctype, name).resolve(record)
+    def resolve(
+        self,
+        record: RecordLike,
+        ctype: str,
+        name: str,
+        labels: Mapping[str, DuckDBPyRelation],
+        flags: Mapping[str, Flags],
+    ) -> DuckDBPyRelation:
+        """`ctype`'s `name` as a long relation over `record`, mapping applied and settled (`Attr.resolve`)."""
+        return self.attr(ctype, name).resolve(record, labels, flags)
 
 
 class UnsupportedRecordError(ValueError):
