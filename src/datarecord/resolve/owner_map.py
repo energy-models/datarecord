@@ -451,11 +451,10 @@ def _own(source: LayerSource, schema: Schema) -> DuckDBPyRelation | None:
 
 
 def _over(schema: Schema, dim: str) -> Expression:
-    """Whether a row's attribute is over `dim`: declared over it, or not declared at all.
+    """Whether a row's attribute is over `dim`.
 
-    A declared attribute not over `dim` holds NULL there for want of the
-    column, which is neither a label nor a broadcast. An undeclared one keeps
-    every dim, its shape not being the schema's to say.
+    An attribute not over `dim` holds NULL there for want of the column, which
+    is neither a label nor a broadcast.
 
     Notes
     -----
