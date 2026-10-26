@@ -41,7 +41,7 @@ from duckdb import (
 from duckdb import StarExpression as star
 
 from datarecord.duck import empty_relation, ex_all, fn, null_safe, struct_of
-from datarecord.protocols import EMPTY, Flags, LazyRelations, RecordLike, Relations
+from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
 from datarecord.resolve.owner_map import cast_declared
 from datarecord.resolve.record import Record
 from datarecord.schema.categories import matching, with_defaults
@@ -49,7 +49,6 @@ from datarecord.schema.schema import Schema as RecordSchema
 from datarecord.schema.specs import (
     AttributeSpec,
     Dimension,
-    Group,
     PropertySpec,
 )
 from datarecord.settle import settle
@@ -94,7 +93,7 @@ _PROPERTIES = {
 }
 #: How a SubNetwork's `carrier` is described, PyPSA registering it as an output.
 _SUB_NETWORK_CARRIER = "The carrier of a sub-network's buses."
-#: A property of the `connection` group, and the dim with `one_of`
+#: A property of the `connection` multi-dim, and the dim with `one_of`
 #: that holds its labels. The port vocabulary is this tool's.
 ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
@@ -1427,7 +1426,7 @@ class PyPSATool(Tool):
 
         over_entity = [a for a in schema.attributes if schema.addresses(a, ENTITY)]
         scenarios = {SCENARIO: record.dims[SCENARIO]} if shape.stochastic else {}
-        tuples = record.groups.get(CONNECTION)
+        tuples = record.dims.get(CONNECTION)
         for ctype in _AXIS_TYPES:
             self._add_labels(n, record, ctype, flagged, shape, scenarios, con)
         for ctype, members in read.items():
@@ -1604,8 +1603,8 @@ def _port_stems(c: pypsa.Components) -> dict[str, str]:
 def _attribute_spec(row: pd.Series, *, over: str) -> AttributeSpec:
     """One `c.defaults` row as the spec a record declares, input or result.
 
-    `over` is the dim or group its labels are: `entity` for a component's,
-    the `connection` group for a per-port one, whose rows carry it as one
+    `over` is the dim its labels are: `entity` for a component's,
+    the `connection` multi-dim for a per-port one, whose rows carry it as one
     `{entity, bus}` struct, `bus` or `carrier` for an axis type's
     (`_AXIS_TYPES`). A varying attribute varies over time and, in a stochastic
     network, scenario; both are declared always, a network without scenarios
@@ -1614,7 +1613,7 @@ def _attribute_spec(row: pd.Series, *, over: str) -> AttributeSpec:
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     dims = {SNAPSHOT, SCENARIO} if row["varying"] else set()
     dims.add(over)
@@ -1721,7 +1720,7 @@ def _input_names() -> frozenset[str]:
 def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]]:
     """The record schema PyPSA's whole component registry declares, what each entity type takes, and its inputs.
 
-    Every network exports against this one schema: its dims, groups and
+    Every network exports against this one schema: its dims and
     attributes describe every PyPSA component type and attribute, not
     only the ones a given network holds. Declaring a type or attribute a network
     lacks writes no file and is rejected by nothing - `ctype` only rejects an
@@ -1734,7 +1733,7 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
     registry (`status` starting "Output"), so a PyPSA upgrade adding one is
     picked up rather than needing a list kept here; which names they are is
     `_result_attributes`, the rule `to_datarecord` keys its frames by, a
-    per-port one declared over the `connection` group like a per-port input.
+    per-port one declared over the `connection` multi-dim like a per-port input.
 
     The second item names, per entity type, the names it declares - stems,
     `entity` properties and results alike - which `build` keeps its values to
@@ -1882,14 +1881,12 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
                 one_of=_ROLES,
                 description="An end of a component an attachment can be.",
             ),
-        },
-        properties=properties,
-        groups={
-            CONNECTION: Group(
+            CONNECTION: Dimension(
                 over={"entity": ENTITY, "bus": BUS},
                 description="An entity's attachment to one bus.",
             ),
         },
+        properties=properties,
         attributes=attributes | results,
         partial=frozenset({ENTITY, BUS, SCENARIO, CONNECTION}),
     )
@@ -1942,7 +1939,7 @@ class _NetworkSource:
     def schema(self) -> RecordSchema:
         """The layer's schema: the registry-derived schema, widened to this network.
 
-        The dims, groups and the registry's attributes are the same for
+        The dims and the registry's attributes are the same for
         every network - `_registry_schema` derives them once from PyPSA's whole
         component registry. What varies is `meta`, which carries this network's
         own attributes and `n.meta` for read-back and, per entity type, the
@@ -2007,8 +2004,10 @@ class _NetworkSource:
         """Every axis this network holds, `entity`, `bus` and `carrier` among them, as keys.
 
         Each labelled axis is its keys; its properties are in `properties`. The dims `ctype` and `role`, which have `one_of`, carry
-        every label of it, and `timestep` the timesteps a multi-period
-        network's positional snapshots name.
+        every label of it, `timestep` the timesteps a multi-period
+        network's positional snapshots name, and the multi-dim `connection`
+        every type's attachments, single-attachment ones included: a
+        Generator's one `bus` is as much a connection as a Link's `bus0`.
 
         Notes
         -----
@@ -2032,9 +2031,13 @@ class _NetworkSource:
             if len(axes[d]()) > 0
         )
         axes[ENTITY] = lambda: self._entity_frame()[[ENTITY]]
-        return LazyRelations(
-            (*present, ENTITY, CTYPE, ROLE), lambda dim: self.con.from_df(axes[dim]())
-        )
+
+        def axis(dim: str) -> DuckDBPyRelation:
+            if dim == CONNECTION:
+                return self._connection_frame().project(col(CONNECTION))
+            return self.con.from_df(axes[dim]())
+
+        return LazyRelations((*present, ENTITY, CTYPE, ROLE, CONNECTION), axis)
 
     @cached_property
     def _timesteps(self) -> pd.DataFrame:
@@ -2114,23 +2117,6 @@ class _NetworkSource:
         merged = _none_for_empty(pd.concat(frames, ignore_index=True))
         lead = [ENTITY, CTYPE]
         return merged[[*lead, *(c for c in merged.columns if c not in lead)]]
-
-    @property
-    def groups(self) -> LazyRelations:
-        """The `connection` group, one relation across every type.
-
-        Every type with any port, single-attachment ones included: a
-        Generator's one `bus` is as much a connection as a Link's `bus0`,
-        and `c.ports == [""]` makes `_port_attribute` name it correctly.
-
-        The entity-type group is not here, its rows being the entity axis's -
-        `dims["entity"]`, which this record supplies like any other axis.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        """
-        return LazyRelations((CONNECTION,), lambda _: self._connection_frame())
 
     def _connection_frame(self) -> DuckDBPyRelation:
         """Every type's connections in one frame, `(connection, role)`.
@@ -2692,7 +2678,7 @@ class _NetworkSource:
         """Union `rels` and project them to `columns`.
 
         An empty list is an empty relation with the right columns, each of its
-        declared type: `write_layer` checks a group column is a struct before it
+        declared type: `write_layer` checks a multi-dim column is a struct before it
         casts.
         """
         rel = self._union_rel(rels, columns)
@@ -2769,10 +2755,6 @@ class _ResultsSource(_NetworkSource):
         )
 
     @property
-    def groups(self) -> LazyRelations:
-        return EMPTY
-
-    @property
     def attributes(self) -> LazyRelations:
         """Every result with rows, `base`'s included."""
         results = self._restated
@@ -2824,10 +2806,10 @@ def _required_attributes(ctype: str) -> frozenset[str]:
 def _connection_frame(record: RecordLike) -> pd.DataFrame | None:
     """Every type's connections as flat `(entity, bus, ...)` rows, read once.
 
-    `_ordered_connections` scopes it per type, so the group is not folded again
-    for each.
+    `_ordered_connections` scopes it per type, so the multi-dim is not folded
+    again for each.
     """
-    frame = record.groups.get(CONNECTION)
+    frame = record.properties.get(CONNECTION)
     if frame is None:
         return None
     return _unpack_connection(frame).df()
@@ -2848,7 +2830,7 @@ def _ordered_connections(
     """One type's connections with a port index assigned per component.
 
     The positional collapse: connections come in member order and are
-    numbered within each component, so a port index follows the group's
+    numbered within each component, so a port index follows the multi-dim's
     row order, and a restatement that appends a connection renumbers none. Inputs are placed before outputs, so `bus0` is the input end
     PyPSA's sign convention expects.
 
@@ -3001,10 +2983,11 @@ def _connection_struct(entity: Expression, bus: Expression) -> Expression:
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
-    group_type = _registry_schema().group_type(CONNECTION)
-    return struct_of({ENTITY: entity, BUS: bus}).cast(group_type).alias(CONNECTION)
+    schema = _registry_schema()
+    struct = schema.duck_type(schema.dimensions[CONNECTION])
+    return struct_of({ENTITY: entity, BUS: bus}).cast(struct).alias(CONNECTION)
 
 
 def _unpack_connection(long: DuckDBPyRelation) -> DuckDBPyRelation:
@@ -3015,7 +2998,7 @@ def _unpack_connection(long: DuckDBPyRelation) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     if CONNECTION not in long.columns:
         return long

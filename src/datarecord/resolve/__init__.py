@@ -4,7 +4,7 @@
 
 """Read a record: `Record` folds the layers of a revision or a directory into relations.
 
-A `Record` answers dims, groups, properties and attributes as lazy DuckDB
+A `Record` answers dims, properties and attributes as lazy DuckDB
 relations, however many layers it holds.
 
 Notes

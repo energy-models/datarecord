@@ -25,11 +25,11 @@ from tests.fixtures import (
     schema,
     write_attribute,
     write_component,
-    write_group,
+    write_multi_dim,
     write_schema,
 )
 
-MEMBERS = ("dims", "groups", "attributes")
+MEMBERS = ("dims", "properties", "attributes")
 
 
 @pytest.fixture
@@ -37,13 +37,13 @@ def written(store):
     """A record of one layer, so every construction below reads the same files.
 
     One generator with a `p_max_pu` series and an `efficiency` on its
-    connection, so attributes, the entity axis and a group are all present.
+    connection, so attributes, the entity axis and a multi-dim are all present.
     """
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     write_component(revision, "Generator", [{"entity": "wind"}])
-    write_group(
+    write_multi_dim(
         revision, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
     )
     write_attribute(
@@ -110,7 +110,6 @@ class DictRecord:
     schema: Schema
     dims: Relations
     properties: Relations
-    groups: dict[str, Relations]
     attributes: Relations
 
     def flags(self, **categories: object) -> dict[str, Flags]:
@@ -123,7 +122,7 @@ def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
         "SELECT 'wind' AS entity, 'Generator' AS ctype"
     )
     # `p_nom`'s own coordinates and no others: no `ctype` in a long
-    # row, and no `bus`, which is the connection group's coordinate rather than
+    # row, and no `bus`, which is the connection multi-dim's coordinate rather than
     # a column every attribute carries.
     long = store.workspace.con.sql(
         "SELECT 'wind' AS entity, 'p_nom' AS attribute,"
@@ -135,7 +134,6 @@ def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
         schema(),
         {"entity": entity_axis.project("entity")},
         {"entity": entity_axis},
-        {},
         {"p_nom": long},
     )
 
@@ -207,7 +205,7 @@ def test_constructions_agree_on_rows(both):
             right = other.attributes[attribute].df()
             columns = sorted(set(left.columns) & set(right.columns))
             assert set(left.columns) == set(right.columns), attribute
-            # A group's struct column arrives as dicts, which pandas cannot sort.
+            # A multi-dim's struct column arrives as dicts, which pandas cannot sort.
             order = {"by": columns, "key": lambda s: s.astype(str)}
             left = left[columns].sort_values(**order).reset_index(drop=True)
             right = right[columns].sort_values(**order).reset_index(drop=True)
@@ -217,7 +215,7 @@ def test_constructions_agree_on_rows(both):
 # -- laziness (https://energy-models.github.io/datarecord/design/use/reading/#relations, https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold) ---------------------------------------------------
 
 
-@pytest.mark.parametrize("member", ["dims", "properties", "groups", "attributes"])
+@pytest.mark.parametrize("member", ["dims", "properties", "attributes"])
 def test_every_value_is_a_relation(both, member):
     """Each member's values are bare DuckDB relations, whatever the backing."""
     for record in both:
@@ -355,17 +353,17 @@ def test_node_record_orders_members(store):
 
 
 def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
-    """A record with no `groups/connection.parquet` has no such key, not an error.
+    """A record with no `dims/connection.parquet` has no such key, not an error.
 
     Notes
     -----
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
     revision = empty_root(store)
     write_schema(schema(), store)
     write_component(revision, "Generator", [{"entity": "wind"}])
 
-    assert "connection" not in store.layer(revision.id).groups
+    assert "connection" not in store.layer(revision.id).dims
 
 
 def test_missing_key_raises(both):
@@ -420,7 +418,7 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         stores[name] = (store, revision)
 
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
-    # Beyond `entity` and `bus`, which every schema here declares, the group.
+    # Beyond `entity` and `bus`, which every schema here declares, the multi-dim.
     a, b = revision_a.record.schema, revision_b.record.schema
     assert a.broadcast_dims == ("entity", "bus", "scenario", "ctype", "connection")
     assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection")

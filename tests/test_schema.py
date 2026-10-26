@@ -19,7 +19,7 @@ from duckdb.sqltypes import DuckDBPyType
 from pydantic import ValidationError
 
 from datarecord.schema.schema import Schema, flag_type
-from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from tests.fixtures import schema as pypsa_schema
 
 
@@ -33,9 +33,9 @@ def _schema(**overrides) -> Schema:
             "timestep": Dimension(dtype="datetime"),
             "scenario": Dimension(dtype="str"),
             "ctype": Dimension(one_of=["Generator", "Link"]),
+            "connection": Dimension(over={"entity": "entity", "bus": "bus"}),
         },
         "properties": {"entity": {"ctype": PropertySpec(one_of="ctype")}},
-        "groups": {"connection": Group(over={"entity": "entity", "bus": "bus"})},
         "attributes": {
             "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
             "p_max_pu": AttributeSpec(
@@ -45,7 +45,7 @@ def _schema(**overrides) -> Schema:
                 dtype="float", dims={"entity", "scenario"}, breakpoints=True
             ),
             "carrier": AttributeSpec(dtype="str", dims={"entity"}),
-            # A connection attribute says so by naming the group among its
+            # A connection attribute says so by naming the multi-dim among its
             # dims, rather than by a field of its own.
             "efficiency": AttributeSpec(
                 dtype="float", dims={"connection", "scenario", "timestep"}
@@ -89,7 +89,7 @@ def test_partial_dims_is_the_union_over_attributes():
 
     wider = _schema(partial=frozenset({"entity", "scenario", "timestep", "connection"}))
     assert wider.partial_dims == ("entity", "timestep", "scenario", "connection"), (
-        "a `partial` dim or group joins the key"
+        "a `partial` dim or multi-dim joins the key"
     )
 
     dims = {
@@ -108,9 +108,9 @@ def test_partial_dims_is_the_union_over_attributes():
 @pytest.mark.parametrize(
     ("attribute", "addresses"),
     [("p_nom", True), ("efficiency", True), ("weighting", False)],
-    ids=["over-entity", "over-a-group-drawing-on-it", "over-another-dim"],
+    ids=["over-entity", "over-a-multi-dim-drawing-on-it", "over-another-dim"],
 )
-def test_an_attribute_addresses_entity_through_its_dims_or_a_group(
+def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
     attribute, addresses
 ):
     """`efficiency` is over `connection`, whose coordinates include `entity`."""
@@ -152,8 +152,8 @@ def test_long_columns_for_refuses_an_undeclared_attribute():
         _schema().long_columns_for("nope")
 
 
-def test_a_group_may_have_properties():
-    """A column of `groups/<group>.parquet`, typed like a dim's property."""
+def test_a_multi_dim_may_have_properties():
+    """A column of `dims/<multi-dim>.parquet`, typed like a dim's property."""
     s = _schema(
         dimensions=_listing_dims(role=["in", "out"]),
         properties={
@@ -168,8 +168,63 @@ def test_a_group_may_have_properties():
     )
     assert s.column_type("role", "connection") == DuckDBPyType("ENUM('in', 'out')")
     assert s.categorizing("connection") == (), (
-        "a group is never categorized, even by a property referring to a dim that lists them"
+        "a multi-dim is never categorized, even by a property referring to a dim that lists them"
     )
+
+
+def test_a_coordinate_is_addressed_as_a_property_is():
+    """`connection.bus` resolves to the dim the coordinate draws on, and carries no default.
+
+    Notes
+    -----
+    - [coordinates](https://energy-models.github.io/datarecord/design/model/multi-dims/#coordinates)
+    """
+    s = _schema()
+    assert s.resolve("connection.bus") == ("connection", s.dimensions["bus"])
+    assert s.column_type("connection") == DuckDBPyType(
+        "STRUCT(entity VARCHAR, bus VARCHAR)"
+    ), "a multi-dim's column is the struct of its coordinates"
+    with pytest.raises(KeyError, match="is a coordinate"):
+        s.default_for("connection.bus")
+    with pytest.raises(KeyError, match="declares no property 'connection.port'"):
+        s.resolve("connection.port")
+
+
+@pytest.mark.parametrize(
+    ("dimensions", "match"),
+    [
+        pytest.param(
+            {"bus": {"dtype": "str"}, "c": {"over": ["bus"], "dtype": "str"}},
+            r"takes no \['dtype'\]",
+            id="over-beside-dtype",
+        ),
+        pytest.param(
+            {"bus": {"dtype": "str"}, "c": {"over": ["bus"], "one_of": ["a"]}},
+            r"takes no \['one_of'\]",
+            id="over-beside-one_of",
+        ),
+        pytest.param(
+            {"bus": {}, "c": {"over": ["bus"]}, "d": {"over": ["bus", "c"]}},
+            "is over the multi-dims",
+            id="over-a-multi-dim",
+        ),
+        pytest.param(
+            {"bus": {}, "c": {"over": ["nope"]}},
+            "over undeclared dims",
+            id="over-an-undeclared-dim",
+        ),
+    ],
+)
+def test_a_multi_dim_draws_on_dims(dimensions, match):
+    """`over` is a multi-dim's whole declaration, each coordinate on a dim that is no multi-dim."""
+    with pytest.raises(ValidationError, match=match):
+        Schema.model_validate({"dimensions": dimensions})
+
+
+def test_a_property_refers_to_no_multi_dim():
+    """A property's value is a label of a dim that is no multi-dim."""
+    with pytest.raises(ValidationError, match="refers to the multi-dim 'connection'"):
+        _schema(properties={"entity": {"port": PropertySpec(one_of="connection")}})
 
 
 def test_a_property_taking_listed_labels_categorizes_only_a_partial_dim():
@@ -213,7 +268,7 @@ def test_a_property_taking_listed_labels_categorizes_only_a_partial_dim():
                 properties={"connection": {"connection": PropertySpec(dtype="str")}}
             ),
             "named like a column of its key",
-            id="its-groups-name",
+            id="its-multi-dims-name",
         ),
         pytest.param(
             lambda: _schema(
@@ -231,16 +286,18 @@ def test_a_property_taking_listed_labels_categorizes_only_a_partial_dim():
         ),
         pytest.param(
             lambda: Schema(
-                dimensions={"bus": Dimension(dtype="str")},
-                groups={"corridor": Group(over={"from": "bus", "to": "bus"})},
+                dimensions={
+                    "bus": Dimension(dtype="str"),
+                    "corridor": Dimension(over={"from": "bus", "to": "bus"}),
+                },
                 properties={"corridor": {"from": PropertySpec(dtype="str")}},
             ),
             "share their names with its coordinates",
-            id="a-group-coordinates-name",
+            id="a-multi-dim-coordinates-name",
         ),
         pytest.param(
             lambda: _schema(properties={"nope": {"kind": PropertySpec(dtype="str")}}),
-            "undeclared dims or groups",
+            "undeclared dims",
             id="on-an-undeclared-dim",
         ),
     ],
@@ -487,8 +544,22 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     **kw,
                 ),
             ),
-            "a group is never categorized",
-            id="a-group-property",
+            "is a property of the multi-dim 'connection'; a multi-dim is never categorized",
+            id="a-multi-dim-property",
+        ),
+        pytest.param(
+            lambda: _with_x(
+                AttributeSpec(
+                    dtype="float",
+                    dims={"connection"},
+                    default_by={"connection.bus": {"in": 1.0}},
+                ),
+                base=lambda **kw: _schema(
+                    partial=frozenset({"entity", "scenario", "connection"}), **kw
+                ),
+            ),
+            "is a coordinate of the multi-dim 'connection'",
+            id="a-coordinate",
         ),
     ],
 )
@@ -742,9 +813,9 @@ def test_round_trips_through_json():
         ("dimensions", "snapshot"),
         ("attributes", "p_nom"),
         ("properties", "entity", "ctype"),
-        ("groups", "connection"),
+        ("dimensions", "connection"),
     ],
-    ids=["top-level", "dim", "attribute", "property", "group"],
+    ids=["top-level", "dim", "attribute", "property", "multi-dim"],
 )
 def test_manifest_with_unknown_key_fails_to_load(path: tuple[str, ...]):
     s = pypsa_schema(attributes={"Generator": {"p_nom": AttributeSpec(dtype="float")}})
@@ -793,20 +864,26 @@ def _declaring(position: str, name: str) -> Schema:
     attr = AttributeSpec(dtype="float", dims={"entity"})
     if position == "dim":
         return Schema(dimensions={"entity": dim, name: dim}, partial={name})
-    if position == "group":
+    if position == "multi-dim":
         return Schema(
-            dimensions={"entity": dim, "bus": dim},
-            groups={name: Group(over=["entity", "bus"])},
+            dimensions={
+                "entity": dim,
+                "bus": dim,
+                name: Dimension(over=["entity", "bus"]),
+            },
         )
     if position == "coordinate":
         return Schema(
-            dimensions={"entity": dim, "bus": dim},
-            groups={"connection": Group(over={"entity": "entity", name: "bus"})},
+            dimensions={
+                "entity": dim,
+                "bus": dim,
+                "connection": Dimension(over={"entity": "entity", name: "bus"}),
+            },
         )
     return Schema(dimensions={"entity": dim}, attributes={name: attr})
 
 
-POSITIONS = ["dim", "group", "coordinate", "attribute"]
+POSITIONS = ["dim", "multi-dim", "coordinate", "attribute"]
 
 WRITTEN = {
     "attribute": "a column datarecord writes",

@@ -138,7 +138,7 @@ class StagedSource:
     "The layer as it would be written": each member reads its staging table,
     which an edit replaces by key rather than appending to (`_insert`), so the
     table is already one row per key and what a write would persist. An axis
-    or group is staged whole, and handed over in position order.
+    is staged whole, and handed over in position order.
 
     Unfrozen, which is the whole of what distinguishes it: a `set` changes these
     rows under a reader, so the fold must stay a relation past this point rather
@@ -186,13 +186,6 @@ class StagedSource:
         - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
         """
         return self.record._restatement(f"{_AXIS_PREFIX}{dim}")
-
-    def groups(self) -> set[str]:
-        """Which declared groups are staged whole."""
-        return set(self.record._staged_groups())
-
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        return self.record._restatement(name)
 
     def attributes(self) -> set[str]:
         """Which attributes have staged rows."""
@@ -260,8 +253,8 @@ class WorkingRecord(Record):
     #: but the staged one, and its `revision_id` is what the edits are a delta
     #: against.
     _base: Record
-    #: Keyed by `(kind, attribute)`, the attribute being None for an axis or a
-    #: group. Attributes stage one table per attribute because that is the
+    #: Keyed by `(kind, attribute)`, the attribute being None for an axis.
+    #: Attributes stage one table per attribute because that is the
     #: file it stands for: one `value` column at the attribute's own type, and
     #: its own coordinates and no others.
     _staged: dict[tuple[str, str | None], str]
@@ -318,9 +311,8 @@ class WorkingRecord(Record):
     def _ensure(self, kind: str, attribute: str | None = None) -> str:
         """The staging table for `kind`, created on first use.
 
-        `kind` is `_ATTRIBUTES`, an axis (`_AXIS_PREFIX` and its dim), or a
-        declared group's name - an axis or a group gets a table shaped by its
-        own file.
+        `kind` is `_ATTRIBUTES` or an axis (`_AXIS_PREFIX` and its dim), which
+        gets a table shaped by its own file.
 
         `_ATTRIBUTES` takes an `attribute` and gets a table per attribute, shaped
         like the file it becomes: `long_columns_for` for the columns, and the
@@ -345,9 +337,7 @@ class WorkingRecord(Record):
         return name
 
     def _base_rows(self, kind: str) -> DuckDBPyRelation | None:
-        """The base's resolved axis or group `kind` stands for, with its properties."""
-        if not kind.startswith(_AXIS_PREFIX):
-            return self._base.groups.get(kind)
+        """The base's resolved axis `kind` stands for, with its properties."""
         dim = kind[len(_AXIS_PREFIX) :]
         rows = (
             self._base.properties if dim in self.schema.properties else self._base.dims
@@ -355,7 +345,7 @@ class WorkingRecord(Record):
         return rows.get(dim)
 
     def _restatement(self, kind: str) -> DuckDBPyRelation | None:
-        """The staged axis or group `kind` stands for, in position order; `None` where unstaged."""
+        """The staged axis `kind` stands for, in position order; `None` where unstaged."""
         name = self._staged.get((kind, None))
         if name is None:
             return None
@@ -366,7 +356,7 @@ class WorkingRecord(Record):
     def _positioned(
         self, rel: DuckDBPyRelation, table: str, kind: str, key: str
     ) -> DuckDBPyRelation:
-        """`rel` with each row's position in the staged axis or group `table`.
+        """`rel` with each row's position in the staged axis `table`.
 
         A label keeps its staged position, a label of the base takes its base
         position back, and any other comes after every position either holds,
@@ -406,10 +396,7 @@ class WorkingRecord(Record):
         """
         if attribute is not None:
             return self._empty_long(attribute)
-        if kind.startswith(_AXIS_PREFIX):
-            columns = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
-        else:
-            columns = _group_columns(self.schema, kind)
+        columns = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
         return empty_relation(self.con, **columns, **{_POSITION: sqltypes.BIGINT})
 
     def _empty_long(self, attribute: str) -> DuckDBPyRelation:
@@ -459,7 +446,7 @@ class WorkingRecord(Record):
 
     # -- Record, one fold deeper (https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits) --------------------------------
 
-    # `schema`, `dims`, `groups`, `attributes` and `flags` are
+    # `schema`, `dims`, `properties`, `attributes` and `flags` are
     # inherited from `Record` unchanged, which is the property this design
     # exists to have: a staged edit is read by the same fold that reads a
     # committed layer, so there is no second overlay to keep in step.
@@ -467,7 +454,7 @@ class WorkingRecord(Record):
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus the fold key - the value axes owned whole.
 
-        The complement of `owned_per`: a dim or group the attribute varies over
+        The complement of `owned_per`: a dim the attribute varies over
         but that is not in `partial_dims` (a non-`partial` `timestep`, or
         `connection`) is owned whole, so a patch to one value restates the
         attribute's whole extent along it.
@@ -482,7 +469,7 @@ class WorkingRecord(Record):
             frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
         )
         return tuple(
-            d for d in (*self.schema.group_columns, *self.schema.dims) if d in whole
+            d for d in (*self.schema.multi_dims, *self.schema.dims) if d in whole
         )
 
     # -- edits (https://energy-models.github.io/datarecord/design/use/editing/#set, https://energy-models.github.io/datarecord/design/use/editing/#add-remove) ----------------------------------------
@@ -530,7 +517,7 @@ class WorkingRecord(Record):
         return open_[0]
 
     def _coordinate_type(self, attribute: str, coordinate: str) -> DuckDBPyType:
-        """The declared type of one flat coordinate of `attribute` - a group field's dim's."""
+        """The declared type of one flat coordinate of `attribute` - a multi-dim coordinate's dim's."""
         dim = _flat_coordinates(self.schema, attribute).get(coordinate, coordinate)
         return self._column_type(dim)
 
@@ -612,8 +599,8 @@ class WorkingRecord(Record):
     def _patch(self, kind: str, key: str, name: str, edit: DuckDBPyRelation) -> None:
         """Set property `name` on each label or tuple `edit` names, in the staged `kind`.
 
-        `key` is the one column a row is keyed by: a dim, or a group's struct
-        column. The first edit stages the base's axis or group whole, so the
+        `key` is the one column a row is keyed by: a dim, a multi-dim's struct
+        column. The first edit stages the base's axis whole, so the
         row is there to update, its other properties with it.
 
         Notes
@@ -633,14 +620,14 @@ class WorkingRecord(Record):
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
         """The dim vocabulary.
 
-        A group's key coordinate is a keyword too, `from=` for a corridor,
+        A multi-dim's coordinate is a keyword too, `from=` for a corridor,
         though it names no dim.
 
         Notes
         -----
         - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
         """
-        keys = {c for g in self.schema.groups for c in self.schema.group_key(g)}
+        keys = {c for m in self.schema.multi_dims for c in self.schema.over(m)}
         unknown = sorted(set(dims) - set(self.schema.dims) - keys)
         if unknown:
             msg = f"the schema declares no dims {unknown}"
@@ -674,8 +661,8 @@ class WorkingRecord(Record):
                 )
 
     def _held(self, name: str) -> DuckDBPyRelation | None:
-        """Return the staged axis or group `name`, `None` where there is none."""
-        return (self.groups if name in self.schema.groups else self.dims).get(name)
+        """Return the staged axis `name`, `None` where there is none."""
+        return self.dims.get(name)
 
     def set(
         self,
@@ -685,8 +672,8 @@ class WorkingRecord(Record):
     ) -> None:
         """Stage values of one attribute.
 
-        Every coordinate is a keyword - `entity=`, `snapshot=`, a group's field
-        such as `bus=` or a corridor's `from=` - since which exist is declared
+        Every coordinate is a keyword - `entity=`, `snapshot=`, a multi-dim's
+        coordinate such as `bus=` or a corridor's `from=` - since which exist is declared
         rather than fixed. A keyword holds one label, fixing that coordinate, or
         a list of labels the value is staged at each of. A coordinate no keyword
         names is NULL, which by the broadcast rule is every label of it. The
@@ -706,9 +693,10 @@ class WorkingRecord(Record):
         An attribute's values are long rows, whatever its `dims`. A property -
         a category included - patches one column of existing axis rows: a
         mapping or series from label to value, a `dim=` keyword naming the
-        labels, or a scalar for every label the axis has. A group's property
-        takes a scalar, its fields as keywords selecting the tuples, none
-        selecting every tuple.
+        labels, or a scalar for every label the axis has. A multi-dim's
+        property takes a scalar, its coordinates as keywords selecting the
+        tuples, none selecting every tuple. A coordinate is part of the key,
+        which `add` and `remove` change, and is refused here.
 
         A property is named `subject.name` - `set("entity.carrier", ...)` -
         and a plain name is an attribute.
@@ -723,12 +711,13 @@ class WorkingRecord(Record):
         ------
         KeyError
             On an undeclared attribute or keyword, a label that its dim's
-            axis, as staged, does not hold, a tuple that its group, as
+            axis, as staged, does not hold, a tuple that its multi-dim, as
             staged, does not hold, a property's label no layer wrote, or a
             value of a property that refers to a dim and is no
             label of it.
         ValueError
-            On a keyword the attribute does not vary over, a sequence with no single list keyword to align to,
+            On a coordinate named as `subject.name`, a keyword the attribute
+            does not vary over, a sequence with no single list keyword to align to,
             keys whose coordinate is ambiguous, a label its dim does not
             list, a property keyword whose dim the attribute does not reach
             through exactly one coordinate, or that is given beside that
@@ -758,8 +747,8 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             call = f"`set({attribute!r}, <frame>)`"
             rel = as_relation(value, self.con)
-            self.schema.check_group_columns(
-                self.schema.groups_of(attribute), rel, carrier=call
+            self.schema.check_multi_dim_columns(
+                self.schema.multi_dims_of(attribute), rel, carrier=call
             )
             self._validate_input(attribute, coords)
             table = self._ensure(_ATTRIBUTES, attribute)
@@ -826,10 +815,23 @@ class WorkingRecord(Record):
         )
 
     def _set_dotted(self, dotted: str, value: Any, coords: Mapping[str, Any]) -> None:
-        """Stage the property `dotted` names, of a dim or a group."""
+        """Stage the property `dotted` names, of a dim or a multi-dim.
+
+        Raises
+        ------
+        ValueError
+            Where `dotted` names a coordinate of a multi-dim.
+        """
         subject, _, name = dotted.partition(".")
-        if subject in self.schema.groups:
-            self._set_group_property(subject, name, value, coords)
+        if name in self.schema.over(subject):
+            msg = (
+                f"`set({dotted!r}, ...)` names a coordinate of the multi-dim "
+                f"{subject!r}, part of its key rather than a value; `remove` "
+                f"the tuples and `add` them with the new label instead"
+            )
+            raise ValueError(msg)
+        if subject in self.schema.multi_dims:
+            self._set_multi_dim_property(subject, name, value, coords)
             return
         self._set_property(subject, name, value, self._select(dotted, coords))
 
@@ -859,10 +861,10 @@ class WorkingRecord(Record):
             self._require_existing(dim, dim, list(values), call)
         self._stage_axis(dim, name, values)
 
-    def _set_group_property(
-        self, group: str, name: str, value: Any, coords: Mapping[str, Any]
+    def _set_multi_dim_property(
+        self, multi: str, name: str, value: Any, coords: Mapping[str, Any]
     ) -> None:
-        """Stage scalar property `name` of `group` on the tuples its field keywords select, all if none.
+        """Stage scalar property `name` of `multi` on the tuples its coordinate keywords select, all if none.
 
         Raises
         ------
@@ -870,48 +872,47 @@ class WorkingRecord(Record):
             Where keywords are given and select no tuple, or on a value of a
             property that refers to a dim and is no label of it.
         ValueError
-            On a keyword naming no field of `group`, a value that is not a
+            On a keyword naming no coordinate of `multi`, a value that is not a
             scalar, or a label its dim does not list or whose type does
             not fit its dtype.
         """
-        call = f"set({f'{group}.{name}'!r}, ...)"
-        key = self.schema.group_key(group)
-        unknown = sorted(set(coords) - set(key))
+        call = f"set({f'{multi}.{name}'!r}, ...)"
+        over = self.schema.over(multi)
+        unknown = sorted(set(coords) - set(over))
         if unknown:
             msg = (
                 f"`{call}` names {unknown}, but {name!r} is a property of the "
-                f"group {group!r}, whose tuples its fields {list(key)} select"
+                f"multi-dim {multi!r}, whose tuples its coordinates {list(over)} "
+                f"select"
             )
             raise ValueError(msg)
         # Not left to the cast: DuckDB would store a dict or list as its text.
         if isinstance(value, Mapping) or _is_labels(value) or is_frame(value):
             msg = (
                 f"`{call}` takes one value for the tuples its keywords select, "
-                f"{name!r} being a property of the group {group!r}"
+                f"{name!r} being a property of the multi-dim {multi!r}"
             )
             raise ValueError(msg)
-        self.schema.require_listed(group, {name: [value]}, f"`{call}`")
-        self._require_live(group, {name: [value]}, f"`{call}`")
-        tuples = self.groups.get(group)
+        self.schema.require_listed(multi, {name: [value]}, f"`{call}`")
+        self._require_live(multi, {name: [value]}, f"`{call}`")
+        tuples = self.dims.get(multi)
         if tuples is None:
-            msg = f"`{call}` finds no tuple of {group!r}; `add_group` them first"
+            msg = f"`{call}` finds no tuple of {multi!r}; `add` them first"
             raise KeyError(msg)
-        for field, given in coords.items():
+        for coordinate, given in coords.items():
             labels = list(given) if _is_labels(given) else [given]
-            self._require_typed(
-                self.schema.groups[group].over[field], labels, f"`{call}`"
-            )
+            self._require_typed(over[coordinate], labels, f"`{call}`")
             tuples = tuples.filter(
-                fn.struct_extract(col(group), lit(field)).isin(*map(lit, labels))
+                fn.struct_extract(col(multi), lit(coordinate)).isin(*map(lit, labels))
             )
-        rel = tuples.project(col(group))
+        rel = tuples.project(col(multi))
         if coords and rel.limit(1).fetchone() is None:
             scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
-            msg = f"`{call}` selects no tuple of {group!r} at {scope}"
+            msg = f"`{call}` selects no tuple of {multi!r} at {scope}"
             raise KeyError(msg)
-        dtype = self._column_type(name, group)
-        edit = rel.project(col(group), lit(value).cast(dtype).alias(name))
-        self._patch(group, group, name, edit)
+        dtype = self._column_type(name, multi)
+        edit = rel.project(col(multi), lit(value).cast(dtype).alias(name))
+        self._patch(f"{_AXIS_PREFIX}{multi}", multi, name, edit)
 
     def _require_existing(
         self,
@@ -1126,8 +1127,8 @@ class WorkingRecord(Record):
         `present` names the coordinates `rel` already carries; the rest come from
         `dims` where the caller scoped them and are otherwise NULL - "every value
         of it" by the broadcast rule - typed as the schema declares them either
-        way, so the insert needs no coercion. A group column `rel` lacks is
-        packed from its key coordinates the same way, a field at a time.
+        way, so the insert needs no coercion. A multi-dim column `rel` lacks is
+        packed from its coordinates the same way, a field at a time.
 
         Only this attribute's own coordinates: the staging table is the shape of
         the file it becomes, so a dim it is not addressed by has no column to
@@ -1137,13 +1138,13 @@ class WorkingRecord(Record):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
 
         def coordinate(d: str) -> Expression:
             if d in present:
                 return col(d)
-            if d in self.schema.groups_of(attribute):
+            if d in self.schema.multi_dims_of(attribute):
                 return _packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
@@ -1268,9 +1269,7 @@ class WorkingRecord(Record):
         staged = self.con.table(table)
 
         def axis(record: RecordLike, name: str) -> DuckDBPyRelation | None:
-            return (record.dims if name in self.schema.dims else record.groups).get(
-                name
-            )
+            return record.dims.get(name)
 
         axes = {d: axis(self, d) for d in present}
         labelled = [c for c in scope if axis(self._base, c) is not None]
@@ -1308,7 +1307,7 @@ class WorkingRecord(Record):
         )
         return self.con.sql(f"SELECT {unnested}", params=params)
 
-    def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None:
+    def add(self, dim: str, labels: Any, **columns: Any) -> None:
         """Stage labels of `dim`, each as one whole row of its axis file.
 
         `columns` are `dim`'s properties, each a scalar for every label or a
@@ -1318,30 +1317,38 @@ class WorkingRecord(Record):
         the base removed here takes its base place back, and a new one is
         appended.
 
+        A multi-dim's labels are tuples, given as a list of mappings from
+        coordinate to label or as a frame with a column per coordinate, which
+        may carry property columns too; a frame takes a scalar keyword only.
+
         Not a sequence of `set` calls: a label exists by virtue of its axis row,
         so adding one with no columns at all is an edit. An attribute's value,
-        whatever its `dims`, goes through `set`, a group's row through
-        `add_group`.
+        whatever its `dims`, goes through `set`.
 
         Raises
         ------
         KeyError
-            If the schema declares no `dim`, or on a value of a property
-            that refers to a dim and is no label of it.
+            If the schema declares no `dim`, on a value of a property
+            that refers to a dim and is no label of it, or on a tuple naming
+            a label its coordinate's axis, as staged, does not hold.
         ValueError
             On an attribute, a column the axis file has no place for, a
             sequence of the wrong length, a label its dim does not list,
-            `dim`'s own included, or a label whose type does not fit the dtype
-            of `dim`.
+            `dim`'s own included, a label whose type does not fit the dtype
+            of `dim`, or a tuple missing a coordinate or naming NULL in one.
 
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
         - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
         if dim not in self.schema.dimensions:
             msg = f"the schema declares no dim {dim!r}"
             raise KeyError(msg)
+        if dim in self.schema.multi_dims:
+            self._add_tuples(dim, labels, columns)
+            return
         call = f"add({dim!r}, ...)"
         kind = f"{_AXIS_PREFIX}{dim}"
         self._reject_undeclared(f"`{call}`", _axis_columns(self.schema, dim), columns)
@@ -1363,52 +1370,162 @@ class WorkingRecord(Record):
             self._positioned(rel, table, kind, dim), table, {}, key=(dim,)
         )
 
-    def remove(self, dim: str, labels: Sequence[Any]) -> None:
+    def remove(self, dim: str, labels: Any) -> None:
         """Stage `dim`'s axis without `labels`.
 
         Need not enumerate what it deletes: the fold drops every value keyed
         by a removed label where `dim` is `partial`. No labels stage nothing.
 
-        And every group with a field over `dim` without the tuples naming one
-        of `labels`, read from the record as it currently resolves: a group
-        attribute's value goes with its tuple.
+        And every multi-dim with a coordinate over `dim` without the tuples
+        naming one of `labels`, read from the record as it currently resolves:
+        a multi-dim attribute's value goes with its tuple.
+
+        A multi-dim's labels are tuples, given as `add` takes them.
 
         Raises
         ------
         ValueError
-            On a label whose type does not fit the dtype of `dim`, or while a
-            property that refers to `dim` stores one of `labels` in the record
-            as staged.
+            On a label whose type does not fit the dtype of `dim`, a tuple
+            missing a coordinate or naming NULL in one, or while a property
+            that refers to `dim` stores one of `labels` in the record as
+            staged.
 
         Notes
         -----
         - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
         """
-        if not labels:
+        if not is_frame(labels) and not labels:
+            return
+        if dim in self.schema.multi_dims:
+            call = f"`remove({dim!r}, ...)`"
+            rel = self._tuples(dim, self._tuple_frame(dim, labels, {}, call), call)
+            table = self._ensure(f"{_AXIS_PREFIX}{dim}")
+            self._delete(table, rel, dim, col(table, dim))
             return
         self._require_typed(dim, labels, f"`remove({dim!r}, ...)`")
         self._require_unnamed(dim, labels)
         gone = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
-        groups = self.groups
-        for g in self.schema.group_columns:
-            fields = [f for f, d in self.schema.groups[g].over.items() if d == dim]
-            if not fields or g not in groups:
+        staged = self.dims
+        for m in self.schema.multi_dims:
+            fields = [f for f, d in self.schema.over(m).items() if d == dim]
+            if not fields or m not in staged:
                 continue
             naming = reduce(
                 operator.or_,
                 (
-                    fn.struct_extract(col(g), lit(f)).isin(*map(lit, labels))
+                    fn.struct_extract(col(m), lit(f)).isin(*map(lit, labels))
                     for f in fields
                 ),
             )
-            if groups[g].filter(naming).limit(1).fetchone() is None:
+            if staged[m].filter(naming).limit(1).fetchone() is None:
                 continue
-            table = self._ensure(g)
+            table = self._ensure(f"{_AXIS_PREFIX}{m}")
             for f in fields:
-                self._delete(table, gone, dim, fn.struct_extract(col(table, g), lit(f)))
+                self._delete(table, gone, dim, fn.struct_extract(col(table, m), lit(f)))
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._delete(table, gone, dim, col(table, dim))
+
+    def _add_tuples(self, multi: str, tuples: Any, columns: Mapping[str, Any]) -> None:
+        """Stage `tuples` of the multi-dim `multi`, with its properties `columns`, as `add` does.
+
+        Raises
+        ------
+        KeyError
+            As `refuse_unheld` does.
+        ValueError
+            As `_tuple_frame` and `_tuples` do, on a column the axis file has
+            no place for, or one whose type does not fit its dtype.
+        """
+        call = f"`add({multi!r}, ...)`"
+        rel = self._tuple_frame(multi, tuples, columns, call)
+        known = {*self.schema.over(multi), *self.schema.properties.get(multi, {})}
+        self._reject_undeclared(call, known, rel.columns)
+        rel = self.schema.require_takes(self._tuples(multi, rel, call), call, multi)
+        refuse_unheld(
+            rel, self.schema, rel.columns, self._held, call, staged=True, subject=multi
+        )
+        kind = f"{_AXIS_PREFIX}{multi}"
+        table = self._ensure(kind)
+        self._insert_snapshot(
+            self._positioned(rel, table, kind, multi), table, {}, key=(multi,)
+        )
+
+    def _tuple_frame(
+        self, multi: str, tuples: Any, columns: Mapping[str, Any], call: str
+    ) -> DuckDBPyRelation:
+        """`tuples` of `multi` as a relation with a column per coordinate and per one of `columns`.
+
+        `tuples` is a list of mappings from coordinate to label, beside which
+        each of `columns` is a scalar or a sequence aligned to it, or else a
+        frame, beside which each is a scalar.
+
+        Raises
+        ------
+        TypeError
+            As `as_relation` does.
+        ValueError
+            On a mapping whose keys are not the coordinates of `multi`, a
+            sequence beside a frame, or one of the wrong length.
+        """
+        over = self.schema.over(multi)
+        if not _is_labels(tuples):
+            listed = sorted(c for c, v in columns.items() if _is_labels(v))
+            if listed:
+                msg = (
+                    f"{call} takes a frame, which carries its own rows, so "
+                    f"{listed} may each be a scalar, or columns of the frame"
+                )
+                raise ValueError(msg)
+            rel = as_relation(tuples, self.con)
+            return rel.project(star(), *(lit(v).alias(c) for c, v in columns.items()))
+        rows = list(tuples)
+        for row in rows:
+            if set(row) != set(over):
+                msg = (
+                    f"{call} gives the tuple {dict(row)}; a tuple of {multi!r} "
+                    f"maps each of its coordinates {list(over)} to a label"
+                )
+                raise ValueError(msg)
+        data: dict[str, list[Any]] = {c: [row[c] for row in rows] for c in over}
+        for c, given in columns.items():
+            data[c] = list(given) if _is_labels(given) else [given] * len(rows)
+            if len(data[c]) != len(rows):
+                msg = f"{call} has {len(data[c])} {c!r} values for {len(rows)} tuples"
+                raise ValueError(msg)
+        types = {c: self._column_type(over[c]) if c in over else None for c in data}
+        return self._values_relation(data, types)
+
+    def _tuples(self, multi: str, rel: DuckDBPyRelation, call: str) -> DuckDBPyRelation:
+        """`rel` with its coordinate columns packed into the struct column of `multi`.
+
+        Raises
+        ------
+        ValueError
+            On a coordinate `rel` carries no column of, whose type does not
+            fit the dtype of the dim it draws on, or that is NULL in a row.
+        """
+        over = self.schema.over(multi)
+        missing = [c for c in over if c not in rel.columns]
+        if missing:
+            msg = (
+                f"{call} carries no column {missing}; a tuple of {multi!r} names "
+                f"a label of each of its coordinates {list(over)}"
+            )
+            raise ValueError(msg)
+        for c, d in over.items():
+            self.schema.require_takes(rel.project(col(c).alias(d)), f"{call} in {c!r}")
+        partly = reduce(operator.or_, (col(c).isnull() for c in over))
+        if rel.filter(partly).limit(1).fetchone() is not None:
+            msg = (
+                f"{call} gives a tuple of {multi!r} with a coordinate NULL; a "
+                f"tuple names a label of each of {list(over)}"
+            )
+            raise ValueError(msg)
+        return rel.project(
+            _packed(self.schema, multi, rel.columns, {}).alias(multi),
+            *(col(c) for c in rel.columns if c not in over),
+        )
 
     def _delete(
         self, table: str, gone: DuckDBPyRelation, key: str, target: Expression
@@ -1512,63 +1629,6 @@ class WorkingRecord(Record):
         )
         raise ValueError(msg)
 
-    def add_group(self, group: str, frame: Any) -> None:
-        """Stage rows of one declared group from a frame keyed by its struct column.
-
-        The frame carries the group as one struct column named for it and
-        the group's properties as plain columns - the shape of
-        `groups/<group>.parquet`. The one path every group is added through, a
-        record's `connection` group included.
-
-        Raises
-        ------
-        KeyError
-            On a tuple naming a label that its field's axis, as staged, does
-            not hold, or a value of a property that refers to a
-            dim and that its axis, as staged, does not hold.
-        ValueError
-            On a missing group column, an attribute column, a column whose type
-            does not fit its dtype, and as `Schema.check_group_columns` does.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        """
-        call = f"`add_group({group!r}, ...)`"
-        rel = as_relation(frame, self.con)
-        self.schema.check_group_columns([group], rel, carrier=call)
-        if group not in rel.columns:
-            msg = f"{call} needs a {group!r} column"
-            raise ValueError(msg)
-        self._reject_undeclared(call, _group_columns(self.schema, group), rel.columns)
-        rel = self.schema.require_takes(rel, call, subject=group)
-        refuse_unheld(
-            rel, self.schema, rel.columns, self._held, call, staged=True, subject=group
-        )
-        table = self._ensure(group)
-        self._insert_snapshot(
-            self._positioned(rel, table, group, group), table, {}, key=(group,)
-        )
-
-    def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
-        """Stage `group` without the tuples `keys` name, each in `Schema.group_key` order.
-
-        Each tuple is packed into the group's struct column.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        """
-        key = self.schema.group_key(group)
-        over = self.schema.groups[group].over
-        types = {c: self._column_type(d) for c, d in over.items()}
-        flat = self._values_relation(
-            {c: [k[i] for k in keys] for i, c in enumerate(key)}, types
-        )
-        gone = flat.project(_packed(self.schema, group, key, {}).alias(group))
-        table = self._ensure(group)
-        self._delete(table, gone, group, col(table, group))
-
     # -- edits / rollback (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------
 
     def rollback(self) -> None:
@@ -1587,14 +1647,14 @@ class WorkingRecord(Record):
 
         The rows are already one per coordinate - an edit replaced its key rather
         than appending beside it (`_insert`) - so this is the table scan minus
-        the rows naming a label, or a tuple of one of the attribute's groups,
-        that the staged axis or group does not hold. `set` refuses a label the
+        the rows naming a label, or a tuple of one of the attribute's
+        multi-dims, that the staged axis does not hold. `set` refuses a label the
         staged axis lacks, so a row is dropped here only where `remove` took
         its label after the `set`: the drop is that removal. The fold drops
         only the parent's rows of a label a layer removes, and a label added
         and removed in one staging area is in no restatement, so it is dead
-        nowhere. A group attribute's row naming a removed label goes by its
-        tuple, which `remove` dropped.
+        nowhere. A multi-dim attribute's row naming a removed label goes by
+        its tuple, which `remove` dropped.
 
         None where nothing is staged for it, which is what says the base's rows
         stand alone.
@@ -1603,18 +1663,14 @@ class WorkingRecord(Record):
         -----
         - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
         rel = self._rows(_ATTRIBUTES, attribute)
         if rel is None:
             return None
         columns = rel.columns
-        kinds = {
-            **{d: f"{_AXIS_PREFIX}{d}" for d in self.schema.dims},
-            **{g: g for g in self.schema.groups_of(attribute)},
-        }
-        for name, kind in kinds.items():
-            held = self._rows(kind)
+        for name in self.schema.dimensions:
+            held = self._rows(f"{_AXIS_PREFIX}{name}")
             if held is None or name not in columns:
                 continue
             kept = held.project(col(name), lit(True).alias("_kept"))  # noqa: FBT003
@@ -1637,12 +1693,10 @@ class WorkingRecord(Record):
         - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
         """
         return tuple(
-            d for d in self.schema.dims if (f"{_AXIS_PREFIX}{d}", None) in self._staged
+            d
+            for d in self.schema.dimensions
+            if (f"{_AXIS_PREFIX}{d}", None) in self._staged
         )
-
-    def _staged_groups(self) -> tuple[str, ...]:
-        """Which groups are staged whole, in declaration order."""
-        return tuple(g for g in self.schema.groups if (g, None) in self._staged)
 
     @property
     def edits(self) -> StagedSource:
@@ -1689,49 +1743,30 @@ def _column_type(
     return dtype
 
 
-def _group_columns(schema: Schema, group: str) -> dict[str, DuckDBPyType]:
-    """Return the columns of `group`'s file: its struct column and its properties.
-
-    Notes
-    -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-    """
-    return {
-        group: schema.group_type(group),
-        **{p: _column_type(schema, p, group) for p in schema.properties.get(group, {})},
-    }
-
-
 def _flat_coordinates(schema: Schema, attribute: str) -> dict[str, str]:
-    """`coordinates_of`, each group column spelled as its key coordinates, each to its dim.
+    """`coordinates_of`, each multi-dim column spelled as its coordinates, each to its dim.
 
     The names a caller addresses a row by - `bus=` for a connection attribute -
-    where the row itself carries `connection`; a group field maps to the dim it
-    draws on, a plain coordinate to itself.
+    where the row itself carries `connection`; a multi-dim's coordinate maps to
+    the dim it draws on, a plain coordinate to itself.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
-    groups = schema.groups_of(attribute)
     flat: dict[str, str] = {}
     for coordinate in schema.coordinates_of(attribute):
-        if coordinate in groups:
-            over = schema.groups[coordinate].over
-            flat.update({c: over[c] for c in schema.group_key(coordinate)})
-        else:
-            flat[coordinate] = coordinate
+        flat.update(schema.over(coordinate) or {coordinate: coordinate})
     return flat
 
 
 def _packed(
     schema: Schema,
-    group: str,
+    multi: str,
     present: Container[str],
     dims: Mapping[str, Any],
 ) -> Expression:
-    """`group`'s struct column, packed from flat coordinates.
+    """The struct column of the multi-dim `multi`, packed from flat coordinates.
 
     A field is the column of that name where the relation carries one, else
     the caller's keyword. No field given at all is a NULL struct, every tuple.
@@ -1744,17 +1779,18 @@ def _packed(
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    over = schema.groups[group].over
+    over = schema.over(multi)
+    struct = _column_type(schema, multi)
     missing = [c for c in over if c not in present and c not in dims]
     if len(missing) == len(over):
-        return lit(None).cast(schema.group_type(group))
+        return lit(None).cast(struct)
     if missing:
         msg = (
-            f"{group!r} is keyed by {list(over)}, and {missing} was not given; "
-            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/model/groups/)"
+            f"{multi!r} is keyed by {list(over)}, and {missing} was not given; "
+            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
         )
         raise ValueError(msg)
     return struct_of(
@@ -1762,7 +1798,7 @@ def _packed(
             c: col(c) if c in present else lit(dims[c]).cast(_column_type(schema, d))
             for c, d in over.items()
         }
-    ).cast(schema.group_type(group))
+    ).cast(struct)
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
@@ -1794,11 +1830,10 @@ _ATTRIBUTES = "attributes"
 """The staging kind of an attribute's long rows, one table per attribute."""
 
 _POSITION = "_position"
-"""The column a staged axis or group keeps its order in, which a table does not."""
+"""The column a staged axis keeps its order in, which a table does not."""
 
 # A staging kind, so it becomes part of a table name: no punctuation a SQL
-# identifier would need quoting for, and no collision with a group's name,
-# which `Schema` already rejects for colliding with a declared dim.
+# identifier would need quoting for, and no collision with `_ATTRIBUTES`.
 _AXIS_PREFIX = "axis_of_"
 
 

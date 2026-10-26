@@ -50,7 +50,7 @@ def settle(
     ----------
     labels
         Per coordinate, a relation holding its labels, or its tuples for a
-        group, in a column of the coordinate's name.
+        multi-dim, in a column of the coordinate's name.
     flags
         The attribute's `Flags`, or flags overstating them; they only spare
         work, so overstating changes no value.

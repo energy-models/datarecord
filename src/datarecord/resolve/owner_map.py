@@ -45,7 +45,6 @@ from datarecord.resolve.coords import (
     Coords,
     _base_and_above,
     resolve_coords,
-    restatement,
 )
 from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.sources import LayerSource, ParquetLayer
@@ -61,7 +60,7 @@ def _table_name(revision_id: UUID, schema: Schema) -> str:
 
 
 def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
-    """The shared table one folded axis, group or owner map is kept in.
+    """The shared table one folded axis or owner map is kept in.
 
     The name is hashed rather than spelled, being a caller's string that becomes
     an identifier.
@@ -182,7 +181,7 @@ def fold_attributes(
     """This layer's owner map: its `attributes/` keys as written, folded over `parent`.
 
     The parent rows naming a label `removed` holds are dropped first, per
-    `partial` dim or keyed group. A label inside a struct is reached through
+    `partial` dim, multi-dims among them. A label inside a struct is reached through
     its tuple, which the layer removed with it. A parent row this layer's rows
     cover whole is dropped; one they cross stays as written, and the layer
     owns an overlap row for each crossing pair (`_overlaps`). `None` where
@@ -427,7 +426,7 @@ def _own(source: LayerSource, schema: Schema) -> DuckDBPyRelation | None:
     broadcast = schema.broadcast_dims
     rel = cast_declared(
         schema,
-        with_columns(schema, rel, "breakpoint", *schema.group_columns, *schema.dims),
+        with_columns(schema, rel, "breakpoint", *schema.broadcast_dims),
     )
     tagged = rel.project(
         *(col(d) for d in broadcast),
@@ -495,8 +494,7 @@ def _fold_map(
         rel = _frozen_table(seed[-1].layer_id, seed, con, schema, read=base.owner_map)
 
     held = {
-        name: None if base is None else (base.groups | base.axes).get(name)
-        for name in _pruned(schema)
+        name: None if base is None else base.axes.get(name) for name in _pruned(schema)
     }
     return _fold_onto(rel, above, held, schema, con, made=made)
 
@@ -532,17 +530,13 @@ def _checkpoint(
 def _pruned(schema: Schema) -> tuple[str, ...]:
     """The memberships whose removed labels prune the owner map: the keyed ones.
 
-    A `partial` dim, and a group in the owner-map key.
+    A `partial` dim, multi-dims among them.
 
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    keyed = set(schema.owner_map_key)
-    return (
-        *(g for g in schema.group_columns if g in keyed),
-        *(d for d in schema.partial or () if d in schema.dimensions),
-    )
+    return schema.partial_dims
 
 
 def _fold_onto(
@@ -576,7 +570,7 @@ def _fold_onto(
     for source in sources:
         removed = {}
         for name, before in held.items():
-            now = restatement(source, name, schema)
+            now = source.axis(name)
             if now is None:
                 continue
             if before is not None:
@@ -644,7 +638,7 @@ def _table(
     """
     frozen = frozen_prefix(sources)
     rel = _frozen_table(revision_id, sources[:frozen], con, schema)
-    held = {name: (prefix.groups | prefix.axes).get(name) for name in _pruned(schema)}
+    held = {name: prefix.axes.get(name) for name in _pruned(schema)}
     return _fold_onto(rel, sources[frozen:], held, schema, con)
 
 
@@ -707,7 +701,7 @@ def _frozen_coords(
     con: DuckDBPyConnection,
     schema: Schema,
 ) -> list[tuple[str, str]]:
-    """The `(kind, name)` of every axis and group this frozen fold resolved.
+    """The `(kind, name)` of every axis and dead label set this frozen fold resolved.
 
     Each is a shared table (`_coord_table`); the list is one more, created after
     them, so a reader finding it finds every table it names.
@@ -721,7 +715,6 @@ def _frozen_coords(
         coords = resolve_coords(schema, sources, con)
         made = [
             *(("dims", dim, rel) for dim, rel in coords.axes.items()),
-            *(("group", group, rel) for group, rel in coords.groups.items()),
             *(("dead", name, rel) for name, rel in coords.dead.items()),
         ]
         for kind, name, rel in made:

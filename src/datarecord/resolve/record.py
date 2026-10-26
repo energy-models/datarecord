@@ -5,7 +5,7 @@
 """The `Record`: a record's layers folded, and the resolved reads gated by its owner map.
 
 The map answers which layer owns each key; `Record` exposes the reads over
-it - one long relation per attribute, a group's frame. Tool-agnostic: turning
+it - one long relation per attribute. Tool-agnostic: turning
 these into a framework's object is `datarecord.tools`.
 
 Notes
@@ -353,25 +353,8 @@ class Record:
     @_stable_cache
     def properties(self) -> LazyRelations:
         coords = self._coords
-        subjects = tuple(
-            s for s in self.schema.properties if s in coords.axes or s in coords.groups
-        )
+        subjects = tuple(s for s in self.schema.properties if s in coords.axes)
         return LazyRelations(subjects, self._property_frame)
-
-    @_stable_cache
-    def groups(self) -> LazyRelations:
-        """Each declared group's rows, keyed by group - one relation each.
-
-        Only groups some layer wrote a row of; a declared group nothing
-        populates is absent rather than present-and-empty.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        """
-        groups = self._coords.groups
-        names = tuple(g for g in self.schema.groups if g in groups)
-        return LazyRelations(names, self._group_frame)
 
     @_stable_cache
     def attributes(self) -> LazyRelations:
@@ -391,13 +374,8 @@ class Record:
     def _axis_frame(self, dim: str) -> DuckDBPyRelation:
         return self._coords.axes[dim].project(col(dim))
 
-    def _group_frame(self, group: str) -> DuckDBPyRelation:
-        return self._coords.groups[group]
-
     def _property_frame(self, subject: str) -> DuckDBPyRelation:
-        coords = self._coords
-        folded = coords.groups if subject in self.schema.groups else coords.axes
-        rel = with_properties(self.schema, folded[subject], subject)
+        rel = with_properties(self.schema, self._coords.axes[subject], subject)
         names = (subject, *self.schema.properties[subject])
         return rel.project(*(col(n) for n in names))
 
@@ -405,13 +383,13 @@ class Record:
 
     @property
     def _coords(self) -> Coords:
-        """Return every declared dim's and group's folded relation, and the dead labels.
+        """Return every declared dim's folded relation, and the dead labels.
 
         The frozen prefix's fold is a set of shared tables (`_frozen_coords`),
         read on the calling thread's cursor. The sources after it are folded
         per call onto those tables, so a read with staged edits opens no file.
         A schema widened since the fold reads the tables as they are, a
-        compatible widening changing no column an axis or group already has.
+        compatible widening changing no column an axis already has.
 
         Notes
         -----
@@ -441,13 +419,12 @@ class Record:
         return Coords(
             schema=self.schema,
             axes={n: rel for (k, n), rel in tables.items() if k == "dims"},
-            groups={n: rel for (k, n), rel in tables.items() if k == "group"},
             dead={n: rel for (k, n), rel in tables.items() if k == "dead"},
         )
 
     @cached_property
     def _coord_names(self) -> list[tuple[str, str]]:
-        """Return which axes, groups and dead labels the frozen prefix's fold resolved.
+        """Return which axes and dead labels the frozen prefix's fold resolved.
 
         Plain data, which any thread computes the same.
         """
@@ -466,7 +443,6 @@ class Record:
         return Fold(
             schema=self.schema,
             axes=coords.axes,
-            groups=coords.groups,
             owner_map=_table(
                 self.revision_id, self.sources, self.con, self.schema, self._prefix
             ),
@@ -527,7 +503,7 @@ class Record:
         # carries. A dim outside `partial` is in neither: it is not in the map
         # at all, so it constrains nothing and passes straight through.
         #
-        # Of those that are, each - a dim or a group - matches NULL-aware
+        # Of those that are, each - a dim or a multi-dim - matches NULL-aware
         # (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
         coordinates = schema.coordinates_of(attribute)
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)

@@ -112,21 +112,8 @@ class LayerSource(Protocol):
         """`dims/<dim>.parquet` - one axis's full row, not the key alone.
 
         Its properties ride along as columns. A file restates the axis whole,
-        in order.
+        in order; a multi-dim's is keyed by its struct column.
         """
-        ...
-
-    def groups(self) -> set[str]:
-        """Which groups this layer has a row for, by file - like `axes()`.
-
-        For `write_layer`'s benefit; not scoped to a schema, which a
-        `LayerSource` does not carry - a file some other source's declaration
-        does not recognise is the reader's concern, not this listing's.
-        """
-        ...
-
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        """`groups/<name>.parquet` - one group's tuples, whole and in order."""
         ...
 
     def attributes(self) -> set[str]:
@@ -154,8 +141,8 @@ class LayerSource(Protocol):
         """Every `attributes/*.parquet` unioned by name, unprojected.
 
         Only attributes have one: they share `owner_map_key`, so a single scan
-        answers the ownership `GROUP BY` for every attribute at once. An axis or
-        a group folds on a key of its own, so a union across them would have
+        answers the ownership `GROUP BY` for every attribute at once. An axis
+        folds on a key of its own, so a union across them would have
         nothing to fold on.
         """
         ...
@@ -205,15 +192,6 @@ class _FileLayer:
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         return self._restatement("dims", dim)
 
-    def groups(self) -> set[str]:
-        return {
-            name.removesuffix(".parquet")
-            for name in parquet_names(self.uri("groups/"), self._con)
-        }
-
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        return self._restatement("groups", name)
-
     def _restatement(self, kind: str, subject: str) -> DuckDBPyRelation | None:
         """Return `{kind}/{subject}.parquet`, refusing a column it has no place for."""
         file = f"{kind}/{subject}.parquet"
@@ -244,7 +222,7 @@ class _FileLayer:
 def refuse_foreign_columns(
     columns: set[str], structural: set[str], schema: Schema, subject: str, file: str
 ) -> None:
-    """Refuse a column of an axis or group file beyond `structural` and `subject`'s properties.
+    """Refuse a column of an axis file beyond `structural` and `subject`'s properties.
 
     `structural` is the key, and at write an explicit order key, which the
     write drops.

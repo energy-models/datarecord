@@ -147,7 +147,9 @@ class RecordLike(Protocol):
     def dims(self) -> Relations:
         """Axis relations keyed by dim, each holding only the dim's label column.
 
-        Properties are in `properties`, attributes in `attributes`.
+        A multi-dim's label column is its struct column, a field per
+        coordinate. Properties are in `properties`, attributes in
+        `attributes`.
 
         Notes
         -----
@@ -158,27 +160,11 @@ class RecordLike(Protocol):
 
     @property
     def properties(self) -> Relations:
-        """Per dim or group declaring properties, its key and their stored values, no default applied.
+        """Per dim declaring properties, its key and their stored values, no default applied.
 
         Notes
         -----
         - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-        """
-        ...
-
-    @property
-    def groups(self) -> Relations:
-        """Each declared group's rows, keyed by group - one relation each.
-
-        A group declares which tuples over several dims exist - `connection`
-        over `(entity, bus)` is the one every record with connections has, and
-        it is one instance rather than a member of its own.
-
-        Notes
-        -----
-        - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
         """
         ...
 
@@ -224,9 +210,8 @@ class LayerData(Protocol):
     `write_layer` adapts.
 
     `schema` is not a peer of the other members but what decides which of them
-    exist: `groups`/`group` answer only for the groups it declares - an
-    enumerator answers the empty set rather than a phantom key where the schema
-    declares nothing.
+    exist: an enumerator answers the empty set rather than a phantom key where
+    the schema declares nothing.
 
     Notes
     -----
@@ -238,9 +223,6 @@ class LayerData(Protocol):
 
     def axes(self) -> set[str]: ...
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
-
-    def groups(self) -> set[str]: ...
-    def group(self, name: str) -> DuckDBPyRelation | None: ...
 
     def attributes(self) -> set[str]: ...
     def attribute(self, name: str) -> DuckDBPyRelation | None: ...

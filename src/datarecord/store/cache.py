@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Materialised node caches: a node's folded axes, groups, dead labels and owner map, on disk.
+"""Materialised node caches: a node's folded axes, dead labels and owner map, on disk.
 
 Notes
 -----
@@ -170,10 +170,6 @@ def _materialise_dims(
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
         _to_parquet(rel, f"{base}{dim}.parquet")
-    groups = store.resolved_dir(revision_id) + "groups/"
-    ensure_local_dir(groups)
-    for group, rel in dims.groups.items():
-        _to_parquet(rel, f"{groups}{group}.parquet")
     dead = store.resolved_dir(revision_id) + "dead/"
     ensure_local_dir(dead)
     for name, rel in dims.dead.items():
