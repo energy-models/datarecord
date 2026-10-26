@@ -97,6 +97,7 @@ w.add(
     role=["bus0", "bus1"],
 )
 w.add("connection", pd.DataFrame({"entity": ["wind1"], "bus": ["north"]}))
+w.add("connection", other.dims["connection"])  # another record's tuples, as read
 w.remove("connection", [{"entity": "dc", "bus": "south"}])
 ```
 
@@ -117,8 +118,8 @@ An `add` of a label that `remove` took out puts it back where the base has it.
 That row belongs to its subject and outlives the label, so `set` it to another label or None first ([design](../design/use/editing.md#add-remove)).
 
 On a multi-dim, `add` and `remove` take tuples.
-A tuple is a mapping from coordinate to label, and a list of them takes each property keyword as a scalar or a sequence aligned to the list.
-A frame DuckDB scans works too, with one column per coordinate and optionally a column per property; beside a frame a property keyword must be a scalar.
+A frame DuckDB scans gives them in the struct column named for the multi-dim, as `dims["connection"]` reads it, or with one column per coordinate instead, but not both; it may carry a column per property, and beside it a property keyword must be a scalar.
+A tuple is also a mapping from coordinate to label, and a list of them takes each property keyword as a scalar or a sequence aligned to the list.
 A tuple with a coordinate missing or NULL is refused, as is one naming a label its coordinate's dim lacks, so `add` the label first ([design](../design/model/multi-dims.md)).
 
 ## Inspecting and rolling back

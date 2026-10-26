@@ -177,6 +177,7 @@ w.add("entity", ["g1", "g2"], ctype="Generator", carrier="wind")
 w.remove("entity", ["old_coal"])
 w.remove("carrier", ["gas"])  # refused while entity.carrier holds it
 w.add("connection", [{"entity": "g1", "bus": "north"}], role="output")
+w.add("connection", other.dims["connection"])  # the struct column `connection`
 w.add("connection", frame)  # an `entity` and a `bus` column, `role` beside them
 w.remove("connection", [{"entity": "g1", "bus": "north"}])
 ```
@@ -199,10 +200,13 @@ A label exists by virtue of its axis row, so `add` is an edit of its own.
 Adding a bus with no properties is an edit with nothing to `set`.
 One axis row holds each label, so an `add` of a label the record already resolves restates its row.
 
-A [multi-dim](../model/multi-dims.md)'s labels are tuples, which `add` and `remove` take in either of two forms.
+A [multi-dim](../model/multi-dims.md)'s labels are tuples, which `add` and `remove` take as a frame or a list.
+A frame, anything DuckDB scans, holds the multi-dim's [struct column](../model/multi-dims.md#one-struct-column), `connection STRUCT(entity, bus)`, which is what `dims["connection"]` reads, so a read goes back in as it stands.
+A frame may instead carry one column per coordinate, `entity` and `bus`.
+A frame carrying both the struct column and a coordinate column is refused, since it gives each tuple twice.
+Either frame may carry property columns beside the tuples, and beside a frame a keyword property must be a scalar.
 A list of mappings from coordinate to label, such as `{"entity": "g1", "bus": "north"}`, takes its properties as keywords, each a scalar or a sequence aligned to the list.
-A frame, anything DuckDB scans, carries one column per coordinate and may carry property columns beside them; beside a frame a keyword property must be a scalar.
-The list is made into such a frame up front and takes the same path.
+The list is made into a frame with a column per coordinate up front, and the struct column is unpacked to the same, so every form takes the same path and the same type checks.
 The coordinates are packed into the multi-dim's [struct column](../model/multi-dims.md#one-struct-column), and each tuple is staged as one row of `dims/<multi-dim>.parquet`, placed as any label is.
 A tuple with a coordinate missing or NULL is refused, since it names no tuple.
 A tuple naming a label that its coordinate's axis, as staged, lacks is refused ([validation](#validation)).

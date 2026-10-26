@@ -1277,9 +1277,19 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
     ("tuples", "columns", "match"),
     [
         (
-            pd.DataFrame([{"connection": _TUPLE}]),
+            pd.DataFrame([{"connection": {"entity": "Manchester Wind"}}]),
             {},
-            r"columns \['connection'\] the schema does not declare",
+            r"as a struct of its coordinates \['entity', 'bus'\]",
+        ),
+        (
+            pd.DataFrame([{"connection": _TUPLE, "entity": "Manchester Wind"}]),
+            {},
+            r"carrying both the column 'connection' and its coordinates \['entity'\]",
+        ),
+        (
+            pd.DataFrame([{"connection": {"entity": 1, "bus": "Norway"}}]),
+            {},
+            "has type INTEGER, which does not fit 'entity'",
         ),
         (
             pd.DataFrame([{"entity": "Manchester Wind"}]),
@@ -1310,7 +1320,9 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         ([_TUPLE], {"p_nom": [1.0, 2.0]}, "has 2 'p_nom' values for 1 tuples"),
     ],
     ids=[
-        "struct-column",
+        "struct-missing-field",
+        "struct-and-coordinates",
+        "mistyped-struct-field",
         "missing-coordinate",
         "mistyped-coordinate",
         "mistyped-coordinate-list",
@@ -1329,6 +1341,54 @@ def test_add_needs_a_label_per_coordinate(staged, tuples, columns, match):
     """
     with pytest.raises(ValueError, match=match):
         staged.add("connection", tuples, **columns)
+
+
+def _as_struct(pairs):
+    return pd.DataFrame({"connection": [{"entity": e, "bus": b} for e, b in pairs]})
+
+
+def _as_flat(pairs):
+    return pd.DataFrame(pairs, columns=["entity", "bus"])
+
+
+def _as_mappings(pairs):
+    return [{"entity": e, "bus": b} for e, b in pairs]
+
+
+_TUPLE_SHAPES = pytest.mark.parametrize(
+    "shape", [_as_struct, _as_flat, _as_mappings], ids=["struct", "flat", "mappings"]
+)
+
+
+@_TUPLE_SHAPES
+def test_add_and_remove_take_tuples_in_any_shape(store, shape):
+    """The struct column `dims` reads, a column per coordinate, or a list of mappings.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    """
+    staged = WorkingRecord(_with_roles(store).record)
+    staged.add("entity", ["l2"])
+    staged.add("connection", shape([("l2", "b0")]), role="mid")
+    staged.remove("connection", shape([("l1", "b0")]))
+    assert _roles(staged) == {("l1", "b1"): "out", ("l2", "b0"): "mid"}
+
+
+def test_add_takes_back_what_dims_reads(store):
+    """`dims["connection"]` is a frame `add` takes as it stands.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    """
+    root = _with_roles(store)
+    staged = WorkingRecord(root.record)
+    staged.remove("entity", ["l1"])
+    assert _roles(staged) == {}
+    staged.add("entity", ["l1"])
+    staged.add("connection", root.record.dims["connection"], role="back")
+    assert _roles(staged) == {("l1", "b0"): "back", ("l1", "b1"): "back"}
 
 
 def test_add_refuses_what_is_no_frame_duckdb_rescans(staged):

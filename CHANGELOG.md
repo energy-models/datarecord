@@ -133,8 +133,10 @@ All notable changes to datarecord are documented here. The format follows
   properties beside it; `groups/` and `resolved/groups/` are gone, so every
   record with a group is written again. `record.dims["connection"]` is the
   struct column alone and `record.properties["connection"]` adds `role`.
-  `add` and `remove` take a multi-dim's tuples, as a list of mappings from
-  coordinate to label or as a frame with a column per coordinate.
+  `add` and `remove` take a multi-dim's tuples as a frame holding its struct
+  column, so `add("connection", record.dims["connection"])` round-trips, or
+  one with a column per coordinate instead, or as a list of mappings from
+  coordinate to label.
   `connection.bus` names a coordinate wherever `subject.name` stands, and
   `set` refuses it. A multi-dim is never categorized, and no property refers
   to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,

@@ -1351,9 +1351,11 @@ class WorkingRecord(Record):
         the base removed here takes its base place back, and a new one is
         appended.
 
-        A multi-dim's labels are tuples, given as a list of mappings from
-        coordinate to label or as a frame with a column per coordinate, which
-        may carry property columns too; a frame takes a scalar keyword only.
+        A multi-dim's labels are tuples, given as a frame holding the struct
+        column named for the multi-dim, as `dims[dim]` reads it, or one with a
+        column per coordinate instead, or as a list of mappings from
+        coordinate to label. A frame may carry property columns too and takes
+        a scalar keyword only.
 
         Not a sequence of `set` calls: a label exists by virtue of its axis row,
         so adding one with no columns at all is an edit. An attribute's value,
@@ -1372,7 +1374,8 @@ class WorkingRecord(Record):
             On an attribute, a column the axis file has no place for, a
             sequence of the wrong length, a label its dim does not list,
             `dim`'s own included, a label whose type does not fit the dtype
-            of `dim`, or a tuple missing a coordinate or naming NULL in one.
+            of `dim`, a tuple missing a coordinate or naming NULL in one, or a
+            frame carrying both the struct column and a coordinate column.
 
         Notes
         -----
@@ -1429,7 +1432,7 @@ class WorkingRecord(Record):
             As `add` does.
         ValueError
             On a label whose type does not fit the dtype of `dim`, a tuple
-            missing a coordinate or naming NULL in one, or while a property
+            given as `add` refuses it, or while a property
             that refers to `dim` stores one of `labels` in the record as
             staged.
 
@@ -1506,18 +1509,19 @@ class WorkingRecord(Record):
 
         `tuples` is a list of mappings from coordinate to label, beside which
         each of `columns` is a scalar or a sequence aligned to it, or else a
-        frame, beside which each is a scalar. Either way a coordinate keeps
-        the type its labels bind as, for `_tuples` to check.
+        frame, beside which each is a scalar, its struct column of `multi`
+        unpacked by `_unpacked`. Either way a coordinate keeps the type its
+        labels bind as, for `_tuples` to check.
 
         Raises
         ------
         TypeError
             As `as_relation` does.
         ValueError
-            On a mapping whose keys are not the coordinates of `multi`, a
-            label of a list whose type does not fit its coordinate's dim,
-            which a column mixing types would hide, a sequence beside a
-            frame, or one of the wrong length.
+            As `_unpacked` does, on a mapping whose keys are not the
+            coordinates of `multi`, a label of a list whose type does not fit
+            its coordinate's dim, which a column mixing types would hide, a
+            sequence beside a frame, or one of the wrong length.
         """
         over = self.schema.over(multi)
         if not _is_labels(tuples):
@@ -1528,7 +1532,7 @@ class WorkingRecord(Record):
                     f"{listed} may each be a scalar, or columns of the frame"
                 )
                 raise ValueError(msg)
-            rel = as_relation(tuples, self.con)
+            rel = _unpacked(self.schema, multi, as_relation(tuples, self.con), call)
             return rel.project(star(), *(lit(v).alias(c) for c, v in columns.items()))
         rows = list(cast("Sequence[Mapping[str, Any]]", tuples))
         for row in rows:
@@ -1851,6 +1855,42 @@ def _packed(
             for c, d in over.items()
         }
     ).cast(struct)
+
+
+def _unpacked(
+    schema: Schema, multi: str, rel: DuckDBPyRelation, call: str
+) -> DuckDBPyRelation:
+    """`rel` with the struct column of the multi-dim `multi`, where it carries one, spelled as a column per coordinate.
+
+    Raises
+    ------
+    ValueError
+        On a frame carrying both the struct column and a coordinate column,
+        or a struct column whose fields are not the coordinates of `multi`.
+    """
+    if multi not in rel.columns:
+        return rel
+    over = schema.over(multi)
+    both = [c for c in over if c in rel.columns]
+    if both:
+        msg = (
+            f"{call} gives a frame carrying both the column {multi!r} and its "
+            f"coordinates {both}; give the tuples one way, either the struct "
+            f"column or a column per coordinate"
+        )
+        raise ValueError(msg)
+    dtype = rel.types[rel.columns.index(multi)]
+    fields = [name for name, _ in dtype.children] if dtype.id == "struct" else None
+    if fields is None or set(fields) != set(over):
+        msg = (
+            f"{call} gives the column {multi!r} of type {dtype}; it holds the "
+            f"tuples of {multi!r} as a struct of its coordinates {list(over)}"
+        )
+        raise ValueError(msg)
+    return rel.project(
+        *(fn.struct_extract(col(multi), lit(c)).alias(c) for c in over),
+        *(col(c) for c in rel.columns if c != multi),
+    )
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:

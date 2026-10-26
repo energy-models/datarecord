@@ -108,9 +108,10 @@ One `zone` per tuple is what a property is: one value per label of its subject. 
 
 **With that, `groups` holds nothing and is removed.** `Group`, `Schema.groups`, `Schema.group_columns`, `Schema.groups_of`, `Schema.group_key`, `add_group`, `remove_group` and the `groups/` directory go. [`dims: [X]`](../model/multi-dims.md#attributes-over-a-multi-dim) resolves a dim, and nothing else.
 
-**`add` and `remove` take a multi-dim's tuples**, either as a frame with a column per coordinate, anything DuckDB scans, or as a list of mappings from coordinate to label, which is made into that frame up front and then takes the same path:
+**`add` and `remove` take a multi-dim's tuples** as a frame, anything DuckDB scans, holding the struct column named for the multi-dim, which is what `record.dims["connection"]` reads, so a read goes back in as it stands. A frame may instead carry a column per coordinate, and a list of mappings from coordinate to label is made into that frame up front. Every form then takes the same path and the same type checks. A frame carrying both the struct column and a coordinate column is refused as ambiguous:
 
 ```python
+w.add("connection", other.dims["connection"])  # another record's tuples, as read
 w.add("connection", [{"entity": "g1", "bus": "north"}], role="output")
 w.add("connection", pd.DataFrame({"entity": ["g2"], "bus": ["south"]}))
 w.remove("connection", [{"entity": "g1", "bus": "north"}])
@@ -152,7 +153,7 @@ w.remove("bus", ["north"])  # and every connection at it
 1. `Dimension.over`, parsed as a group's was; `over` exclusive with `dtype` and `one_of`; `groups` an unknown key, refused as any other.
 2. The group struct-column machinery keyed on the dim: fold key, broadcast, whole-or-NULL, cascade, the coordinate-name clash.
 3. `dims/<multi-dim>.parquet` for its table, restated whole; `groups/` and `resolved/groups/` dropped from the writer and reader.
-4. `add` and `remove` take tuples, as a frame or a list of mappings; `add_group`, `remove_group` removed.
+4. `add` and `remove` take tuples, as a frame with the struct column or a column per coordinate, or as a list of mappings; `add_group`, `remove_group` removed.
 5. `Schema.resolve` resolves a coordinate.
 6. `Group`, `Schema.groups`, `group_columns`, `groups_of`, `group_key` removed; the PyPSA tool declares `connection` under `dimensions`.
 7. Pages, usage, changelog; fixtures re-exported.
