@@ -35,7 +35,7 @@ A dim outside `partial`, multi or not, is in no key, so its rows are [dropped at
 A removed tuple takes its values with it.
 The labels it names keep their other rows, so removing a connection leaves the entity it attached.
 
-Removing a label is one cascade, the same for every dim.
+Removing a label is one cascade, the same for every dim but one with `one_of`, whose labels are the schema's and never removed ([a dim with `one_of`](../model/dims.md#a-dim-with-one_of)).
 [`remove(dim, labels)`](../use/editing.md#add-remove) restates the axis without the labels, and every multi-dim with a coordinate over `dim` without the tuples that name one, in one layer.
 The tuples' values go with them.
 Re-adding a label or tuple in `partial` brings back the label and no value that named it below the removal.

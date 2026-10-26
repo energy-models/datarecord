@@ -63,7 +63,7 @@ schema = Schema(
 
 ## Dims
 
-A `Dimension` declares one axis. Its `dtype` is a mathspec dtype: `"float"`, `"int"`, `"str"` or `"datetime"`. A `"str"` dim may take `one_of=[...]`, the labels it allows, and `add` then refuses a label outside the list ([design](../design/model/dims.md#a-dim-with-one_of)).
+A `Dimension` declares one axis. Its `dtype` is a mathspec dtype: `"float"`, `"int"`, `"str"` or `"datetime"`. A `"str"` dim may take `one_of=[...]`, its labels: the axis is then that list, in order, with no file and no properties, and `add` and `remove` refuse it ([design](../design/model/dims.md#a-dim-with-one_of)).
 
 A multi-period snapshot is a label of `snapshot` with a property that refers to its period, `snapshot.period: {"one_of": "period"}` ([design](../design/model/dims.md#mapping-labels-to-another-dim)).
 
@@ -73,7 +73,7 @@ A `Dimension` with `over` is a multi-dim: its labels are tuples of other dims' l
 
 `connection.bus` names a coordinate wherever a dotted `subject.name` stands, and `Schema.resolve("connection.bus")` answers `connection` and the dim `bus` ([design](../design/model/multi-dims.md#coordinates)).
 
-A multi-dim's property may refer to a dim, such as `bus_country.country: {"one_of": "country"}` on the multi-dim `bus_country` over `["bus", "scenario"]`, for a bus's country per scenario. A multi-dim is never categorized, and no property refers to a multi-dim ([design](../design/model/multi-dims.md#one-struct-column)).
+A multi-dim's property may refer to a dim, such as `bus_country.country: {"one_of": "country"}` on the multi-dim `bus_country` over `["bus", "scenario"]`, for a bus's country per scenario. No property refers to a multi-dim ([design](../design/model/multi-dims.md#one-struct-column)).
 
 ## Properties
 
@@ -91,7 +91,7 @@ w.set("bus.country", "FR", bus="north")  # refused: no `country` label FR
 
 ## Categories and defaults
 
-A property of a dim in `partial` that refers to a dim with `one_of` categorizes its subject. Its values are the subject's categories. `default_by` keys on them by the property's dotted name, and a `set` or `flags` keyword selects by them. Above, `entity.ctype` refers to `ctype`, which has `one_of`, so it categorizes `entity`. A dim may have several categorizing properties. `entity.carrier` refers to `carrier`, which has no `one_of`, so its labels are data and it categorizes nothing. `Schema.categorizing("entity")` lists the categorizing properties ([design](../design/model/properties.md#categories)).
+A property of a dim in `partial`, a multi-dim among them, that refers to a dim with `one_of` categorizes its subject, as `connection.role` categorizes `connection`. Its values are the subject's categories. `default_by` keys on them by the property's dotted name, and a `set` or `flags` keyword selects by them. Above, `entity.ctype` refers to `ctype`, which has `one_of`, so it categorizes `entity`. A dim may have several categorizing properties. `entity.carrier` refers to `carrier`, which has no `one_of`, so its labels are data and it categorizes nothing. `Schema.categorizing("entity")` lists the categorizing properties ([design](../design/model/properties.md#categories)).
 
 `default_by` overrides `default` per category, on properties and attributes alike. The first key whose map holds the label's category wins. `Schema.default_for("p_min_pu", ctype="StorageUnit")` answers `-1.0` ([design](../design/model/properties.md#default_by-a-default-per-category)).
 

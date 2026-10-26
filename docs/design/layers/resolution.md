@@ -312,7 +312,7 @@ The same rule decides where resolved axes come from: a revision's own `resolved/
 The presence of the cache answers this, and no recorded state is involved.
 A map whose key columns are not those the schema's [`partial`](tree.md#partial-the-granularity-of-an-override) gives is no cache: one persisted before a dim joined `partial` holds NULL there for a row varying along it, so the read folds from the layers as if nothing were materialised.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
-`resolved/dims/` holds copies of the deepest layer file for each axis, a multi-dim's included, at or below the revision, so a read of an axis stops there too.
+`resolved/dims/` holds copies of the deepest layer file for each axis, a multi-dim's included, at or below the revision, so a read of an axis stops there too. A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) has none, its axis being the schema's list.
 
 Beside them, `resolved/dead/<coord>.parquet` holds the [dead labels](#a-label-outside-the-key) of each coordinate outside the owner-map key, and of each dim that a multi-dim's coordinate draws on or a property refers to.
 It is written only where there are any.

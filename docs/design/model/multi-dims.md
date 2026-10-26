@@ -39,11 +39,27 @@ A multi-dim's table is keyed by the same column. `dims/connection.parquet` is `c
 
 The other columns of the table are the multi-dim's [properties](properties.md#properties), declared under its name. PyPSA's `role` on a connection is `properties: {connection: {role: ...}}`, which [the tool](../tools/index.md) declares. An attribute over the multi-dim is long rows in `attributes/` keyed by the struct ([where a value lives](../storage/format.md#where-a-value-lives)).
 
-A multi-dim's property may refer to a dim, as any dim's property may. One value per tuple is what a property is. A mapping that varies along another dim needs a multi-dim: a bus's country per scenario is the multi-dim `bus_country` over `[bus, scenario]` with the property `bus_country.country: {one_of: country}`, stored as `dims/bus_country.parquet` with columns `bus_country STRUCT(bus, scenario) | country`. A mapping that does not vary is a property of the dim, `bus.country`. A multi-dim is never categorized: a property of it that refers to a dim with `one_of` categorizes nothing, whether `partial` lists the multi-dim or not ([categories](properties.md#categories)). A property refers to a dim that is no multi-dim.
+A multi-dim's property may refer to a dim, as any dim's property may. One value per tuple is what a property is. A mapping that varies along another dim needs a multi-dim: a bus's country per scenario is the multi-dim `bus_country` over `[bus, scenario]` with the property `bus_country.country: {one_of: country}`, stored as `dims/bus_country.parquet` with columns `bus_country STRUCT(bus, scenario) | country`. A mapping that does not vary is a property of the dim, `bus.country`. A property refers to a dim that is no multi-dim.
+
+## Categories of a multi-dim
+
+A property of a multi-dim in `partial` that refers to a dim with `one_of` categorizes the multi-dim, by the rule a dim follows ([categories](properties.md#categories)):
+
+```yaml
+dimensions:
+  role: { one_of: [input, output, attached] }
+  connection: { over: { entity: entity, bus: bus } }
+properties:
+  connection:
+    role: { one_of: role }
+partial: [entity, bus, connection]
+```
+
+`Schema.categorizing("connection")` lists `role`. A [`default_by`](properties.md#default_by-a-default-per-category) keyed `connection.role` applies to a value that reaches `connection`: an attribute over it, or a property of it. `default_for(name, role="output")` and [`flags(role="output")`](../use/reading.md#flags) key on it by plain name, and the [selector keyword](../use/editing.md#set) `role="output"` on an attribute over `connection` picks the tuples with that role, narrowed by any keyword naming one of its coordinates. A multi-dim outside `partial` has no categories.
 
 ## Coordinates
 
-`connection.bus` names the `bus` of each tuple, wherever a dotted `subject.name` stands, as a property is named. `Schema.resolve("connection.bus")` answers the multi-dim and the dim the coordinate draws on. A coordinate is part of the key, not a value, so [`set`](../use/editing.md#set) refuses `set("connection.bus", ...)` and points at [`remove` and `add`](../use/editing.md#add-remove), and a [`default_by`](properties.md#default_by-a-default-per-category) keyed on a coordinate is refused, a multi-dim having no categories. A property of a multi-dim named like one of its coordinates is refused at load ([names](schema.md#names)).
+`connection.bus` names the `bus` of each tuple, wherever a dotted `subject.name` stands, as a property is named. `Schema.resolve("connection.bus")` answers the multi-dim and the dim the coordinate draws on. A coordinate is part of the key, not a value, so [`set`](../use/editing.md#set) refuses `set("connection.bus", ...)` and points at [`remove` and `add`](../use/editing.md#add-remove), and a [`default_by`](properties.md#default_by-a-default-per-category) keyed on a coordinate is refused, a coordinate being no category. A property of a multi-dim named like one of its coordinates is refused at load ([names](schema.md#names)).
 
 A selector keyword stays bare: `bus="north"` on an attribute over `connection` selects the tuples whose `bus` is `north`.
 

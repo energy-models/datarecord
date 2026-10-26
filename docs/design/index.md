@@ -14,7 +14,7 @@ These pages are the authoritative design. [Usage](../usage/index.md) shows how t
 
 ## The parts of a record
 
-A [dim](model/dims.md) is an axis: a set of unique labels, such as the buses of a network or its snapshots. A dim with `one_of` fixes which labels it may hold.
+A [dim](model/dims.md) is an axis: a set of unique labels, such as the buses of a network or its snapshots. A dim with `one_of` takes its labels from the schema.
 
 A [multi-dim](model/multi-dims.md) is a dim whose labels are tuples of other dims' labels. It declares which tuples exist, such as which entity attaches to which bus.
 

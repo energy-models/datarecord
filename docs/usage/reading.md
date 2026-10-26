@@ -49,7 +49,7 @@ record.properties["connection"]  # connection | role
 `properties[subject]` is a dim's key with every property declared for it, as stored.
 A NULL there is a value no layer wrote.
 
-A categorizing property is a property of a `partial` dim that refers to a dim with `one_of`.
+A categorizing property is a property of a `partial` dim, a multi-dim among them, that refers to a dim with `one_of`.
 One category's labels are `properties[dim]` filtered on that property, with every property of the dim.
 `Schema.default_for("entity.sign", **categories)` gives an unset property's default, `default_by` per category included.
 It names the property by its subject and the categories by their plain names, as the frame's columns are ([design](../design/use/reading.md#properties-and-categories)).

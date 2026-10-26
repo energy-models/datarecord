@@ -84,7 +84,6 @@ import pandas as pd
 
 w.add("carrier", ["wind"])
 w.add("bus", ["north", "south"])
-w.add("ctype", ["Generator", "Link"])
 w.add("entity", ["wind1", "wind2"], ctype="Generator", carrier="wind")
 w.add("entity", ["dc"], ctype="Link")
 w.set("p_nom", [100.0, 80.0], entity=["wind1", "wind2"])
@@ -94,14 +93,14 @@ w.remove("entity", ["old_coal"])
 w.add(
     "connection",
     [{"entity": "dc", "bus": "north"}, {"entity": "dc", "bus": "south"}],
-    role=["bus0", "bus1"],
+    role=["input", "output"],
 )
 w.add("connection", pd.DataFrame({"entity": ["wind1"], "bus": ["north"]}))
 w.add("connection", other.dims["connection"])  # another record's tuples, as read
 w.remove("connection", [{"entity": "dc", "bus": "south"}])
 ```
 
-`add(dim, labels, **columns)` works on any dim.
+`add(dim, labels, **columns)` works on any dim but one with `one_of`, such as `ctype`, whose labels are the schema's; `add` and `remove` refuse it ([design](../design/model/dims.md#a-dim-with-one_of)).
 The keywords are the axis file's other columns, the dim's properties, bare.
 Each is a scalar or a sequence aligned to `labels`.
 An attribute keyword is refused, since attributes go through `set` whatever their `dims` ([design](../design/use/editing.md#add-remove)).

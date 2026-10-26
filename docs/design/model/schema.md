@@ -14,7 +14,7 @@ class Dimension(BaseModel):
 
     over: dict[str, str] | None = None  # a multi-dim: coordinate -> dim
     dtype: DimensionDtype | None = "str"  # float, int, str or datetime
-    one_of: tuple[str, ...] | None = None  # the labels a str dim allows
+    one_of: tuple[str, ...] | None = None  # a str dim's labels: its axis
     unit: str | None = None  # what the labels measure, if anything
     description: str | None = None  # what the axis is, in prose
 
@@ -73,7 +73,7 @@ A dtype is mathspec's: `DimensionDtype` and `ParameterDtype` from `mathspec.prog
 | dim                      | `one_of: [labels]` | `ENUM` of the labels       |
 | property                 | `one_of: <dim>`    | that dim's type            |
 
-A [dim with `one_of`](dims.md#a-dim-with-one_of) is a `str` dim whose column is an `ENUM` of its labels.
+A [dim with `one_of`](dims.md#a-dim-with-one_of) is a `str` dim whose column is an `ENUM` of its labels, and whose axis is that list.
 
 A property declares exactly one of `dtype` and `one_of`. A property with `one_of: <dim>` refers to that dim, whether its subject is a multi-dim or not, and takes the dim's type: an `ENUM` for a dim with `one_of`, `TIMESTAMP` for a `datetime` dim ([referring to a dim](properties.md#referring-to-a-dim)). The schema refuses at load a property that declares both or neither, a list of labels in place of the dim, and a multi-dim as the dim.
 

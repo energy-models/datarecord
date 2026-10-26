@@ -50,9 +50,9 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 
 `entity.carrier` refers to `carrier`, and a `default_by` keyed on it would make a vocabulary that is data: a category that a layer adds and removes. Today a category is a label of [a dim with `one_of`](model/properties.md#categories).
 
-### Whether a multi-dim in `partial` may have categories
+### Whether a dim with `one_of` may grow in a layer
 
-A `default_by` on `connection.role` would give each role of a connection its own default. The schema refuses it: [a multi-dim](model/multi-dims.md#one-struct-column) is never categorized, even in `partial` and by a property referring to a dim with `one_of`. Whether [the categories rule](model/properties.md#categories) extends to a multi-dim is open.
+[Its axis is the schema's list](model/dims.md#a-dim-with-one_of), so a custom PyPSA component type is a schema change, not a data edit. That is the cost of checking a category at load. The alternative, the axis a layer writes and the list bounds, lets a tool or layer choose which listed labels exist and lets the dim carry properties, at the cost of a file restating the schema and a category that may name no live label ([DEP 24](proposals/dep-0024-categories-are-enum-dimensions.md#open-issues)).
 
 ### Whether a multi-dim may be `over` another multi-dim
 
@@ -115,6 +115,10 @@ Every tuple, as a NULL on the dim itself reaches every label ([the broadcast rul
 ### What `build` does with a value its type does not take
 
 It leaves the value out and reports it in `Requirements.ignored`, as an unknown type is reported. `build` does not raise ([tools](tools/pypsa.md#a-value-its-type-does-not-take)).
+
+### Whether a multi-dim in `partial` may have categories
+
+It may, by the rule a dim follows: `connection.role: {one_of: role}` categorizes `connection` in `partial`, so a `default_by` keyed `connection.role`, `flags(role=...)` and the keyword `role=` work as `entity.ctype` does ([categories of a multi-dim](model/multi-dims.md#categories-of-a-multi-dim)).
 
 ### What a connection value staged without its `bus` should mean
 

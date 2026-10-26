@@ -10,9 +10,10 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Title    | categories are enum dimensions                                                                                                                             |
 | Author   | Bryn Pickering                                                                                                                                             |
-| Status   | Draft                                                                                                                                                      |
+| Status   | Implemented (2026-10-26)                                                                                                                                   |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md), [DEP 18](dep-0018-drop-narwhals.md), [DEP 23](dep-0023-multi-dims.md) |
 | Created  | 2026-10-21                                                                                                                                                 |
+| Version  | Unreleased                                                                                                                                                 |
 
 ## Abstract
 

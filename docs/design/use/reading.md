@@ -51,7 +51,7 @@ A [property](../model/properties.md#properties) holds one value per label of its
 It is a record-wide view, NULL wherever no layer wrote a value.
 It has a key for each subject that declares properties, and its columns are the properties' plain names, since the relation already names the subject.
 
-A property of a dim in [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) that refers to a dim with `one_of` [categorizes](../model/properties.md#categories) its dim.
+A property of a dim in [`partial`](../layers/tree.md#partial-the-granularity-of-an-override), a multi-dim among them, that refers to a dim with `one_of` [categorizes](../model/properties.md#categories) its dim.
 One category's labels are `properties[dim]` filtered on it, with every property of the dim.
 `Schema.default_for` gives a property's [default](../model/properties.md#default_by-a-default-per-category): `default_by` per category, else `default`.
 A framework's static frame, such as PyPSA's `n.generators`, is that frame with defaults applied, joined with the entity-only rows of its attributes.
@@ -100,7 +100,7 @@ class Flags:
 Only attributes with rows are present, so `set(record.flags())` also says which attributes the record has.
 
 `flags(**categories)` answers for one category.
-The keywords are categorizing properties of one dim by their plain names, such as `ctype="Generator"`, each with one category or a list ([categories](#properties-and-categories)).
+The keywords are categorizing properties of one dim by their plain names, such as `ctype="Generator"` or a multi-dim's `role="output"`, each with one category or a list ([categories](#properties-and-categories)).
 Only rows that reach a matching label count: a row naming it through the dim's own column or a multi-dim's single coordinate drawing on the dim, and a row leaving that column NULL, which reaches every label or tuple.
 An attribute is present where such a row exists.
 Keywords that categorize several dims are refused, and so is a multi-dim that draws on the dim through two coordinates, since a row would then count towards no single label.
