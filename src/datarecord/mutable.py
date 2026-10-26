@@ -1066,17 +1066,6 @@ class WorkingRecord(Record):
             for m in self.schema.multi_dims
             if m in by_dim
         }
-        for multi, chosen in tuples.items():
-            for field in self.schema.over(multi):
-                if field in rest:
-                    given = rest.pop(field)
-                    labels = list(given) if _is_labels(given) else [given]
-                    chosen = chosen.filter(
-                        fn.struct_extract(col(multi), lit(field)).isin(
-                            *map(lit, labels)
-                        )
-                    )
-            tuples[multi] = chosen
         for dim, wanted in by_dim.items():
             drawing = [c for c, d in flat.items() if d == dim]
             if len(drawing) != 1:
@@ -1095,6 +1084,17 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             self.schema.require_listed(dim, wanted, f"`{call}`")
             rest[coordinate] = self._labels_matching(dim, wanted)
+        for multi, chosen in tuples.items():
+            for field in self.schema.over(multi):
+                if field in rest:
+                    given = rest.pop(field)
+                    labels = list(given) if _is_labels(given) else [given]
+                    chosen = chosen.filter(
+                        fn.struct_extract(col(multi), lit(field)).isin(
+                            *map(lit, labels)
+                        )
+                    )
+            tuples[multi] = chosen
         return rest, tuples
 
     def _tuples_matching(

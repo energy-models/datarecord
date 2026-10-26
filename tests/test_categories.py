@@ -147,9 +147,13 @@ def ports(store):
                 "bus": Dimension(dtype="str"),
                 "snapshot": Dimension(dtype="int"),
                 "role": Dimension(one_of=["input", "output", "attached"]),
+                "ctype": Dimension(one_of=["Generator", "Link"]),
                 "connection": Dimension(over=["entity", "bus"]),
             },
-            properties={"connection": {"role": PropertySpec(one_of="role")}},
+            properties={
+                "entity": {"ctype": PropertySpec(one_of="ctype")},
+                "connection": {"role": PropertySpec(one_of="role")},
+            },
             attributes={
                 "efficiency": AttributeSpec(
                     dtype="float",
@@ -165,7 +169,7 @@ def ports(store):
     )
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("entity", ["l", "g"])
+    staged.add("entity", ["l", "g"], ctype=["Link", "Generator"])
     staged.add("bus", ["a", "b"])
     staged.add("snapshot", [0, 1])
     tuples = [
@@ -210,3 +214,13 @@ def test_a_multi_dims_category_selects_only_for_an_attribute_over_it(ports):
     staged = WorkingRecord(ports.record)
     with pytest.raises(ValueError, match="'p_nom' is not over"):
         staged.set("p_nom", 1.0, role="output")
+
+
+def test_a_multi_dims_category_combines_with_a_category_of_its_coordinate(ports):
+    staged = WorkingRecord(ports.record)
+    staged.set("efficiency", 0.5, role=["output", "attached"], ctype="Generator")
+    record = ports.child(staged.edits).record
+    assert broadcast(record, "efficiency", "connection", "snapshot") == {
+        (("g", "b"), 0): 0.5,
+        (("g", "b"), 1): 0.5,
+    }, "the link's output is no generator's"
