@@ -70,7 +70,7 @@ A consumer filters, joins and aggregates with relation calls or SQL, and fetches
 
 An attribute's relation holds its rows as written, in no promised order.
 A NULL coordinate stays NULL, and two rows may cover one coordinate, of one layer or of two.
-The consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule): the row naming every dim the others there name wins.
+The consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule): the row naming every dim the others there name wins, as [`settle`](#settling-rows) does.
 The record guarantees such a row wherever two rows cross ([resolution](../layers/resolution.md#crossing-rows)), so a consumer needs no knowledge of layers or of `partial`.
 
 `LazyRelations` builds each relation on first access.
@@ -127,6 +127,20 @@ The flags describe the rows the record holds, so a broadcast that more specific 
 
 `flags` covers attributes alone.
 Properties are columns of their subject's file, read from `properties`.
+
+## Settling rows
+
+`settle(rel, labels, flags)`, exported as `from datarecord import settle`, settles an attribute's rows as written by [the broadcast rule](../model/attributes.md#the-broadcast-rule), one row per coordinate.
+A row NULL on a coordinate in `labels` takes each label there, and a row naming a label outside `labels`, or reaching none, is dropped.
+At each coordinate the row naming every coordinate in `labels` that the other rows there name is kept, and where none does the query fails, naming the coordinate.
+A coordinate outside `labels` is kept as written, a NULL there being one more label, so a constant `p_max_pu` stays one row with `snapshot` NULL.
+`filter=False` keeps a row naming a label outside `labels` as written, for a caller whose own joins on the labels drop it anyway.
+
+`flags` spares the work a record does not need, and flags overstating the rows change no value.
+Only a coordinate in `broadcast` is expanded, and rows are picked only where one is in `varies` as well.
+Elsewhere every row names the same coordinates, one row per key, and `settle` keeps those naming a passed label.
+
+The rule needs no knowledge of layers, so `settle` lives in core and reads a plain directory as it reads a tree.
 
 ## One engine
 

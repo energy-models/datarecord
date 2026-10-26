@@ -227,8 +227,8 @@ All notable changes to datarecord are documented here. The format follows
   is ignored, and the read folds that node from its layers.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
-  computation. `settle(rel, labels, flags)` does the same for one relation,
-  dropping rows that name a label outside `labels`.
+  computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
+  the same for one relation, dropping rows that name a label outside `labels`.
 
 ### Removed
 

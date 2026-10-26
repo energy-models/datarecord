@@ -29,6 +29,7 @@ datarecord/
 │   ├── owner_map.py   # fold_attributes, the owner-map fold over keys as written, and its shared tables
 │   └── record.py      # Record, PinnedRecord
 ├── mutable.py         # WorkingRecord, StagedSource
+├── settle.py          # settle, the broadcast rule over long rows
 ├── store/
 │   ├── __init__.py    # re-exports Workspace, Store, Revision
 │   ├── store.py       # Workspace, Store, Revision, ancestry
@@ -37,7 +38,7 @@ datarecord/
 │   ├── manifest.py    # read_schema, reconcile_schema
 │   └── write.py       # write_layer, layer_data
 └── tools/
-    ├── base.py        # Tool, Schema, Attr, settle, Requirements, UnsupportedRecordError
+    ├── base.py        # Tool, Schema, Attr, Requirements, UnsupportedRecordError
     └── pypsa.py       # PyPSA
 ```
 

@@ -52,12 +52,12 @@ from datarecord.schema.specs import (
     Group,
     PropertySpec,
 )
+from datarecord.settle import settle
 from datarecord.tools.base import (
     Requirements,
     Schema,
     Tool,
     UnsupportedRecordError,
-    settle,
 )
 
 if TYPE_CHECKING:

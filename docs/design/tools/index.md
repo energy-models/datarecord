@@ -77,16 +77,8 @@ An attribute without an entry is read under its own name.
 
 ## Settling rows
 
-A record answers an attribute's rows as written, and a tool settles them by [the broadcast rule](../model/attributes.md#the-broadcast-rule) ([relations](../use/reading.md#relations)).
-`settle(rel, labels, flags)` returns one row per coordinate.
-A row NULL on a coordinate in `labels` takes each label there, and a row naming a label outside `labels`, or reaching none, is dropped.
-With `filter=False` a named row is kept as written, for a caller whose own joins on the labels drop it anyway, as the PyPSA build's joins on `entity` do.
-At each coordinate the row naming every coordinate in `labels` that the other rows there name is kept, and where none does the query fails, naming the coordinate.
-A coordinate outside `labels` is kept as written, a NULL there being one more label, so a constant `p_max_pu` stays one row with `snapshot` NULL.
-
-`flags` spares the work a record does not need, and flags overstating the rows change no value.
-Only a coordinate in `broadcast` is expanded, and rows are picked only where one is in `varies` as well.
-Elsewhere every row names the same coordinates, one row per key.
+A tool settles each attribute it reads with [`settle`](../use/reading.md#settling-rows).
+The PyPSA build passes `filter=False`, since its own joins on `entity` drop a row naming another type's member anyway.
 
 `Attr.resolve(record, labels, flags)` and `Schema.resolve(record, ctype, name, labels, flags)` settle each source before a rename or a computation, so a computed attribute combines one row per coordinate of each.
 The PyPSA tool passes a type's members as `entity`, their connections as `connection`, and the scenarios of a stochastic network, so a NULL `entity` reaches each member of the type it builds.

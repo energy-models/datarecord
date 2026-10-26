@@ -93,10 +93,10 @@ Then some labels carry a per-timestep series and others a single constant row, a
 ## Settling rows
 
 `attributes` gives rows as written, so a consumer applies the broadcast rule itself.
-`settle(rel, labels, flags)` does it in one query, and `flags` tells it how little it needs to do ([design](../design/tools/index.md#settling-rows)):
+`settle(rel, labels, flags)` does it in one query, and `flags` tells it how little it needs to do ([design](../design/use/reading.md#settling-rows)):
 
 ```python
-from datarecord.tools.base import settle
+from datarecord import settle
 
 flags = record.flags(ctype="Generator")
 gens = record.properties["entity"].filter("ctype = 'Generator'").select("entity")
