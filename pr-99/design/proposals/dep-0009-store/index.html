@@ -1,0 +1,2828 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-99/design/proposals/dep-0009-store/">
+      
+      
+        <link rel="prev" href="../dep-0008-one-interface-source-and-fold/">
+      
+      
+        <link rel="next" href="../dep-0010-a-group-is-a-struct-column/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>DEP 9: A Workspace and a Store - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../static/extras.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dep-9-a-workspace-holds-the-connection-a-store-holds-a-location" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DEP 9: A Workspace and a Store
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../model/dims/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The data model
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../layers/tree/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../use/reading/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using a record
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../storage/format/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../tools/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frameworks
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../package/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The package
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../open-questions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_9" id="__nav_4_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enhancement proposals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Enhancement proposals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-NNNN-template/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0001-dims-groups-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 1: Dims, mappings, groups and traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0002-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 2: Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0003-trait-switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 3: Trait switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0004-staging-as-a-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 4: Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0005-one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 5: One Record over a NodeCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0006-a-member-file-holds-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 6: A member file holds values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0007-staging-without-seq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 7: Staging without _seq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0008-one-interface-source-and-fold/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 8: One interface, source and fold
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 9: A Workspace and a Store
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 9: A Workspace and a Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-revision-exists-only-by-writing-its-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A revision exists only by writing its layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-workingrecord-does-not-write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A WorkingRecord does not write
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-tree-lives-beside-the-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tree lives beside the layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-local-and-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files, local and remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-location-is-authoritative-the-database-is-disposable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The location is authoritative, the database is disposable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-cursor-per-thread-a-relation-per-thread" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A cursor per thread, a relation per thread
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#crossing-a-process-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing a process boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#record-moves-to-layeredrecordpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Record moves to layered/record.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-take-the-connection-on_connection-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools take the connection; on_connection goes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-relation-from-another-connection-is-rejected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A relation from another connection is rejected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-deleted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is deleted
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-test-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The test fixtures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#landing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Landing
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0010-a-group-is-a-struct-column/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 10: A group is one struct column
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0011-deletion-cascades-through-tombstones/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 11: Deletion cascades through tombstones
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0012-properties/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 12: Properties
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0013-buses-and-carriers-are-dims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 13: Buses and carriers are dims
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0014-combining-records/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 14: Combining a record with an extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0015-a-dim-is-flat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 15: A dim is flat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0016-remove-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 16: Remove traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0017-results-are-attributes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 17: Results are attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0018-drop-narwhals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 18: Drop narwhals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0019-one-record-and-a-package-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 19: One Record and a package layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0020-a-layer-restates-an-axis-whole/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 20: A layer restates an axis whole
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0021-the-owner-map-holds-keys-as-written/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 21: The owner map holds keys as written
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0022-a-layer-restates-membership-whole/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 22: A layer restates membership whole
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-workspace" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workspace
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-store" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The store
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-revision-exists-only-by-writing-its-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A revision exists only by writing its layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-workingrecord-does-not-write" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A WorkingRecord does not write
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-tree-lives-beside-the-layers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tree lives beside the layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-local-and-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files, local and remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-location-is-authoritative-the-database-is-disposable" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The location is authoritative, the database is disposable
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-cursor-per-thread-a-relation-per-thread" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A cursor per thread, a relation per thread
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#crossing-a-process-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing a process boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#record-moves-to-layeredrecordpy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Record moves to layered/record.py
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#tools-take-the-connection-on_connection-goes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Tools take the connection; on_connection goes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-relation-from-another-connection-is-rejected" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A relation from another connection is rejected
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-is-deleted" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What is deleted
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-test-fixtures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The test fixtures
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#landing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Landing
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="dep-9-a-workspace-holds-the-connection-a-store-holds-a-location">DEP 9: a <code>Workspace</code> holds the connection, a <code>Store</code> holds a location<a class="headerlink" href="#dep-9-a-workspace-holds-the-connection-a-store-holds-a-location" title="Permanent link">&para;</a></h1>
+<table>
+<thead>
+<tr>
+<th>DEP</th>
+<th>9</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Title</td>
+<td>a <code>Workspace</code> holds the connection, a <code>Store</code> holds a location</td>
+</tr>
+<tr>
+<td>Author</td>
+<td>Jonas Hörsch</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>Implemented 2026-10-10</td>
+</tr>
+<tr>
+<td>Created</td>
+<td>2026-10-09</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>Unreleased</td>
+</tr>
+</tbody>
+</table>
+<p>Landed in four steps (<a href="#landing">landing</a>) on <a href="../../storage/store/#the-store">layers</a>, <a href="../../use/writing/">writing</a>, <a href="../../use/editing/#edits">the working record</a>, <a href="../../storage/concurrency/#a-cursor-per-thread">the read path</a>, <a href="../../tools/">consuming a record</a> and <a href="../../package/">the module layout</a>; this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.</p>
+<p>The departures are all in the remote <code>Files</code>. boto3 uses path-style addressing whenever <code>AWS_ENDPOINT_URL</code> is set, as DuckDB's secret does, since a self-hosted server has no bucket-subdomain DNS. A failure setting up <code>httpfs</code> raises rather than leaving a workspace that fails on its first remote read. A <code>403</code> on a read or an <code>exists</code> counts as a miss, since S3 answers one for an absent key the caller may not list, and a <code>409</code> counts as a refused write alongside <code>412</code>, since that is how a server reports a racing conditional write.</p>
+<p>One claim: <strong>what a process now gets from <code>duck</code>'s module globals is two objects' state, not one.</strong> A <code>Workspace</code> holds the DuckDB connection and the means to reach files, local or remote, which is all a standalone directory needs. A <code>Store</code> holds one store location — the directory with its manifest, its revision tree, its layers — and works through a workspace, which several stores share. Every <code>Revision</code>, <code>Record</code> and <code>WorkingRecord</code> reaches its connection and its paths through the object it came from, and a revision crosses a process boundary as its store's location.</p>
+<p>Changes <a href="../../layers/tree/">layered resolution</a>, <a href="../../use/writing/">writing a whole record</a>, <a href="../../use/editing/#edits">the working record</a>, <a href="../../layers/resolution/#owner-map">the read path</a>, <a href="../../tools/">consuming a record</a>, <a href="../../package/">the module layout</a> and <a href="../../">what a data record is</a>, for the optional remote dependency.</p>
+<h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
+<p>Each claim below was checked against <code>49b7268</code>; the last three rows were found while checking the others.</p>
+<table>
+<thead>
+<tr>
+<th>claim</th>
+<th>holds?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>default_connection()</code> is a process singleton <code>Revision</code> attaches lazily, deserialisation included</td>
+<td><strong>Yes, and worse than stated.</strong> The default connection is <code>:memory:</code>, and the <code>revisions</code> table lives only in it. A revision deserialised in a new process reattaches to an empty tree: <code>Revision.model_validate_json(child.model_dump_json()).ancestry()</code> returns <code>[]</code>. The serialised form (<code>{"id", "parent"}</code>) does not even say which store it belongs to.</td>
+</tr>
+<tr>
+<td>the base URI is <code>DEFAULT_BASE_URI</code> (from <code>DATARECORD_BASE_URI</code>) plus <code>_BASE_URIS</code> keyed by connection; tests monkeypatch it</td>
+<td><strong>Yes, and the two disagree.</strong> Only the schema consults <code>base_uri_of(con)</code> (<code>read_schema</code>, <code>_reconcile_schema</code>). Layers and caches use the process default: <code>write_record</code> calls <code>layer_dir(revision_id)</code>, <code>sources_to_read</code> and <code>Resolver</code> build <code>ParquetLayer(uid, schema, con)</code> with no <code>base_uri</code>, and <code>_map_uri</code>/<code>materialise</code> call <code>resolved_dir(revision_id)</code>. A connection opened with <code>connect(base_uri=X)</code> therefore writes its manifest under <code>X</code> and its layers under <code>DEFAULT_BASE_URI</code>.</td>
+</tr>
+<tr>
+<td>an empty base makes <code>layer_dir</code>, <code>schema_uri</code> and the <code>layer_dir</code> macro fall back to the working directory</td>
+<td><strong>Yes.</strong> <code>DEFAULT_BASE_URI</code> is <code>""</code> unless the env var is set, so any path that misses the fixture's monkeypatch writes <code>layers/&lt;id&gt;/</code> into the cwd. The <code>layer_dir</code> SQL macro is registered by <code>connect</code> but called from nowhere.</td>
+</tr>
+<tr>
+<td><code>_NetworkSource</code> builds relations on <code>duckdb.default_connection()</code> unless <code>write_record</code> calls <code>on_connection(con)</code></td>
+<td><strong>Yes.</strong> <code>write.py</code> checks <code>hasattr(source, "on_connection")</code>; <code>PyPSA.results(n)</code> builds <code>_NetworkSource(model)</code> with no connection, so its frames land on DuckDB's own default. <code>as_relation</code> passes any <code>DuckDBPyRelation</code> through, and the next union or replacement scan on the record's connection fails ("Cannot combine LEFT and RIGHT relations of different connections", "created by another Connection"). <code>WorkingRecord.set(..., kind="outputs")</code> reaches that through <code>_incoming</code>.</td>
+</tr>
+<tr>
+<td>revisions cannot be listed</td>
+<td><strong>Yes.</strong> No API reads the table as a whole, and in a new process there is nothing to read.</td>
+</tr>
+<tr>
+<td>a remote location works</td>
+<td><strong>No.</strong> <code>read_json</code> opens a URI with <code>urlopen</code>, which has no <code>s3://</code> handler, so a remote manifest is unreadable. <code>write_schema</code> writes with <code>open()</code>, and <code>write_record</code> writes a standalone directory's manifest only <code>if local</code>, so a remote manifest is unwritable too. Only the parquet goes through DuckDB's <code>httpfs</code>. A remote <code>write_record</code> also has no staging directory, so a failed write leaves part of a layer behind.</td>
+</tr>
+<tr>
+<td>a connection may be shared between threads</td>
+<td><strong>No.</strong> Eight threads querying one DuckDB 1.5.5 connection: seven fail with "Attempting to execute an unsuccessful or closed pending query result". <code>default_connection()</code> hands every thread the same one.</td>
+</tr>
+<tr>
+<td>a node's materialised caches are complete once <code>materialised()</code> says so</td>
+<td><strong>No.</strong> <code>materialised()</code> takes <code>resolved/&lt;id&gt;/owner_map/inputs.parquet</code> to stand for the whole cache, but <code>materialise()</code> writes that map first and the resolved dims and groups after. A reader in another process can see a node as materialised and fold from half its cache, and a failed <code>materialise()</code> on a remote location leaves it that way for good.</td>
+</tr>
+</tbody>
+</table>
+<p>The second row is the root of the third: every path helper takes <code>base_uri: str | None = None</code> and treats <code>None</code> as "the process default", so forgetting to pass one is silent. A store makes its location unavoidable rather than defaulted.</p>
+<p>One object holding both the location and the connection would fix those rows, but at a cost: a location is needed only by the tree, and a connection by everything. Reading or writing a standalone directory would have to name a location it never uses, and two locations would each own a connection, so records from them could not be joined. So the two are split.</p>
+<h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Workspace</span><span class="p">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span>  <span class="c1"># the calling thread's cursor</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">database</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">":memory:"</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="nd">@classmethod</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">process</span><span class="p">(</span><span class="bp">cls</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Workspace</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># the process's, created on first use</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">store</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Store</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">at</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Record</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># a standalone directory</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">LayerData</span> <span class="o">|</span> <span class="n">RecordLike</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Record</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">close</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="k">class</span><span class="w"> </span><span class="nc">Store</span><span class="p">:</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span>  <span class="c1"># the store location: absolute, never empty</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">workspace</span><span class="p">:</span> <span class="n">Workspace</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">root</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">LayerData</span> <span class="o">|</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">revision</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">revisions</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="n">Revision</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">layer</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Record</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># one layer, read alone</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">layer_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">resolved_dir</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="k">class</span><span class="w"> </span><span class="nc">Revision</span><span class="p">:</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">child</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">source</span><span class="p">:</span> <span class="n">LayerData</span> <span class="o">|</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    <span class="c1"># record, ancestry(), materialise() as now</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">store</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"/data/a"</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">root</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">root</span><span class="p">(</span><span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">))</span>  <span class="c1"># a new root with this layer</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">child</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">other_record</span><span class="p">)</span>  <span class="c1"># a new child of root with this layer</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span>  <span class="c1"># look one up</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">out</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone directory, read back</span>
+</code></pre></div>
+<p>Three calls make something, one per place it can go, and each is named for what it returns:</p>
+<table>
+<thead>
+<tr>
+<th>you hold</th>
+<th>call</th>
+<th>you get</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Store</code></td>
+<td><code>store.root(src)</code></td>
+<td>a new root <code>Revision</code></td>
+</tr>
+<tr>
+<td><code>Revision</code></td>
+<td><code>rev.child(src)</code></td>
+<td>a new child <code>Revision</code></td>
+</tr>
+<tr>
+<td><code>Workspace</code></td>
+<td><code>ws.write(src, uri)</code></td>
+<td>the directory's <code>Record</code></td>
+</tr>
+</tbody>
+</table>
+<p><strong>What needs the workspace named, and what does not.</strong> A call reaches the workspace explicitly only where nothing in hand carries one: <code>ws.store</code>, <code>ws.at</code>, <code>ws.write</code>, and the <code>con</code> a tool converting a framework object is handed. Everything built <em>from</em> something takes the connection from it — <code>WorkingRecord(record)</code> from the record, <code>rev.child</code> and <code>rev.record</code> from the revision's store. Naming the workspace there as well would be a second name for one thing, which can disagree, and a check to catch it; taking it from the source makes the disagreement unrepresentable.</p>
+<h3 id="the-workspace">The workspace<a class="headerlink" href="#the-workspace" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>The connection</strong>, on <code>database</code>, <code>:memory:</code> by default — see <a href="#the-location-is-authoritative-the-database-is-disposable">the location is authoritative, the database is disposable</a>.</li>
+<li><strong>Files</strong>, local and remote — see <a href="#files-local-and-remote">files, local and remote</a>. Both DuckDB's <code>httpfs</code> and boto3 read the AWS environment, and are set up the first time the workspace is handed a <code>://</code> URI, whether a store's location or a directory's; today <code>httpfs</code> is loaded only for a remote <em>base URI</em>, so an <code>s3://</code> directory read through a connection with a local base has no <code>httpfs</code>. A purely local workspace still never pays <code>PROVIDER credential_chain</code>'s metadata probe.</li>
+<li><strong>Standalone directories.</strong> <code>at(uri)</code> reads one and <code>write(source, uri)</code> writes one. Both need only the connection and files. <code>at</code> requires the directory's own <code>manifest.json</code> and raises if it has none: a directory without one is a tree layer, read under its store's schema through <code>store.layer(id)</code>. Today <code>Record.at</code> falls back to the connection's base URI for that case, which is the coupling this split removes.</li>
+<li><strong>Its stores.</strong> <code>store(uri)</code> returns this workspace's store at <code>uri</code>, the same object for the same normalised location, so two calls do not hold two views of one tree. The map is filled with <code>dict.setdefault</code>, which is atomic, so two threads asking for a new location at once still get one store.</li>
+<li><strong>A cursor per thread</strong> — see <a href="#a-cursor-per-thread-a-relation-per-thread">a cursor per thread, a relation per thread</a>.</li>
+</ul>
+<h3 id="the-store">The store<a class="headerlink" href="#the-store" title="Permanent link">&para;</a></h3>
+<ul>
+<li><strong>The location.</strong> Required and non-empty: <code>ws.store("")</code> raises <code>ValueError</code>. A local path is resolved to an absolute one, so neither a later <code>chdir</code> nor a process with another cwd moves it. That ends the working-directory leak by construction — there is no fallback left to fall back to.</li>
+<li><strong>The tree.</strong> Persisted at the location, not in the connection — see <a href="#the-tree-lives-beside-the-layers">the tree lives beside the layers</a>.</li>
+<li><strong>Paths.</strong> <code>layer_dir</code>, <code>resolved_dir</code> and the manifest's location derive from the location and nothing else.</li>
+</ul>
+<p>What it hands out:</p>
+<ul>
+<li><strong><code>Revision</code>s</strong>, from <code>root</code>, <code>revision</code> and <code>revisions</code>, and from <code>child</code> on a revision. A revision carries its store, and <code>child</code>, <code>record</code>, <code>materialise()</code> and <code>ancestry()</code> reach the connection and paths through it. <code>Revision.create</code>/<code>Revision.get</code> and their <code>con=</code> go.</li>
+<li><strong><code>Record</code>s</strong>, from <code>revision.record</code> and <code>store.layer(id)</code>. A <code>Record</code> keeps exposing <code>con</code> — the calling thread's cursor, read through its <code>Resolver</code> — because that is how <a href="../../tools/">a tool</a> building from one reaches DuckDB SQL.</li>
+</ul>
+<p>A store holds no connection of its own and has no <code>close</code>; closing is the workspace's.</p>
+<h3 id="a-revision-exists-only-by-writing-its-layer">A revision exists only by writing its layer<a class="headerlink" href="#a-revision-exists-only-by-writing-its-layer" title="Permanent link">&para;</a></h3>
+<p><code>write_record(revision_id, source, con, *, uri=None)</code> splits by where the result goes:</p>
+<ul>
+<li><strong><code>store.root(source)</code></strong> and <strong><code>rev.child(source)</code></strong> create a revision and write <code>source</code> as its layer, in one call. There is no empty revision: <code>Revision.create</code> and the source-less <code>child()</code> go, and branching is writing a child.</li>
+<li><strong><code>ws.write(source, uri)</code></strong> writes a standalone record carrying its own manifest, and returns it as <code>ws.at(uri)</code> would. It is the one call taking a URI, because a directory hangs from no tree.</li>
+</ul>
+<p><code>child</code> lives on the parent rather than as <code>store.write(source, parent=…)</code>, which would name the store twice — a parent is always its own store's. It is not <code>rev.write</code>, which would read as changing <code>rev</code> when layers are <a href="../../layers/tree/#a-layers-data-is-write-once">write-once</a>. And a call per destination, rather than one taking a <code>NewChild | Directory</code> target, because the destinations need different things — a tree write the location and the tree, a directory write only a connection — and return different things, which a target union could only express through overloads.</p>
+<p><strong>The revision file is written last, and its existence is what makes the layer real.</strong> Locally, a failed write leaves nothing: the layer is staged into a sibling and renamed, as now. Remotely there is no rename, so a failed write can leave part of a layer behind — but without a revision file no <code>revision()</code>, <code>revisions()</code> or ancestry reaches it. A remote write becomes atomic in what any reader can see, and its leftovers are unreachable rather than half-read. Sweeping orphaned layers is a follow-up.</p>
+<p>So a tree write runs in three steps: <strong>the layer, then the manifest, then the revision file.</strong> The manifest check comes after the layer rather than before it as today, so a layer whose schema turns out incompatible, or whose write fails, leaves the manifest untouched as well as unreachable; the manifest is never widened for a layer that does not exist.</p>
+<p><code>materialise()</code> follows the same rule: the maps other than <code>inputs</code>, the resolved dims and groups, then <code>owner_map/inputs.parquet</code>, the file <code>materialised()</code> reads. Locally each file is written under a temporary name and renamed, because <code>to_parquet</code> creates the file at its final path before it is complete and a reader meeting it mid-write fails rather than misses. Two writers materialising one node then write the same content, so that race is harmless.</p>
+<p>A standalone directory has no revision file, so there <strong>the manifest is written last</strong>: <code>ws.at</code> requires one, which gives <code>ws.write</code> the same property, and a directory whose write failed reads as no record rather than part of one. Before any <code>COPY</code>, a remote <code>ws.write</code> refuses a URI under which <code>Files.list</code> finds anything, as the local write refuses an existing directory. Unlike a layer's UUID the caller picks this URI, and DuckDB's <code>COPY</code> would overwrite an existing record's files before the <code>Absent</code> manifest write could fail, leaving a mix of both under the old manifest. The check and the write are two steps, so two writers racing to one new URI can still mix; a standalone directory has one writer.</p>
+<p>The tests that create a revision and hand-write its layer files keep doing so through a helper in <code>tests/fixtures.py</code> over the store's private revision-file write; no public API makes an empty revision.</p>
+<p>The write path itself — staging into a sibling locally, the refusal of an existing directory, validation — is otherwise untouched (<a href="../../use/writing/">writing</a>).</p>
+<h3 id="a-workingrecord-does-not-write">A <code>WorkingRecord</code> does not write<a class="headerlink" href="#a-workingrecord-does-not-write" title="Permanent link">&para;</a></h3>
+<p><code>WorkingRecord(record)</code> takes no <code>con</code>: it stages on <code>record.con</code>, and <code>_base_resolver</code>'s "base reads through another connection" check has nothing left to check. It loses <code>commit</code>, and <code>NewChild</code>, <code>Directory</code> and <code>Target</code> go with it. What it gains is <strong><code>edits</code></strong>, its staged layer as the <code>LayerData</code> it already is (<code>StagedSource</code>, <a href="../dep-0004-staging-as-a-layer/">staging as a layer</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"gen1"</span><span class="p">])</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># the delta, as a child layer</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># base plus edits, flattened</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
+</code></pre></div>
+<p><code>commit</code> did three things, and each now has one owner. Which rows to write — the delta for a child, the flattened record for a directory — is the caller's choice of <code>w.edits</code> or <code>w</code>, where <code>commit</code> chose it by target. Which parent — <code>NewChild()</code> defaulted to the base's revision, looked up by <code>revision_id</code> in <code>_base_revision</code> with its own error for a base that is no node — is named by the caller, who built <code>w</code> from it. Clearing the staging area is <code>rollback()</code>, called or not: a <code>WorkingRecord</code> still holding its edits after a write reads exactly what it did before.</p>
+<p>The cost is one mistake nothing catches: <code>rev.child(w)</code> writes the whole resolved record as a child layer rather than the delta. It reads back correctly, just larger, and there is no cheap guard, a resolved record being a valid layer source too. <code>edits</code> is the name that has to carry it.</p>
+<p>The other mistake is caught. <code>other.child(w.edits)</code>, with <code>w</code> built over a different revision, would write a delta computed against the wrong parent — an axis edit carries its base's sibling columns — and read back wrong. <code>NewChild()</code> made that impossible by defaulting the parent; <code>child</code> keeps it impossible by comparing a staged source's base revision with its own id and raising on a mismatch.</p>
+<p>A <code>WorkingRecord</code> still needs a base, so there is no empty start. Building one from a schema alone would have nothing to take a connection from, so it would be the workspace's (<code>ws.new(schema)</code>); that is a follow-up, not part of this change.</p>
+<h3 id="the-tree-lives-beside-the-layers">The tree lives beside the layers<a class="headerlink" href="#the-tree-lives-beside-the-layers" title="Permanent link">&para;</a></h3>
+<p>A store that serialises as its location is only useful if the location is enough to find the tree, and today it is not. Each revision becomes one file, written once, right after its layer:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>&lt;location&gt;/
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>├── manifest.json
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>├── revisions/&lt;id&gt;.json        # {"id": ..., "parent": ...}
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>└── layers/&lt;id&gt;/
+</code></pre></div>
+<p>Beside <code>layers/</code> rather than inside a layer: a layer directory stays exactly what the layer wrote, which is what lets a foreign reader consume it (<a href="../../layers/removal/">deletion</a>), and listing the tree is one listing over small files rather than a probe into every layer. One file per revision rather than one table because a file named by a fresh UUID is <a href="../../layers/tree/#a-layers-data-is-write-once">write-once</a> like a layer, so two processes creating revisions in one location never write the same object — which a shared DuckDB file or a single <code>revisions.parquet</code> could not promise on S3. Written create-only through <a href="#files-local-and-remote">files</a>, so write-once is enforced by the store rather than assumed. JSON rather than parquet because it is one small document, like the manifest beside it, read and listed through <code>Files</code> as the manifest is. The UUID is drawn in Python rather than by <code>gen_random_uuid()</code>, since the layer directory is named by it before any row exists.</p>
+<p>The workspace's <code>revisions</code> table stays, as a cache of those files for every store on it: <code>(location, id, parent)</code>, so <code>revisions()</code> and <code>revision(id)</code> filter by location — a revision of another store on the same workspace is not this store's — while ancestry, a walk from a revision already found, needs none. It cannot go stale, only incomplete, for the same reason <a href="../../layers/tree/#a-layers-data-is-write-once">a node cache never needs invalidating</a>: a revision's parent never changes. So it is only ever added to:</p>
+<ul>
+<li><code>revisions()</code> lists <code>revisions/</code> once through <code>Files.list</code>, compares the names against the table, and reads only the files it does not hold — one listing per call rather than one read per revision, which on S3 is one request per thousand revisions rather than one per revision.</li>
+<li><code>revision(id)</code> that misses the table reads <code>revisions/&lt;id&gt;.json</code>, then each parent the table does not hold, until it reaches one it does; <code>KeyError</code> where the first file is absent.</li>
+</ul>
+<p>Two cursors adding one row at once conflict: DuckDB fails the second with <code>TransactionException</code>, even under <code>ON CONFLICT DO NOTHING</code>. The row is the same whoever wins, so the insert catches it and moves on.</p>
+<p><code>revisions()</code> returns every revision, unordered; a <code>created</code> field is for whoever first needs chronology.</p>
+<p><strong>Existing locations.</strong> A location written before this change has layers but no <code>revisions/</code>, so it reads as an empty tree. The project holds no compatibility promise, and the fix is one-off: export the <code>revisions</code> table of any DuckDB file used with <code>connect(database=…)</code> as one JSON file per row. A location only ever opened on <code>:memory:</code> has no tree to recover — which is the first row of <a href="#what-starts-it">what starts it</a>.</p>
+<h3 id="files-local-and-remote">Files, local and remote<a class="headerlink" href="#files-local-and-remote" title="Permanent link">&para;</a></h3>
+<p>Two kinds of I/O, with one owner each:</p>
+<ul>
+<li><strong>Tables go through DuckDB</strong>, as now: reading and writing parquet and globbing it, over <code>httpfs</code> for a remote URI.</li>
+<li><strong>Everything else goes through the workspace's <code>Files</code></strong> — the manifest, the revision files, listing them, and whether a layer exists:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Files</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Version</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># None on a miss</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">write_text</span><span class="p">(</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>        <span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">expect</span><span class="p">:</span> <span class="n">Version</span> <span class="o">|</span> <span class="n">Absent</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Version</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>  <span class="c1"># names directly under prefix</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p><code>expect</code> is the precondition: <code>Absent</code> writes only if nothing is there, a <code>Version</code> only if the object is unchanged since it was read, <code>None</code> unconditionally. It replaces <code>read_json</code>'s <code>urlopen</code>, <code>write_schema</code>'s <code>open()</code>, and the <code>if local</code> around the standalone manifest. <code>list</code> returns names, not contents; remotely it follows S3's pages of a thousand keys.</p>
+<p>Two implementations, picked by the URI's scheme: <code>s3://</code> is remote and a URI without <code>://</code> is local. Any other scheme raises, naming those two; reading over <code>https://</code> is for whoever first needs it.</p>
+<ul>
+<li><strong>Local</strong>, on <code>pathlib</code>, which the code already uses. A local location keeps core at <code>duckdb</code>, <code>narwhals</code> and <code>pydantic</code>. <code>Absent</code> is <code>open(…, "x")</code>, which the OS makes atomic. A <code>Version</code> is the SHA-256 of the content, checked and replaced while holding a lock on a sibling <code>&lt;name&gt;.lock</code> (<code>fcntl.flock</code>, <code>msvcrt.locking</code> on Windows, both stdlib), with the new content written to a temporary file and renamed over the old one. The lock is what makes the check and the write one step; without it two local writers race exactly as two remote ones would on a server that ignores the headers.</li>
+<li><strong>Remote</strong>, on <a href="https://boto3.amazonaws.com/">boto3</a>, behind an optional extra, <code>datarecord[remote] = ["boto3&gt;=1.35.69"]</code>. <code>put_object</code> is what <code>expect</code> maps to: <code>IfNoneMatch="*"</code> for <code>Absent</code> (botocore 1.35.2) and <code>IfMatch=&lt;etag&gt;</code> for a <code>Version</code> (botocore 1.35.69, hence the floor); either fails with <code>412 PreconditionFailed</code>. A <code>Version</code> is the object's ETag.</li>
+</ul>
+<p>boto3 because it is what Manta already runs on: the <code>playbook[s3]</code> extra its blocks install, the backend's <code>S3FileStorageService</code>, and <code>prefect-aws</code> in the runner are all boto3, so one S3 library serves the whole stack and the block images already carry it. Its conditional writes guard the two small files a store coordinates through: revision files become create-only by the server's guarantee rather than by trusting that a UUID never collides, and the manifest compare-and-swap. They do not guard the layer: its parquet is written by DuckDB's <code>COPY</code> over <code>httpfs</code>, which sends no condition, so remotely nothing refuses an existing layer directory. A fresh UUID makes that collision a non-event, and a failed write's leftovers are unreachable without a revision file (<a href="#a-revision-exists-only-by-writing-its-layer">above</a>). Removing them is cleanup, a separate concern. <code>fsspec</code>/<code>s3fs</code> has no create-only write, and obstore, which does, would be a second S3 client beside Manta's. The cost is boto3's size and S3 alone, which is every store Manta targets.</p>
+<p><strong>The manifest race closes too.</strong> Two processes writing the first layers into a new location, or widening one location's schema at once, race on <code>manifest.json</code> today. With <code>expect</code>, the first write is <code>Absent</code>, and widening, after the layer is written, reads the manifest with its version, checks compatibility, and writes <code>expect=&lt;that version&gt;</code>; a writer that lost re-reads and checks again. <code>_reconcile_schema</code> is the one caller that changes.</p>
+<p><strong>Only as far as the server honours the headers.</strong> A server that ignores them accepts every write, so create-only and the manifest check would silently become last-writer-wins. For SeaweedFS, which Manta deploys (<code>chrislusf/seaweedfs:4.05</code> in <code>docker/compose-dev-services.yaml</code>), the source says:</p>
+<table>
+<thead>
+<tr>
+<th>SeaweedFS</th>
+<th><code>If-None-Match</code> / <code>If-Match</code> on <code>PutObject</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>before 3.97</td>
+<td>ignored</td>
+</tr>
+<tr>
+<td>3.97 – 4.17</td>
+<td>honoured, but checked once when the request arrives, before the upload: two writers racing on one key can both pass, and the later overwrites (<a href="https://github.com/seaweedfs/seaweedfs/pull/7154">#7154</a>)</td>
+</tr>
+<tr>
+<td>4.18 and later</td>
+<td>checked again under the object's write lock as the entry is committed, so exactly one of two racing writers succeeds (<a href="https://github.com/seaweedfs/seaweedfs/pull/8802">#8802</a>, "make conditional mutations atomic and AWS-compatible")</td>
+</tr>
+</tbody>
+</table>
+<p>On Manta's 4.05 the revision files are safe in practice — two writers never race on one UUID — but the manifest's compare-and-swap can lose a widening inside that window. So Manta's pin moves to 4.18 or later; that is Manta's change, and this proposal names it rather than working around it. AWS S3 itself has honoured <code>If-None-Match</code> since August 2024 and <code>If-Match</code> since November 2024.</p>
+<p>The remote tests run against SeaweedFS in a container at that version, the server Manta deploys, rather than against a mock: a mock that ignores the headers would pass exactly the tests the headers exist for.</p>
+<p><strong>One configuration, two consumers.</strong> The configuration is the AWS environment and config files, following playbook's convention, and there is no datarecord-specific one. boto3 reads all of it itself: the <code>AWS_*</code> variables, profiles, session tokens, roles, and <code>AWS_ENDPOINT_URL</code>. DuckDB gets <code>CREATE SECRET (TYPE s3, PROVIDER credential_chain, …)</code>, which resolves credentials the same way; the workspace adds only what the chain does not supply, <code>ENDPOINT</code> and <code>URL_STYLE 'path'</code> from <code>AWS_ENDPOINT_URL</code>, since SeaweedFS and MinIO need path-style addressing for want of bucket-subdomain DNS. With an endpoint set it also passes <code>CHAIN 'env;config'</code>: such a server has no instance-metadata service, and probing for one is the two-minute hang <code>connect</code> avoids today. A secret built by hand from <code>KEY_ID</code> and <code>SECRET</code> would lose session tokens and roles. There is no <code>remote=</code> override: a setting passed to one workspace would not reach the <code>Workspace.process()</code> a deserialising task builds, while the environment does.</p>
+<h3 id="the-location-is-authoritative-the-database-is-disposable">The location is authoritative, the database is disposable<a class="headerlink" href="#the-location-is-authoritative-the-database-is-disposable" title="Permanent link">&para;</a></h3>
+<p><code>database</code> may name a DuckDB file, and what lives in it is a workspace, never the record: deleting it loses at most uncommitted edits. The tree cannot live only there — a DuckDB file takes one writer at a time, so parallel tasks would serialise on its lock, and it cannot be written to S3 — and a tree in two places is two sources of truth that can disagree, the split this proposal removes for the base URI.</p>
+<p>Within that rule a file earns its place three ways:</p>
+<ul>
+<li><strong>Staged edits outlive the process.</strong> A <code>WorkingRecord</code>'s staging tables are tables on the connection, so on a file they survive a crash. Resuming one needs a handle back to its tables, which are keyed by a random <code>_layer_id</code> today; that handle is a follow-up, not part of this change.</li>
+<li><strong>The <code>revisions</code> cache persists.</strong> It cannot go stale (<a href="#the-tree-lives-beside-the-layers">above</a>), so keeping it across runs is safe, and it saves re-reading every <code>revisions/*.json</code> of a remote location on open.</li>
+<li><strong>Room to spill.</strong> A file-backed database gives DuckDB somewhere natural to page out a larger-than-memory plan.</li>
+</ul>
+<p><strong>A location is not reused.</strong> Every cache keyed by id — the <code>revisions</code> rows, the <a href="#a-cursor-per-thread-a-relation-per-thread">shared fold tables</a> — assumes what an id names never changes. A revision keeps that by construction, a fresh UUID over write-once files. A location wiped and written again does not, nor does a standalone directory rewritten at the same URI, its fold being keyed by <code>uuid5</code> of the URI: a persisted database would serve the old tree or fold. Rewriting one means a fresh database, or a fresh location.</p>
+<h3 id="a-cursor-per-thread-a-relation-per-thread">A cursor per thread, a relation per thread<a class="headerlink" href="#a-cursor-per-thread-a-relation-per-thread" title="Permanent link">&para;</a></h3>
+<p>A DuckDB connection is not safe to use from two threads at once (<a href="#what-starts-it">what starts it</a>). DuckDB's answer is a <code>con.cursor()</code> per thread, and measured on 1.5.5 it holds: eight threads, each on its own cursor of one database, querying one table concurrently, all succeed. Tables are shared between those cursors, so are the <code>revisions</code> cache, the staging tables and the folded owner maps. A <code>DuckDBPyRelation</code> is not: it is bound to the cursor that built it, and scanning or unioning it on another fails exactly as across connections.</p>
+<p>So the line runs around relations alone:</p>
+<ul>
+<li><strong><code>ws.con</code> is the calling thread's cursor</strong>, made from the workspace's database on first use in that thread. One workspace serves every thread, and their work shares one database.</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">_Cursors</span><span class="p">(</span><span class="n">threading</span><span class="o">.</span><span class="n">local</span><span class="p">):</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">db</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>        <span class="bp">self</span><span class="o">.</span><span class="n">con</span> <span class="o">=</span> <span class="n">db</span><span class="o">.</span><span class="n">cursor</span><span class="p">()</span>  <span class="c1"># rerun by threading.local in each new thread</span>
+</code></pre></div>
+<p>A <code>threading.local</code> subclass reruns <code>__init__</code> with its original arguments in each thread that first touches it, so there is no existence check and no lock; sixteen threads taking their first cursor at once, fifty times over, all succeed on 1.5.5. A thread's cursor is dropped with the thread. A dict keyed by <code>threading.get_ident()</code> would do neither, ids being reused, and a <code>ContextVar</code> is copied into the workers of a task runner, which would share the parent's cursor.</p>
+<ul>
+<li><strong>Nothing but a relation holds a cursor.</strong> <code>Store</code>, <code>Revision</code>, <code>Resolver</code>, <code>ParquetLayer</code> and <code>DirectorySource</code> hold their workspace — a layer through its store — and look up <code>workspace.con</code> per call, so every relation they build lands on the calling thread's cursor. A <code>Record</code> is then usable from any thread, and <code>Revision._resolver</code> keeps caching its <code>Resolver</code>. What they cache besides is plain values any thread computes the same, so two threads racing on one cost a duplicate, not a wrong answer.</li>
+<li><strong>A relation, and a narwhals frame over one, belongs to the thread that built it</strong>, and so does a <code>WorkingRecord</code>, whose staging is one writer's. A relation reaching another thread's <code>as_relation</code> is <a href="#a-relation-from-another-connection-is-rejected">rejected</a> as one from another connection is.</li>
+</ul>
+<p>There is no thread check: concurrent misuse hits DuckDB's own error, and a check on workspace methods would miss the calls a frame makes on its own cursor.</p>
+<p><strong>What a fold caches is shared, not held.</strong> Two caches hold relations today, and both stop:</p>
+<ul>
+<li><code>Resolver._cached_dims</code> keeps a frozen node's folded axes and groups as relations. They become tables, <code>dims_{dim}_{id}</code> and <code>group_{name}_{id}</code>, beside the <code>owner_map_{kind}_{id}</code> that <code>_frozen_table</code> already keeps. The unfrozen tail is folded on top per access, as now.</li>
+<li><code>Record.dims</code> captures that dict of axis relations. It builds each frame per access through <code>resolver.axis(dim)</code> instead, as the other <code>_stable_cache</code> members already do; what those cache is the name tuples, plain data.</li>
+</ul>
+<p><code>{id}</code> is the node whose frozen layers were folded: a revision's id, the base's for a <code>WorkingRecord</code>, <code>uuid5</code> of the URI for a standalone directory. The schema is not in the key, so a table is read through <code>cast_declared(schema, …)</code> as a materialised cache already is. Today <code>_frozen_table</code> returns it uncast, so a <code>Resolver</code> reading under a manifest widened since the fold lacks what the wider schema adds.</p>
+<p>A fold one thread builds serves every thread. Two threads that miss at once both fold and both <code>create</code>, and DuckDB fails the second with <code>TransactionException</code> ("Catalog write-write conflict"), not a name clash; the miss path catches that and <code>CatalogException</code> alike and reads the winner's table. The duplicate fold is wasted, not wrong.</p>
+<p>Re-issuing a relation on another cursor, so that frames could move too, was considered. A relation over files and tables re-issues from its <code>sql_query()</code>, but one over a Python object (the PyPSA melt, <code>Index.of</code>, <code>as_relation</code>'s arrow landing) serialises as a memory pointer and cannot. Asking the record again costs only the plan.</p>
+<h3 id="crossing-a-process-boundary">Crossing a process boundary<a class="headerlink" href="#crossing-a-process-boundary" title="Permanent link">&para;</a></h3>
+<p><code>Revision</code> serialises its store as its location:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"050c…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"parent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"8db9…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"store"</span><span class="p">:</span><span class="w"> </span><span class="s2">"s3://bucket/my-record"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>A new process has to attach that to some workspace, and the code deserialising it — Prefect, between tasks — has none to pass. So it validates back through <code>Workspace.process().store(uri).revision(id)</code>, which reads the revision file and each parent the cache lacks, so <code>ancestry()</code> answers in a fresh process; <code>Store.__reduce__</code> does the same for pickle.</p>
+<p><strong>This is the one default that survives</strong>, and it is the same idea as <code>default_connection()</code>, narrowed. Nothing reaches it implicitly but deserialisation: every constructor takes an explicit workspace, and <code>Workspace.process()</code> is reached by name. It is created on first use on <code>:memory:</code>, its remote access comes from the environment like every workspace's, and its <code>database</code> does not travel — a second process could not open the same file for writing anyway.</p>
+<p>Revisions deserialised in one process share its workspace, and frames built from their records in one thread join. Code that also builds records of its own and wants them joinable with deserialised ones uses <code>Workspace.process()</code> rather than <code>Workspace()</code> — an opt-in by name rather than the first workspace silently adopted. One that does not gets the <a href="#a-relation-from-another-connection-is-rejected">foreign-relation error</a>, stated at the boundary.</p>
+<h3 id="record-moves-to-layeredrecordpy"><code>Record</code> moves to <code>layered/record.py</code><a class="headerlink" href="#record-moves-to-layeredrecordpy" title="Permanent link">&para;</a></h3>
+<p><code>Record</code> lives in <code>layered/revision.py</code> today because its builders did: <code>Record.at</code> builds a <code>DirectorySource</code> and reads the schema, and <code>Revision.record</code> constructs one. With <code>Record.at</code> gone to <code>ws.at</code> and <code>store.layer</code>, and <code>Record.over</code> — the other place a <code>Resolver</code> is assembled — gone with it as a private helper in <code>store.py</code>, nothing ties it there.</p>
+<p>It is the <code>Resolver</code>-backed implementation of <code>RecordLike</code>, so it moves beside its backing, into its own <code>layered/record.py</code>, taking <code>_stable_cache</code> with it. <a href="../../package/">Module layout</a>'s rule is the reason: protocols live with their implementations rather than with a consumer, and an implementation lives with what it is built over. Its own module rather than <code>resolve.py</code>, so that file stays the DuckDB fold alone rather than also carrying the narwhals face over it. The dependency runs one way — <code>resolve.py</code>, <code>sources.py</code> and <code>fold.py</code> name <code>Record</code> only in docstrings — so <code>layered/record.py</code> imports <code>Resolver</code> and nothing imports back.</p>
+<p>What stays:</p>
+<ul>
+<li><strong><code>datarecord/record.py</code> keeps its name and contents</strong> — <code>RecordLike</code> and <code>LayerData</code>, and the vocabulary their members speak in: <code>LazyFrames</code>, <code>EMPTY</code>, <code>Flags</code>, <code>Frames</code>, <code>Kind</code>. Not <code>protocols.py</code>: most of those are value types, and a tool building frames imports <code>LazyFrames</code> from it. The two <code>record.py</code> modules are the record's vocabulary and its one implementation, told apart by package.</li>
+<li><strong><code>LayerData</code> stays in <code>datarecord/record.py</code></strong>, not <code>mutable.py</code>. Its implementations are spread over <code>layered/sources.py</code>, <code>layered/resolve.py</code> and <code>mutable.py</code>, and its one consumer is <code>layered/write.py</code>; in <code>mutable.py</code> the core write path would import from the edit layer above it.</li>
+<li><strong><code>layered/revision.py</code> keeps <code>Revision</code> and <code>ancestry</code></strong>, which is what its module docstring already says it is.</li>
+</ul>
+<p><code>mutable.py</code>, <code>datarecord/__init__.py</code> and the tests importing <code>Record</code> from <code>datarecord.layered.revision</code> import it from <code>datarecord.layered.record</code>.</p>
+<h3 id="tools-take-the-connection-on_connection-goes">Tools take the connection; <code>on_connection</code> goes<a class="headerlink" href="#tools-take-the-connection-on_connection-goes" title="Permanent link">&para;</a></h3>
+<p><code>Tool.to_datarecord(model, con)</code> and <code>Tool.results(model, con)</code> take the connection their frames are planned on, required. A tool is handed <code>con</code>, not a workspace or a store: it plans relations and has no business with directories, locations or the tree. <code>build(record)</code> is unchanged: it reads <code>record.con</code> as <code>_connection</code> does now. So <code>_NetworkSource.con</code> becomes required, and <code>_melt_con</code>, its <code>duckdb.default_connection()</code> fallback and <code>on_connection</code> go, and <code>write.py</code> loses its <code>hasattr</code> hook. Core names no tool before or after: the connection is now an argument of the tool protocol in <code>datarecord/tools/base.py</code>, not a structural hook in the write path (<a href="../../package/">module layout</a>).</p>
+<p>The call sites that broke now read:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">root</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">root</span><span class="p">(</span><span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">))</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">root</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">for</span> <span class="n">attr</span><span class="p">,</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">results</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">w</span><span class="o">.</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">attr</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="a-relation-from-another-connection-is-rejected">A relation from another connection is rejected<a class="headerlink" href="#a-relation-from-another-connection-is-rejected" title="Permanent link">&para;</a></h3>
+<p>Copying one onto the target connection would collect it to arrow on its own connection — a full materialisation the caller never asked for, and one that fails anyway if that connection has been closed. Making it impossible by construction covers what this package builds, but a caller can still hand <code>set</code> a relation from a connection of their own.</p>
+<p>So <code>as_relation</code> rejects it, and says why: binding <code>con.sql("FROM native")</code> costs no read and raises <code>duckdb.InvalidInputException</code> for a relation from another connection, which it re-raises as a <code>ValueError</code> naming the fix — build the frame on <code>record.con</code> in this thread, or hand over a non-DuckDB frame and let it land. Construction removes the case for every path this package owns; the check turns the case it cannot own from an <code>InvalidInputException</code> three calls later into a sentence at the boundary. The same check catches a frame built on another thread's cursor.</p>
+<h2 id="what-is-deleted">What is deleted<a class="headerlink" href="#what-is-deleted" title="Permanent link">&para;</a></h2>
+<ul>
+<li><code>duck.DEFAULT_BASE_URI</code>, the <code>DATARECORD_BASE_URI</code> env var, <code>_BASE_URIS</code>, <code>base_uri_of</code>, <code>default_connection</code>, <code>connect</code> (its body moves into <code>Workspace</code>), and the unused <code>layer_dir</code> SQL macro with <code>_register_macros</code>. A caller wanting the env var writes <code>ws.store(os.environ["DATARECORD_BASE_URI"])</code>.</li>
+<li>Every <code>base_uri: str | None = None</code>. <code>layer_dir</code>, <code>resolved_dir</code> and <code>schema_uri</code> become <code>Store</code> methods; <code>ParquetLayer</code> holds its store in place of <code>con</code> and <code>base_uri</code>, and <code>DirectorySource</code> its workspace in place of <code>con</code>; <code>read_schema(store)</code>, <code>write_schema(schema, store)</code>, <code>Fold.read(…, store)</code>, <code>resolve.materialise(…, store)</code>, <code>materialised(revision_id, store)</code> and <code>sources_to_read(ancestry, store, schema)</code> take one, and <code>_map_uri</code> becomes a <code>Store</code> path. <code>Resolver</code> holds its workspace in place of <code>con</code>; <code>source_for</code> builds a <code>ParquetLayer</code> on the store its sources share, and a standalone record, whose one source is a <code>DirectorySource</code>, never reaches that path.</li>
+<li><code>read_json</code> with its <code>urlopen</code>; the manifest and revision files go through <code>Files</code>.</li>
+<li><code>Revision.create</code>, <code>Revision.get</code>, the source-less <code>Revision.child()</code>, <code>Record.at</code>, <code>Record.over</code>, and <code>con=</code> on <code>WorkingRecord</code>.</li>
+<li><code>write_record</code> as a public name, <code>WorkingRecord.commit</code>, <code>NewChild</code>, <code>Directory</code>, <code>Target</code> and <code>_base_revision</code>. <code>datarecord.write_record</code>, <code>datarecord.layer_dir</code>, <code>datarecord.connect</code>, <code>NewChild</code> and <code>Directory</code> leave <code>__all__</code>; <code>Workspace</code> and <code>Store</code> join it.</li>
+<li><code>on_connection</code>, <code>_NetworkSource._melt_con</code>, and <code>_base_resolver</code>'s connection check.</li>
+<li><code>Resolver._cached_dims</code>, for tables; and the axes dict <code>Record.dims</code> captures.</li>
+</ul>
+<p>A <code>con</code> argument stays where a function plans relations — <code>fold_axis</code>, <code>union_all_by_name</code>, <code>try_read_parquet</code>, the fold — since those take the connection they compose on, not a location.</p>
+<h2 id="the-test-fixtures">The test fixtures<a class="headerlink" href="#the-test-fixtures" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">workspace</span><span class="p">():</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>    <span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="k">yield</span> <span class="n">ws</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>    <span class="n">ws</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="nd">@pytest</span><span class="o">.</span><span class="n">fixture</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">store</span><span class="p">(</span><span class="n">workspace</span><span class="p">,</span> <span class="n">tmp_path</span><span class="p">):</span>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a>    <span class="k">return</span> <span class="n">workspace</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="nb">str</span><span class="p">(</span><span class="n">tmp_path</span><span class="p">))</span>
+</code></pre></div>
+<p>They replace <code>base_uri</code> and <code>con</code>: no monkeypatch, since there is no global to patch. <code>layer_dir(x.id)</code> in the tests becomes <code>store.layer_dir(x.id)</code>, <code>Revision.create(con)</code> followed by hand-written layer files goes through the <code>tests/fixtures.py</code> helper, <code>Record.at(layer_dir(x.id), con)</code> becomes <code>store.layer(x.id)</code>, and a test needing the connection reads <code>workspace.con</code>. <code>test_two_roots_in_one_process_read_their_own_schema</code> becomes two stores on one workspace, and gains an assertion it could not make before, that each location's layers land under it. The <code>connect(base_uri=…/"unrelated")</code> cases in <code>test_write.py</code> and <code>test_mutable.py</code> read a standalone directory through a second connection, and become <code>ws.at(out)</code>; what the <code>test_mutable.py</code> one pins besides — that edits are validated under their base's schema, not a connection's — gets a test of its own.</p>
+<p>New tests pin what this adds: a revision round-tripped through <code>model_dump_json</code> into <code>Workspace.process()</code> reads its ancestry back; threads sharing one workspace read concurrently, each on its own cursor, and reuse one folded owner map; two threads missing that cache at once both get it; a store and a standalone directory on SeaweedFS (≥ 4.18, in a container) write and read their manifest and revision files; a second create-only write of one revision file fails; two writers widening one manifest end with both widenings or a reported incompatibility, never one silently lost; a remote write that fails part-way leaves no revision <code>revisions()</code> lists; a remote <code>ws.write</code> to a non-empty URI is refused before it writes; two threads adding one revision row at once both succeed; a fold table built before the manifest widened reads under the wider schema; a <code>Record</code> built in one thread reads in another; and <code>child(w.edits)</code> on a revision other than <code>w</code>'s base raises.</p>
+<h2 id="landing">Landing<a class="headerlink" href="#landing" title="Permanent link">&para;</a></h2>
+<ol>
+<li><strong><code>Workspace</code> and <code>Store</code>, with the tree at the location</strong>: the local <code>Files</code>, <code>revisions/&lt;id&gt;.json</code> read back into the <code>revisions</code> table, a revision serialising its store's location, the fixtures, every <code>con=</code>/<code>base_uri</code> path switched over, a cursor per thread with the fold caches as shared tables, <code>as_relation</code> rejecting a foreign relation, and the globals deleted; <code>Record.at</code> and <code>Record.over</code> go, and <code>Record</code> moves to <code>layered/record.py</code>. One commit: the half-honoured base is a bug either side of the change, keeping both would be the alias <a href="https://github.com/energy-models/datarecord/blob/main/AGENTS.md">AGENTS.md</a> forbids, and the tree at the location fixes deserialisation only once a revision carries the location. Until step 2, <code>Revision.create</code> writes the revision file before its layer.</li>
+<li><strong>Writing</strong>: <code>store.root</code>, <code>rev.child(source)</code> and <code>ws.write</code> replacing <code>write_record</code> and <code>Revision.create</code>, so the revision file, or a directory's manifest, is written last; <code>WorkingRecord(record)</code> with <code>edits</code>, and <code>commit</code> and its targets gone.</li>
+<li><strong>Remote files</strong>: the boto3 <code>Files</code> behind <code>datarecord[remote]</code>, the AWS environment configuring it and <code>httpfs</code> together, and <code>_reconcile_schema</code> on conditional writes. Manta's SeaweedFS pin moves to 4.18 or later before it relies on them.</li>
+<li><strong>Tools</strong>: the protocol takes <code>con</code>, and <code>on_connection</code> goes.</li>
+</ol>
+<p>The design pages follow in the same commits: <a href="../../layers/tree/">layers</a> gains <code>revisions/&lt;id&gt;.json</code> beside <code>layers/</code>, the revision file as what makes a layer real, and the store a revision carries; <a href="../../use/writing/">writing</a> documents <code>root</code>, <code>child</code> and <code>ws.write</code>, and the remote write's atomicity; <a href="../../use/editing/#edits">the working record</a> replaces committing with <code>edits</code>; <a href="../../layers/resolution/#owner-map">the read path</a> the fold tables shared between threads and read through <code>cast_declared</code>; <a href="../../tools/">tools</a> the <code>con</code> parameter; <a href="../../package/">module layout</a> adds <code>store.py</code> for both classes, <code>files.py</code> and <code>layered/record.py</code> for <code>Record</code>, takes <code>Record</code> off the top-level <code>record.py</code>'s line, and narrows <code>duck.py</code> to relation helpers; <a href="../../">what a data record is</a> names <code>datarecord[remote]</code> as the one optional dependency of core. <code>record.md</code> and the usage pages name <code>write_record(…, con)</code> and <code>WorkingRecord(…, con)</code> and follow too.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../dep-0008-one-interface-source-and-fold/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 8: One interface, source and fold">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                DEP 8: One interface, source and fold
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../dep-0010-a-group-is-a-struct-column/" class="md-footer__link md-footer__link--next" aria-label="Next: DEP 10: A group is one struct column">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                DEP 10: A group is one struct column
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
