@@ -65,7 +65,6 @@ def revision(store, schema):
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
-    staged.add("ctype", ["Generator", "Load"])
     staged.add("entity", ["g1"], ctype="Generator", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load")
     staged.add("bus", ["b0"])
@@ -129,14 +128,18 @@ def test_a_scalar_property_reaches_labels_added_in_the_same_record(record):
     )
 
 
-def test_categories_read_off_the_list_when_the_axis_lacks_one(record):
-    """`Link` is listed but never added: still a category, selecting no label.
+def test_a_category_no_label_has_selects_nothing(record):
+    """`Link` is listed, so on the axis, but no entity is one: a category selecting no label.
 
     Notes
     -----
     - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
     """
-    assert record.dims["ctype"].df()["ctype"].tolist() == ["Generator", "Load"]
+    assert record.dims["ctype"].df()["ctype"].tolist() == [
+        "Generator",
+        "Link",
+        "Load",
+    ], "the axis of a dim with one_of is its list"
     assert record.schema.categorizing("entity") == ("ctype",)
     assert record.flags(ctype="Link") == {}, "a category no label has flags nothing"
     signs = {

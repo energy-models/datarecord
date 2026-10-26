@@ -21,6 +21,7 @@ import pytest
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.protocols import EMPTY, LazyRelations
+from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from datarecord.store.manifest import read_schema
@@ -262,6 +263,36 @@ def test_a_write_rejects_a_category_its_dim_does_not_list(store):
             )
         )
     _nothing_reachable(store)
+
+
+def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
+    """Its axis is the schema's list: no write, cache or layer holds a file of it.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
+    listed = list(_SCHEMA.dimensions["ctype"].one_of or ())
+    assert revision.record.dims["ctype"].df()["ctype"].tolist() == listed
+    revision.materialise()
+    out = tmp_path / "flat"
+    store.workspace.write(revision.record, str(out))
+    written = [
+        Path(store.layer_dir(revision.id)),
+        Path(store.resolved_dir(revision.id)),
+        out,
+    ]
+    assert not [d for d in written if (d / "dims" / "ctype.parquet").exists()], (
+        "neither the layer, its cache nor a record written whole holds the list"
+    )
+
+    forged = empty_root(store)
+    write_axis(forged, "ctype", [{"ctype": "Process"}])
+    with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
+        store.root(ParquetLayer(forged.id, _SCHEMA, store))
+    with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
+        forged.record.dims  # noqa: B018
 
 
 def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
@@ -788,7 +819,6 @@ def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
     write_schema(_SCHEMA, store)
     base = empty_root(store)
     staged = WorkingRecord(base.record)
-    staged.add("ctype", ["Generator"])
     staged.add("entity", _ENTITIES, ctype="Generator")
     staged.add("bus", _BUSES)
     staged.add("scenario", _SCENARIOS)
@@ -1411,7 +1441,6 @@ def _plant_layer(store, schema: Schema, **columns):
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
-    staged.add("ctype", ["Gen"])
     staged.add("entity", ["g1", "g2"], **columns)
     staged.set("p_nom", {"g1": 1.0, "g2": 2.0})
     return root.child(staged.edits)

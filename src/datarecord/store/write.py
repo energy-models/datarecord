@@ -30,6 +30,7 @@ from duckdb import StarExpression as star
 from datarecord.duck import as_relation, fn, null_safe
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
+    refuse_listed_file,
     refuse_twice,
     refuse_unheld,
     resolve_coords,
@@ -112,6 +113,8 @@ def write_layer(
         If a multi-dim's tuple or a property that refers to a dim names
         a label dead after the layer, in a subject the layer restates or whose
         rows name a label the layer removes.
+        If `data` hands over the axis of a dim with `one_of`, whose axis is
+        the schema's list.
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
@@ -146,6 +149,7 @@ def write_layer(
     if local:
         Path(staging).mkdir(parents=True)
     try:
+        refuse_listed_file(schema, data.axes(), "the layer")
         kinds = [
             (
                 "dims",
@@ -558,7 +562,8 @@ class _RecordLikeAsLayerData:
         return as_relation(frames[key], self._con)
 
     def axes(self) -> set[str]:
-        return set(self._dims)
+        """The source's dims but those with `one_of`, whose axis a `RecordLike` answers from the schema."""
+        return set(self._dims) - set(self.schema.listed_dims)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.

@@ -53,6 +53,41 @@ def _fold_axis(
     return rel
 
 
+def listed_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
+    """Return the axis of `dim`, a dim with `one_of`: its labels, in list order.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    spec = schema.dimensions[dim]
+    return con.sql(
+        "SELECT unnest($labels) AS label", params={"labels": spec.one_of}
+    ).project(col("label").cast(schema.duck_type(spec)).alias(dim))
+
+
+def refuse_listed_file(schema: Schema, dims: Iterable[str], where: str) -> None:
+    """Refuse an axis file of a dim with `one_of` among `dims`, which `where` holds.
+
+    Raises
+    ------
+    ValueError
+        Naming `where` and the dims.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    listed = sorted(set(dims) & set(schema.listed_dims))
+    if listed:
+        msg = (
+            f"{where} holds an axis file of {listed}, which list their labels "
+            f"with `one_of`; such a dim's axis is the schema's list, so no "
+            f"layer writes one (https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+        )
+        raise ValueError(msg)
+
+
 def refuse_twice(
     rel: DuckDBPyRelation,
     keys: Sequence[str],
@@ -159,12 +194,13 @@ def refuse_unheld(
         f"{name!r} tuples [{', '.join(found)}]" if multi else f"{name!r} labels {found}"
     )
     via = "" if key == name else f" in {key!r}"
-    if staged:
+    if name in schema.listed_dims:
+        holder = f"its `one_of`, {list(schema.dimensions[name].one_of or ())},"
+        remedy = "use one of its labels"
+        link = "model/dims/#a-dim-with-one_of"
+    elif staged:
         holder = "the staged axis"
-        if schema.dimensions[name].one_of is not None:
-            remedy = "that dim has `one_of`, so use one of its labels"
-        else:
-            remedy = "`add` them first"
+        remedy = "`add` them first"
         link = "use/editing/#validation"
     else:
         holder = f"the layer's dims/{name}.parquet"
@@ -304,14 +340,19 @@ def resolve_coords(
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     base, above = split or _base_and_above(sources, con, schema)
-    listed = [source.axes() for source in above]
+    held_files = [source.axes() for source in above]
+    for source, names in zip(above, held_files, strict=True):
+        refuse_listed_file(schema, names, f"layer {source.layer_id}")
     keep = mortal(schema)
     axes: dict[str, DuckDBPyRelation] = {}
     dead: dict[str, DuckDBPyRelation] = {}
     for name in schema.dimensions:
+        if name in schema.listed_dims:
+            axes[name] = listed_axis(schema, name, con)
+            continue
         files = [
             (s, rel)
-            for s, held in zip(above, listed, strict=True)
+            for s, held in zip(above, held_files, strict=True)
             if name in held and (rel := s.axis(name)) is not None
         ]
         seed = None if base is None else base.axes.get(name)
@@ -336,13 +377,15 @@ def resolve_one(
     """Return the resolved axis `name` over `sources`, `None` where none has it.
 
     The deepest file for it, or the resolved one of the deepest materialised
-    source above that file.
+    source above that file; the list of a dim with `one_of`.
 
     Notes
     -----
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
+    if name in schema.listed_dims:
+        return listed_axis(schema, name, con)
     for source in reversed(sources):
         rel = source.axis(name)
         if rel is not None:
@@ -360,7 +403,8 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     read can drop (`_living`), and a dim a multi-dim's tuples range over or a
     property refers to, which the writer checks them against
     (`write._require_living_references`). A keyed coordinate's values the fold
-    drops itself (`fold_attributes`).
+    drops itself (`fold_attributes`). A dim with `one_of` has no dead labels,
+    its axis being the schema's list.
 
     Notes
     -----
@@ -371,7 +415,8 @@ def mortal(schema: Schema) -> tuple[str, ...]:
         *schema.one_of_properties().values(),
     }
     unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
-    return tuple(c for c in schema.broadcast_dims if c in drawn | unkeyed)
+    kept = (drawn | unkeyed) - set(schema.listed_dims)
+    return tuple(c for c in schema.broadcast_dims if c in kept)
 
 
 @dataclass(frozen=True)

@@ -166,7 +166,7 @@ class Schema(_Declared):
         `dims/{dim}.parquet` that describe its labels. A name is unique
         within its subject only, addressed as `subject.name`. A property of a
         dim in `partial` that refers to a dim with `one_of` categorizes its
-        subject, unless the subject is a multi-dim.
+        subject, unless the subject is a multi-dim. A dim with `one_of` has none.
     attributes
         Attribute -> spec, record-wide. One attribute is one spec and
         one `attributes/<attr>.parquet` with one dtype.
@@ -297,6 +297,15 @@ class Schema(_Declared):
             msg = (
                 f"properties are declared on undeclared dims {unknown}; "
                 f"a property is a column of its subject's axis file"
+            )
+            raise ValueError(msg)
+        listed = sorted(set(self.properties) & set(self.listed_dims))
+        if listed:
+            msg = (
+                f"properties are declared on {listed}, which list their labels "
+                f"with `one_of`; such a dim's axis is the schema's list, with "
+                f"no axis file to hold a property "
+                f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
             )
             raise ValueError(msg)
         for (subject, name), dim in self.one_of_properties().items():
@@ -472,6 +481,16 @@ class Schema(_Declared):
         - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
         return tuple(d for d, spec in self.dimensions.items() if spec.over is not None)
+
+    @property
+    def listed_dims(self) -> tuple[str, ...]:
+        """Every dim with `one_of`, in declaration order: those whose axis is the schema's list.
+
+        Notes
+        -----
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        """
+        return tuple(d for d, spec in self.dimensions.items() if spec.one_of)
 
     def over(self, dim: str) -> dict[str, str]:
         """The coordinates of `dim`, each to the dim it draws on, in field order; empty for a dim that is no multi-dim.

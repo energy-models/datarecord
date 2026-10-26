@@ -136,14 +136,16 @@ def test_verify_accepts_a_complete_record(single_revision):
 
 
 @pytest.mark.parametrize("dim", ["ctype", "role"])
-def test_the_tool_writes_every_type_and_role_it_lists(single_revision, dim):
-    """A tool convention, not a rule of dims that list labels: the axis is the whole list.
+def test_the_tool_writes_no_type_or_role_axis(single_revision, dim):
+    """The schema lists every type and role, so the record reads them from it.
 
     Notes
     -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
     record = single_revision.record
+    layer = Path(single_revision.store.layer_dir(single_revision.id))
+    assert not (layer / "dims" / f"{dim}.parquet").exists()
     listed = record.schema.dimensions[dim].one_of
     assert listed is not None
     assert record.dims[dim].df()[dim].tolist() == list(listed), (

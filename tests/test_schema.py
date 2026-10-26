@@ -172,6 +172,17 @@ def test_a_multi_dim_may_have_properties():
     )
 
 
+def test_a_dim_with_one_of_carries_no_property():
+    """Its axis is the schema's list, with no axis file to hold a column."""
+    with pytest.raises(ValidationError, match=r"declared on \['ctype'\], which list"):
+        _schema(
+            properties={
+                **_schema().properties,
+                "ctype": {"label": PropertySpec(dtype="str")},
+            }
+        )
+
+
 def test_a_coordinate_is_addressed_as_a_property_is():
     """`connection.bus` resolves to the dim the coordinate draws on, and carries no default.
 

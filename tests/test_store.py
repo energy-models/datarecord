@@ -33,7 +33,6 @@ from tests.fixtures import (
     widened,
     write_attribute,
     write_component,
-    write_scenarios,
     write_schema,
 )
 from tests.test_write import _SCHEMA, _long, _Source
@@ -395,10 +394,6 @@ def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_component(revision, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
-    write_scenarios(
-        revision,
-        [{"scenario": "low"}, {"scenario": "high"}],
-    )
     write_attribute(
         layer,
         "p_max_pu",
@@ -417,7 +412,7 @@ def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
     after = store.revision(revision.id)
     assert resolved(after) == expected, "the cached fold reads under the wider schema"
     labels = after.record.dims["scenario"].df()["scenario"].tolist()
-    assert sorted(labels) == ["high", "low"]
+    assert labels == ["low", "high"], "the axis is the list, in its order"
 
 
 def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkeypatch):

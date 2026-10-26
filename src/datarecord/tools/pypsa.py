@@ -1893,11 +1893,6 @@ def _registry() -> tuple[RecordSchema, dict[str, frozenset[str]], frozenset[str]
     return schema, carries, inputs
 
 
-def _listed_axis(schema: RecordSchema, dim: str) -> pd.DataFrame:
-    """Return the axis of `dim`, a dim with `one_of`: every label, in order."""
-    return pd.DataFrame({dim: schema.dimensions[dim].one_of})
-
-
 def _taken(schema: RecordSchema, ctype: str, names: Iterable[str]) -> list[str]:
     """Those of `names` a `ctype` takes, in order: what no other type claims, or its own.
 
@@ -2003,9 +1998,9 @@ class _NetworkSource:
     def dims(self) -> LazyRelations:
         """Every axis this network holds, `entity`, `bus` and `carrier` among them, as keys.
 
-        Each labelled axis is its keys; its properties are in `properties`. The dims `ctype` and `role`, which have `one_of`, carry
-        every label of it, `timestep` the timesteps a multi-period
-        network's positional snapshots name, and the multi-dim `connection`
+        Each labelled axis is its keys; its properties are in `properties`.
+        `timestep` holds the timesteps a multi-period network's positional
+        snapshots name, and the multi-dim `connection`
         every type's attachments, single-attachment ones included: a
         Generator's one `bus` is as much a connection as a Link's `bus0`.
 
@@ -2013,7 +2008,6 @@ class _NetworkSource:
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
         """
-        schema = self.schema
         axes: dict[str, Callable[[], pd.DataFrame]] = {
             SNAPSHOT: lambda: self._snapshots[[SNAPSHOT]],
             TIMESTEP: lambda: self._timesteps,
@@ -2022,8 +2016,6 @@ class _NetworkSource:
             BUS: lambda: self._buses[[BUS]],
             CARRIER: lambda: self._carriers[[CARRIER]],
             SUB_NETWORK: lambda: self._sub_networks[[SUB_NETWORK]],
-            CTYPE: lambda: _listed_axis(schema, CTYPE),
-            ROLE: lambda: _listed_axis(schema, ROLE),
         }
         present = tuple(
             d
@@ -2037,7 +2029,7 @@ class _NetworkSource:
                 return self._connection_frame().project(col(CONNECTION))
             return self.con.from_df(axes[dim]())
 
-        return LazyRelations((*present, ENTITY, CTYPE, ROLE, CONNECTION), axis)
+        return LazyRelations((*present, ENTITY, CONNECTION), axis)
 
     @cached_property
     def _timesteps(self) -> pd.DataFrame:

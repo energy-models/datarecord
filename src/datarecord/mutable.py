@@ -1371,11 +1371,12 @@ class WorkingRecord(Record):
             On a frame for a dim that is no multi-dim, or a value that is no
             frame DuckDB rescans.
         ValueError
-            On an attribute, a column the axis file has no place for, a
-            sequence of the wrong length, a label its dim does not list,
-            `dim`'s own included, a label whose type does not fit the dtype
-            of `dim`, a tuple missing a coordinate or naming NULL in one, or a
-            frame carrying both the struct column and a coordinate column.
+            On a dim with `one_of`, whose axis is the schema's, an
+            attribute, a column the axis file has no place for, a sequence of
+            the wrong length, a property value its dim does not list, a label
+            whose type does not fit the dtype of `dim`, a tuple missing a
+            coordinate or naming NULL in one, or a frame carrying both the
+            struct column and a coordinate column.
 
         Notes
         -----
@@ -1386,10 +1387,11 @@ class WorkingRecord(Record):
         if dim not in self.schema.dimensions:
             msg = f"the schema declares no dim {dim!r}"
             raise KeyError(msg)
+        call = f"add({dim!r}, ...)"
+        self._refuse_listed(dim, f"`{call}`")
         if dim in self.schema.multi_dims:
             self._add_tuples(dim, labels, columns)
             return
-        call = f"add({dim!r}, ...)"
         kind = f"{_AXIS_PREFIX}{dim}"
         names = _plain_labels(dim, labels, f"`{call}`")
         self._reject_undeclared(f"`{call}`", _axis_columns(self.schema, dim), columns)
@@ -1431,10 +1433,10 @@ class WorkingRecord(Record):
         TypeError
             As `add` does.
         ValueError
-            On a label whose type does not fit the dtype of `dim`, a tuple
-            given as `add` refuses it, or while a property
-            that refers to `dim` stores one of `labels` in the record as
-            staged.
+            On a dim with `one_of`, whose axis is the schema's, a label whose
+            type does not fit the dtype of `dim`, a tuple given as `add`
+            refuses it, or while a property that refers to `dim` stores one of
+            `labels` in the record as staged.
 
         Notes
         -----
@@ -1442,6 +1444,7 @@ class WorkingRecord(Record):
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
         """
         call = f"`remove({dim!r}, ...)`"
+        self._refuse_listed(dim, call)
         if dim in self.schema.multi_dims:
             if not is_frame(labels) and not labels:
                 return
@@ -1474,6 +1477,28 @@ class WorkingRecord(Record):
                 self._delete(table, gone, dim, fn.struct_extract(col(table, m), lit(f)))
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._delete(table, gone, dim, col(table, dim))
+
+    def _refuse_listed(self, dim: str, call: str) -> None:
+        """Refuse an edit to the axis of `dim` where it has `one_of`.
+
+        Raises
+        ------
+        ValueError
+            Naming `call` and the list.
+
+        Notes
+        -----
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        """
+        if dim not in self.schema.listed_dims:
+            return
+        msg = (
+            f"{call} is refused: {dim!r} lists its labels with `one_of`, "
+            f"{list(self.schema.dimensions[dim].one_of or ())}, so its axis is "
+            f"the schema's; change the schema instead "
+            f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+        )
+        raise ValueError(msg)
 
     def _add_tuples(
         self, multi: str, tuples: _Labels, columns: Mapping[str, Any]
