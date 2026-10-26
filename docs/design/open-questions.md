@@ -54,6 +54,18 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 
 A `default_by` on `connection.role` would give each role of a connection its own default. The schema refuses it: [a multi-dim](model/multi-dims.md#one-struct-column) is never categorized, even in `partial` and by a property referring to a dim with `one_of`. Whether [the categories rule](model/properties.md#categories) extends to a multi-dim is open.
 
+### Whether a multi-dim may be `over` another multi-dim
+
+Each coordinate of [a multi-dim](model/multi-dims.md) draws on a dim that is no multi-dim, and the schema refuses one that does. Nothing needs a tuple of tuples yet; the refusal stands until something does.
+
+### Whether a multi-dim is declared under `properties` with a reserved key
+
+A multi-dim's entry under `properties` could name its coordinates beside its properties, `plant_period: {over: [plant, period], zone: {one_of: zone}}`, declaring it once, where its only content is. Against it: `over` becomes a name no property may take, a multi-dim with no property still needs an entry, and `dimensions` stops listing every dim, so a reader of `dimensions` alone, mathspec's included, misses it.
+
+### Whether a functional mapping over two coordinates justifies a dim
+
+A zone per plant and period is [a multi-dim](model/multi-dims.md#one-struct-column) `plant_period` with the property `zone`. The multi-dim exists only to carry `zone`, and its tuples must be added before the property can be set.
+
 ### How the published package depends on mathspec
 
 Core reads its dtypes from `mathspec.program`, and the environment pins mathspec at a commit of a pull request branch, which lasts only while the commit exists on GitHub. Before a release the pin moves to the merged commit. A PyPI release cannot declare a git pin as a dependency, so the package metadata names none until mathspec is published.

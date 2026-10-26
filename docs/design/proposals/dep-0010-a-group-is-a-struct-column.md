@@ -6,14 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 10: a group is one struct column
 
-| DEP           | 10                                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------------------ |
-| Title         | a group is one struct column                                                                           |
-| Author        | Jonas Hörsch                                                                                           |
-| Status        | Implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13                            |
-| Created       | 2026-10-12                                                                                             |
-| Version       | Unreleased                                                                                             |
-| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its group tombstones anti-joining the owner map) |
+| DEP           | 10                                                                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Title         | a group is one struct column                                                                                                                                                   |
+| Author        | Jonas Hörsch                                                                                                                                                                   |
+| Status        | Superseded 2026-10-26 (implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13)                                                                            |
+| Created       | 2026-10-12                                                                                                                                                                     |
+| Version       | Unreleased                                                                                                                                                                     |
+| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its group tombstones anti-joining the owner map), [DEP 23](dep-0023-multi-dims.md) (its groups, which become multi-dims) |
 
 Landed in the [steps below](#landing) on [the schema](../model/multi-dims.md), [the record](../model/attributes.md#the-broadcast-rule), [the format](../storage/format.md#the-long-schema), [the read path](../layers/resolution.md#owner-map), [the working record](../use/editing.md#set) and [consuming a record](../tools/pypsa.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 [What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.

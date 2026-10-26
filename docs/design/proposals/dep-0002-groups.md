@@ -6,13 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 2: groups — one construct for classification and sparsity
 
-| DEP     | 2                                                      |
-| ------- | ------------------------------------------------------ |
-| Title   | groups — one construct for classification and sparsity |
-| Author  | Jonas Hörsch                                           |
-| Status  | Implemented 2026-09-01                                 |
-| Created | 2026-08-27                                             |
-| Version | v0.1.0a1                                               |
+| DEP           | 2                                                                      |
+| ------------- | ---------------------------------------------------------------------- |
+| Title         | groups — one construct for classification and sparsity                 |
+| Author        | Jonas Hörsch                                                           |
+| Status        | Superseded 2026-10-26 (implemented 2026-09-01)                         |
+| Created       | 2026-08-27                                                             |
+| Version       | v0.1.0a1                                                               |
+| Superseded-By | [DEP 23](dep-0023-multi-dims.md) (its groups, which become multi-dims) |
 
 Landed in [the schema](../model/multi-dims.md) and [the record format](../storage/format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
 
