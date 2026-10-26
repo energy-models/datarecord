@@ -20,6 +20,7 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord import Workspace
+from datarecord.schema.categories import matching
 from datarecord.store.manifest import read_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
@@ -151,6 +152,32 @@ def test_the_tool_writes_no_type_or_role_axis(single_revision, dim):
     assert record.dims[dim].df()[dim].tolist() == list(listed), (
         "every label listed, those the network leaves unused included"
     )
+
+
+@pytest.mark.parametrize("role", ["input", "output", "attached"])
+def test_flags_per_role_name_the_attributes_reaching_a_connection_of_it(
+    single_revision, role
+):
+    """`role` categorizes `connection`, so `flags(role=...)` reads as `flags(ctype=...)` does.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    """
+    record = single_revision.record
+    tuples = matching(record.properties["connection"], {"role": (role,)})
+    over = [
+        a for a in record.attributes if "connection" in record.schema.coordinates_of(a)
+    ]
+    reaching = {
+        a
+        for a in over
+        if record.attributes[a]
+        .join(tuples.project("connection"), "connection")
+        .limit(1)
+        .fetchone()
+    }
+    assert set(record.flags(role=role)) == reaching
 
 
 def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):

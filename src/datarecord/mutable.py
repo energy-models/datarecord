@@ -735,6 +735,9 @@ class WorkingRecord(Record):
         the labels of that dim matching it on the record as staged, the
         keywords combining as an intersection; `set` writes one row per label,
         and stores nothing of the filter, so a label added later is not reached.
+        A property of a multi-dim `attribute` is over - `role="output"` -
+        selects its tuples the same way, narrowed by any keyword naming one of
+        its coordinates.
 
         Raises
         ------
@@ -764,14 +767,15 @@ class WorkingRecord(Record):
         if isinstance(self.schema.resolve(attribute), tuple):
             self._set_dotted(attribute, value, coords)
             return
-        coords = self._select(attribute, coords)
+        coords, tuples = self._select(attribute, coords)
         listed = {c: list(v) for c, v in coords.items() if _is_labels(v)}
 
         if is_frame(value) and not keyed:
-            if listed:
+            if listed or tuples:
                 msg = (
                     f"`set({attribute!r}, <frame>)` supplies its own keys, so "
-                    f"keywords {sorted(listed)} may give one label each, not a list"
+                    f"keywords {sorted(listed)} may give one label each, not a "
+                    f"list, and none may select the tuples of {sorted(tuples)}"
                 )
                 raise ValueError(msg)
             call = f"`set({attribute!r}, <frame>)`"
@@ -800,7 +804,8 @@ class WorkingRecord(Record):
         self._validate_input(attribute, coords)
 
         if keyed:
-            key = self._key_coordinate(attribute, value, coords)
+            selected = [c for m in tuples for c in self.schema.over(m)]
+            key = self._key_coordinate(attribute, value, [*coords, *selected])
             keys, values = normalise_value(value)
             dim = _flat_coordinates(self.schema, attribute)[key]
             self._require_typed(
@@ -834,6 +839,8 @@ class WorkingRecord(Record):
                     {c: labels}, {c: self._coordinate_type(attribute, c)}
                 )
             )
+        for chosen in tuples.values():
+            rel = rel.cross(chosen)
         fixed = {c: v for c, v in coords.items() if not _is_labels(v)}
         self._insert_long(
             rel,
@@ -862,7 +869,7 @@ class WorkingRecord(Record):
         if subject in self.schema.multi_dims:
             self._set_multi_dim_property(subject, name, value, coords)
             return
-        self._set_property(subject, name, value, self._select(dotted, coords))
+        self._set_property(subject, name, value, self._select(dotted, coords)[0])
 
     def _set_property(
         self, dim: str, name: str, value: Any, coords: Mapping[str, Any]
@@ -991,22 +998,33 @@ class WorkingRecord(Record):
                 self._require_typed(dim, values, call)
                 self._require_existing(name, dim, values, call, subject)
 
-    def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
-        """`coords` with each property keyword replaced by the labels it selects.
+    def _select(
+        self, name: str, coords: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, DuckDBPyRelation]]:
+        """`coords` with each property keyword replaced by the labels or tuples it selects.
 
         Those of its dim storing one of the keyword's values, as staged, each
         under the one coordinate of attribute or dotted dim property `name`
         over the dim. A keyword naming a coordinate of `name` is that
         coordinate, whatever property shares its name; any other names a
-        property of a dim `name` reaches, else of any dim.
+        property of a dim `name` reaches, else of any dim. A property of a
+        multi-dim attribute `name` is over selects its tuples instead, which
+        the keywords naming its coordinates narrow.
+
+        Returns
+        -------
+        tuple of dict and dict
+            The keywords, each property one replaced by the labels it
+            selects; and per multi-dim selected by a property, its tuples.
 
         Raises
         ------
         ValueError
             Where the keyword is a property of several dims `name` reaches,
             `name` reaches the dim through no coordinate or several, the
-            coordinate is also given as a keyword, a keyword is dotted, or a
-            value is a label its dim does not list.
+            coordinate is also given as a keyword, a keyword is dotted, a
+            value is a label its dim does not list, or the keyword is a
+            property of a multi-dim `name` is not over.
 
         Notes
         -----
@@ -1015,7 +1033,8 @@ class WorkingRecord(Record):
         call = f"set({name!r}, ...)"
         subject, dot, _ = name.partition(".")
         flat = {subject: subject} if dot else _flat_coordinates(self.schema, name)
-        reached = set(flat.values())
+        over = () if dot else self.schema.multi_dims_of(name)
+        reached = {*flat.values(), *over}
         by_dim: dict[str, dict[str, list[Any]]] = {}
         rest: dict[str, Any] = {}
         for c, given in coords.items():
@@ -1026,7 +1045,9 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
             owners = [
-                d for d in self.schema.dims if c in self.schema.properties.get(d, {})
+                d
+                for d in self.schema.dimensions
+                if c in self.schema.properties.get(d, {})
             ]
             if c in flat or not owners:
                 rest[c] = given
@@ -1040,6 +1061,22 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             values = list(given) if _is_labels(given) else [given]
             by_dim.setdefault((among or owners)[0], {})[c] = values
+        tuples = {
+            m: self._tuples_matching(m, by_dim.pop(m), name)
+            for m in self.schema.multi_dims
+            if m in by_dim
+        }
+        for multi, chosen in tuples.items():
+            for field in self.schema.over(multi):
+                if field in rest:
+                    given = rest.pop(field)
+                    labels = list(given) if _is_labels(given) else [given]
+                    chosen = chosen.filter(
+                        fn.struct_extract(col(multi), lit(field)).isin(
+                            *map(lit, labels)
+                        )
+                    )
+            tuples[multi] = chosen
         for dim, wanted in by_dim.items():
             drawing = [c for c, d in flat.items() if d == dim]
             if len(drawing) != 1:
@@ -1058,7 +1095,31 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             self.schema.require_listed(dim, wanted, f"`{call}`")
             rest[coordinate] = self._labels_matching(dim, wanted)
-        return rest
+        return rest, tuples
+
+    def _tuples_matching(
+        self, multi: str, wanted: Mapping[str, list[Any]], name: str
+    ) -> DuckDBPyRelation:
+        """The tuples of `multi`, as staged, storing one of `wanted`'s values of each property.
+
+        Raises
+        ------
+        ValueError
+            Where attribute `name` is not over `multi`, or a value is a label
+            its dim does not list.
+        """
+        call = f"set({name!r}, ...)"
+        if multi not in self.schema.multi_dims_of(name):
+            msg = (
+                f"`{call}` selects by {sorted(wanted)}, properties of the "
+                f"multi-dim {multi!r}, which {name!r} is not over"
+            )
+            raise ValueError(msg)
+        self.schema.require_listed(multi, wanted, f"`{call}`")
+        axis = self.properties.get(multi)
+        if axis is None:
+            return empty_relation(self.con, **{multi: self._column_type(multi)})
+        return matching(axis, wanted).project(col(multi))
 
     def _labels_matching(self, dim: str, wanted: Mapping[str, list[Any]]) -> list[Any]:
         """The labels of `dim`, as staged, storing one of `wanted`'s values of each property."""

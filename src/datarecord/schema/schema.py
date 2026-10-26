@@ -165,8 +165,8 @@ class Schema(_Declared):
         Subject dim -> property name -> spec: the columns of
         `dims/{dim}.parquet` that describe its labels. A name is unique
         within its subject only, addressed as `subject.name`. A property of a
-        dim in `partial` that refers to a dim with `one_of` categorizes its
-        subject, unless the subject is a multi-dim. A dim with `one_of` has none.
+        dim in `partial`, a multi-dim among them, that refers to a dim with
+        `one_of` categorizes its subject. A dim with `one_of` has none.
     attributes
         Attribute -> spec, record-wide. One attribute is one spec and
         one `attributes/<attr>.parquet` with one dtype.
@@ -271,14 +271,10 @@ class Schema(_Declared):
         """
         subject, _, prop = name.partition(".")
         coordinate = prop in self.over(subject) if subject in self.dimensions else False
-        if prop not in self.properties.get(subject, {}) and not coordinate:
+        if coordinate:
+            reason = f"is a coordinate of the multi-dim {subject!r}, part of its key"
+        elif prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
-        elif subject in self.multi_dims:
-            kind = "a coordinate" if coordinate else "a property"
-            reason = (
-                f"is {kind} of the multi-dim {subject!r}; a multi-dim is never "
-                f"categorized"
-            )
         elif (one_of := self.properties[subject][prop].one_of) is None:
             reason = "refers to no dim"
         elif self.dimensions[one_of].one_of is None:
@@ -380,10 +376,8 @@ class Schema(_Declared):
         }
 
     def _reached_by(self, subject: str) -> frozenset[str]:
-        """The dims a property of `subject` reaches: the dim, or those its coordinates draw on."""
-        if subject in self.multi_dims:
-            return frozenset(self.over(subject).values())
-        return frozenset({subject})
+        """The dims a property of `subject` reaches: the dim, and those its coordinates draw on."""
+        return frozenset({subject, *self.over(subject).values()})
 
     def _check_names(self) -> None:
         """Refuse every declared name that cannot be a column of its own.
@@ -654,13 +648,13 @@ class Schema(_Declared):
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
 
         A categorizing property is a property of `dim` that refers to a dim with
-        `one_of`. Only a dim in `partial` that is no multi-dim has any.
+        `one_of`. Only a dim in `partial`, a multi-dim among them, has any.
 
         Notes
         -----
         - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
-        if dim not in self.dims or dim not in (self.partial or set()):
+        if dim not in (self.partial or set()):
             return ()
         return tuple(
             name

@@ -247,9 +247,8 @@ class PropertySpec(_ValueSpec):
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
     A property declares exactly one of `dtype` and `one_of`. A property of a
-    dim in `partial` that refers to a dim with `one_of`
-    categorizes its subject (`Schema.categorizing`). A property of a
-    multi-dim never does.
+    dim in `partial`, a multi-dim among them, that refers to a dim with
+    `one_of` categorizes its subject (`Schema.categorizing`).
 
     Attributes
     ----------

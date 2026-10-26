@@ -152,8 +152,8 @@ def test_long_columns_for_refuses_an_undeclared_attribute():
         _schema().long_columns_for("nope")
 
 
-def test_a_multi_dim_may_have_properties():
-    """A column of `dims/<multi-dim>.parquet`, typed like a dim's property."""
+def test_a_multi_dim_may_have_properties_and_categories():
+    """A column of `dims/<multi-dim>.parquet`, typed and categorizing like a dim's property."""
     s = _schema(
         dimensions=_listing_dims(role=["in", "out"]),
         properties={
@@ -167,9 +167,42 @@ def test_a_multi_dim_may_have_properties():
         s.properties["connection"]["role"],
     )
     assert s.column_type("role", "connection") == DuckDBPyType("ENUM('in', 'out')")
-    assert s.categorizing("connection") == (), (
-        "a multi-dim is never categorized, even by a property referring to a dim that lists them"
+    assert s.categorizing("connection") == ("role",), (
+        "a multi-dim in `partial` is categorized as a dim is"
     )
+
+
+def test_a_default_by_keyed_by_a_multi_dims_category_loads():
+    """`connection.role` keys a default of an attribute over `connection` and of a property of it."""
+    s = _schema(
+        dimensions=_listing_dims(role=["in", "out"]),
+        properties={
+            **_schema().properties,
+            "connection": {
+                "role": PropertySpec(one_of="role"),
+                "loss": PropertySpec(
+                    dtype="float",
+                    default=0.0,
+                    default_by={"connection.role": {"in": 0.1}},
+                ),
+            },
+        },
+        attributes={
+            **_schema().attributes,
+            "efficiency": AttributeSpec(
+                dtype="float",
+                dims={"connection"},
+                default=1.0,
+                default_by={"connection.role": {"out": 0.9}},
+            ),
+        },
+        partial=frozenset({"entity", "scenario", "connection"}),
+    )
+    assert [s.default_for("efficiency", role=r) for r in ("in", "out")] == [1.0, 0.9]
+    assert [s.default_for("connection.loss", role=r) for r in ("in", "out")] == [
+        0.1,
+        0.0,
+    ]
 
 
 def test_a_dim_with_one_of_carries_no_property():
@@ -543,7 +576,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                 AttributeSpec(
                     dtype="float",
                     dims={"connection"},
-                    default_by={"connection.role": {"in": 1.0}},
+                    default_by={"connection.role": {"inn": 1.0}},
                 ),
                 base=lambda **kw: _schema(
                     dimensions=_listing_dims(role=["in", "out"]),
@@ -555,8 +588,8 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     **kw,
                 ),
             ),
-            "is a property of the multi-dim 'connection'; a multi-dim is never categorized",
-            id="a-multi-dim-property",
+            r"\['inn'\], which are not categories of 'connection.role'",
+            id="a-misspelt-role",
         ),
         pytest.param(
             lambda: _with_x(

@@ -40,7 +40,9 @@ def categorized_dim(schema: Schema, categories: Categories) -> str:
     ValueError
         If a key categorizes no dim, or the keys categorize different dims.
     """
-    dims = {d for d in schema.dims for k in categories if k in schema.categorizing(d)}
+    dims = {
+        d for d in schema.dimensions for k in categories if k in schema.categorizing(d)
+    }
     unknown = sorted(
         k for k in categories if not any(k in schema.categorizing(d) for d in dims)
     )

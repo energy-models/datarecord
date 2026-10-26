@@ -135,3 +135,78 @@ def test_attributes_leave_a_default_by_unapplied(buses):
     assert _values(record, "frequency", "bus") == {"ac1": 60.0}, (
         "ac2 has no row, so it is absent rather than its default_by 50.0"
     )
+
+
+@pytest.fixture
+def ports(store):
+    """A link `l` taking from `a` and giving to `b`, and a generator `g` attached to `b`."""
+    write_schema(
+        Schema(
+            dimensions={
+                "entity": Dimension(dtype="str"),
+                "bus": Dimension(dtype="str"),
+                "snapshot": Dimension(dtype="int"),
+                "role": Dimension(one_of=["input", "output", "attached"]),
+                "connection": Dimension(over=["entity", "bus"]),
+            },
+            properties={"connection": {"role": PropertySpec(one_of="role")}},
+            attributes={
+                "efficiency": AttributeSpec(
+                    dtype="float",
+                    dims={"connection", "snapshot"},
+                    default=1.0,
+                    default_by={"connection.role": {"output": 0.9}},
+                ),
+                "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
+            },
+            partial=frozenset({"entity", "bus", "connection"}),
+        ),
+        store,
+    )
+    revision = empty_root(store)
+    staged = WorkingRecord(revision.record)
+    staged.add("entity", ["l", "g"])
+    staged.add("bus", ["a", "b"])
+    staged.add("snapshot", [0, 1])
+    tuples = [
+        {"entity": "l", "bus": "a"},
+        {"entity": "l", "bus": "b"},
+        {"entity": "g", "bus": "b"},
+    ]
+    staged.add("connection", tuples, role=["input", "output", "attached"])
+    return revision.child(staged.edits)
+
+
+def test_a_multi_dim_is_categorized_by_its_property(ports):
+    """`role=` selects connections in `set` and `flags` as `ctype=` selects entities.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    """
+    staged = WorkingRecord(ports.record)
+    staged.set("efficiency", 0.5, role="output", snapshot=[0])
+    staged.set("efficiency", 0.8, role=["input", "attached"], bus="b")
+    staged.set("p_nom", 1.0)
+    record = ports.child(staged.edits).record
+
+    assert broadcast(record, "efficiency", "connection", "snapshot") == {
+        (("l", "b"), 0): 0.5,
+        (("g", "b"), 0): 0.8,
+        (("g", "b"), 1): 0.8,
+    }, "the role selects the tuples, a coordinate keyword narrows them"
+    assert set(record.flags(role="output")) == {"efficiency"}
+    assert record.flags(role="input") == {}, "the input's value was narrowed away"
+    assert record.schema.categorizing("connection") == ("role",)
+    assert [
+        record.schema.default_for("efficiency", role=r) for r in ("input", "output")
+    ] == [
+        1.0,
+        0.9,
+    ]
+
+
+def test_a_multi_dims_category_selects_only_for_an_attribute_over_it(ports):
+    staged = WorkingRecord(ports.record)
+    with pytest.raises(ValueError, match="'p_nom' is not over"):
+        staged.set("p_nom", 1.0, role="output")
