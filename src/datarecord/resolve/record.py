@@ -41,7 +41,7 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
-from datarecord.resolve.coords import Coords, resolve_coords
+from datarecord.resolve.coords import Coords, listed_axis, resolve_coords
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import (
     _coord_table,
@@ -407,18 +407,24 @@ class Record:
     def _prefix(self) -> Coords:
         """Return the frozen prefix's coords, its shared tables read on the calling thread's cursor.
 
+        A listed axis is the schema's, so it is not among the tables and stays
+        current with a schema widened since the fold.
+
         Notes
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
         con = self.con
         tables = {
             (kind, name): con.table(_coord_table(kind, name, self.revision_id))
             for kind, name in self._coord_names
         }
+        axes = {n: rel for (k, n), rel in tables.items() if k == "dims"}
+        axes |= {n: listed_axis(self.schema, n, con) for n in self.schema.listed_dims}
         return Coords(
             schema=self.schema,
-            axes={n: rel for (k, n), rel in tables.items() if k == "dims"},
+            axes={n: axes[n] for n in self.schema.dimensions if n in axes},
             dead={n: rel for (k, n), rel in tables.items() if k == "dead"},
         )
 
