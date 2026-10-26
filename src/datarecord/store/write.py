@@ -562,8 +562,56 @@ class _RecordLikeAsLayerData:
         return as_relation(frames[key], self._con)
 
     def axes(self) -> set[str]:
-        """The source's dims but those with `one_of`, whose axis a `RecordLike` answers from the schema."""
-        return set(self._dims) - set(self.schema.one_of_dims)
+        """The source's dims but those with `one_of`, whose axis a `RecordLike` answers from the schema.
+
+        Raises
+        ------
+        ValueError
+            As `_require_one_of_axis` does.
+        """
+        return self._axes
+
+    @cached_property
+    def _axes(self) -> set[str]:
+        one_of = set(self._dims) & set(self.schema.one_of_dims)
+        for dim in sorted(one_of):
+            self._require_one_of_axis(dim)
+        return set(self._dims) - one_of
+
+    def _require_one_of_axis(self, dim: str) -> None:
+        """Refuse the source's axis of `dim`, a dim with `one_of`, unless it is the list.
+
+        Dropped rather than written, it may differ from the list only by
+        nothing: the same labels in the same order.
+
+        Raises
+        ------
+        ValueError
+            Naming `dim`, the labels the axis lacks or adds, or the order
+            it holds them in.
+
+        Notes
+        -----
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        """
+        rel = as_relation(self._dims[dim], self._con)
+        given = [str(label) for (label,) in rel.project(col(dim)).fetchall()]
+        expected = list(self.schema.dimensions[dim].one_of or ())
+        if given == expected:
+            return
+        missing = [label for label in expected if label not in given]
+        extra = [label for label in given if label not in expected]
+        if missing or extra:
+            difference = f"lacks {missing} and adds {extra}"
+        else:
+            difference = f"holds the labels in the order {given}"
+        msg = (
+            f"the source's axis of {dim!r} {difference}, but {dim!r} lists its "
+            f"labels with `one_of`, {expected}, so its axis is the schema's "
+            f"list and is written only as it stands "
+            f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+        )
+        raise ValueError(msg)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.

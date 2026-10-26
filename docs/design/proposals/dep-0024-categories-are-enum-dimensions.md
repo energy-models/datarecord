@@ -63,7 +63,7 @@ partial: [entity, bus, connection]
 
 **A dim with `one_of: [...]` has its axis derived from the list**, in list order:
 
-- **No `dims/<dim>.parquet` is written or read for it.** The writer refuses a layer that carries one, and the read derives the axis from the schema, so `record.dims["ctype"]` is the list.
+- **No `dims/<dim>.parquet` is written or read for it.** The writer refuses a layer that carries one, and the read derives the axis from the schema, so `record.dims["ctype"]` is the list. A `RecordLike` answers it among its `dims`, so a record written whole hands over its axis: the writer drops it where it is the list, the same labels in the same order, and refuses any other, naming the dim and the difference.
 - **It carries no properties.** A property declared on it is refused at load: with no file there is no column to hold one.
 - **`add` and `remove` on it are refused**, naming the schema.
 - **Everything else is a dim's**: an attribute may range over it, a property may refer to it, and a value naming a label it does not list is refused where a dangling label is.
@@ -86,7 +86,7 @@ Against the stack today:
 
 **What breaks:**
 
-- A record with a `dims/` file for a `one_of` dim is re-exported without it; a layer writing one is refused.
+- A record with a `dims/` file for a `one_of` dim is re-exported without it; a layer writing one is refused, as is a `RecordLike` whose axis of it is not the list.
 - A property declared on a `one_of` dim is refused at load.
 - `add` and `remove` on a `one_of` dim are refused; adding a PyPSA component type stays a schema change.
 - A schema that keyed a `default_by` on a multi-dim's property was refused and now loads.

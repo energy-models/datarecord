@@ -22,7 +22,7 @@ A dim with `one_of: [labels]` has exactly those labels, as a mathspec dimension 
 
 The axis is the list, in list order. Its labels are the schema's, not data:
 
-- **No layer file.** No `dims/<dim>.parquet` is written or read for it, nor a `resolved/dims/` cache. Every read derives the axis from the schema, so `record.dims["ctype"]` is the list. The writer refuses a layer that hands over such a file, and the read refuses a layer that holds one ([axis files](../storage/format.md#axis-files)).
+- **No layer file.** No `dims/<dim>.parquet` is written or read for it, nor a `resolved/dims/` cache. Every read derives the axis from the schema, so `record.dims["ctype"]` is the list. The writer refuses a layer that hands over such a file, and the read refuses a layer that holds one ([axis files](../storage/format.md#axis-files)). A `RecordLike` answers the axis among its `dims`, so the writer drops it where it is the list, the same labels in the same order, and refuses any other, naming the dim and the difference.
 - **No properties.** With no file there is no column to hold one, so a property declared on the dim is refused at load.
 - **No edits.** [`add` and `remove`](../use/editing.md#add-remove) on it are refused; a new label is a schema change.
 - **Otherwise a dim.** An attribute may range over it, a multi-dim's coordinate may draw on it, and a property may refer to it. A value naming a label the list does not hold is refused where a dangling label is. The dim has no dead labels, so nothing cascades from it ([deletion](../layers/removal.md)).

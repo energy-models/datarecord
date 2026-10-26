@@ -143,11 +143,12 @@ All notable changes to datarecord are documented here. The format follows
 - A dim with `one_of` has its axis derived from the list: `record.dims["ctype"]`
   is the list, and no `dims/<dim>.parquet` or `resolved/dims/<dim>.parquet` is
   written or read for it. The writer refuses a `LayerData` handing one over, a
-  read refuses a layer holding one, and a `RecordLike`'s axis of it is not
-  written. `add` and `remove` on it are refused, and a property declared on it
-  is refused at load. A record carrying such a file is written again. New on
-  `Schema`: `one_of_dims`; `Schema.require_listed` is `require_one_of`. The PyPSA tool no longer writes the `ctype` and
-  `role` axes.
+  read refuses a layer holding one, and a `RecordLike`'s axis of it is dropped
+  where it is the list, same labels in the same order, and refused otherwise.
+  `add` and `remove` on it are refused, and a property declared on it is
+  refused at load. A record carrying such a file is written again. New on
+  `Schema`: `one_of_dims`; `Schema.require_listed` is `require_one_of`. The
+  PyPSA tool no longer writes the `ctype` and `role` axes.
 - A multi-dim in `partial` is categorized by a property that refers to a dim
   with `one_of`, as a dim is: `connection.role` categorizes `connection`, so a
   `default_by` keyed `connection.role` loads, `Schema.categorizing("connection")`

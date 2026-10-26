@@ -125,6 +125,7 @@ def _named_axes(schema, frames) -> dict[str, pd.DataFrame]:
 
 
 _SCHEMA = schema()
+_CTYPES = list(_SCHEMA.dimensions["ctype"].one_of or ())
 
 
 def _long(**overrides) -> pd.DataFrame:
@@ -273,8 +274,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
     revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
-    one_of = list(_SCHEMA.dimensions["ctype"].one_of or ())
-    assert revision.record.dims["ctype"].df()["ctype"].tolist() == one_of
+    assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
     revision.materialise()
     out = tmp_path / "flat"
     store.workspace.write(revision.record, str(out))
@@ -293,6 +293,51 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
         store.root(ParquetLayer(forged.id, _SCHEMA, store))
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
         forged.record.dims  # noqa: B018
+
+
+def _with_ctype_axis(labels) -> _Source:
+    """A record answering `labels` as its axis of `ctype`, a dim with `one_of`."""
+    return _Source(
+        _SCHEMA,
+        attributes={"p_nom": _long()},
+        dims={
+            "entity": pd.DataFrame({"entity": ["steel_dri"]}),
+            "ctype": pd.DataFrame({"ctype": labels}),
+        },
+    )
+
+
+def test_a_record_handing_over_the_one_of_list_writes_no_file_of_it(store):
+    """A `RecordLike` answers every dim's axis, the list of a dim with `one_of` included.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    revision = store.root(_with_ctype_axis(_CTYPES))
+    assert not (Path(store.layer_dir(revision.id)) / "dims" / "ctype.parquet").exists()
+    assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
+
+
+@pytest.mark.parametrize(
+    ("labels", "match"),
+    [
+        (["Process", "Bus"], r"'ctype' lacks \[.*\] and adds \[\]"),
+        ([*_CTYPES, "Nope"], r"'ctype' lacks \[\] and adds \['Nope'\]"),
+        ([*reversed(_CTYPES)], r"'ctype' holds the labels in the order"),
+    ],
+    ids=["short", "extra", "reordered"],
+)
+def test_a_record_handing_over_another_one_of_axis_is_refused(store, labels, match):
+    """Dropping it would lose what it says; the list is the axis, so it is refused.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    with pytest.raises(ValueError, match=match):
+        store.root(_with_ctype_axis(labels))
+    _nothing_reachable(store)
 
 
 def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
