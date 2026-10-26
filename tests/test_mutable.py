@@ -1020,14 +1020,17 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/use/editing/#add-remove, https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim) --------------------------------------
 
 
-def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
+@pytest.mark.parametrize("form", [list, pd.DataFrame], ids=["list", "frame"])
+def test_remove_stages_a_multi_dim_without_the_tuple(staged, root, form):
     """Per `(entity, bus)`, the multi-dim's own key.
 
     Notes
     -----
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
-    staged.remove("connection", [{"entity": "Norwich Converter", "bus": "Norwich"}])
+    staged.remove(
+        "connection", form([{"entity": "Norwich Converter", "bus": "Norwich"}])
+    )
     before = unpacked(staged.dims["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
@@ -1289,6 +1292,16 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
             "has type BIGINT, which does not fit 'entity'",
         ),
         (
+            [{"entity": 1, "bus": "Norway"}],
+            {},
+            "has type INTEGER, which does not fit 'entity'",
+        ),
+        (
+            [{"entity": "Manchester Wind", "bus": "Norway"}, {"entity": 1, "bus": "x"}],
+            {},
+            "has type INTEGER, which does not fit 'entity'",
+        ),
+        (
             pd.DataFrame({"entity": [None], "bus": ["Norway"]}),
             {},
             "with a coordinate NULL",
@@ -1300,6 +1313,8 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         "struct-column",
         "missing-coordinate",
         "mistyped-coordinate",
+        "mistyped-coordinate-list",
+        "mixed-type-coordinate-list",
         "null-coordinate",
         "partial-mapping",
         "misaligned-keyword",
@@ -1326,6 +1341,18 @@ def test_add_refuses_what_is_no_frame_duckdb_rescans(staged):
     reader = pa.RecordBatchReader.from_batches(pa.schema([("entity", pa.string())]), [])
     with pytest.raises(TypeError, match="is no frame"):
         staged.add("connection", reader)
+
+
+@pytest.mark.parametrize("method", ["add", "remove"])
+def test_a_plain_dim_refuses_a_frame(staged, method):
+    """A frame gives a multi-dim's tuples; read as labels it would be its column names."""
+    with pytest.raises(TypeError, match="a frame gives the tuples of a multi-dim"):
+        getattr(staged, method)("entity", pd.DataFrame({"entity": ["Norway Gas"]}))
+
+
+def test_set_addresses_a_multi_dim_by_its_coordinates(staged):
+    with pytest.raises(KeyError, match=r"\['connection'\] are multi-dims.*`add`"):
+        staged.set("efficiency", 0.5, connection=_TUPLE)
 
 
 def test_set_refuses_a_coordinate(staged):

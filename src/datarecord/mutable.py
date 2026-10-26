@@ -79,6 +79,26 @@ def _series_index_name(value: Any) -> str | None:
     return name if isinstance(name, str) else None
 
 
+_Labels = Sequence[Any] | Sequence[Mapping[str, Any]] | DuckDBPyRelation
+
+
+def _plain_labels(dim: str, labels: _Labels, call: str) -> list[Any]:
+    """`labels` of the plain dim `dim` as a list.
+
+    Raises
+    ------
+    TypeError
+        On a frame, which gives the tuples of a multi-dim.
+    """
+    if is_frame(labels):
+        msg = (
+            f"{call} takes a sequence of labels of {dim!r}; a frame gives the "
+            f"tuples of a multi-dim"
+        )
+        raise TypeError(msg)
+    return list(cast("Sequence[Any]", labels))
+
+
 def _is_labels(value: Any) -> bool:
     """Whether a keyword's value lists several labels rather than naming one."""
     return isinstance(value, Sequence) and not isinstance(value, str | bytes)
@@ -627,6 +647,15 @@ class WorkingRecord(Record):
         -----
         - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
         """
+        multi = sorted(set(dims) & set(self.schema.multi_dims))
+        if multi:
+            over = list(self.schema.over(multi[0]))
+            msg = (
+                f"{multi} are multi-dims, addressed by their coordinates as "
+                f"keywords, e.g. {over} for {multi[0]!r}; `add` and `remove` "
+                f"change their tuples"
+            )
+            raise KeyError(msg)
         keys = {c for m in self.schema.multi_dims for c in self.schema.over(m)}
         unknown = sorted(set(dims) - set(self.schema.dims) - keys)
         if unknown:
@@ -1307,7 +1336,12 @@ class WorkingRecord(Record):
         )
         return self.con.sql(f"SELECT {unnested}", params=params)
 
-    def add(self, dim: str, labels: Any, **columns: Any) -> None:
+    def add(
+        self,
+        dim: str,
+        labels: Sequence[Any] | Sequence[Mapping[str, Any]] | DuckDBPyRelation,
+        **columns: Any,
+    ) -> None:
         """Stage labels of `dim`, each as one whole row of its axis file.
 
         `columns` are `dim`'s properties, each a scalar for every label or a
@@ -1331,6 +1365,9 @@ class WorkingRecord(Record):
             If the schema declares no `dim`, on a value of a property
             that refers to a dim and is no label of it, or on a tuple naming
             a label its coordinate's axis, as staged, does not hold.
+        TypeError
+            On a frame for a dim that is no multi-dim, or a value that is no
+            frame DuckDB rescans.
         ValueError
             On an attribute, a column the axis file has no place for, a
             sequence of the wrong length, a label its dim does not list,
@@ -1351,8 +1388,8 @@ class WorkingRecord(Record):
             return
         call = f"add({dim!r}, ...)"
         kind = f"{_AXIS_PREFIX}{dim}"
+        names = _plain_labels(dim, labels, f"`{call}`")
         self._reject_undeclared(f"`{call}`", _axis_columns(self.schema, dim), columns)
-        names = list(labels)
         self._require_typed(dim, names, f"`{call}`")
         data: dict[str, list[Any]] = {dim: names}
         for c, given in columns.items():
@@ -1370,7 +1407,11 @@ class WorkingRecord(Record):
             self._positioned(rel, table, kind, dim), table, {}, key=(dim,)
         )
 
-    def remove(self, dim: str, labels: Any) -> None:
+    def remove(
+        self,
+        dim: str,
+        labels: Sequence[Any] | Sequence[Mapping[str, Any]] | DuckDBPyRelation,
+    ) -> None:
         """Stage `dim`'s axis without `labels`.
 
         Need not enumerate what it deletes: the fold drops every value keyed
@@ -1384,6 +1425,8 @@ class WorkingRecord(Record):
 
         Raises
         ------
+        TypeError
+            As `add` does.
         ValueError
             On a label whose type does not fit the dtype of `dim`, a tuple
             missing a coordinate or naming NULL in one, or while a property
@@ -1395,15 +1438,18 @@ class WorkingRecord(Record):
         - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
         """
-        if not is_frame(labels) and not labels:
-            return
+        call = f"`remove({dim!r}, ...)`"
         if dim in self.schema.multi_dims:
-            call = f"`remove({dim!r}, ...)`"
+            if not is_frame(labels) and not labels:
+                return
             rel = self._tuples(dim, self._tuple_frame(dim, labels, {}, call), call)
             table = self._ensure(f"{_AXIS_PREFIX}{dim}")
             self._delete(table, rel, dim, col(table, dim))
             return
-        self._require_typed(dim, labels, f"`remove({dim!r}, ...)`")
+        labels = _plain_labels(dim, labels, call)
+        if not labels:
+            return
+        self._require_typed(dim, labels, call)
         self._require_unnamed(dim, labels)
         gone = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
         staged = self.dims
@@ -1426,7 +1472,9 @@ class WorkingRecord(Record):
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._delete(table, gone, dim, col(table, dim))
 
-    def _add_tuples(self, multi: str, tuples: Any, columns: Mapping[str, Any]) -> None:
+    def _add_tuples(
+        self, multi: str, tuples: _Labels, columns: Mapping[str, Any]
+    ) -> None:
         """Stage `tuples` of the multi-dim `multi`, with its properties `columns`, as `add` does.
 
         Raises
@@ -1452,13 +1500,14 @@ class WorkingRecord(Record):
         )
 
     def _tuple_frame(
-        self, multi: str, tuples: Any, columns: Mapping[str, Any], call: str
+        self, multi: str, tuples: _Labels, columns: Mapping[str, Any], call: str
     ) -> DuckDBPyRelation:
         """`tuples` of `multi` as a relation with a column per coordinate and per one of `columns`.
 
         `tuples` is a list of mappings from coordinate to label, beside which
         each of `columns` is a scalar or a sequence aligned to it, or else a
-        frame, beside which each is a scalar.
+        frame, beside which each is a scalar. Either way a coordinate keeps
+        the type its labels bind as, for `_tuples` to check.
 
         Raises
         ------
@@ -1466,7 +1515,9 @@ class WorkingRecord(Record):
             As `as_relation` does.
         ValueError
             On a mapping whose keys are not the coordinates of `multi`, a
-            sequence beside a frame, or one of the wrong length.
+            label of a list whose type does not fit its coordinate's dim,
+            which a column mixing types would hide, a sequence beside a
+            frame, or one of the wrong length.
         """
         over = self.schema.over(multi)
         if not _is_labels(tuples):
@@ -1479,7 +1530,7 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             rel = as_relation(tuples, self.con)
             return rel.project(star(), *(lit(v).alias(c) for c, v in columns.items()))
-        rows = list(tuples)
+        rows = list(cast("Sequence[Mapping[str, Any]]", tuples))
         for row in rows:
             if set(row) != set(over):
                 msg = (
@@ -1488,13 +1539,14 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
         data: dict[str, list[Any]] = {c: [row[c] for row in rows] for c in over}
+        for c, d in over.items():
+            self._require_typed(d, data[c], call)
         for c, given in columns.items():
             data[c] = list(given) if _is_labels(given) else [given] * len(rows)
             if len(data[c]) != len(rows):
                 msg = f"{call} has {len(data[c])} {c!r} values for {len(rows)} tuples"
                 raise ValueError(msg)
-        types = {c: self._column_type(over[c]) if c in over else None for c in data}
-        return self._values_relation(data, types)
+        return self._values_relation(data, dict.fromkeys(data))
 
     def _tuples(self, multi: str, rel: DuckDBPyRelation, call: str) -> DuckDBPyRelation:
         """`rel` with its coordinate columns packed into the struct column of `multi`.
