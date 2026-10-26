@@ -68,7 +68,7 @@ A group column broadcasts the same way: a NULL `connection` means every connecti
 
 `attributes` shows stored rows only, in no promised order.
 Two rows may cover one coordinate, of one layer or of two, and the row naming every dim the others there name gives its value.
-A tool settles them with `settle` ([design](../design/tools/index.md#settling-rows)).
+A consumer settles them with `settle`, as [settling rows](#settling-rows) shows.
 A coordinate that no row covers takes the attribute's default, which `Schema.default_for(name, **categories)` gives per category.
 
 An attribute row holds no property, so `attributes["p_max_pu"]` holds every entity's rows together.
@@ -89,6 +89,49 @@ flags["marginal_cost"].breakpoints  # some row carries a curve
 
 A dim can be in both sets.
 Then some labels carry a per-timestep series and others a single constant row, and the consumer uses both containers ([design](../design/use/reading.md#flags)).
+
+## Settling rows
+
+`attributes` gives rows as written, so a consumer applies the broadcast rule itself.
+`settle(rel, labels, flags)` does it in one query, and `flags` tells it how little it needs to do ([design](../design/tools/index.md#settling-rows)):
+
+```python
+from datarecord.tools.base import settle
+
+flags = record.flags(ctype="Generator")
+gens = record.properties["entity"].filter("ctype = 'Generator'").select("entity")
+p_max_pu = settle(record.attributes["p_max_pu"], {"entity": gens}, flags["p_max_pu"])
+```
+
+`labels` names the coordinates to settle, each with a relation of its labels in a column of the coordinate's name.
+A NULL there becomes one row per label, a row naming a label not passed is dropped, and at each coordinate the most specific row is kept.
+So the rows of other categories need no filter first.
+A coordinate left out of `labels` stays as written, so a constant `p_max_pu` stays one row with `snapshot` NULL rather than one row per snapshot.
+Leave out every coordinate your container can hold a broadcast for.
+
+`flags` decides, per coordinate in `labels`, how much work the query does:
+
+| the coordinate is in     | the rows                         | `settle`                                  |
+| ------------------------ | -------------------------------- | ----------------------------------------- |
+| `varies` only            | all name it                      | keeps the rows naming a passed label      |
+| `broadcast` only         | all leave it NULL                | expands each row over the labels          |
+| `varies` and `broadcast` | some name it, some leave it NULL | expands, then picks the most specific row |
+
+The pick is a window over every coordinate and the costly step, so it runs only where a coordinate is in both sets.
+`flags(**categories)` counts only the rows reaching that category, which often takes a coordinate out of one set and spares the pick.
+Flags of a wider scope overstate the rows and give the same answer, only more slowly.
+
+`flags` also chooses the container before any value is read:
+
+```python
+f = flags["p_max_pu"]
+if "snapshot" not in f.varies:
+    ...  # one value per generator
+elif "snapshot" not in f.broadcast:
+    ...  # one series per generator
+else:
+    ...  # constants for some generators, series for others
+```
 
 ## Reading a directory
 
