@@ -226,8 +226,8 @@ def test_a_multi_dims_category_combines_with_a_category_of_its_coordinate(ports)
     }, "the link's output is no generator's"
 
 
-def test_a_listed_dim_widened_in_is_on_a_record_read_before(store, root, categorized):
-    """A record read once keeps its fold; the listed axis comes from the schema in force."""
+def test_a_one_of_dim_widened_in_is_on_a_record_read_before(store, root, categorized):
+    """A record read once keeps its fold; the `one_of` dim's axis comes from the schema in force."""
     assert set(root.record.dims) >= {"ctype", "carrier"}
     dimensions = {**categorized.dimensions, "sector": Dimension(one_of=["power"])}
     write_schema(categorized.model_copy(update={"dimensions": dimensions}), store)

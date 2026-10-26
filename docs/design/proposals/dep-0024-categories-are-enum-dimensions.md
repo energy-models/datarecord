@@ -23,7 +23,7 @@ A `str` dimension may list its labels with `one_of`, as [mathspec#915](https://g
 
 **A closed set of values was two constructs**, an `Enum` dtype on a property and a reference to a dim, and only one categorized. [DEP 18](dep-0018-drop-narwhals.md#categories) made them one: `ctype` and `role` are dims listing their labels, and `entity.ctype: {one_of: ctype}` categorizes `entity`.
 
-**A listed dim's labels are still data.** Under [DEP 18](dep-0018-drop-narwhals.md#dtypes) the list only bounds the axis: a layer owns `dims/ctype.parquet`, writes it whole as [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) has every axis written, and may drop a listed label from it. PyPSA writes the whole list on every export, so the file restates the schema. A category a `default_by` names is checked against the list, yet may name no live label in a given record.
+**A `one_of` dim's labels are still data.** Under [DEP 18](dep-0018-drop-narwhals.md#dtypes) the list only bounds the axis: a layer owns `dims/ctype.parquet`, writes it whole as [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) has every axis written, and may drop a label of the list from it. PyPSA writes the whole list on every export, so the file restates the schema. A category a `default_by` names is checked against the list, yet may name no live label in a given record.
 
 **A multi-dim is still never categorized.** `connection.role` is `{one_of: role}`, `role` lists `input`, `output` and `attached`, and PyPSA lists `connection` in `partial`, yet a `default_by` keyed on `connection.role` is refused: [only a dim in `partial` that is no multi-dim](../model/properties.md#categories) has categories. [DEP 23](dep-0023-multi-dims.md) made the group a multi-dim and left [whether the rule extends to one](../open-questions.md#whether-a-multi-dim-in-partial-may-have-categories) open.
 
@@ -59,7 +59,7 @@ partial: [entity, bus, connection]
 - **A `default_by` keyed `connection.role`** applies to a value that reaches `connection`: an attribute over it, or a property of it. Its keys are checked at load against `role`'s `one_of`.
 - **A selector keyword `role=`** on an attribute over `connection` picks the tuples with that role, as `ctype=` picks entities.
 
-### A listed dim's axis is the schema's
+### A `one_of` dim's axis is the schema's
 
 **A dim with `one_of: [...]` has its axis derived from the list**, in list order:
 
@@ -76,7 +76,7 @@ Against the stack today:
 | `add` refuses a label outside the list; `remove` works                                                    | both refused                                                             |
 | PyPSA writes the whole list as the `ctype` and `role` axes on export                                      | the tool writes nothing for them                                         |
 | a property referring to `ctype` is checked against the resolved axis, its dead labels kept by the fold    | checked against the list; `ctype` has no dead labels, nothing to cascade |
-| a listed dim may carry properties                                                                         | refused                                                                  |
+| a `one_of` dim may carry properties                                                                       | refused                                                                  |
 
 ## Rationale
 
@@ -86,9 +86,9 @@ Against the stack today:
 
 **What breaks:**
 
-- A record with a `dims/` file for a listed dim is re-exported without it; a layer writing one is refused.
-- A property declared on a listed dim is refused at load.
-- `add` and `remove` on a listed dim are refused; adding a PyPSA component type stays a schema change.
+- A record with a `dims/` file for a `one_of` dim is re-exported without it; a layer writing one is refused.
+- A property declared on a `one_of` dim is refused at load.
+- `add` and `remove` on a `one_of` dim are refused; adding a PyPSA component type stays a schema change.
 - A schema that keyed a `default_by` on a multi-dim's property was refused and now loads.
 
 ## Usage
@@ -98,20 +98,20 @@ schema.categorizing("connection")  # ("role",)
 schema.default_for("efficiency", role="input")
 w.set("efficiency", 0.95, role="output")  # selector: the category
 record.flags(role="attached")
-record.dims["ctype"]  # the listed labels, in order
-w.add("ctype", ["Hydrogen"])  # refused: a listed dim's labels are the schema's
+record.dims["ctype"]  # its `one_of` labels, in order
+w.add("ctype", ["Hydrogen"])  # refused: a `one_of` dim's labels are the schema's
 ```
 
 ## Implementation notes
 
-1. A listed dim's axis derived from the schema on read; its `dims/` file refused by the writer; `add`, `remove` and properties on it refused; the PyPSA tool stops writing `ctype` and `role`.
+1. A `one_of` dim's axis derived from the schema on read; its `dims/` file refused by the writer; `add`, `remove` and properties on it refused; the PyPSA tool stops writing `ctype` and `role`.
 2. `Schema.categorizing` and `Schema._categorized_by` accept a multi-dim in `partial`; the refusal "a multi-dim is never categorized" goes.
 3. Category selection in `set`, `flags` and `default_for` joins on the multi-dim's struct column, as it joins on a dim's column.
 4. Pages: [dims](../model/dims.md#a-dim-with-one_of), [properties](../model/properties.md#categories), [format](../storage/format.md#axis-files), [PyPSA](../tools/pypsa.md); the open question on a multi-dim's categories moves to settled.
 
 Checks that hold once built:
 
-- **A listed dim has no layer file**, and `record.dims` of it is its list.
+- **A `one_of` dim has no layer file**, and `record.dims` of it is its list.
 - **A `default_by` keyed `connection.role` loads**, and a misspelt role in it fails at load.
 - **`default_for` and `flags` agree per role** on a PyPSA network.
 
@@ -123,5 +123,5 @@ Checks that hold once built:
 
 ## Open Issues
 
-- **A layer-owned axis bounded by the list**, the stack's design today: a layer writes the axis, `add` refuses a label outside the list and `remove` works. It lets a tool or layer choose which listed labels exist and lets a listed dim carry properties, at the cost of a file restating the schema and a category that may name no live label.
+- **A layer-owned axis bounded by the list**, the stack's design today: a layer writes the axis, `add` refuses a label outside the list and `remove` works. It lets a tool or layer choose which of its labels exist and lets a `one_of` dim carry properties, at the cost of a file restating the schema and a category that may name no live label.
 - **Whether a `one_of` dimension may grow in a layer.** Its labels are the schema's, so a custom PyPSA component is a schema change, not a data edit. That is the cost of checking categories at load.

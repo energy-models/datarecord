@@ -52,7 +52,7 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 
 ### Whether a dim with `one_of` may grow in a layer
 
-[Its axis is the schema's list](model/dims.md#a-dim-with-one_of), so a custom PyPSA component type is a schema change, not a data edit. That is the cost of checking a category at load. The alternative, the axis a layer writes and the list bounds, lets a tool or layer choose which listed labels exist and lets the dim carry properties, at the cost of a file restating the schema and a category that may name no live label ([DEP 24](proposals/dep-0024-categories-are-enum-dimensions.md#open-issues)).
+[Its axis is the schema's list](model/dims.md#a-dim-with-one_of), so a custom PyPSA component type is a schema change, not a data edit. That is the cost of checking a category at load. The alternative, the axis a layer writes and the list bounds, lets a tool or layer choose which of its labels exist and lets the dim carry properties, at the cost of a file restating the schema and a category that may name no live label ([DEP 24](proposals/dep-0024-categories-are-enum-dimensions.md#open-issues)).
 
 ### Whether a multi-dim may be `over` another multi-dim
 

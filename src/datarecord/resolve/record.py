@@ -41,7 +41,7 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
-from datarecord.resolve.coords import Coords, listed_axis, resolve_coords
+from datarecord.resolve.coords import Coords, one_of_axis, resolve_coords
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import (
     _coord_table,
@@ -407,7 +407,7 @@ class Record:
     def _prefix(self) -> Coords:
         """Return the frozen prefix's coords, its shared tables read on the calling thread's cursor.
 
-        A listed axis is the schema's, so it is not among the tables and stays
+        A `one_of` dim's axis is the schema's, so it is not among the tables and stays
         current with a schema widened since the fold.
 
         Notes
@@ -421,7 +421,7 @@ class Record:
             for kind, name in self._coord_names
         }
         axes = {n: rel for (k, n), rel in tables.items() if k == "dims"}
-        axes |= {n: listed_axis(self.schema, n, con) for n in self.schema.listed_dims}
+        axes |= {n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims}
         return Coords(
             schema=self.schema,
             axes={n: axes[n] for n in self.schema.dimensions if n in axes},

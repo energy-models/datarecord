@@ -271,7 +271,7 @@ def test_a_property_refers_to_no_multi_dim():
         _schema(properties={"entity": {"port": PropertySpec(one_of="connection")}})
 
 
-def test_a_property_taking_listed_labels_categorizes_only_a_partial_dim():
+def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
     """No flag: `one_of` and `partial` decide; a `str` property or one over a dim listing no labels never.
 
     Notes

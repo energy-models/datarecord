@@ -53,7 +53,7 @@ def _fold_axis(
     return rel
 
 
-def listed_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
+def one_of_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
     """Return the axis of `dim`, a dim with `one_of`: its labels, in list order.
 
     Notes
@@ -66,7 +66,7 @@ def listed_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRe
     ).project(col("label").cast(schema.duck_type(spec)).alias(dim))
 
 
-def refuse_listed_file(schema: Schema, dims: Iterable[str], where: str) -> None:
+def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
     """Refuse an axis file of a dim with `one_of` among `dims`, which `where` holds.
 
     Raises
@@ -78,10 +78,10 @@ def refuse_listed_file(schema: Schema, dims: Iterable[str], where: str) -> None:
     -----
     - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
-    listed = sorted(set(dims) & set(schema.listed_dims))
-    if listed:
+    held = sorted(set(dims) & set(schema.one_of_dims))
+    if held:
         msg = (
-            f"{where} holds an axis file of {listed}, which list their labels "
+            f"{where} holds an axis file of {held}, which list their labels "
             f"with `one_of`; such a dim's axis is the schema's list, so no "
             f"layer writes one (https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
         )
@@ -194,7 +194,7 @@ def refuse_unheld(
         f"{name!r} tuples [{', '.join(found)}]" if multi else f"{name!r} labels {found}"
     )
     via = "" if key == name else f" in {key!r}"
-    if name in schema.listed_dims:
+    if name in schema.one_of_dims:
         holder = f"its `one_of`, {list(schema.dimensions[name].one_of or ())},"
         remedy = "use one of its labels"
         link = "model/dims/#a-dim-with-one_of"
@@ -342,13 +342,13 @@ def resolve_coords(
     base, above = split or _base_and_above(sources, con, schema)
     held_files = [source.axes() for source in above]
     for source, names in zip(above, held_files, strict=True):
-        refuse_listed_file(schema, names, f"layer {source.layer_id}")
+        refuse_one_of_file(schema, names, f"layer {source.layer_id}")
     keep = mortal(schema)
     axes: dict[str, DuckDBPyRelation] = {}
     dead: dict[str, DuckDBPyRelation] = {}
     for name in schema.dimensions:
-        if name in schema.listed_dims:
-            axes[name] = listed_axis(schema, name, con)
+        if name in schema.one_of_dims:
+            axes[name] = one_of_axis(schema, name, con)
             continue
         files = [
             (s, rel)
@@ -384,8 +384,8 @@ def resolve_one(
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    if name in schema.listed_dims:
-        return listed_axis(schema, name, con)
+    if name in schema.one_of_dims:
+        return one_of_axis(schema, name, con)
     for source in reversed(sources):
         rel = source.axis(name)
         if rel is not None:
@@ -415,7 +415,7 @@ def mortal(schema: Schema) -> tuple[str, ...]:
         *schema.one_of_properties().values(),
     }
     unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
-    kept = (drawn | unkeyed) - set(schema.listed_dims)
+    kept = (drawn | unkeyed) - set(schema.one_of_dims)
     return tuple(c for c in schema.broadcast_dims if c in kept)
 
 

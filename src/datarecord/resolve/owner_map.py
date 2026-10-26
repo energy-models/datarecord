@@ -701,7 +701,7 @@ def _frozen_coords(
 ) -> list[tuple[str, str]]:
     """The `(kind, name)` of every axis and dead label set this frozen fold resolved.
 
-    A listed axis is left out, being the schema's rather than the fold's.
+    A `one_of` dim's axis is left out, being the schema's rather than the fold's.
 
     Each is a shared table (`_coord_table`); the list is one more, created after
     them, so a reader finding it finds every table it names.
@@ -717,7 +717,7 @@ def _frozen_coords(
             *(
                 ("dims", dim, rel)
                 for dim, rel in coords.axes.items()
-                if dim not in schema.listed_dims
+                if dim not in schema.one_of_dims
             ),
             *(("dead", name, rel) for name, rel in coords.dead.items()),
         ]

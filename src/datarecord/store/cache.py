@@ -172,7 +172,7 @@ def _materialise_dims(
     base = store.resolved_dir(revision_id) + "dims/"
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
-        if dim not in schema.listed_dims:
+        if dim not in schema.one_of_dims:
             _to_parquet(rel, f"{base}{dim}.parquet")
     dead = store.resolved_dir(revision_id) + "dead/"
     ensure_local_dir(dead)

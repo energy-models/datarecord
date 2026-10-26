@@ -69,7 +69,7 @@ def selected(
     chosen = {
         k: (v,) if isinstance(v, str) else tuple(v) for k, v in categories.items()
     }
-    schema.require_listed(dim, chosen, "the selection")
+    schema.require_one_of(dim, chosen, "the selection")
     return chosen
 
 

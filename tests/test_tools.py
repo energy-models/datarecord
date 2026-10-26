@@ -147,10 +147,10 @@ def test_the_tool_writes_no_type_or_role_axis(single_revision, dim):
     record = single_revision.record
     layer = Path(single_revision.store.layer_dir(single_revision.id))
     assert not (layer / "dims" / f"{dim}.parquet").exists()
-    listed = record.schema.dimensions[dim].one_of
-    assert listed is not None
-    assert record.dims[dim].df()[dim].tolist() == list(listed), (
-        "every label listed, those the network leaves unused included"
+    one_of = record.schema.dimensions[dim].one_of
+    assert one_of is not None
+    assert record.dims[dim].df()[dim].tolist() == list(one_of), (
+        "every label of `one_of`, those the network leaves unused included"
     )
 
 
@@ -444,7 +444,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision, store = exported, exported.store
-    # Declared alongside PyPSA's own types, since the listed labels pin the
+    # Declared alongside PyPSA's own types, since the `one_of` labels pin the
     # vocabulary.
     declared = read_schema(store)
     assert declared.categorizing("entity") == (CTYPE,)

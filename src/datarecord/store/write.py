@@ -30,7 +30,7 @@ from duckdb import StarExpression as star
 from datarecord.duck import as_relation, fn, null_safe
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
-    refuse_listed_file,
+    refuse_one_of_file,
     refuse_twice,
     refuse_unheld,
     resolve_coords,
@@ -149,7 +149,7 @@ def write_layer(
     if local:
         Path(staging).mkdir(parents=True)
     try:
-        refuse_listed_file(schema, data.axes(), "the layer")
+        refuse_one_of_file(schema, data.axes(), "the layer")
         kinds = [
             (
                 "dims",
@@ -563,7 +563,7 @@ class _RecordLikeAsLayerData:
 
     def axes(self) -> set[str]:
         """The source's dims but those with `one_of`, whose axis a `RecordLike` answers from the schema."""
-        return set(self._dims) - set(self.schema.listed_dims)
+        return set(self._dims) - set(self.schema.one_of_dims)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.

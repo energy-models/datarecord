@@ -295,10 +295,10 @@ class Schema(_Declared):
                 f"a property is a column of its subject's axis file"
             )
             raise ValueError(msg)
-        listed = sorted(set(self.properties) & set(self.listed_dims))
-        if listed:
+        on_one_of = sorted(set(self.properties) & set(self.one_of_dims))
+        if on_one_of:
             msg = (
-                f"properties are declared on {listed}, which list their labels "
+                f"properties are declared on {on_one_of}, which list their labels "
                 f"with `one_of`; such a dim's axis is the schema's list, with "
                 f"no axis file to hold a property "
                 f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
@@ -477,7 +477,7 @@ class Schema(_Declared):
         return tuple(d for d, spec in self.dimensions.items() if spec.over is not None)
 
     @property
-    def listed_dims(self) -> tuple[str, ...]:
+    def one_of_dims(self) -> tuple[str, ...]:
         """Every dim with `one_of`, in declaration order: those whose axis is the schema's list.
 
         Notes
@@ -668,9 +668,9 @@ class Schema(_Declared):
 
         These are the `one_of` labels of the dim the property refers to; there are none if that dim has no `one_of`.
         """
-        return self._listed(self.properties[dim][name]) or ()
+        return self._one_of_labels(self.properties[dim][name]) or ()
 
-    def _listed(self, spec: Dimension | PropertySpec) -> tuple[str, ...] | None:
+    def _one_of_labels(self, spec: Dimension | PropertySpec) -> tuple[str, ...] | None:
         """Return the `one_of` labels of a dim, or None if it has none.
 
         `spec` is the dim, or a property that refers to the dim.
@@ -702,7 +702,7 @@ class Schema(_Declared):
             )
             raise ValueError(msg)
 
-    def require_listed(
+    def require_one_of(
         self, subject: str, data: Mapping[str, Iterable[Any]], what: str
     ) -> None:
         """Refuse a label its dim does not list.
@@ -725,18 +725,18 @@ class Schema(_Declared):
         specs = self.properties.get(subject, {})
         for name, values in data.items():
             if name in specs:
-                listed = self._listed(specs[name])
+                labels = self._one_of_labels(specs[name])
             elif name == subject and subject in self.dimensions:
-                listed = self._listed(self.dimensions[subject])
+                labels = self._one_of_labels(self.dimensions[subject])
             else:
                 continue
-            if listed is None:
+            if labels is None:
                 continue
-            unknown = sorted({str(v) for v in values if v is not None} - {*listed})
+            unknown = sorted({str(v) for v in values if v is not None} - {*labels})
             if unknown:
                 msg = (
                     f"{what} gives {name!r} labels {unknown}, which its dim's "
-                    f"`one_of` does not hold; `one_of` is {list(listed)}"
+                    f"`one_of` does not hold; `one_of` is {list(labels)}"
                 )
                 raise ValueError(msg)
 

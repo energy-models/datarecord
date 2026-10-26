@@ -129,7 +129,7 @@ def test_a_scalar_property_reaches_labels_added_in_the_same_record(record):
 
 
 def test_a_category_no_label_has_selects_nothing(record):
-    """`Link` is listed, so on the axis, but no entity is one: a category selecting no label.
+    """`Link` is in `ctype`'s `one_of`, so on the axis, but no entity is one: a category selecting no label.
 
     Notes
     -----
@@ -147,7 +147,7 @@ def test_a_category_no_label_has_selects_nothing(record):
         for c in ("Generator", "Link", "Load")
     }
     assert signs == {"Generator": 1.0, "Link": 1.0, "Load": -1.0}, (
-        "default_by applies per listed category"
+        "default_by applies per category of `one_of`"
     )
 
     staged = WorkingRecord(record)

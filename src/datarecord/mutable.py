@@ -891,7 +891,7 @@ class WorkingRecord(Record):
         if keyed:
             self._require_typed(dim, list(values), call)
         data = {name: list(values.values()) if keyed else [values]}
-        self.schema.require_listed(dim, data, call)
+        self.schema.require_one_of(dim, data, call)
         self._require_live(dim, data, call)
         if keyed:
             self._require_existing(dim, dim, list(values), call)
@@ -929,7 +929,7 @@ class WorkingRecord(Record):
                 f"{name!r} being a property of the multi-dim {multi!r}"
             )
             raise ValueError(msg)
-        self.schema.require_listed(multi, {name: [value]}, f"`{call}`")
+        self.schema.require_one_of(multi, {name: [value]}, f"`{call}`")
         self._require_live(multi, {name: [value]}, f"`{call}`")
         tuples = self.dims.get(multi)
         if tuples is None:
@@ -1082,7 +1082,7 @@ class WorkingRecord(Record):
                     f"{sorted(wanted)} too; give its labels one way"
                 )
                 raise ValueError(msg)
-            self.schema.require_listed(dim, wanted, f"`{call}`")
+            self.schema.require_one_of(dim, wanted, f"`{call}`")
             rest[coordinate] = self._labels_matching(dim, wanted)
         for multi, chosen in tuples.items():
             for field in self.schema.over(multi):
@@ -1115,7 +1115,7 @@ class WorkingRecord(Record):
                 f"multi-dim {multi!r}, which {name!r} is not over"
             )
             raise ValueError(msg)
-        self.schema.require_listed(multi, wanted, f"`{call}`")
+        self.schema.require_one_of(multi, wanted, f"`{call}`")
         axis = self.properties.get(multi)
         if axis is None:
             return empty_relation(self.con, **{multi: self._column_type(multi)})
@@ -1449,7 +1449,7 @@ class WorkingRecord(Record):
             msg = f"the schema declares no dim {dim!r}"
             raise KeyError(msg)
         call = f"add({dim!r}, ...)"
-        self._refuse_listed(dim, f"`{call}`")
+        self._refuse_one_of(dim, f"`{call}`")
         if dim in self.schema.multi_dims:
             self._add_tuples(dim, labels, columns)
             return
@@ -1465,7 +1465,7 @@ class WorkingRecord(Record):
                     f"`{call}` has {len(data[c])} {c!r} values for {len(names)} labels"
                 )
                 raise ValueError(msg)
-        self.schema.require_listed(dim, data, f"`{call}`")
+        self.schema.require_one_of(dim, data, f"`{call}`")
         self._require_live(dim, data, f"`{call}`")
         rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
         table = self._ensure(kind)
@@ -1505,7 +1505,7 @@ class WorkingRecord(Record):
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
         """
         call = f"`remove({dim!r}, ...)`"
-        self._refuse_listed(dim, call)
+        self._refuse_one_of(dim, call)
         if dim in self.schema.multi_dims:
             if not is_frame(labels) and not labels:
                 return
@@ -1539,7 +1539,7 @@ class WorkingRecord(Record):
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._delete(table, gone, dim, col(table, dim))
 
-    def _refuse_listed(self, dim: str, call: str) -> None:
+    def _refuse_one_of(self, dim: str, call: str) -> None:
         """Refuse an edit to the axis of `dim` where it has `one_of`.
 
         Raises
@@ -1551,7 +1551,7 @@ class WorkingRecord(Record):
         -----
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
-        if dim not in self.schema.listed_dims:
+        if dim not in self.schema.one_of_dims:
             return
         msg = (
             f"{call} is refused: {dim!r} lists its labels with `one_of`, "

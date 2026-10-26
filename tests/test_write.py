@@ -273,8 +273,8 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
     revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
-    listed = list(_SCHEMA.dimensions["ctype"].one_of or ())
-    assert revision.record.dims["ctype"].df()["ctype"].tolist() == listed
+    one_of = list(_SCHEMA.dimensions["ctype"].one_of or ())
+    assert revision.record.dims["ctype"].df()["ctype"].tolist() == one_of
     revision.materialise()
     out = tmp_path / "flat"
     store.workspace.write(revision.record, str(out))
