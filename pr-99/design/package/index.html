@@ -1376,16 +1376,17 @@ Each framework lives in one tool module under <code>datarecord/tools/</code>, wh
 <a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   ├── owner_map.py   # fold_attributes, the owner-map fold over keys as written, and its shared tables
 <a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   └── record.py      # Record, PinnedRecord
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>├── mutable.py         # WorkingRecord, StagedSource
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── store/
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   ├── __init__.py    # re-exports Workspace, Store, Revision
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── store.py       # Workspace, Store, Revision, ancestry
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── files.py       # Files, LocalFiles, RemoteFiles
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── cache.py       # materialised node caches
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── manifest.py    # read_schema, reconcile_schema
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   └── write.py       # write_layer, layer_data
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>└── tools/
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    ├── base.py        # Tool, Schema, Attr, settle, Requirements, UnsupportedRecordError
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    └── pypsa.py       # PyPSA
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── settle.py          # settle, the broadcast rule over long rows
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>├── store/
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── __init__.py    # re-exports Workspace, Store, Revision
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── store.py       # Workspace, Store, Revision, ancestry
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── files.py       # Files, LocalFiles, RemoteFiles
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── cache.py       # materialised node caches
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   ├── manifest.py    # read_schema, reconcile_schema
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│   └── write.py       # write_layer, layer_data
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>└── tools/
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    ├── base.py        # Tool, Schema, Attr, Requirements, UnsupportedRecordError
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>    └── pypsa.py       # PyPSA
 </code></pre></div>
 <h2 id="the-import-order">The import order<a class="headerlink" href="#the-import-order" title="Permanent link">&para;</a></h2>
 <p>Runtime imports follow the order <code>duck</code> → <code>schema</code> → <code>protocols</code> → <code>resolve</code> → <code>mutable</code> → <code>store</code> → <code>tools</code>.

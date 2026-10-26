@@ -663,6 +663,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#settling-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settling rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reading-a-directory" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1092,6 +1103,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#settling-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settling rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reading-a-directory" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1172,7 +1194,7 @@ A group column broadcasts the same way: a NULL <code>connection</code> means eve
 <code>breakpoint</code> carries the abscissa of a piecewise-linear value.</p>
 <p><code>attributes</code> shows stored rows only, in no promised order.
 Two rows may cover one coordinate, of one layer or of two, and the row naming every dim the others there name gives its value.
-A tool settles them with <code>settle</code> (<a href="../../design/tools/#settling-rows">design</a>).
+A consumer settles them with <code>settle</code>, as <a href="#settling-rows">settling rows</a> shows.
 A coordinate that no row covers takes the attribute's default, which <code>Schema.default_for(name, **categories)</code> gives per category.</p>
 <p>An attribute row holds no property, so <code>attributes["p_max_pu"]</code> holds every entity's rows together.
 To scope it to one category, join <code>properties["entity"]</code>, filtered on the category, on <code>entity</code>.</p>
@@ -1187,20 +1209,73 @@ To scope it to one category, join <code>properties["entity"]</code>, filtered on
 </code></pre></div>
 <p>A dim can be in both sets.
 Then some labels carry a per-timestep series and others a single constant row, and the consumer uses both containers (<a href="../../design/use/reading/#flags">design</a>).</p>
+<h2 id="settling-rows">Settling rows<a class="headerlink" href="#settling-rows" title="Permanent link">&para;</a></h2>
+<p><code>attributes</code> gives rows as written, so a consumer applies the broadcast rule itself.
+<code>settle(rel, labels, flags)</code> does it in one query, and <code>flags</code> tells it how little it needs to do (<a href="../../design/use/reading/#settling-rows">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">settle</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">"ctype = 'Generator'"</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">)</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">p_max_pu</span> <span class="o">=</span> <span class="n">settle</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">],</span> <span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="n">gens</span><span class="p">},</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">])</span>
+</code></pre></div>
+<p><code>labels</code> names the coordinates to settle, each with a relation of its labels in a column of the coordinate's name.
+A NULL there becomes one row per label, a row naming a label not passed is dropped, and at each coordinate the most specific row is kept.
+So the rows of other categories need no filter first.
+A coordinate left out of <code>labels</code> stays as written, so a constant <code>p_max_pu</code> stays one row with <code>snapshot</code> NULL rather than one row per snapshot.
+Leave out every coordinate your container can hold a broadcast for.</p>
+<p><code>flags</code> decides, per coordinate in <code>labels</code>, how much work the query does:</p>
+<table>
+<thead>
+<tr>
+<th>the coordinate is in</th>
+<th>the rows</th>
+<th><code>settle</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>varies</code> only</td>
+<td>all name it</td>
+<td>keeps the rows naming a passed label</td>
+</tr>
+<tr>
+<td><code>broadcast</code> only</td>
+<td>all leave it NULL</td>
+<td>expands each row over the labels</td>
+</tr>
+<tr>
+<td><code>varies</code> and <code>broadcast</code></td>
+<td>some name it, some leave it NULL</td>
+<td>expands, then picks the most specific row</td>
+</tr>
+</tbody>
+</table>
+<p>The pick is a window over every coordinate and the costly step, so it runs only where a coordinate is in both sets.
+<code>flags(**categories)</code> counts only the rows reaching that category, which often takes a coordinate out of one set and spares the pick.
+Flags of a wider scope overstate the rows and give the same answer, only more slowly.</p>
+<p><code>flags</code> also chooses the container before any value is read:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">f</span> <span class="o">=</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">if</span> <span class="s2">"snapshot"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">varies</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="o">...</span>  <span class="c1"># one value per generator</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">elif</span> <span class="s2">"snapshot"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">broadcast</span><span class="p">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="o">...</span>  <span class="c1"># one series per generator</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>    <span class="o">...</span>  <span class="c1"># constants for some generators, series for others</span>
+</code></pre></div>
 <h2 id="reading-a-directory">Reading a directory<a class="headerlink" href="#reading-a-directory" title="Permanent link">&para;</a></h2>
 <p>A parquet directory is a record, and reading one involves no layers:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">)</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
 <p>The layout is the whole format (<a href="../../design/storage/format/">design</a>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>record/
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>├── manifest.json            # the schema, and the record's id
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>├── dims/&lt;dim&gt;.parquet       # one axis per declared dim: labels and their properties
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>├── groups/&lt;group&gt;.parquet   # which tuples of the group exist, and their properties
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>└── attributes/&lt;attr&gt;.parquet  # one attribute per file, whatever its dims, results included
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>record/
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>├── manifest.json            # the schema, and the record's id
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>├── dims/&lt;dim&gt;.parquet       # one axis per declared dim: labels and their properties
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>├── groups/&lt;group&gt;.parquet   # which tuples of the group exist, and their properties
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>└── attributes/&lt;attr&gt;.parquet  # one attribute per file, whatever its dims, results included
 </code></pre></div>
 
 

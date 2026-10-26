@@ -1176,7 +1176,8 @@ SPDX-License-Identifier: CC-BY-4.0
   is ignored, and the read folds that node from its layers.</li>
 <li><code>Attr.resolve</code> and <code>Schema.resolve</code> take <code>labels</code> and <code>flags</code>, and settle
   each source by the broadcast rule over <code>labels</code> before a rename or a
-  computation. <code>settle(rel, labels, flags)</code> does the same for one relation.</li>
+  computation. <code>settle(rel, labels, flags)</code>, exported from <code>datarecord</code>, does
+  the same for one relation, dropping rows that name a label outside <code>labels</code>.</li>
 </ul>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
 <ul>

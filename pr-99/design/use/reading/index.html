@@ -911,6 +911,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#settling-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settling rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#one-engine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1456,6 +1467,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#settling-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settling rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#one-engine" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1543,7 +1565,7 @@ Every record is DuckDB underneath, so a value handed over as itself costs no wra
 A consumer filters, joins and aggregates with relation calls or SQL, and fetches with <code>.df()</code>, <code>.pl()</code> or <code>.to_arrow_table()</code>.</p>
 <p>An attribute's relation holds its rows as written, in no promised order.
 A NULL coordinate stays NULL, and two rows may cover one coordinate, of one layer or of two.
-The consumer settles each coordinate by <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>: the row naming every dim the others there name wins.
+The consumer settles each coordinate by <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>: the row naming every dim the others there name wins, as <a href="#settling-rows"><code>settle</code></a> does.
 The record guarantees such a row wherever two rows cross (<a href="../../layers/resolution/#crossing-rows">resolution</a>), so a consumer needs no knowledge of layers or of <code>partial</code>.</p>
 <p><code>LazyRelations</code> builds each relation on first access.
 Building a relation is itself I/O: <code>read_parquet</code> opens the file to read the footer that binds the relation's columns.
@@ -1586,6 +1608,16 @@ Counting it as broadcast would mislead every consumer into building a constant c
 The flags describe the rows the record holds, so a broadcast that more specific rows shadow at every label still puts its dim in <code>broadcast</code>.</p>
 <p><code>flags</code> covers attributes alone.
 Properties are columns of their subject's file, read from <code>properties</code>.</p>
+<h2 id="settling-rows">Settling rows<a class="headerlink" href="#settling-rows" title="Permanent link">&para;</a></h2>
+<p><code>settle(rel, labels, flags)</code>, exported as <code>from datarecord import settle</code>, settles an attribute's rows as written by <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>, one row per coordinate.
+A row NULL on a coordinate in <code>labels</code> takes each label there, and a row naming a label outside <code>labels</code>, or reaching none, is dropped.
+At each coordinate the row naming every coordinate in <code>labels</code> that the other rows there name is kept, and where none does the query fails, naming the coordinate.
+A coordinate outside <code>labels</code> is kept as written, a NULL there being one more label, so a constant <code>p_max_pu</code> stays one row with <code>snapshot</code> NULL.
+<code>filter=False</code> keeps a row naming a label outside <code>labels</code> as written, for a caller whose own joins on the labels drop it anyway.</p>
+<p><code>flags</code> spares the work a record does not need, and flags overstating the rows change no value.
+Only a coordinate in <code>broadcast</code> is expanded, and rows are picked only where one is in <code>varies</code> as well.
+Elsewhere every row names the same coordinates, one row per key, and <code>settle</code> keeps those naming a passed label.</p>
+<p>The rule needs no knowledge of layers, so <code>settle</code> lives in core and reads a plain directory as it reads a tree.</p>
 <h2 id="one-engine">One engine<a class="headerlink" href="#one-engine" title="Permanent link">&para;</a></h2>
 <p>The protocol names DuckDB: a <code>RecordLike</code> answers <code>DuckDBPyRelation</code>s.
 A tool's record builds them on the caller's connection, as the PyPSA tool scans its pandas frames with <code>con.from_df</code>.
