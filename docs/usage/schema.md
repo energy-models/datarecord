@@ -16,6 +16,7 @@ schema = Schema(
     dimensions={
         "entity": Dimension(dtype="str"),
         "ctype": Dimension(one_of=["Generator", "Link", "Load", "StorageUnit"]),
+        "role": Dimension(one_of=["input", "output", "attached"]),
         "bus": Dimension(dtype="str"),
         "carrier": Dimension(dtype="str"),
         "country": Dimension(dtype="str"),
@@ -38,7 +39,7 @@ schema = Schema(
             "x": PropertySpec(dtype="float", default=0.0),
             "country": PropertySpec(one_of="country"),
         },
-        "connection": {"role": PropertySpec(dtype="str")},
+        "connection": {"role": PropertySpec(one_of="role")},
     },
     attributes={
         "p_nom": AttributeSpec(dtype="float", dims={"entity"}, default=0.0, unit="MW"),
