@@ -154,7 +154,10 @@ All notable changes to datarecord are documented here. The format follows
   `default_by` keyed `connection.role` loads, `Schema.categorizing("connection")`
   lists `role`, and `flags(role="output")`, `default_for(name, role="output")`
   and the `set` keyword `role="output"` select by it. A role keyword picks the
-  tuples of an attribute over `connection`, narrowed by a coordinate keyword.
+  tuples of an attribute over `connection`, narrowed by a coordinate keyword,
+  and of a property of it: `set("connection.note", v, role="output")` patches
+  the output connections, as `set("entity.note", v, ctype="Generator")` does
+  the generators.
 - The design pages are grouped by topic: the data model, layers, using a
   record, storage, frameworks and the package. Each old design page URL
   redirects to its new page. The usage pages are organised by task, and the

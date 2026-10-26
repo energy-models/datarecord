@@ -866,10 +866,13 @@ class WorkingRecord(Record):
                 f"the tuples and `add` them with the new label instead"
             )
             raise ValueError(msg)
+        rest, tuples = self._select(dotted, coords)
         if subject in self.schema.multi_dims:
-            self._set_multi_dim_property(subject, name, value, coords)
+            self._set_multi_dim_property(
+                subject, name, value, rest, tuples.get(subject)
+            )
             return
-        self._set_property(subject, name, value, self._select(dotted, coords)[0])
+        self._set_property(subject, name, value, rest)
 
     def _set_property(
         self, dim: str, name: str, value: Any, coords: Mapping[str, Any]
@@ -898,9 +901,18 @@ class WorkingRecord(Record):
         self._stage_axis(dim, name, values)
 
     def _set_multi_dim_property(
-        self, multi: str, name: str, value: Any, coords: Mapping[str, Any]
+        self,
+        multi: str,
+        name: str,
+        value: Any,
+        coords: Mapping[str, Any],
+        chosen: DuckDBPyRelation | None,
     ) -> None:
         """Stage scalar property `name` of `multi` on the tuples its coordinate keywords select, all if none.
+
+        `chosen` are the tuples a category keyword selected, as `_select`
+        returns them, which the coordinate keywords narrow; None where no
+        category keyword was given.
 
         Raises
         ------
@@ -931,7 +943,7 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         self.schema.require_one_of(multi, {name: [value]}, f"`{call}`")
         self._require_live(multi, {name: [value]}, f"`{call}`")
-        tuples = self.dims.get(multi)
+        tuples = self.dims.get(multi) if chosen is None else chosen
         if tuples is None:
             msg = f"`{call}` finds no tuple of {multi!r}; `add` them first"
             raise KeyError(msg)
@@ -1008,8 +1020,9 @@ class WorkingRecord(Record):
         over the dim. A keyword naming a coordinate of `name` is that
         coordinate, whatever property shares its name; any other names a
         property of a dim `name` reaches, else of any dim. A property of a
-        multi-dim attribute `name` is over selects its tuples instead, which
-        the keywords naming its coordinates narrow.
+        multi-dim attribute `name` is over, or dotted `name` is a property
+        of, selects its tuples instead, which the keywords naming its
+        coordinates narrow.
 
         Returns
         -------
@@ -1105,11 +1118,13 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            Where attribute `name` is not over `multi`, or a value is a label
-            its dim does not list.
+            Where `name` is neither an attribute over `multi` nor a dotted
+            property of it, or a value is a label its dim does not list.
         """
         call = f"set({name!r}, ...)"
-        if multi not in self.schema.multi_dims_of(name):
+        if multi != name.partition(".")[0] and multi not in self.schema.multi_dims_of(
+            name
+        ):
             msg = (
                 f"`{call}` selects by {sorted(wanted)}, properties of the "
                 f"multi-dim {multi!r}, which {name!r} is not over"

@@ -57,7 +57,7 @@ partial: [entity, bus, connection]
 - **`connection.role` categorizes `connection`**: a multi-dim is a dim since [DEP 23](dep-0023-multi-dims.md), and a group's property could not.
 - `Schema.categorizing("connection")` lists `role`; `default_for` and [`flags`](../use/reading.md#flags) key on it by plain name, as on `entity.ctype`.
 - **A `default_by` keyed `connection.role`** applies to a value that reaches `connection`: an attribute over it, or a property of it. Its keys are checked at load against `role`'s `one_of`.
-- **A selector keyword `role=`** on an attribute over `connection` picks the tuples with that role, as `ctype=` picks entities.
+- **A selector keyword `role=`** on an attribute over `connection`, or on a property of it such as `set("connection.note", v, role="output")`, picks the tuples with that role, as `ctype=` picks entities, `set("entity.note", v, ctype="Generator")` included.
 
 ### A `one_of` dim's axis is the schema's
 

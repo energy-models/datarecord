@@ -151,8 +151,14 @@ def ports(store):
                 "connection": Dimension(over=["entity", "bus"]),
             },
             properties={
-                "entity": {"ctype": PropertySpec(one_of="ctype")},
-                "connection": {"role": PropertySpec(one_of="role")},
+                "entity": {
+                    "ctype": PropertySpec(one_of="ctype"),
+                    "note": PropertySpec(dtype="str"),
+                },
+                "connection": {
+                    "role": PropertySpec(one_of="role"),
+                    "note": PropertySpec(dtype="str"),
+                },
             },
             attributes={
                 "efficiency": AttributeSpec(
@@ -224,6 +230,46 @@ def test_a_multi_dims_category_combines_with_a_category_of_its_coordinate(ports)
         (("g", "b"), 0): 0.5,
         (("g", "b"), 1): 0.5,
     }, "the link's output is no generator's"
+
+
+def _noted(record, subject: str) -> set:
+    """The labels of `subject` whose `note` is set, a tuple as `(entity, bus)`."""
+    rows = record.properties[subject].df()
+    noted = rows[rows["note"].notna()][subject]
+    return {tuple(v.values()) if isinstance(v, dict) else v for v in noted}
+
+
+@pytest.mark.parametrize(
+    ("subject", "keywords", "selected"),
+    [
+        ("entity", {"ctype": "Generator"}, {"g"}),
+        ("entity", {"ctype": ["Generator", "Link"]}, {"g", "l"}),
+        ("connection", {"role": "output"}, {("l", "b")}),
+        (
+            "connection",
+            {"role": ["output", "attached"], "bus": "b"},
+            {("l", "b"), ("g", "b")},
+        ),
+        (
+            "connection",
+            {"role": ["input", "output"], "entity": "l", "bus": "b"},
+            {("l", "b")},
+        ),
+    ],
+    ids=["dim", "dim-several", "multi-dim", "multi-dim-several", "multi-dim-narrowed"],
+)
+def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
+    ports, subject, keywords, selected
+):
+    """`role=` selects the tuples of `connection.note` as `ctype=` selects the labels of `entity.note`.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    """
+    staged = WorkingRecord(ports.record)
+    staged.set(f"{subject}.note", "x", **keywords)
+    assert _noted(ports.child(staged.edits).record, subject) == selected
 
 
 def test_a_one_of_dim_widened_in_is_on_a_record_read_before(store, root, categorized):

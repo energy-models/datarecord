@@ -55,7 +55,7 @@ properties:
 partial: [entity, bus, connection]
 ```
 
-`Schema.categorizing("connection")` lists `role`. A [`default_by`](properties.md#default_by-a-default-per-category) keyed `connection.role` applies to a value that reaches `connection`: an attribute over it, or a property of it. `default_for(name, role="output")` and [`flags(role="output")`](../use/reading.md#flags) key on it by plain name, and the [selector keyword](../use/editing.md#set) `role="output"` on an attribute over `connection` picks the tuples with that role, narrowed by any keyword naming one of its coordinates. A multi-dim outside `partial` has no categories.
+`Schema.categorizing("connection")` lists `role`. A [`default_by`](properties.md#default_by-a-default-per-category) keyed `connection.role` applies to a value that reaches `connection`: an attribute over it, or a property of it. `default_for(name, role="output")` and [`flags(role="output")`](../use/reading.md#flags) key on it by plain name, and the [selector keyword](../use/editing.md#set) `role="output"` on an attribute over `connection`, or on a property of it, picks the tuples with that role, narrowed by any keyword naming one of its coordinates. A multi-dim outside `partial` has no categories.
 
 ## Coordinates
 

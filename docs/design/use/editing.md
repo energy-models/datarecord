@@ -126,6 +126,7 @@ A plain name is an attribute.
 Setting a property patches one column of its subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has.
 A multi-dim's property takes a scalar, with its coordinates as keywords selecting the tuples, none selecting every tuple: `set("connection.role", "input", entity="g1", bus="north")`.
+A property keyword selects the labels or tuples a property is set on as it selects them for an attribute: `set("entity.carrier", "wind", ctype="Generator")` patches every generator, and `set("connection.note", "x", role="output")` every output connection, which a coordinate keyword such as `bus="north"` narrows.
 A [coordinate](../model/multi-dims.md#coordinates) is part of the key, not a property, so `set("connection.bus", ...)` is refused; the caller `remove`s the tuples and `add`s them again.
 Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`.
 Every value `g1` holds stays stored and read, and the per-category reads of `ctype="Load"` now include those values.

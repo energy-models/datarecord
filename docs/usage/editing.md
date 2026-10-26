@@ -70,10 +70,12 @@ A plain name is an attribute.
 `set("carrier", ...)` in a schema where only properties are called `carrier` is refused, and the error suggests `bus.carrier` and `entity.carrier`.
 
 A multi-dim's property takes a scalar, and its coordinates as keywords select the tuples it patches, none selecting every tuple.
+A category keyword selects for a property as for an attribute: `role="output"` picks the output connections, as `ctype="Generator"` picks the generators for `entity.carrier`.
 A coordinate is part of the key, so `set("connection.bus", ...)` is refused: `remove` the tuple and `add` it anew.
 
 ```python
 w.set("connection.role", "input", entity="dc", bus="north")
+w.set("entity.carrier", "wind", ctype="Generator")
 w.set("connection.bus", "south", entity="dc")  # refused: a coordinate is the key
 ```
 
