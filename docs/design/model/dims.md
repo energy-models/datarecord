@@ -8,11 +8,11 @@ SPDX-License-Identifier: CC-BY-4.0
 
 A dim is a set of unique labels, declared with a dtype from mathspec. The row order of a dim's file is its order. A dim with `one_of` allows only the labels its `one_of` names. The axis holds the labels that layers have added. A property may map each label to a label of another dim, such as a snapshot to its period ([mapping labels to another dim](#mapping-labels-to-another-dim)).
 
-Every dim is declared in the schema, so a record with `region`, `technology` or `vintage` needs no code change. A `Dimension` declares the axis's type and, optionally, its `one_of`, `unit` and `description` ([the schema](schema.md)). Which dims an attribute varies over is [declared per attribute](attributes.md#attributespec). The patch granularity is [`partial`](../layers/tree.md#partial-the-granularity-of-an-override). What describes or classifies a label is one of the dim's [properties](properties.md#properties).
+Every dim is declared in the schema, so a record with `region`, `technology` or `vintage` needs no code change. A `Dimension` declares the axis's type and, optionally, its `one_of`, `unit` and `description` ([the schema](schema.md)). A dim declaring `over` instead is a [multi-dim](multi-dims.md), whose labels are tuples of other dims' labels. Which dims an attribute varies over is [declared per attribute](attributes.md#attributespec). The patch granularity is [`partial`](../layers/tree.md#partial-the-granularity-of-an-override). What describes or classifies a label is one of the dim's [properties](properties.md#properties).
 
 ## Axis order
 
-An axis's order is the row order of its frame in `dims`. The labels of an axis and the rows of a group come in the row order of the deepest layer file for that axis or group ([one fold for every axis](../layers/resolution.md#one-fold-for-every-axis)). A label or tuple that one layer removes and a later layer adds again sits where the later layer's file puts it.
+An axis's order is the row order of its frame in `dims`. The labels of an axis, a multi-dim's tuples among them, come in the row order of the deepest layer file for that axis ([one fold for every axis](../layers/resolution.md#one-fold-for-every-axis)). A label or tuple that one layer removes and a later layer adds again sits where the later layer's file puts it.
 
 Writers need to ensure data is not inadvertently reordered from its parent's labels, since the order may carry meaning, such as port numbering, which follows from the `connection` order.
 

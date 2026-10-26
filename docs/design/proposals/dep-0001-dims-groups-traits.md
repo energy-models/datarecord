@@ -15,7 +15,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version       | v0.1.0a1                                                                                                                                                             |
 | Superseded-By | [DEP 16](dep-0016-remove-traits.md) (its traits part), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its entity tombstones, and an order the fold generates) |
 
-**This page is the argument, not the design.** What shipped is described by [the schema](../model/schema.md) — [groups](../model/groups.md), traits, since removed by [DEP 16](dep-0016-remove-traits.md) — together with [the record format](../storage/format.md) and [the read path](../layers/resolution.md), and those pages are authoritative where the two disagree.
+**This page is the argument, not the design.** What shipped is described by [the schema](../model/schema.md) — [groups](../model/multi-dims.md), traits, since removed by [DEP 16](dep-0016-remove-traits.md) — together with [the record format](../storage/format.md) and [the read path](../layers/resolution.md), and those pages are authoritative where the two disagree.
 The `on` mapping this page landed has since been [absorbed into groups as `into`](dep-0002-groups.md), so its half of the argument describes a construct that no longer exists.
 
 It is kept because the reasoning is not reproduced there: why `keys` was deleted rather than replaced, why `bus` stopped being structural, and what the [worked example](#a-pypsa-network-in-full) exposed about vocabulary collisions.
@@ -152,7 +152,7 @@ That last one is what the [opening problem](#what-starts-it) actually was.
 Declaring them a second time on the `Group` or the `Dimension` would be two ways to say it, disagreeing eventually.
 
 `role` follows from this rather than needing an exception: it becomes `AttributeSpec(dtype="VARCHAR", dims={"connection"})`.
-[Today](../model/groups.md#attributes-over-a-group) it is described as describing the connection and identifying nothing, and it stays exactly that — a non-key column of the group's table — but it gains a declared type, a description, and a place in [`shape()`](#flags-is-not-enough), none of which it has now.
+[Today](../model/multi-dims.md#attributes-over-a-multi-dim) it is described as describing the connection and identifying nothing, and it stays exactly that — a non-key column of the group's table — but it gains a declared type, a description, and a place in [`shape()`](#flags-is-not-enough), none of which it has now.
 
 ## Traits
 

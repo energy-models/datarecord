@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-4.0
 # PyPSA
 
 The PyPSA tool maps components to `entity` labels with `ctype` as a category, and buses and carriers to dims of their own.
-Each port of a component is a `connection` tuple, and per-port inputs and results are attributes over that group.
+Each port of a component is a `connection` tuple, and per-port inputs and results are attributes over that multi-dim.
 Multi-period snapshots are one flat axis with a `period` property.
 A solve writes its results as a thin child layer.
 
@@ -80,6 +80,7 @@ An entity that it leaves attached to no bus is `verify`'s to report, as its type
 ## Ports
 
 Each port of a component is a `connection` tuple `(entity, bus)`.
+The schema declares `connection` under `dimensions` as the [multi-dim](../model/multi-dims.md) `Dimension(over={"entity": "entity", "bus": "bus"})`, and its tuples live in `dims/connection.parquet` with `role` beside them.
 A per-connection input follows its connection's position: `efficiency` on a Link's `bus2` connection is PyPSA's `efficiency2`, static or per snapshot.
 The tool collapses bus-keyed connections back to PyPSA's positional encoding, ordered by the [connection order](../model/dims.md#axis-order).
 It translates a curve or reports it unbuildable.
@@ -93,7 +94,7 @@ Every per-port input, `delay` and `cyclic_delay` included, is long rows of `attr
 
 ## Results on connections
 
-A per-port result is stored like a per-port input: one attribute over the [`connection` group](#ports), one row per `(entity, bus)`, carried as the one `connection` struct column.
+A per-port result is stored like a per-port input: one attribute over the [`connection` multi-dim](#ports), one row per `(entity, bus)`, carried as the one `connection` struct column.
 `to_datarecord` packs the struct, and `build` unpacks it back to `entity` and `bus` where it places ports.
 PyPSA's `p0`, `p1`, `p2`, … on a Line, Transformer, Link or Process and the one-port `p` on a Generator, Load, Store, StorageUnit or ShuntImpedance are all the result `p`.
 Each row sits on the connection its port attaches to and keeps PyPSA's sign for that port.
@@ -182,7 +183,7 @@ A result at its default is written too, so a re-solve's value stands over its pa
 
 A result row that `base` holds and the solve does not write again, such as the `mu_*` duals under `assign_all_duals=False`, is restated as NULL, so no stale value is inherited.
 NULL reads as no value, where a `marginal_price` at its default `0.0` would read as a price, and `build` leaves PyPSA its own default there.
-A layer removes a label or a tuple by restating its axis or group without it, and has no way to remove a value, so restating is how a value is replaced.
+A layer removes a label or a tuple by restating its axis without it, a multi-dim's included, and has no way to remove a value, so restating is how a value is replaced.
 
 A PyPSA SubNetwork is a label of the dim `sub_network`, `0`, `1`, … as PyPSA names it.
 `sub_network.carrier` is a property that refers to `carrier`, `slack_bus` is an attribute over `sub_network`, and a line's `sub_network` is an attribute over `entity` that holds the plain label.

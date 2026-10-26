@@ -38,7 +38,7 @@ nav:
       - Overview: design/index.md
       - The data model:
           - Dims and labels: design/model/dims.md
-          - Groups: design/model/groups.md
+          - Multi-dims: design/model/multi-dims.md
           - Properties and categories: design/model/properties.md
           - Attributes and the broadcast rule: design/model/attributes.md
           - The schema: design/model/schema.md
@@ -160,6 +160,7 @@ plugins:
         design/format.md: design/storage/format.md
         design/module-layout.md: design/package.md
         usage/writing.md: usage/layers.md
+        design/model/groups.md: design/model/multi-dims.md
   - mkdocstrings:
       handlers:
         python:

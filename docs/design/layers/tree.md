@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 A revision adds one layer on top of its parent, and the revisions form a tree.
 A layer's data is written once, so any revision can be a parent and every cache stays valid.
 Reading a revision folds its ancestry from the root, and a deeper layer's row wins where it crosses a shallower one.
-A layer restates each axis and group it touches as a whole.
+A layer restates each axis it touches as a whole, a [multi-dim](../model/multi-dims.md)'s tuples included.
 For attributes, `partial` sets what one layer may override.
 Along a partial dim, a layer overrides one value per label.
 Along any other dim, it restates the whole extent of each key it touches.
@@ -41,7 +41,7 @@ Editing needs no mutable layer: edits accumulate in [the staging area](../use/ed
 
 After that act, the only thing written into a layer directory is its [`resolved/` cache](resolution.md#materialised-node-caches), so the invariant covers the layer's data.
 A cache derives from immutable layers, so writing one changes no answer, and no read takes it for data.
-Every glob the read path issues into a layer is single-level: `attributes/*.parquet`, `dims/*.parquet` and `groups/*.parquet`.
+Every glob the read path issues into a layer is single-level: `attributes/*.parquet` and `dims/*.parquet`.
 No glob reaches `resolved/`, so a reader pointed at a layer directory sees exactly what that layer wrote.
 
 Two things follow.
@@ -76,10 +76,10 @@ The dims a layer owns an attribute per follow from the declarations:
 
 ```text
 owned_per(attribute) = attribute.dims ∩ partial_dims
-partial_dims         = the dims and groups in schema.partial
+partial_dims         = the dims in schema.partial, multi-dims included
 ```
 
-`partial_dims` is the fold key: the dims and groups that `partial` names, in declaration order.
+`partial_dims` is the fold key: the dims that `partial` names, multi-dims included, in declaration order.
 A schema that patches entity by entity lists `entity`, as PyPSA's `{entity, bus, scenario, connection}` does.
 A layer that patches a per-bus `marginal_price` one bus at a time needs `bus` in `partial`.
 A layer that patches one connection's `efficiency` needs `connection` there, and the connection's bus is patched with it inside the `connection` column.
@@ -93,8 +93,8 @@ A first-stage decision turned into a per-scenario one is the error worth catchin
 
 The owner-map key is `(*partial_dims, attribute)`, one fixed tuple for every attribute.
 An attribute that does not vary over a key coordinate writes NULL there, and the key compares NULL-safe.
-A group in `partial` sits in the key as its struct column, so a per-connection attribute is owned per connection.
-With the group outside `partial`, a patch to one connection's `efficiency` restates every connection's value.
+A multi-dim in `partial` sits in the key as its struct column, so a per-connection attribute is owned per connection.
+With the multi-dim outside `partial`, a patch to one connection's `efficiency` restates every connection's value.
 A tuple is keyed by its labels, so an ancestor that inserts a tuple earlier cannot redirect a patch.
 
 `breakpoint` ([wide and long rows](../model/attributes.md#wide-and-long-rows)) is outside the overlay key.
@@ -102,14 +102,14 @@ A layer owns a whole curve, as it restates a whole extent along a dim outside `p
 So a resolved curve never mixes a parent's breakpoints with a descendant's.
 
 `partial` governs attribute ownership alone.
-A layer that touches an axis or group file restates it whole, every label with its properties in order, whatever `partial` says ([removing labels](removal.md)).
+A layer that touches an axis file restates it whole, every label with its properties in order, whatever `partial` says ([removing labels](removal.md)).
 The [properties an axis carries](../storage/format.md#where-a-value-lives) are no reason to add it to `partial`, with one exception.
 A property [categorizes](../model/properties.md#categories) its dim only when the dim is in `partial`.
 
 Keep `partial` small.
 Every `partial` coordinate widens the fold key, and every read of every attribute pays for the key.
-Leaving a coordinate out costs once per edit, bounded by the size of the axis or group.
+Leaving a coordinate out costs once per edit, bounded by the size of the axis.
 Putting it in costs every read.
-PyPSA's `partial` names only the dims and groups a layer patches value by value: `entity`, `bus`, `scenario` and `connection`.
+PyPSA's `partial` names only the dims a layer patches value by value: `entity`, `bus`, `scenario` and `connection`.
 `snapshot` and `carrier` stay out.
 A layer patches one bus's `v_nom`, and restates every carrier's `co2_emissions`, a few dozen rows.

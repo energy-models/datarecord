@@ -8,7 +8,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 A `WorkingRecord` stages edits over a base record and reads back as that record with the edits applied.
 Each edit is already a row of the layer it will become.
-`set` writes attribute rows or patches a property, `add` and `remove` change an axis, and `add_group` and `remove_group` change a group.
+`set` writes attribute rows or patches a property, and `add` and `remove` change an axis, a multi-dim's tuples included.
 Each edit is checked when it is staged.
 The staged rows live in DuckDB tables shaped like the files they become.
 The caller writes `edits` as a child layer to keep them.
@@ -23,14 +23,11 @@ class WorkingRecord(Record):
         self,
         attribute: str,  # an attribute or a property
         value: Any,  # scalar | sequence | mapping | series | relation or frame
-        **coords: Any,  # coordinates, a group's fields, properties of a dim reached
+        **coords: Any,  # coordinates, a multi-dim's included, properties of a dim reached
     ) -> None: ...
 
-    def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None: ...
-    def remove(self, dim: str, labels: Sequence[Any]) -> None: ...
-
-    def add_group(self, group: str, frame: Any) -> None: ...  # a relation or frame
-    def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None: ...
+    def add(self, dim: str, labels: Any, **columns: Any) -> None: ...
+    def remove(self, dim: str, labels: Any) -> None: ...
 
     @property
     def edits(self) -> LayerData: ...  # the staged layer alone
@@ -51,7 +48,7 @@ Edits accumulate and are written at once:
 
 - An edit costs a row in a staging table.
   A hundred edits to one attribute are a hundred rows, collapsed once when written.
-  The first edit of an axis or group copies the base's resolved one into its table.
+  The first edit of an axis copies the base's resolved one into its table.
 - Nothing touches the record until [`edits`](#edits) is written as a child.
   A caller that fails halfway leaves no layer, and a caller that changes its mind calls `rollback()`.
 
@@ -59,16 +56,15 @@ Edits accumulate and are written at once:
 
 Each edit maps onto exactly one part of [the format](../storage/format.md):
 
-| edit                     | writes                                                                     | key it targets                      |
-| ------------------------ | -------------------------------------------------------------------------- | ----------------------------------- |
-| set an attribute         | `attributes/<attr>.parquet` rows                                           | the attribute's coordinates         |
-| set a property           | the whole `dims/<dim>.parquet`, one column of a row changed                | the dim's axis key                  |
-| set a group's property   | the whole `groups/<group>.parquet`, one column of a row changed            | the group's struct                  |
-| add labels               | the whole `dims/<dim>.parquet`, the labels' rows added                     | the dim's axis key                  |
-| remove labels            | the whole `dims/<dim>.parquet` without them, each group without its tuples | the dim's axis key, the group's key |
-| add_group / remove_group | the whole `groups/<group>.parquet`, tuples added or left out               | the group's own key coordinates     |
+| edit                       | writes                                                                         | key it targets                          |
+| -------------------------- | ------------------------------------------------------------------------------ | --------------------------------------- |
+| set an attribute           | `attributes/<attr>.parquet` rows                                               | the attribute's coordinates             |
+| set a property             | the whole `dims/<dim>.parquet`, one column of a row changed                    | the dim's axis key                      |
+| set a multi-dim's property | the whole `dims/<multi-dim>.parquet`, one column of a row changed              | the multi-dim's struct                  |
+| add labels or tuples       | the whole `dims/<dim>.parquet`, their rows added                               | the dim's axis key                      |
+| remove labels or tuples    | the whole `dims/<dim>.parquet` without them, each multi-dim without its tuples | the dim's axis key, the multi-dim's key |
 
-`add` and `remove` take any dim, and an attribute's [`dims`](../model/attributes.md#attributespec) decide which coordinates its rows carry.
+`add` and `remove` take any dim, a multi-dim among them, and an attribute's [`dims`](../model/attributes.md#attributespec) decide which coordinates its rows carry.
 
 An edit is expressed in the format's own terms.
 Setting `p_nom` on twenty entities stages twenty `attributes/p_nom.parquet` rows, which is what a patch layer holds.
@@ -90,7 +86,7 @@ w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("bus.x", 10.2, bus="north")  # a property; `x` alone names an attribute
 ```
 
-Every coordinate is a keyword, a [group](../model/groups.md)'s fields included: `entity=`, `snapshot=`, `bus="north"` for one connection, `from=` and `to=` for one corridor.
+Every coordinate is a keyword, a [multi-dim](../model/multi-dims.md)'s coordinates included: `entity=`, `snapshot=`, `bus="north"` for one connection, `from=` and `to=` for one corridor.
 The schema declares which coordinates exist, so none has a parameter of its own.
 A keyword holds one label, which fixes that coordinate, or a list of labels, at each of which the value is staged.
 
@@ -101,22 +97,22 @@ So `set("p_max_pu", 0.9)` is one row that reaches every entity, loads and entiti
 
 A later `set` replaces what it covers.
 It drops each row of the attribute that an earlier call staged and that one of its own rows covers.
-A new row covers an old one when, at every coordinate, it names the same label or is NULL, counting labels selected by a property keyword or a group's fields.
+A new row covers an old one when, at every coordinate, it names the same label or is NULL, counting labels selected by a property keyword or a multi-dim's coordinates.
 So `set("p_nom", 0.9, entity=["a"])` followed by `set("p_nom", 0.95)` stages one row, and `a` reads 0.95.
 The other order keeps both rows, and `a` reads 0.9, since within one layer [the more specific row wins](../model/attributes.md#the-broadcast-rule).
 A default set first keeps the exceptions set after it.
 
-`set` packs a group's fields into the group's [struct column](../model/groups.md), so `entity="dc", bus="north"` stages `connection = {entity: dc, bus: north}`.
-A group value is [a whole tuple or NULL](../model/attributes.md#the-broadcast-rule), so every field must be given or none.
+`set` packs a multi-dim's coordinates into its [struct column](../model/multi-dims.md#one-struct-column), so `entity="dc", bus="north"` stages `connection = {entity: dc, bus: north}`.
+A multi-dim's value is [a whole tuple or NULL](../model/attributes.md#the-broadcast-rule), so every coordinate must be given or none.
 Omitting `bus` alone is refused, since `{entity: dc, bus: NULL}` names no tuple.
-Naming no field stages the NULL struct, which is every tuple.
-A field is named by its own name: a contract `(from, to)` over `entity` is addressed as `from="plant", to="mill"`.
-`entity=` beside those fields is refused, since it could name either party.
+Naming no coordinate stages the NULL struct, which is every tuple.
+A coordinate is named by its own name: a contract `(from, to)` over `entity` is addressed as `from="plant", to="mill"`.
+`entity=` beside those coordinates is refused, since it could name either party.
 
 A property as a keyword selects labels when `set` is called.
 A keyword is bare.
 It names a coordinate of the attribute first, else any property of a dim the attribute reaches, categorizing or not.
-So `bus="north"` on a connection attribute is the field even where `entity` has a property `bus`.
+So `bus="north"` on a connection attribute is the coordinate even where `entity` has a property `bus`.
 `carrier="gas"` on an attribute over the `carrier` dim is that dim, and on `p_max_pu` it is `entity.carrier`.
 A dotted keyword is refused, and so is a name that several dims the attribute reaches declare a property of.
 `ctype="Generator", carrier="wind"` resolves to the labels that match every keyword on the record as staged, and `set` writes one row per label.
@@ -128,7 +124,8 @@ The property's dim must be one the attribute reaches through exactly one coordin
 A plain name is an attribute.
 Setting a property patches one column of its subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has.
-A group's property takes a scalar, with its fields as keywords selecting the tuples.
+A multi-dim's property takes a scalar, with its coordinates as keywords selecting the tuples, none selecting every tuple: `set("connection.role", "input", entity="g1", bus="north")`.
+A [coordinate](../model/multi-dims.md#coordinates) is part of the key, not a property, so `set("connection.bus", ...)` is refused; the caller `remove`s the tuples and `add`s them again.
 Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`.
 Every value `g1` holds stays stored and read, and the per-category reads of `ctype="Load"` now include those values.
 
@@ -158,9 +155,9 @@ Where neither settles it, the call is refused.
 `set` never infers the coordinate from the labels.
 A test against the axis would make one call mean different things in two records: a scenario labelled `wind1` would capture a series meant per entity, and a partial overlap would pick a reading silently.
 
-A frame over a group carries it as the struct column, `connection STRUCT(entity, bus)`.
-A frame that carries a field flat, `entity` or `bus`, is refused with the struct to pass.
-So is a struct whose fields differ from the group's key, which a cast would silently re-key.
+A frame over a multi-dim carries it as the struct column, `connection STRUCT(entity, bus)`.
+A frame that carries a coordinate flat, `entity` or `bus`, is refused with the struct to pass.
+So is a struct whose fields differ from the multi-dim's coordinates, which a cast would silently re-key.
 A struct with some fields NULL is refused too.
 A NULL struct broadcasts over every tuple.
 
@@ -179,6 +176,9 @@ w.add("bus", ["north H2"], carrier="H2", x=10.1)  # bare: the dim's own
 w.add("entity", ["g1", "g2"], ctype="Generator", carrier="wind")
 w.remove("entity", ["old_coal"])
 w.remove("carrier", ["gas"])  # refused while entity.carrier holds it
+w.add("connection", [{"entity": "g1", "bus": "north"}], role="output")
+w.add("connection", frame)  # an `entity` and a `bus` column, `role` beside them
+w.remove("connection", [{"entity": "g1", "bus": "north"}])
 ```
 
 `add(dim, labels, **columns)` stages whole axis rows.
@@ -199,35 +199,27 @@ A label exists by virtue of its axis row, so `add` is an edit of its own.
 Adding a bus with no properties is an edit with nothing to `set`.
 One axis row holds each label, so an `add` of a label the record already resolves restates its row.
 
-Adding a component with its connections and varying values is `add`, then [`add_group`](#add_group-remove_group), then a `set` per attribute.
+A [multi-dim](../model/multi-dims.md)'s labels are tuples, which `add` and `remove` take in either of two forms.
+A list of mappings from coordinate to label, such as `{"entity": "g1", "bus": "north"}`, takes its properties as keywords, each a scalar or a sequence aligned to the list.
+A frame, anything DuckDB scans, carries one column per coordinate and may carry property columns beside them; beside a frame a keyword property must be a scalar.
+The list is made into such a frame up front and takes the same path.
+The coordinates are packed into the multi-dim's [struct column](../model/multi-dims.md#one-struct-column), and each tuple is staged as one row of `dims/<multi-dim>.parquet`, placed as any label is.
+A tuple with a coordinate missing or NULL is refused, since it names no tuple.
+A tuple naming a label that its coordinate's axis, as staged, lacks is refused ([validation](#validation)).
+A multi-dim's attributes are long rows, set through [`set`](#set) with its coordinates as keywords.
+
+Adding a component with its connections and varying values is `add` of the entity, then `add` of its connections, then a `set` per attribute.
 
 `remove(dim, labels)` deletes each label's row from the staged axis.
 It need not list what it deletes.
-Where `dim` is `partial`, [the fold](../layers/removal.md) drops every value keyed by the label, and a group attribute's value through the label inside its struct ([the owner map](../layers/resolution.md#owner-map)).
-`remove` also deletes every tuple, of any group, with a field over `dim` that names one of `labels`.
+Where `dim` is `partial`, [the fold](../layers/removal.md) drops every value keyed by the label, and a multi-dim attribute's value through the label inside its struct ([the owner map](../layers/resolution.md#owner-map)).
+`remove` also deletes every tuple, of any multi-dim, with a coordinate drawing on `dim` that names one of `labels`.
 It reads those tuples from the record as it resolves with pending edits, so [the writer](../layers/removal.md#what-the-writer-checks) never meets a dangling tuple.
-An `add` of the same label brings back the label alone, and its tuples come back through [`add_group`](#add_group-remove_group).
+An `add` of the same label brings back the label alone, and its tuples come back through an `add` of each multi-dim.
 
 `remove` is refused while a [property that refers to](../model/properties.md#properties) `dim` stores one of the labels, read from the record as staged.
 A tuple goes with its label, and a property's row belongs to its subject and outlives the label.
 The caller `set`s such a property to another label or None first.
-
-## `add_group` / `remove_group`
-
-```python
-w.add_group("connection", frame)  # a `connection` struct column, `role` beside it
-w.remove_group("connection", [("dc", "north")])
-```
-
-Every declared [group](../model/groups.md) stages through these two calls.
-
-`frame` is shaped like the group's file: one struct column named for the group, such as `connection STRUCT(entity, bus)` or `corridor STRUCT("from", "to")`, and the group's properties, such as PyPSA's `role`.
-Its columns are checked as [`set`](#set) checks a frame's.
-A field as a column of its own is refused with the struct to pass, as in `set`.
-A tuple that names a label which its field's axis, as staged, lacks is refused ([validation](#validation)).
-`keys` holds one tuple per row in the group's [key](../model/groups.md) order, and `remove_group` packs each into the struct.
-
-A group's attributes are long rows, set through [`set`](#set) with the group's fields as keywords.
 
 ## Edits
 
@@ -243,7 +235,7 @@ w.rollback()
 ```
 
 - `w.edits` is the staged layer alone, the [`LayerData`](writing.md#layerdata) it already is.
-  Written as a child of the revision `w` was built over, it holds only the edits: the attribute rows it set, and each axis and group it changed, restated whole.
+  Written as a child of the revision `w` was built over, it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
   The fold resolves the rest from the parent.
   The layer lands in the child, so the revision that `child` returns reads the edits back.
 - `w` itself is what is staged plus what the record already reads: the whole resolved record.
@@ -261,7 +253,7 @@ Edits over a directory have no revision as their base, so they are a child of no
 `rev.child(w)` writes the whole resolved record as a child layer.
 That layer reads back correctly and is larger than the delta, so `edits` is the name to use.
 
-An edited axis or group is restated whole, whatever [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) says.
+An edited axis, a multi-dim's included, is restated whole, whatever [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) says.
 The layer holds every label the axis has with the edits applied, with its properties, in [axis order](../model/dims.md#axis-order).
 A layer's axis file then says what the axis is there, and reads without its parent ([removing labels](../layers/removal.md)).
 A standalone write of `w` writes the resolved axis whole as well, and an axis nothing touched is written by neither.
@@ -270,7 +262,7 @@ An edit replaces the rows it names.
 It deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and reads without a fold.
 The coordinate it replaces on is the one a read would have collapsed, so the delete removes at least what a last-writer-wins fold would have discarded.
 An attribute's `set` also deletes every earlier row it [covers](#set).
-An axis or group property differs in mechanism and has the same effect.
+A property of an axis, a multi-dim's included, differs in mechanism and has the same effect.
 A row's columns are independently editable, so a property `set` patches its one column in place (`UPDATE`), which keeps a sibling property that another `set` wrote.
 
 An edit replaces per coordinate.
@@ -284,7 +276,7 @@ Three interactions go beyond replacing by coordinate:
   A removal reaches another file's rows, so it stays an anti-join at read and at write.
   Attribute rows are keyed by coordinate, and the axis by label.
   A layer's removals apply only to its parents in [the fold](../layers/resolution.md#owner-map), so the staged collapse drops its own rows itself.
-  It drops a row that names a label the staged axis removed, and a row whose group column names a tuple the staged group removed, by `remove_group` or by `remove`'s cascade.
+  It drops a row that names a label the staged axis removed, and a row whose multi-dim column names a tuple the staged multi-dim removed, by `remove` of the tuple or by the cascade of `remove` on a label.
   `set` refuses a label the staged axis lacks ([validation](#validation)), so a removal after the `set` is the only way a staged row comes to name one.
 - `add` after `remove` of the same label: the label exists again, at its base position.
   The staged axis then holds it as the base does, so the parent's values for it come back.
@@ -298,7 +290,7 @@ It happens when the rows are staged, so the staging table already holds what the
 
 The fill covers the key the edit named.
 A label no edit mentioned keeps its rows in the parent, since a layer that carried them would claim an extent it was never given.
-A group outside `partial` is owned whole the same way.
+A multi-dim outside `partial` is owned whole the same way.
 A `set` on one connection's `efficiency` stages every other connection's resolved value beside it.
 A connection attribute's key names no label of a `partial` dim, so the key the edit named is `(attribute)` alone.
 A staged row that leaves the axis NULL needs no fill, since [the broadcast rule](../model/attributes.md#the-broadcast-rule) already makes it cover every label, and a carried row beside it would overlap.
@@ -314,14 +306,14 @@ Editing adds checks at the edit, caught when the edit is staged, so a caller lea
 
 - an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name that only properties carry is refused naming their dotted forms, so `set("carrier", …)` suggests `bus.carrier` and `entity.carrier`;
 - a label that its dim's axis, as staged, lacks, for every dim, `partial` or not; `add` the label first;
-- a tuple that its group, as staged, lacks, in `set`; `add_group` the tuple first;
-- a tuple that names a label which its field's axis, as staged, lacks, in `add_group` or `set`, naming the group, the field and up to three such labels; `set` checks this before the tuple itself, so a `set` at a connection with an unknown bus names the bus;
+- a tuple that its multi-dim, as staged, lacks, in `set`; `add` the tuple first;
+- a tuple that names a label which its coordinate's axis, as staged, lacks, in `add` or `set`, naming the multi-dim, the coordinate and up to three such labels; `set` checks this before the tuple itself, so a `set` at a connection with an unknown bus names the bus;
 - a label that a [dim with `one_of`](../model/dims.md#a-dim-with-one_of) does not list, in `add` or `set`;
 - a frame column whose type does not fit its dtype, timestamps with a time zone among them; by the same rule a label given to `set`, `add` or `remove`, or a value of a property that refers to a dim, so a string is not parsed into a `datetime` dim's label;
 - a value of a [property that refers to a dim](../model/properties.md#properties) that is no label of the dim as staged, in `add` or `set`, such as `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names no label and passes;
 - an `add` that names an attribute.
 
-Each label and tuple check is one DuckDB query that anti-joins the staged rows against the axis or group as staged, for every checked column at once.
+Each label and tuple check is one DuckDB query that anti-joins the staged rows against the axis as staged, for every checked column at once.
 
 ## Staging
 
@@ -330,14 +322,13 @@ Staged rows live in DuckDB tables on the record's own connection:
 ```sql
 CREATE TABLE staged_attributes_<attr digest>_<id> (<that attribute's long columns>);
 CREATE TABLE staged_axis_<dim digest>_<id>        (<the axis key>, <the dim's properties>, <position>);
-CREATE TABLE staged_<group>_<id>                  (<group struct>, <the group's properties>, <position>);
 ```
 
 `<id>` is the staged layer's own id, so two `WorkingRecord`s on one connection share no table.
 An attribute or dim name is a caller's string, so the table name carries a digest of it.
 
 Every table is shaped like the file it becomes.
-An axis or group table adds only a position column, since a DuckDB table keeps no row order.
+An axis table adds only a position column, since a DuckDB table keeps no row order.
 No table unions columns that the format keeps apart, so a column the schema does not declare has no table to go in, and [`add`](#add-remove) refuses it.
 
 There is one table per staged attribute, since that is the file it becomes.
@@ -347,8 +338,8 @@ The value would then need casting back on the way out.
 A NULL in a dim column would also be ambiguous between an attribute without that axis and [the broadcast rule](../model/attributes.md#the-broadcast-rule)'s every value.
 Per attribute, the table's shape answers both questions.
 
-There is one table per staged axis and per staged [group](../model/groups.md), holding it whole as a layer restates it: its key, its properties and a position column.
-The first edit copies the base's resolved axis or group into it in base order.
+There is one table per staged axis, a [multi-dim](../model/multi-dims.md)'s keyed by its struct column, holding it whole as a layer restates it: its key, its properties and a position column.
+The first edit copies the base's resolved axis into it in base order.
 `add` appends a new label at the next position and puts a label of the base back at its base position.
 `remove` deletes the label's row, and a property `set` patches one column in place.
 The writer and the reads take each table in position order.
@@ -390,6 +381,6 @@ An edit then needs no invalidation, since nothing that depends on it is cached.
 A staged row that sets a dim adds it to `varies`, one that leaves it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
 Properties are read from `properties`, staged edits included.
 
-A staged axis or group is read as its table stands, in position order.
+A staged axis is read as its table stands, in position order.
 The table already holds the base's rows with the edits applied, so a read composes nothing.
 Two `set` calls for two properties of one label compose, each patching its own column of the row.

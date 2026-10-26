@@ -31,9 +31,9 @@ A relation and a `WorkingRecord` belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
 
 A fold caches its results as shared tables.
-The frozen prefix's folded axes and groups are the tables `dims_<dim>_<id>` and `group_<name>_<id>`, beside the [owner map](../layers/resolution.md#owner-map) `owner_map_<key>_<id>`.
+The frozen prefix's folded axes are the tables `dims_<dim>_<id>`, a [multi-dim](../model/multi-dims.md)'s like any other, beside the [owner map](../layers/resolution.md#owner-map) `owner_map_<key>_<id>`.
 A last table, `coords_<id>`, lists them and is created after them, so a reader that finds it finds them all.
-A dim or group name is a caller's string, so the table name holds its hash, and `<key>` is the hash of the owner map's key columns.
+A dim's name is a caller's string, so the table name holds its hash, and `<key>` is the hash of the owner map's key columns.
 `<id>` is the node whose frozen layers were folded: a revision's id, the base's id for a `WorkingRecord`, or the [id in the manifest](../model/schema.md#one-schema-per-record) for a standalone directory.
 
 The schema is no part of the key beyond `partial`, so a fold made before the manifest widened is read as it is under the wider schema, while one made before a dim joined or left `partial` is folded again.
@@ -80,7 +80,7 @@ A writer that loses ten times, with a jittered backoff in between, gives up with
 A credential that can write `manifest.json` but cannot read it meets the same error, because a remote read answered 403 counts as missing and every create-only write then fails.
 
 `materialise()` follows the same rule.
-`owner_map.parquet` [marks a node as materialised](../layers/resolution.md#materialised-node-caches), so it is written last, after the resolved dims and groups.
+`owner_map.parquet` [marks a node as materialised](../layers/resolution.md#materialised-node-caches), so it is written last, after the resolved dims.
 Locally each file is written under a temporary name and renamed.
 A parquet file appears at its final path before it is complete, and a reader that meets it mid-write fails.
 Two writers that materialise one node write the same content, so that race is harmless.

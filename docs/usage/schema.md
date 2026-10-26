@@ -6,10 +6,10 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Declaring a schema
 
-A record has one schema, written as `manifest.json` ([design](../design/model/schema.md)). The schema declares the dims, the groups, the properties of their labels and the attributes. This example declares a small network:
+A record has one schema, written as `manifest.json` ([design](../design/model/schema.md)). The schema declares the dims, the properties of their labels and the attributes. This example declares a small network:
 
 ```python
-from datarecord import Schema, Dimension, AttributeSpec, PropertySpec, Group
+from datarecord import Schema, Dimension, AttributeSpec, PropertySpec
 
 schema = Schema(
     version=1,
@@ -21,8 +21,8 @@ schema = Schema(
         "country": Dimension(dtype="str"),
         "scenario": Dimension(dtype="str"),
         "timestep": Dimension(dtype="datetime"),
+        "connection": Dimension(over={"entity": "entity", "bus": "bus"}),
     },
-    groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
     properties={
         "entity": {
             "ctype": PropertySpec(one_of="ctype"),
@@ -67,15 +67,19 @@ A `Dimension` declares one axis. Its `dtype` is a mathspec dtype: `"float"`, `"i
 
 A multi-period snapshot is a label of `snapshot` with a property that refers to its period, `snapshot.period: {"one_of": "period"}` ([design](../design/model/dims.md#mapping-labels-to-another-dim)).
 
-## Groups
+## Multi-dims
 
-A `Group` declares which tuples over several dims exist. `over` maps each coordinate name to a dim, and a list is short for the case where the two coincide. Above, `connection` is a group over `(entity, bus)`. A group's property may refer to a dim, such as `bus_country.country: {"one_of": "country"}` over `[bus, scenario]` for a bus's country per scenario ([design](../design/model/groups.md#one-struct-column)).
+A `Dimension` with `over` is a multi-dim: its labels are tuples of other dims' labels, and it declares which tuples exist. `over` maps each coordinate name to a dim, and a list is short for the case where the two coincide. A multi-dim has no `dtype` and no `one_of`. Above, `connection` is a multi-dim over `(entity, bus)`. `Schema.dimensions` holds every dim, `Schema.multi_dims` the multi-dims and `Schema.dims` the others ([design](../design/model/multi-dims.md)).
+
+`connection.bus` names a coordinate wherever a dotted `subject.name` stands, and `Schema.resolve("connection.bus")` answers `connection` and the dim `bus` ([design](../design/model/multi-dims.md#coordinates)).
+
+A multi-dim's property may refer to a dim, such as `bus_country.country: {"one_of": "country"}` on the multi-dim `bus_country` over `["bus", "scenario"]`, for a bus's country per scenario. A multi-dim is never categorized, and no property refers to a multi-dim ([design](../design/model/multi-dims.md#one-struct-column)).
 
 ## Properties
 
-`properties` declares, per subject, the values that identify, classify or describe one of its labels. A subject is a dim or a group. A property holds one value per label and does not vary along another axis. Each property is a column of its subject's own file, `dims/entity.parquet` or `groups/connection.parquet`. A caller addresses it as `subject.name`, such as `entity.carrier`, `bus.carrier` or `connection.role` ([design](../design/model/properties.md#properties)).
+`properties` declares, per subject, the values that identify, classify or describe one of its labels. A subject is a dim, multi-dims included. A property holds one value per label and does not vary along another axis. Each property is a column of its subject's own file, `dims/entity.parquet` or `dims/connection.parquet`. A caller addresses it as `subject.name`, such as `entity.carrier`, `bus.carrier` or `connection.role` ([design](../design/model/properties.md#properties)).
 
-A property name belongs to its subject. It may match an attribute, a dim or another subject's property: `bus.x` and the attribute `x` are two names, as are `entity.carrier` and the dim `carrier`. The schema refuses a property named like its subject's key or like one of a group's coordinates.
+A property name belongs to its subject. It may match an attribute, a dim or another subject's property: `bus.x` and the attribute `x` are two names, as are `entity.carrier` and the dim `carrier`. The schema refuses a property named like its subject's key or like one of a multi-dim's coordinates.
 
 A property declares exactly one of `dtype` and `one_of`. Its `dtype` is `"float"`, `"int"`, `"bool"` or `"str"`. With `one_of="<dim>"` it refers to that dim, and its values are typed as the dim. Above, `entity.carrier` and `bus.carrier` refer to `carrier`, and `bus.country` to `country`. `set` and `add` refuse a label the record lacks, and NULL means no label. `remove("country", ...)` is refused while a bus still holds the label ([design](../design/model/properties.md#referring-to-a-dim)).
 
@@ -103,13 +107,13 @@ w.set("p_max_pu", 0.9, ctype=["Generator", "StorageUnit"])
 w.set("p_max_pu", 0.9)  # every entity; PyPSA reads no load's
 ```
 
-`AttributeSpec.dims` is the only addressing mechanism, and it names dims and groups alike. `efficiency` names the group `connection` in its `dims`, and its rows carry the group as one struct column ([design](../design/model/groups.md#attributes-over-a-group)). `dims` makes a scenario-varying `p_nom` a schema violation. Every attribute lands in `attributes/`, whatever its `dims`, so widening `dims` is a compatible change that moves no file.
+`AttributeSpec.dims` is the only addressing mechanism, and it names multi-dims as it names any dim. `efficiency` names the multi-dim `connection` in its `dims`, and its rows carry it as one struct column ([design](../design/model/multi-dims.md#attributes-over-a-multi-dim)). `dims` makes a scenario-varying `p_nom` a schema violation. Every attribute lands in `attributes/`, whatever its `dims`, so widening `dims` is a compatible change that moves no file.
 
 ## `partial`
 
-`partial` names the dims and groups that a layer may patch value by value, and it is the fold key. `entity` in `partial` lets a layer patch one entity, and its categories need it to key defaults. Above, `bus` and `scenario` are patchable, and a layer restates `carrier` whole, which is a few rows. `timestep` is not patchable, so a patch to one hour restates that entity's whole series ([design](../design/layers/tree.md#partial-the-granularity-of-an-override)). A group follows the same rule. With `connection` in `partial` a layer patches one connection's `efficiency`, and without it the layer restates every connection's.
+`partial` names the dims that a layer may patch value by value, and it is the fold key. `entity` in `partial` lets a layer patch one entity, and its categories need it to key defaults. Above, `bus` and `scenario` are patchable, and a layer restates `carrier` whole, which is a few rows. `timestep` is not patchable, so a patch to one hour restates that entity's whole series ([design](../design/layers/tree.md#partial-the-granularity-of-an-override)). A multi-dim follows the same rule. With `connection` in `partial` a layer patches one connection's `efficiency`, and without it the layer restates every connection's.
 
-`partial` applies to attribute values. A layer that changes an axis or a group restates it whole either way ([design](../design/layers/removal.md)).
+`partial` applies to attribute values. A layer that changes an axis, a multi-dim's included, restates it whole either way ([design](../design/layers/removal.md)).
 
 ## `unit` and `description`
 

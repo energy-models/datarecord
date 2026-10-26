@@ -8,7 +8,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 `RecordLike` is the protocol that a reader codes against, and a framework object can satisfy it structurally.
 `Record` is the class that implements it.
-A record hands back DuckDB relations for dims, groups, properties and attributes, built lazily so that listing them costs no I/O.
+A record hands back DuckDB relations for dims, properties and attributes, built lazily so that listing them costs no I/O.
 `flags` reports which axes an attribute's rows set or leave NULL, so a consumer can plan containers before fetching anything.
 DuckDB is the one engine from fold to consumer.
 
@@ -25,8 +25,6 @@ class RecordLike(Protocol):
     @property
     def properties(self) -> Relations: ...  # stored property values, keyed by subject
     @property
-    def groups(self) -> Relations: ...  # each group's rows, keyed by group
-    @property
     def attributes(self) -> Relations: ...  # long relations, keyed by attribute
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]: ...
@@ -38,12 +36,16 @@ The class has the short name because a caller constructs and holds it.
 The protocol is read-only.
 [Writing](writing.md) goes through `store.root(source)`, `rev.child(source)` or `ws.write(source, uri)`, and [the record format](../storage/format.md) is how a record is stored.
 
-Each accessor holds one section of [the schema](../model/schema.md): `dims` the labels, `properties` the metadata of those labels, `groups` the tuples that exist, and `attributes` the data.
+Each accessor holds one section of [the schema](../model/schema.md): `dims` the labels, `properties` the metadata of those labels, and `attributes` the data.
 What a name is declared as decides where its values are read.
+
+A [multi-dim](../model/multi-dims.md) reads as any dim does.
+`dims["connection"]` is its key column alone, the struct `connection STRUCT(entity, bus)`, one row per tuple in member order.
+Its properties are in `properties["connection"]`, `connection | role`.
 
 ## Properties and categories
 
-A [property](../model/properties.md#properties) holds one value per label of its subject, a dim or a group, as a column of the subject's file.
+A [property](../model/properties.md#properties) holds one value per label of its subject, a dim or a multi-dim, as a column of the subject's file.
 
 `properties[subject]` is the subject's key with every property declared for it, as stored.
 It is a record-wide view, NULL wherever no layer wrote a value.
@@ -99,9 +101,9 @@ Only attributes with rows are present, so `set(record.flags())` also says which 
 
 `flags(**categories)` answers for one category.
 The keywords are categorizing properties of one dim by their plain names, such as `ctype="Generator"`, each with one category or a list ([categories](#properties-and-categories)).
-Only rows that reach a matching label count: a row naming it through the dim's own column or a group's single field over the dim, and a row leaving that column NULL, which reaches every label or tuple.
+Only rows that reach a matching label count: a row naming it through the dim's own column or a multi-dim's single coordinate drawing on the dim, and a row leaving that column NULL, which reaches every label or tuple.
 An attribute is present where such a row exists.
-Keywords that categorize several dims are refused, and so is a group that reaches the dim through two fields, since a row would then count towards no single label.
+Keywords that categorize several dims are refused, and so is a multi-dim that draws on the dim through two coordinates, since a row would then count towards no single label.
 
 The sets name dims, so a consumer asks about a named axis: `"timestep" in flags["p_max_pu"].varies`.
 `breakpoints` is a boolean, since a breakpoint is an abscissa within one row's value and no axis ([wide and long rows](../model/attributes.md#wide-and-long-rows)).
@@ -116,7 +118,7 @@ For the same reason a framework asks per category: a Generator's per-timestep ro
 `varies | broadcast` tests whether an attribute touches a dim at all.
 Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.
 
-Both sets cover only the dims and groups an attribute is addressed by.
+Both sets cover only the dims an attribute is addressed by, multi-dims included.
 A dim outside its [`dims`](../model/attributes.md#attributespec) is in neither set.
 The source the flags aggregate, such as the [owner map](../layers/resolution.md#owner-map), a scan of `attributes/` or a staging table, is one relation over every attribute.
 A dim one attribute uses reads NULL in the rows of another attribute that lacks it, and that NULL means the axis does not exist for that attribute.

@@ -6,8 +6,8 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # The record format
 
-A record on disk is a directory with `manifest.json`, `dims/`, `groups/` and `attributes/`, and any parquet reader can open it.
-An axis or group file holds its key, then its properties, in order.
+A record on disk is a directory with `manifest.json`, `dims/` and `attributes/`, and any parquet reader can open it.
+An axis file holds its key, then its properties, in order.
 An attribute file holds the attribute's own coordinates, then `attribute`, `breakpoint` and `value`.
 The section in which a name is declared decides the file its values go in.
 
@@ -17,8 +17,7 @@ A record that is never written has no directory and answers [the protocol](../us
 ```text
 record/
 ├── manifest.json                   # the schema, and the record's id
-├── dims/<dim>.parquet              # one axis per declared dim: labels and properties
-├── groups/<group>.parquet          # which tuples of the group exist, and their properties
+├── dims/<dim>.parquet              # one axis per declared dim, multi-dims included: labels and properties
 └── attributes/<attr>.parquet       # one attribute per file, results included
 ```
 
@@ -47,27 +46,27 @@ The section that declares a name decides its file.
 One name is one spec in one file.
 A property belongs to its subject and is a column of that subject's file alone, so `bus.x` and an attribute `x` live in two places.
 
-| declared as           | lands in                                             |
-| --------------------- | ---------------------------------------------------- |
-| property of a dim     | `dims/<dim>.parquet`, a column of the axis file      |
-| property of a group   | `groups/<group>.parquet`, a column of the group file |
-| attribute, any `dims` | `attributes/<attr>.parquet`, long rows               |
+| declared as             | lands in                                        |
+| ----------------------- | ----------------------------------------------- |
+| property of a dim       | `dims/<dim>.parquet`, a column of the axis file |
+| property of a multi-dim | `dims/<multi-dim>.parquet`, likewise            |
+| attribute, any `dims`   | `attributes/<attr>.parquet`, long rows          |
 
 `attributes/p_nom.parquet` holds `entity | attribute | breakpoint | value`, one row per entity.
 Widening `p_nom` over `scenario` adds a `scenario` column to the same file.
 That column is NULL in every row written before, and [the broadcast rule](../model/attributes.md#the-broadcast-rule) reads those rows unchanged.
 A scenario `weight` over `scenario` alone is long rows too.
 
-An axis or group file therefore carries its key and its subject's properties, and no attribute values.
+An axis file therefore carries its key and its subject's properties, and no attribute values.
 A framework's constant frame per category joins the category's properties with the coordinate-only rows of its attributes, and the [tool](../tools/index.md) builds it.
 
-A [group](../model/groups.md)'s tuples live in `groups/<group>.parquet`: every tuple the group has at the layer's node, in order.
-The file is keyed by one struct column named for the group, as an axis file is keyed by the column named for its dim.
-For the `connection` group over `(entity, bus)`, `groups/connection.parquet` is `connection STRUCT(entity, bus) | role`, where `role` is a property of `connection`.
-An attribute row carries the group in the same struct column, so no read or write converts between two shapes.
-A record with no file for a group has no tuples of that group.
+A [multi-dim](../model/multi-dims.md)'s tuples live in `dims/<multi-dim>.parquet`: every tuple the multi-dim has at the layer's node, in order.
+The file is keyed by [one struct column](../model/multi-dims.md#one-struct-column) named for the multi-dim, as a plain dim's file is keyed by the column named for it.
+For the `connection` multi-dim over `(entity, bus)`, `dims/connection.parquet` is `connection STRUCT(entity, bus) | role`, where `role` is a property of `connection`.
+An attribute row carries the multi-dim in the same struct column, so no read or write converts between two shapes.
+A record with no file for a multi-dim has no tuples of it.
 
-A [group's property](../model/groups.md#one-struct-column) that refers to a dim is a plain column of the group's file beside the key: `groups/bus_country.parquet` is `bus_country STRUCT(bus, scenario) | country`.
+A multi-dim's property that refers to a dim is a plain column of its file beside the key: `dims/bus_country.parquet` is `bus_country STRUCT(bus, scenario) | country`.
 A classification of one coordinate is a [property](../model/properties.md#properties) of the dim, so `bus.country` is a column of `dims/bus.parquet`.
 A property that refers to a dim is stored like any other property, and nothing in the layout depends on it.
 
@@ -79,11 +78,11 @@ Every `attributes/` file carries its attribute's own coordinates, then the colum
 <coordinate> ... | attribute | breakpoint | value
 ```
 
-The coordinates are what the attribute's [`dims`](../model/attributes.md#attributespec) declare, groups first.
-A [group](../model/groups.md) is one struct column named for it, with a field per key coordinate.
-`attributes/efficiency.parquet` over the `connection` group carries `connection STRUCT(entity, bus)`.
+The coordinates are what the attribute's [`dims`](../model/attributes.md#attributespec) declare, multi-dims first.
+A [multi-dim](../model/multi-dims.md) is one struct column named for it, with a field per coordinate.
+`attributes/efficiency.parquet` over the `connection` multi-dim carries `connection STRUCT(entity, bus)`.
 `attributes/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `bus`.
-The writer refuses a group column that is not a struct of exactly the group's key.
+The writer refuses a multi-dim's column that is not a struct of exactly its coordinates.
 DuckDB casts a struct by field name, so a missing field would turn NULL, an extra field would be dropped, and every row would silently change its key.
 
 Each attribute file has its own column set.

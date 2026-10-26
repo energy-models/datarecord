@@ -52,28 +52,28 @@ A frame must carry [its attribute's own coordinates](../storage/format.md#the-lo
 It also refuses a frame that carries a coordinate the attribute is not addressed by.
 The read path projects only the attribute's own coordinates, so such a column would be written and never read.
 A source that emits one disagrees with the schema about the attribute, and the error reports that disagreement.
-A group column must be the group's struct, with exactly the group's fields.
+A [multi-dim](../model/multi-dims.md)'s column must be its struct, with exactly its coordinates as fields.
 Two rows of one attribute that cover one coordinate are refused when both name the same dims, or when each names a dim the other leaves NULL and no row there names both, naming the attribute and the coordinate.
 A record holding rows of several layers, written whole by `ws.write(w, uri)`, passes: wherever two of its rows cross, it holds the row naming both ([crossing rows](../layers/resolution.md#crossing-rows)).
 A child layer that leaves a dim outside `partial` NULL over a parent row naming it, with no row naming the dim there, is refused by the fold rather than the writer ([a dim outside `partial`](../layers/resolution.md#a-dim-outside-partial)).
 
-A `dims/` file of a declared dim must carry the dim's key column, and a `groups/` file of a declared group the struct column named for the group.
+A `dims/` file of a declared dim must carry the dim's key column, the struct column named for it for a multi-dim.
 
-## Axes, groups and labels
+## Axes and labels
 
-A `dims/` or `groups/` file is the whole axis or group at the new revision, in order ([removing labels](../layers/removal.md)).
+A `dims/` file is the whole axis at the new revision, a multi-dim's tuples included, in order ([removing labels](../layers/removal.md)).
 The writer refuses a file that holds a key twice, or that carries a column other than its key and its subject's declared properties.
 It refuses a file that orders its parent's labels differently from the parent, naming the first label out of place, since a consumer numbers ports by [that order](../model/dims.md#axis-order).
 
 Every row must name labels and tuples that the layer keeps:
 
 - an attribute row that names a label which the layer's final axis of its dim lacks is refused, naming the dim and up to three such labels;
-- an attribute row at a tuple which the layer's final group lacks is refused the same way, naming the group;
-- a group tuple that names a label which the layer's final axis of its field's dim lacks is refused, naming the group, the field and up to three such labels.
+- an attribute row at a tuple which the layer's final multi-dim lacks is refused the same way, naming the multi-dim;
+- a multi-dim's tuple that names a label which the layer's final axis of its coordinate's dim lacks is refused, naming the multi-dim, the coordinate and up to three such labels.
 
-The final axis or group is the layer's own file, else its parent's resolved one.
-One DuckDB query per file anti-joins its rows against the final axis or group of every column it names.
-A layer written by hand or by a tool therefore holds values only at labels some axis holds and at tuples some group holds, as [`set`](editing.md#validation) holds a staged one.
+The final axis is the layer's own file, else its parent's resolved one.
+One DuckDB query per file anti-joins its rows against the final axis of every column it names.
+A layer written by hand or by a tool therefore holds values only at labels and tuples some axis holds, as [`set`](editing.md#validation) holds a staged one.
 The checks on properties that refer to a dim, and on labels a layer removes, are on [removing labels](../layers/removal.md#what-the-writer-checks).
 
 ## `LayerData`
@@ -88,21 +88,19 @@ class LayerData(Protocol):
 
     def axes(self) -> set[str]: ...
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
-    def groups(self) -> set[str]: ...
-    def group(self, name: str) -> DuckDBPyRelation | None: ...
     def attributes(self) -> set[str]: ...
     def attribute(self, name: str) -> DuckDBPyRelation | None: ...
 ```
 
 Each pair is an enumerator of the keys of one kind and a read for one key.
 An `axis` is the rows of its file: every label the axis has at the layer's revision, in order, with the dim's properties.
-A `group` is every tuple the group has there, in order, with the group's properties.
+A multi-dim's `axis` is every tuple it has there, keyed by its struct column.
 
-`schema` decides which of the other pairs are populated: `groups` and `group` answer only for the groups it declares.
+`schema` decides which of the other pairs are populated: `axes` and `axis` answer only for the dims it declares.
 An enumerator answers the empty set where the schema declares nothing of that kind.
 Rows are `DuckDBPyRelation`s, as a `RecordLike`'s are, so the write path runs on one engine throughout.
 
-A [`LayerSource`](../layers/resolution.md#owner-map) answers `axis`, `group` and `attribute` for its own layer's rows.
+A [`LayerSource`](../layers/resolution.md#owner-map) answers `axis` and `attribute` for its own layer's rows.
 A staged layer's own rows, `w.edits`, are such a source, so a [`WorkingRecord`](editing.md#edits) hands its edits to the writer as they are.
 
 A [`RecordLike`](reading.md) is no `LayerData`.

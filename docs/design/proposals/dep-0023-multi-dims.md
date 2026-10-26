@@ -10,9 +10,10 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Title    | multi-dims replace groups                                                                                                                                                                                                        |
 | Author   | Bryn Pickering                                                                                                                                                                                                                   |
-| Status   | Draft                                                                                                                                                                                                                            |
+| Status   | Implemented (2026-10-26)                                                                                                                                                                                                         |
 | Requires | [DEP 10](dep-0010-a-group-is-a-struct-column.md), [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md), [DEP 18](dep-0018-drop-narwhals.md), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) |
 | Created  | 2026-10-21                                                                                                                                                                                                                       |
+| Version  | Unreleased                                                                                                                                                                                                                       |
 | Replaces | the groups of [DEP 2](dep-0002-groups.md) and [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                                                                                                   |
 
 ## Abstract
@@ -23,14 +24,14 @@ A group becomes a **multi-dim**: a dim declared under `dimensions` with `over`, 
 
 **A group is a dim in all but name.** [DEP 10's amendment](dep-0010-a-group-is-a-struct-column.md#amendment-a-group-is-a-dim) found it so in every way the fold sees: it is one struct column, it broadcasts, it is listed in `partial` or owned whole, it has a table of properties. [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) made its file restated whole, as an axis file is. What still sets it apart is spelling, and the spelling costs:
 
-| a dim                                                                               | a group                                                                                  |
-| ----------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| declared under `dimensions`                                                         | under `groups`                                                                           |
-| `dims/bus.parquet`                                                                  | `groups/connection.parquet`                                                              |
-| `add`, `remove`                                                                     | `add_group`, `remove_group`                                                              |
-| `Schema.dimensions`                                                                 | `Schema.groups`, `group_columns`, `group_key`, `groups_of`                               |
-| [`dims: [X]`](../model/groups.md#attributes-over-a-group) resolves a dim first      | …and a group if no dim is so named                                                       |
-| a property `{one_of: <dim>}` may [categorize](../model/properties.md#categories) it | [never categorized](../open-questions.md#whether-a-group-in-partial-may-have-categories) |
+| a dim                                                                                  | a group                                                                                      |
+| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| declared under `dimensions`                                                            | under `groups`                                                                               |
+| `dims/bus.parquet`                                                                     | `groups/connection.parquet`                                                                  |
+| `add`, `remove`                                                                        | `add_group`, `remove_group`                                                                  |
+| `Schema.dimensions`                                                                    | `Schema.groups`, `group_columns`, `group_key`, `groups_of`                                   |
+| [`dims: [X]`](../model/multi-dims.md#attributes-over-a-multi-dim) resolves a dim first | …and a group if no dim is so named                                                           |
+| a property `{one_of: <dim>}` may [categorize](../model/properties.md#categories) it    | [never categorized](../open-questions.md#whether-a-multi-dim-in-partial-may-have-categories) |
 
 Every reader of a schema asks twice, and every rule that holds for both is stated twice.
 
@@ -70,7 +71,7 @@ partial: [entity, bus, connection]
 - **It may be listed in `partial`**, and is in the fold key there; owned whole otherwise.
 - **A value is a whole tuple or NULL.** A struct with some fields NULL is refused wherever a row comes in: `set`, `add` and the writer.
 - **A NULL broadcasts over its live tuples**, expanded against `dims/connection.parquet` as a NULL `bus` is against `dims/bus.parquet`.
-- **An attribute may not name a multi-dim beside a dim that shares a name with one of its coordinates**, since a keyword such as `bus=` would address both: `dims: [connection, bus]` is refused. A coordinate drawing on `bus` under another name, such as `port`, may sit beside `bus`, as [a group's](../model/groups.md#attributes-over-a-group) may today.
+- **An attribute may not name a multi-dim beside a dim that shares a name with one of its coordinates**, since a keyword such as `bus=` would address both: `dims: [connection, bus]` is refused. A coordinate drawing on `bus` under another name, such as `port`, may sit beside `bus`, as [a group's](../model/multi-dims.md#attributes-over-a-multi-dim) may today.
 - **Removing a coordinate's label cascades**: `remove("bus", ["south"])` removes every tuple naming `south`, as it removed every group row.
 
 ### Coordinates are addressed as properties are
@@ -105,7 +106,7 @@ One `zone` per tuple is what a property is: one value per label of its subject. 
 
 ### Groups go
 
-**With that, `groups` holds nothing and is removed.** `Group`, `Schema.groups`, `Schema.group_columns`, `Schema.groups_of`, `Schema.group_key`, `add_group`, `remove_group` and the `groups/` directory go. [`dims: [X]`](../model/groups.md#attributes-over-a-group) resolves a dim, and nothing else.
+**With that, `groups` holds nothing and is removed.** `Group`, `Schema.groups`, `Schema.group_columns`, `Schema.groups_of`, `Schema.group_key`, `add_group`, `remove_group` and the `groups/` directory go. [`dims: [X]`](../model/multi-dims.md#attributes-over-a-multi-dim) resolves a dim, and nothing else.
 
 **`add` and `remove` take a multi-dim's tuples**, either as a frame with a column per coordinate, anything DuckDB scans, or as a list of mappings from coordinate to label, which is made into that frame up front and then takes the same path:
 
@@ -186,4 +187,4 @@ Checks that hold once built:
   The multi-dim is then declared once, where its only content is. Against it: `over` becomes a name no property may take, a multi-dim with no property still needs an entry under `properties`, and `dimensions` stops listing every dim, so a reader of `dimensions` alone (mathspec's included) misses it.
 
 - **Whether a functional mapping over two coordinates justifies a dim.** `plant_period` exists only to carry `zone`; its labels must be written before the property can be.
-- **Whether a multi-dim in `partial` may be categorized.** Once a group is a dim, the [open question](../open-questions.md#whether-a-group-in-partial-may-have-categories) on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized, as its specification says; a later DEP may lift that.
+- **Whether a multi-dim in `partial` may be categorized.** Once a group is a dim, the [open question](../open-questions.md#whether-a-multi-dim-in-partial-may-have-categories) on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized, as its specification says; a later DEP may lift that.

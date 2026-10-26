@@ -8,7 +8,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Status: Draft · Owner: Jonas Hörsch · Date: 2026-08-05
 
-A record holds labeled data with a declared schema. Its labels sit on axes called dims. Groups list which tuples of labels exist, properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does. A record can be one parquet directory or a tree of layers, and a reader reads both through one interface. The package depends on DuckDB, pydantic and mathspec, and names no modelling framework.
+A record holds labeled data with a declared schema. Its labels sit on axes called dims. A multi-dim is a dim whose labels are tuples of other dims' labels, listing which combinations exist. Properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does. A record can be one parquet directory or a tree of layers, and a reader reads both through one interface. The package depends on DuckDB, pydantic and mathspec, and names no modelling framework.
 
 These pages are the authoritative design. [Usage](../usage/index.md) shows how to use the package. Docstrings in the source cite these pages by link.
 
@@ -16,21 +16,20 @@ These pages are the authoritative design. [Usage](../usage/index.md) shows how t
 
 A [dim](model/dims.md) is an axis: a set of unique labels, such as the buses of a network or its snapshots. A dim with `one_of` fixes which labels it may hold.
 
-A [group](model/groups.md) declares which tuples of labels over several dims exist, such as which entity attaches to which bus.
+A [multi-dim](model/multi-dims.md) is a dim whose labels are tuples of other dims' labels. It declares which tuples exist, such as which entity attaches to which bus.
 
-A [property](model/properties.md) holds one value per label of a dim or a group and describes that label, such as the carrier of a generator. A property can refer back to another dimension using `one_of`.
+A [property](model/properties.md) holds one value per label of a dim and describes that label, such as the carrier of a generator. A property can refer back to another dimension using `one_of`.
 
-An [attribute](model/attributes.md) holds values at coordinates over the dims and groups it names, such as a generator's available output per snapshot, or the resulting dispatch of the solution.
+An [attribute](model/attributes.md) holds values at coordinates over the dims it names, such as a generator's available output per snapshot, or the resulting dispatch of the solution.
 
-The [schema](model/schema.md) declares the dims, groups, properties and attributes with their dtypes. The data says which labels, tuples and values exist.
+The [schema](model/schema.md) declares the dims, properties and attributes with their dtypes. The data says which labels, tuples and values exist.
 
-A `RecordLike` object exposes each of them, and returns dims, groups, properties and attributes as DuckDB relations. The [reading](use/reading.md) page defines the protocol in full.
+A `RecordLike` object exposes each of them, and returns dims, properties and attributes as DuckDB relations. The [reading](use/reading.md) page defines the protocol in full.
 
 ```text
-record.schema                   what may exist: the axes, groups, properties, attributes
-record.dims                     the axes themselves, keyed by dim
-record.groups                   which tuples exist, keyed by group
-record.properties               what describes each label, keyed by dim or group
+record.schema                   what may exist: the axes, properties, attributes
+record.dims                     the axes themselves, multi-dims included, keyed by dim
+record.properties               what describes each label, keyed by dim
 record.attributes               the values, results included, keyed by attribute name
 record.flags(**cats)            which axes an attribute actually uses
 ```
@@ -38,7 +37,7 @@ record.flags(**cats)            which axes an attribute actually uses
 ## The running example
 
 The pages illustrate the design with one example schema, shaped like PyPSA's ([the PyPSA tool](tools/pypsa.md)). Its dims are `entity`, `bus`, `carrier`, `snapshot` and `ctype`.
-The properties `entity.ctype` and `entity.carrier` refer back to their dimension. `ctype` is a dim with `one_of`, whose labels are component classes such as `Generator`, `Link` and `Load`, so an attribute over `entity` can have a default per `ctype`. The group `connection` lists the `(entity, bus)` tuples that exist, and attributes such as `p_nom` and `p_max_pu` hold values over `entity` and `snapshot`. The schema declares each of these names like any other.
+The properties `entity.ctype` and `entity.carrier` refer back to their dimension. `ctype` is a dim with `one_of`, whose labels are component classes such as `Generator`, `Link` and `Load`, so an attribute over `entity` can have a default per `ctype`. The multi-dim `connection` lists the `(entity, bus)` tuples that exist, and attributes such as `p_nom` and `p_max_pu` hold values over `entity` and `snapshot`. The schema declares each of these names like any other.
 
 ## Core interface
 
@@ -60,12 +59,12 @@ Out of scope are an implementation on an engine other than DuckDB ([one engine](
 
 ## The pages
 
-| section                             | what it settles                                                        |
-| ----------------------------------- | ---------------------------------------------------------------------- |
-| [The data model](model/dims.md)     | dims, groups, properties, attributes and the schema that declares them |
-| [Layers](layers/tree.md)            | the tree of layers, removing labels, and how a read resolves           |
-| [Using a record](use/reading.md)    | reading, editing with `WorkingRecord`, and writing a layer             |
-| [Storage](storage/format.md)        | the parquet format, workspaces and stores, threads and processes       |
-| [Frameworks](tools/index.md)        | tools, and the PyPSA tool                                              |
-| [The package](package.md)           | where the code lives, and the one-way dependency                       |
-| [Open questions](open-questions.md) | what is deliberately unsettled                                         |
+| section                             | what it settles                                                            |
+| ----------------------------------- | -------------------------------------------------------------------------- |
+| [The data model](model/dims.md)     | dims, multi-dims, properties, attributes and the schema that declares them |
+| [Layers](layers/tree.md)            | the tree of layers, removing labels, and how a read resolves               |
+| [Using a record](use/reading.md)    | reading, editing with `WorkingRecord`, and writing a layer                 |
+| [Storage](storage/format.md)        | the parquet format, workspaces and stores, threads and processes           |
+| [Frameworks](tools/index.md)        | tools, and the PyPSA tool                                                  |
+| [The package](package.md)           | where the code lives, and the one-way dependency                           |
+| [Open questions](open-questions.md) | what is deliberately unsettled                                             |

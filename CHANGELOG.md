@@ -127,6 +127,20 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- Groups are multi-dims. A dim declared under `dimensions` with
+  `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are
+  tuples of other dims' labels, carried as one struct column named for it.
+  Its table is `dims/<multi-dim>.parquet`, keyed by that column with its
+  properties beside it; `groups/` and `resolved/groups/` are gone, so every
+  record with a group is written again. `record.dims["connection"]` is the
+  struct column alone and `record.properties["connection"]` adds `role`.
+  `add` and `remove` take a multi-dim's tuples, as a list of mappings from
+  coordinate to label or as a frame with a column per coordinate.
+  `connection.bus` names a coordinate wherever `subject.name` stands, and
+  `set` refuses it. A multi-dim is never categorized, and no property refers
+  to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,
+  `check_multi_dim_columns` and `coordinate_over`; `dims` lists every dim but
+  the multi-dims. The PyPSA tool declares `connection` under `dimensions`.
 - The design pages are grouped by topic: the data model, layers, using a
   record, storage, frameworks and the package. Each old design page URL
   redirects to its new page. The usage pages are organised by task, and the
@@ -232,6 +246,11 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Removed
 
+- `Group`, the schema's `groups` section, `Schema.groups`,
+  `Schema.group_columns`, `Schema.group_type`, `Schema.groups_of`,
+  `Schema.group_key`, `Schema.check_group_columns`, `Schema.field_over`,
+  `RecordLike.groups`, `LayerData.groups()` and `LayerData.group()`,
+  `WorkingRecord.add_group` and `WorkingRecord.remove_group`.
 - `set` takes no expression. Compute the new values from `attributes[name]`
   and `set` the frame.
 - `Dimension.within` is gone. Every axis is keyed by its label alone, with

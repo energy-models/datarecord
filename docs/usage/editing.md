@@ -35,10 +35,10 @@ w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("bus.x", 10.2, bus="north")  # a property; `x` alone names an attribute
 ```
 
-Every coordinate is a keyword, a group's fields included.
+Every coordinate is a keyword, a multi-dim's coordinates included.
 `bus="north"` with `entity="dc"` addresses one connection, and `from=` with `to=` one corridor.
 A coordinate that no keyword names is NULL, which means every label of it: every entity, loads included, and entities added later.
-A group value is a whole tuple, so you give all of a group's fields or none ([design](../design/use/editing.md#set)).
+A multi-dim value is a whole tuple, so you give all of its coordinates or none ([design](../design/use/editing.md#set)).
 
 A property as a keyword selects labels at call time.
 A keyword is bare: it names a coordinate of the attribute first, else any property of a dim the attribute reaches.
@@ -69,7 +69,15 @@ Where neither says which coordinate, the call is refused.
 A plain name is an attribute.
 `set("carrier", ...)` in a schema where only properties are called `carrier` is refused, and the error suggests `bus.carrier` and `entity.carrier`.
 
-## `add` / `remove` / `add_group` / `remove_group`
+A multi-dim's property takes a scalar, and its coordinates as keywords select the tuples it patches, none selecting every tuple.
+A coordinate is part of the key, so `set("connection.bus", ...)` is refused: `remove` the tuple and `add` it anew.
+
+```python
+w.set("connection.role", "input", entity="dc", bus="north")
+w.set("connection.bus", "south", entity="dc")  # refused: a coordinate is the key
+```
+
+## `add` / `remove`
 
 ```python
 import pandas as pd
@@ -83,19 +91,13 @@ w.set("p_nom", [100.0, 80.0], entity=["wind1", "wind2"])
 
 w.remove("entity", ["old_coal"])
 
-w.add_group(
+w.add(
     "connection",
-    pd.DataFrame(
-        {
-            "connection": [
-                {"entity": "dc", "bus": "north"},
-                {"entity": "dc", "bus": "south"},
-            ],
-            "role": ["bus0", "bus1"],
-        }
-    ),
+    [{"entity": "dc", "bus": "north"}, {"entity": "dc", "bus": "south"}],
+    role=["bus0", "bus1"],
 )
-w.remove_group("connection", [("dc", "south")])
+w.add("connection", pd.DataFrame({"entity": ["wind1"], "bus": ["north"]}))
+w.remove("connection", [{"entity": "dc", "bus": "south"}])
 ```
 
 `add(dim, labels, **columns)` works on any dim.
@@ -106,15 +108,18 @@ A label exists by virtue of its axis row, so `add` is an edit of its own: adding
 
 `remove(dim, labels)` takes the labels out of the staged axis.
 It need not list what it deletes.
-The fold applies it to every value keyed by the label, and `remove` also takes every group tuple that names one of the labels out of its group ([design](../design/layers/removal.md)).
+The fold applies it to every value keyed by the label, and `remove` also takes every tuple that names one of the labels out of its multi-dim, with the tuple's values ([design](../design/layers/removal.md)).
+`remove("bus", ["north"])` removes every connection at `north`.
 
-A layer restates each axis or group it changes whole: every label the base has, with the edits applied, in the base's order, then the labels it adds.
+A layer restates each axis it changes whole, a multi-dim's included: every label the base has, with the edits applied, in the base's order, then the labels it adds.
 An `add` of a label that `remove` took out puts it back where the base has it.
 `remove` is refused while a property that refers to the dim still stores one of the labels, such as `entity.carrier` naming `gas`.
 That row belongs to its subject and outlives the label, so `set` it to another label or None first ([design](../design/use/editing.md#add-remove)).
 
-`add_group` and `remove_group` stage a group's tuples, as one struct column named for the group with the group's properties beside it.
-Every group goes through these two calls, `connection` included.
+On a multi-dim, `add` and `remove` take tuples.
+A tuple is a mapping from coordinate to label, and a list of them takes each property keyword as a scalar or a sequence aligned to the list.
+A frame DuckDB scans works too, with one column per coordinate and optionally a column per property; beside a frame a property keyword must be a scalar.
+A tuple with a coordinate missing or NULL is refused, as is one naming a label its coordinate's dim lacks, so `add` the label first ([design](../design/model/multi-dims.md)).
 
 ## Inspecting and rolling back
 
@@ -138,7 +143,7 @@ ws.write(w, "out/")  # a standalone record, flattened
 w.rollback()  # clear the staging area, if you are done
 ```
 
-`w.edits` holds only the edits: the attribute rows set, and each axis and group changed, restated whole.
+`w.edits` holds only the edits: the attribute rows set, and each axis changed, restated whole.
 The fold resolves the rest from the parent.
 `w` itself is the resolved result, what is staged plus what the record already reads.
 A standalone directory needs that, since it has no parent to resolve against.
@@ -155,7 +160,7 @@ Writing clears nothing: a `WorkingRecord` that still holds its edits reads exact
 
 An edit replaces the rows it names, so restating a coordinate overwrites it and the last write stands.
 A `remove` after a `set` wins regardless of order, since a removed label has no values.
-An `add` after a `remove` brings the label back with its parent's values and without its group tuples.
+An `add` after a `remove` brings the label back with its parent's values and without the multi-dim tuples that named it.
 
 A base's results are attributes and carry like any other.
 A child written from `edits` inherits them, though an edited input may no longer support them.
