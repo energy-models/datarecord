@@ -1454,7 +1454,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>A revision adds one layer on top of its parent, and the revisions form a tree.
 A layer's data is written once, so any revision can be a parent and every cache stays valid.
 Reading a revision folds its ancestry from the root, and a deeper layer's row wins where it crosses a shallower one.
-A layer restates each axis and group it touches as a whole.
+A layer restates each axis it touches as a whole, a <a href="../../model/multi-dims/">multi-dim</a>'s tuples included.
 For attributes, <code>partial</code> sets what one layer may override.
 Along a partial dim, a layer overrides one value per label.
 Along any other dim, it restates the whole extent of each key it touches.</p>
@@ -1479,7 +1479,7 @@ Its <a href="../../storage/store/#a-revision-exists-only-by-its-file">revision f
 Editing needs no mutable layer: edits accumulate in <a href="../../use/editing/#staging">the staging area</a> until they are written as a child.</p>
 <p>After that act, the only thing written into a layer directory is its <a href="../resolution/#materialised-node-caches"><code>resolved/</code> cache</a>, so the invariant covers the layer's data.
 A cache derives from immutable layers, so writing one changes no answer, and no read takes it for data.
-Every glob the read path issues into a layer is single-level: <code>attributes/*.parquet</code>, <code>dims/*.parquet</code> and <code>groups/*.parquet</code>.
+Every glob the read path issues into a layer is single-level: <code>attributes/*.parquet</code> and <code>dims/*.parquet</code>.
 No glob reaches <code>resolved/</code>, so a reader pointed at a layer directory sees exactly what that layer wrote.</p>
 <p>Two things follow.
 Any revision may be a parent, since an immutable base cannot shift under its descendants.
@@ -1506,9 +1506,9 @@ A framework that splits constant from varying data cannot receive half a series.
 That holds for every attribute over the axis, so the rule belongs to the axis.</p>
 <p>The dims a layer owns an attribute per follow from the declarations:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>owned_per(attribute) = attribute.dims ∩ partial_dims
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>partial_dims         = the dims and groups in schema.partial
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>partial_dims         = the dims in schema.partial, multi-dims included
 </code></pre></div>
-<p><code>partial_dims</code> is the fold key: the dims and groups that <code>partial</code> names, in declaration order.
+<p><code>partial_dims</code> is the fold key: the dims that <code>partial</code> names, multi-dims included, in declaration order.
 A schema that patches entity by entity lists <code>entity</code>, as PyPSA's <code>{entity, bus, scenario, connection}</code> does.
 A layer that patches a per-bus <code>marginal_price</code> one bus at a time needs <code>bus</code> in <code>partial</code>.
 A layer that patches one connection's <code>efficiency</code> needs <code>connection</code> there, and the connection's bus is patched with it inside the <code>connection</code> column.
@@ -1520,21 +1520,21 @@ A <code>p_nom</code> row that carries <code>scenario</code> is refused at write,
 A first-stage decision turned into a per-scenario one is the error worth catching.</p>
 <p>The owner-map key is <code>(*partial_dims, attribute)</code>, one fixed tuple for every attribute.
 An attribute that does not vary over a key coordinate writes NULL there, and the key compares NULL-safe.
-A group in <code>partial</code> sits in the key as its struct column, so a per-connection attribute is owned per connection.
-With the group outside <code>partial</code>, a patch to one connection's <code>efficiency</code> restates every connection's value.
+A multi-dim in <code>partial</code> sits in the key as its struct column, so a per-connection attribute is owned per connection.
+With the multi-dim outside <code>partial</code>, a patch to one connection's <code>efficiency</code> restates every connection's value.
 A tuple is keyed by its labels, so an ancestor that inserts a tuple earlier cannot redirect a patch.</p>
 <p><code>breakpoint</code> (<a href="../../model/attributes/#wide-and-long-rows">wide and long rows</a>) is outside the overlay key.
 A layer owns a whole curve, as it restates a whole extent along a dim outside <code>partial</code>.
 So a resolved curve never mixes a parent's breakpoints with a descendant's.</p>
 <p><code>partial</code> governs attribute ownership alone.
-A layer that touches an axis or group file restates it whole, every label with its properties in order, whatever <code>partial</code> says (<a href="../removal/">removing labels</a>).
+A layer that touches an axis file restates it whole, every label with its properties in order, whatever <code>partial</code> says (<a href="../removal/">removing labels</a>).
 The <a href="../../storage/format/#where-a-value-lives">properties an axis carries</a> are no reason to add it to <code>partial</code>, with one exception.
 A property <a href="../../model/properties/#categories">categorizes</a> its dim only when the dim is in <code>partial</code>.</p>
 <p>Keep <code>partial</code> small.
 Every <code>partial</code> coordinate widens the fold key, and every read of every attribute pays for the key.
-Leaving a coordinate out costs once per edit, bounded by the size of the axis or group.
+Leaving a coordinate out costs once per edit, bounded by the size of the axis.
 Putting it in costs every read.
-PyPSA's <code>partial</code> names only the dims and groups a layer patches value by value: <code>entity</code>, <code>bus</code>, <code>scenario</code> and <code>connection</code>.
+PyPSA's <code>partial</code> names only the dims a layer patches value by value: <code>entity</code>, <code>bus</code>, <code>scenario</code> and <code>connection</code>.
 <code>snapshot</code> and <code>carrier</code> stay out.
 A layer patches one bus's <code>v_nom</code>, and restates every carrier's <code>co2_emissions</code>, a few dozen rows.</p>
 

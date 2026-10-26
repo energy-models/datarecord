@@ -686,10 +686,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#add-remove-add_group-remove_group" class="md-nav__link">
+  <a href="#add-remove" class="md-nav__link">
     <span class="md-ellipsis">
       
-        add / remove / add_group / remove_group
+        add / remove
       
     </span>
   </a>
@@ -1048,10 +1048,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#add-remove-add_group-remove_group" class="md-nav__link">
+  <a href="#add-remove" class="md-nav__link">
     <span class="md-ellipsis">
       
-        add / remove / add_group / remove_group
+        add / remove
       
     </span>
   </a>
@@ -1130,10 +1130,10 @@ You can read an edit back, or hand the record to something that only reads, befo
 <a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"entity.carrier"</span><span class="p">,</span> <span class="s2">"solar"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g2"</span><span class="p">)</span>  <span class="c1"># a property, by its subject</span>
 <a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"bus.x"</span><span class="p">,</span> <span class="mf">10.2</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># a property; `x` alone names an attribute</span>
 </code></pre></div>
-<p>Every coordinate is a keyword, a group's fields included.
+<p>Every coordinate is a keyword, a multi-dim's coordinates included.
 <code>bus="north"</code> with <code>entity="dc"</code> addresses one connection, and <code>from=</code> with <code>to=</code> one corridor.
 A coordinate that no keyword names is NULL, which means every label of it: every entity, loads included, and entities added later.
-A group value is a whole tuple, so you give all of a group's fields or none (<a href="../../design/use/editing/#set">design</a>).</p>
+A multi-dim value is a whole tuple, so you give all of its coordinates or none (<a href="../../design/use/editing/#set">design</a>).</p>
 <p>A property as a keyword selects labels at call time.
 A keyword is bare: it names a coordinate of the attribute first, else any property of a dim the attribute reaches.
 <code>ctype="Generator", carrier="wind"</code> stages one row per label that matches both, on the record as staged.
@@ -1157,31 +1157,31 @@ Where neither says which coordinate, the call is refused.</p>
 <code>set("entity.ctype", "Load", entity="g1")</code> patches one column of <code>g1</code>'s axis row.
 A plain name is an attribute.
 <code>set("carrier", ...)</code> in a schema where only properties are called <code>carrier</code> is refused, and the error suggests <code>bus.carrier</code> and <code>entity.carrier</code>.</p>
-<h2 id="add-remove-add_group-remove_group"><code>add</code> / <code>remove</code> / <code>add_group</code> / <code>remove_group</code><a class="headerlink" href="#add-remove-add_group-remove_group" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind"</span><span class="p">])</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">])</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"ctype"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">])</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"dc"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Link"</span><span class="p">)</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">],</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>
-<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a>
-<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"old_coal"</span><span class="p">])</span>
-<a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a>
-<a id="__codelineno-3-12" name="__codelineno-3-12" href="#__codelineno-3-12"></a><span class="n">w</span><span class="o">.</span><span class="n">add_group</span><span class="p">(</span>
-<a id="__codelineno-3-13" name="__codelineno-3-13" href="#__codelineno-3-13"></a>    <span class="s2">"connection"</span><span class="p">,</span>
-<a id="__codelineno-3-14" name="__codelineno-3-14" href="#__codelineno-3-14"></a>    <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">(</span>
-<a id="__codelineno-3-15" name="__codelineno-3-15" href="#__codelineno-3-15"></a>        <span class="p">{</span>
-<a id="__codelineno-3-16" name="__codelineno-3-16" href="#__codelineno-3-16"></a>            <span class="s2">"connection"</span><span class="p">:</span> <span class="p">[</span>
-<a id="__codelineno-3-17" name="__codelineno-3-17" href="#__codelineno-3-17"></a>                <span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">},</span>
-<a id="__codelineno-3-18" name="__codelineno-3-18" href="#__codelineno-3-18"></a>                <span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"south"</span><span class="p">},</span>
-<a id="__codelineno-3-19" name="__codelineno-3-19" href="#__codelineno-3-19"></a>            <span class="p">],</span>
-<a id="__codelineno-3-20" name="__codelineno-3-20" href="#__codelineno-3-20"></a>            <span class="s2">"role"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"bus0"</span><span class="p">,</span> <span class="s2">"bus1"</span><span class="p">],</span>
-<a id="__codelineno-3-21" name="__codelineno-3-21" href="#__codelineno-3-21"></a>        <span class="p">}</span>
-<a id="__codelineno-3-22" name="__codelineno-3-22" href="#__codelineno-3-22"></a>    <span class="p">),</span>
-<a id="__codelineno-3-23" name="__codelineno-3-23" href="#__codelineno-3-23"></a><span class="p">)</span>
-<a id="__codelineno-3-24" name="__codelineno-3-24" href="#__codelineno-3-24"></a><span class="n">w</span><span class="o">.</span><span class="n">remove_group</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[(</span><span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">)])</span>
+<p>A multi-dim's property takes a scalar, and its coordinates as keywords select the tuples it patches, none selecting every tuple.
+A coordinate is part of the key, so <code>set("connection.bus", ...)</code> is refused: <code>remove</code> the tuple and <code>add</code> it anew.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"connection.role"</span><span class="p">,</span> <span class="s2">"input"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"dc"</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"connection.bus"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"dc"</span><span class="p">)</span>  <span class="c1"># refused: a coordinate is the key</span>
+</code></pre></div>
+<h2 id="add-remove"><code>add</code> / <code>remove</code><a class="headerlink" href="#add-remove" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind"</span><span class="p">])</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">])</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"ctype"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">])</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"dc"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Link"</span><span class="p">)</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">],</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"old_coal"</span><span class="p">])</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="s2">"connection"</span><span class="p">,</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"south"</span><span class="p">}],</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="n">role</span><span class="o">=</span><span class="p">[</span><span class="s2">"bus0"</span><span class="p">,</span> <span class="s2">"bus1"</span><span class="p">],</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">)</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"entity"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"wind1"</span><span class="p">],</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">]}))</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">])</span>  <span class="c1"># another record's tuples, as read</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"south"</span><span class="p">}])</span>
 </code></pre></div>
 <p><code>add(dim, labels, **columns)</code> works on any dim.
 The keywords are the axis file's other columns, the dim's properties, bare.
@@ -1190,40 +1190,43 @@ An attribute keyword is refused, since attributes go through <code>set</code> wh
 A label exists by virtue of its axis row, so <code>add</code> is an edit of its own: adding a bus with no properties sets nothing.</p>
 <p><code>remove(dim, labels)</code> takes the labels out of the staged axis.
 It need not list what it deletes.
-The fold applies it to every value keyed by the label, and <code>remove</code> also takes every group tuple that names one of the labels out of its group (<a href="../../design/layers/removal/">design</a>).</p>
-<p>A layer restates each axis or group it changes whole: every label the base has, with the edits applied, in the base's order, then the labels it adds.
+The fold applies it to every value keyed by the label, and <code>remove</code> also takes every tuple that names one of the labels out of its multi-dim, with the tuple's values (<a href="../../design/layers/removal/">design</a>).
+<code>remove("bus", ["north"])</code> removes every connection at <code>north</code>.</p>
+<p>A layer restates each axis it changes whole, a multi-dim's included: every label the base has, with the edits applied, in the base's order, then the labels it adds.
 An <code>add</code> of a label that <code>remove</code> took out puts it back where the base has it.
 <code>remove</code> is refused while a property that refers to the dim still stores one of the labels, such as <code>entity.carrier</code> naming <code>gas</code>.
 That row belongs to its subject and outlives the label, so <code>set</code> it to another label or None first (<a href="../../design/use/editing/#add-remove">design</a>).</p>
-<p><code>add_group</code> and <code>remove_group</code> stage a group's tuples, as one struct column named for the group with the group's properties beside it.
-Every group goes through these two calls, <code>connection</code> included.</p>
+<p>On a multi-dim, <code>add</code> and <code>remove</code> take tuples.
+A frame DuckDB scans gives them in the struct column named for the multi-dim, as <code>dims["connection"]</code> reads it, or with one column per coordinate instead, but not both; it may carry a column per property, and beside it a property keyword must be a scalar.
+A tuple is also a mapping from coordinate to label, and a list of them takes each property keyword as a scalar or a sequence aligned to the list.
+A tuple with a coordinate missing or NULL is refused, as is one naming a label its coordinate's dim lacks, so <code>add</code> the label first (<a href="../../design/model/multi-dims/">design</a>).</p>
 <h2 id="inspecting-and-rolling-back">Inspecting and rolling back<a class="headerlink" href="#inspecting-and-rolling-back" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">w</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>  <span class="c1"># the edit applied, over the base's rows</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">w</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># additions in, removals out</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># discard everything staged</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">w</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>  <span class="c1"># the edit applied, over the base's rows</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">w</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># additions in, removals out</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># discard everything staged</span>
 </code></pre></div>
 <p>You read what you staged from the record itself, which answers with the edits applied (<a href="../../design/use/editing/#reading-with-pending-edits">design</a>).
 Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk (<a href="../../design/use/editing/#staging">design</a>).</p>
 <h2 id="writing-the-edits">Writing the edits<a class="headerlink" href="#writing-the-edits" title="Permanent link">&para;</a></h2>
 <p>A <code>WorkingRecord</code> does not write.
 The record stays unchanged until you hand its edits to a writer (<a href="../../design/use/editing/#edits">design</a>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">new</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># a patch layer under a new child of the base</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone record, flattened</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># clear the staging area, if you are done</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">new</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># a patch layer under a new child of the base</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone record, flattened</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># clear the staging area, if you are done</span>
 </code></pre></div>
-<p><code>w.edits</code> holds only the edits: the attribute rows set, and each axis and group changed, restated whole.
+<p><code>w.edits</code> holds only the edits: the attribute rows set, and each axis changed, restated whole.
 The fold resolves the rest from the parent.
 <code>w</code> itself is the resolved result, what is staged plus what the record already reads.
 A standalone directory needs that, since it has no parent to resolve against.</p>
 <p>The edits are a delta against the revision <code>w</code> was built over, so <code>child</code> raises if you write them under another one.
 Layers are write-once, so the layer lands in the new child (<a href="../../design/layers/tree/#a-layers-data-is-write-once">design</a>).
 The returned revision reads the edits back:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">new</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">new</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
 <p>Writing clears nothing: a <code>WorkingRecord</code> that still holds its edits reads exactly what it did before, until <code>rollback()</code>.</p>
 <p>An edit replaces the rows it names, so restating a coordinate overwrites it and the last write stands.
 A <code>remove</code> after a <code>set</code> wins regardless of order, since a removed label has no values.
-An <code>add</code> after a <code>remove</code> brings the label back with its parent's values and without its group tuples.</p>
+An <code>add</code> after a <code>remove</code> brings the label back with its parent's values and without the multi-dim tuples that named it.</p>
 <p>A base's results are attributes and carry like any other.
 A child written from <code>edits</code> inherits them, though an edited input may no longer support them.
 The tool writes a solve's results as a layer of its own (<a href="../tools/#solving-and-writing-results-back">tools</a>).</p>

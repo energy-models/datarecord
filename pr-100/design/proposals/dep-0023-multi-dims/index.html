@@ -2311,7 +2311,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td>Status</td>
-<td>Draft</td>
+<td>Implemented (2026-10-26)</td>
 </tr>
 <tr>
 <td>Requires</td>
@@ -2320,6 +2320,10 @@ SPDX-License-Identifier: CC-BY-4.0
 <tr>
 <td>Created</td>
 <td>2026-10-21</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>Unreleased</td>
 </tr>
 <tr>
 <td>Replaces</td>
@@ -2356,12 +2360,12 @@ SPDX-License-Identifier: CC-BY-4.0
 <td><code>Schema.groups</code>, <code>group_columns</code>, <code>group_key</code>, <code>groups_of</code></td>
 </tr>
 <tr>
-<td><a href="../../model/groups/#attributes-over-a-group"><code>dims: [X]</code></a> resolves a dim first</td>
+<td><a href="../../model/multi-dims/#attributes-over-a-multi-dim"><code>dims: [X]</code></a> resolves a dim first</td>
 <td>…and a group if no dim is so named</td>
 </tr>
 <tr>
 <td>a property <code>{one_of: &lt;dim&gt;}</code> may <a href="../../model/properties/#categories">categorize</a> it</td>
-<td><a href="../../open-questions/#whether-a-group-in-partial-may-have-categories">never categorized</a></td>
+<td><a href="../../open-questions/#whether-a-multi-dim-in-partial-may-have-categories">never categorized</a></td>
 </tr>
 </tbody>
 </table>
@@ -2398,7 +2402,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <li><strong>It may be listed in <code>partial</code></strong>, and is in the fold key there; owned whole otherwise.</li>
 <li><strong>A value is a whole tuple or NULL.</strong> A struct with some fields NULL is refused wherever a row comes in: <code>set</code>, <code>add</code> and the writer.</li>
 <li><strong>A NULL broadcasts over its live tuples</strong>, expanded against <code>dims/connection.parquet</code> as a NULL <code>bus</code> is against <code>dims/bus.parquet</code>.</li>
-<li><strong>An attribute may not name a multi-dim beside a dim that shares a name with one of its coordinates</strong>, since a keyword such as <code>bus=</code> would address both: <code>dims: [connection, bus]</code> is refused. A coordinate drawing on <code>bus</code> under another name, such as <code>port</code>, may sit beside <code>bus</code>, as <a href="../../model/groups/#attributes-over-a-group">a group's</a> may today.</li>
+<li><strong>An attribute may not name a multi-dim beside a dim that shares a name with one of its coordinates</strong>, since a keyword such as <code>bus=</code> would address both: <code>dims: [connection, bus]</code> is refused. A coordinate drawing on <code>bus</code> under another name, such as <code>port</code>, may sit beside <code>bus</code>, as <a href="../../model/multi-dims/#attributes-over-a-multi-dim">a group's</a> may today.</li>
 <li><strong>Removing a coordinate's label cascades</strong>: <code>remove("bus", ["south"])</code> removes every tuple naming <code>south</code>, as it removed every group row.</li>
 </ul>
 <h3 id="coordinates-are-addressed-as-properties-are">Coordinates are addressed as properties are<a class="headerlink" href="#coordinates-are-addressed-as-properties-are" title="Permanent link">&para;</a></h3>
@@ -2406,6 +2410,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <ul>
 <li>A <strong>selector keyword</strong> stays bare: <code>bus="north"</code> on an attribute over <code>connection</code> selects the tuples whose <code>bus</code> is <code>north</code>, coordinate first, as today.</li>
 <li>A property of a multi-dim named like one of its coordinates stays refused, as <a href="../../model/properties/#names">the schema</a> refuses it for a group.</li>
+<li><strong>A multi-dim is never categorized.</strong> A property of it may refer to a dim with <code>one_of</code>, as <code>role</code> does, and still categorizes nothing, <code>partial</code> listing the multi-dim or not; a <code>default_by</code> keyed on one is refused. Whether that changes is left <a href="#open-issues">open</a>.</li>
 </ul>
 <h3 id="a-functional-group-is-a-property-of-a-multi-dim">A functional group is a property of a multi-dim<a class="headerlink" href="#a-functional-group-is-a-property-of-a-multi-dim" title="Permanent link">&para;</a></h3>
 <p><strong>A group property <code>{one_of: &lt;dim&gt;}</code></strong>, which <a href="../dep-0018-drop-narwhals/#into-goes">DEP 18</a> put in place of a group's <code>into</code>, <strong>becomes a property of the multi-dim, declared the same way</strong>:</p>
@@ -2425,12 +2430,14 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <p>One <code>zone</code> per tuple is what a property is: one value per label of its subject. The live-label check, the <code>remove</code> refusal and NULL meaning none are <a href="../../model/properties/#referring-to-a-dim">a property referring to a dim's</a>.</p>
 <h3 id="groups-go">Groups go<a class="headerlink" href="#groups-go" title="Permanent link">&para;</a></h3>
-<p><strong>With that, <code>groups</code> holds nothing and is removed.</strong> <code>Group</code>, <code>Schema.groups</code>, <code>Schema.group_columns</code>, <code>Schema.groups_of</code>, <code>Schema.group_key</code>, <code>add_group</code>, <code>remove_group</code> and the <code>groups/</code> directory go. <a href="../../model/groups/#attributes-over-a-group"><code>dims: [X]</code></a> resolves a dim, and nothing else.</p>
-<p><strong><code>add</code> and <code>remove</code> take a multi-dim's tuples</strong>, each a mapping from coordinate to label:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}],</span> <span class="n">role</span><span class="o">=</span><span class="s2">"output"</span><span class="p">)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}])</span>
+<p><strong>With that, <code>groups</code> holds nothing and is removed.</strong> <code>Group</code>, <code>Schema.groups</code>, <code>Schema.group_columns</code>, <code>Schema.groups_of</code>, <code>Schema.group_key</code>, <code>add_group</code>, <code>remove_group</code> and the <code>groups/</code> directory go. <a href="../../model/multi-dims/#attributes-over-a-multi-dim"><code>dims: [X]</code></a> resolves a dim, and nothing else.</p>
+<p><strong><code>add</code> and <code>remove</code> take a multi-dim's tuples</strong> as a frame, anything DuckDB scans, holding the struct column named for the multi-dim, which is what <code>record.dims["connection"]</code> reads, so a read goes back in as it stands. A frame may instead carry a column per coordinate, and a list of mappings from coordinate to label is made into that frame up front. Every form then takes the same path and the same type checks. A frame carrying both the struct column and a coordinate column is refused as ambiguous:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">])</span>  <span class="c1"># another record's tuples, as read</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}],</span> <span class="n">role</span><span class="o">=</span><span class="s2">"output"</span><span class="p">)</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"entity"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"g2"</span><span class="p">],</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"south"</span><span class="p">]}))</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}])</span>
 </code></pre></div>
-<p>A tuple naming a label its coordinate's dim lacks is refused, as <code>add_group</code> refused it.</p>
+<p>A property is a keyword, as for any dim, or a further column of the frame. A tuple naming a label its coordinate's dim lacks is refused, as <code>add_group</code> refused it.</p>
 <h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
 <p><strong>A multi-dim, not a relation usable as a dim.</strong> A tuple set that may stand in <code>dims</code> when used there and is a relation otherwise is two kinds of thing decided by the caller. Declaring it under <code>dimensions</code> says once what it is, gives it a table for its properties, and lets <code>add</code> and <code>remove</code> treat it as any other dim.</p>
 <p><strong>A dim table, not a second directory.</strong> <code>dims/</code> already holds one table per dim keyed by that dim's column, each restated whole; a multi-dim's is keyed by its struct column. A reader of the format looks in one place.</p>
@@ -2440,7 +2447,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>Every public name with <code>group</code> in it goes; callers of <code>add_group</code> and <code>remove_group</code> call <code>add</code> and <code>remove</code>.</li>
 </ul>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># connection STRUCT(entity, bus) | role</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># connection STRUCT(entity, bus)</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># connection | role</span>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="s2">"efficiency"</span>
@@ -2454,10 +2461,10 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
-<li><code>Dimension.over</code>, parsed as a group's was; <code>over</code> exclusive with <code>dtype</code> and <code>one_of</code>; <code>groups</code> refused at load, naming <code>dimensions</code>.</li>
+<li><code>Dimension.over</code>, parsed as a group's was; <code>over</code> exclusive with <code>dtype</code> and <code>one_of</code>; <code>groups</code> an unknown key, refused as any other.</li>
 <li>The group struct-column machinery keyed on the dim: fold key, broadcast, whole-or-NULL, cascade, the coordinate-name clash.</li>
 <li><code>dims/&lt;multi-dim&gt;.parquet</code> for its table, restated whole; <code>groups/</code> and <code>resolved/groups/</code> dropped from the writer and reader.</li>
-<li><code>add</code> and <code>remove</code> take tuples; <code>add_group</code>, <code>remove_group</code> removed.</li>
+<li><code>add</code> and <code>remove</code> take tuples, as a frame with the struct column or a column per coordinate, or as a list of mappings; <code>add_group</code>, <code>remove_group</code> removed.</li>
 <li><code>Schema.resolve</code> resolves a coordinate.</li>
 <li><code>Group</code>, <code>Schema.groups</code>, <code>group_columns</code>, <code>groups_of</code>, <code>group_key</code> removed; the PyPSA tool declares <code>connection</code> under <code>dimensions</code>.</li>
 <li>Pages, usage, changelog; fixtures re-exported.</li>
@@ -2475,18 +2482,9 @@ SPDX-License-Identifier: CC-BY-4.0
 <p><strong>A surrogate port dim</strong>, one label per tuple with two properties <code>{one_of: entity}</code> and <code>{one_of: bus}</code>. A value is then written against a port label and its entity and bus looked up; the tuple stops being the address.</p>
 <h2 id="open-issues">Open Issues<a class="headerlink" href="#open-issues" title="Permanent link">&para;</a></h2>
 <ul>
-<li><strong>Whether a multi-dim may be <code>over</code> another multi-dim.</strong> Nothing needs it yet; it is refused until something does.</li>
-<li><strong>Whether a multi-dim is declared under <code>properties</code> instead, with a reserved key.</strong> The subject's entry names its coordinates, and its properties sit beside them:</li>
-</ul>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">properties</span><span class="p">:</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">plant_period</span><span class="p">:</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">over</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">plant</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">period</span><span class="p p-Indicator">]</span>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">zone</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> one_of</span><span class="p">:</span><span class="w"> </span><span class="nv">zone</span><span class="w"> </span><span class="p p-Indicator">}</span>
-</code></pre></div>
-<p>The multi-dim is then declared once, where its only content is. Against it: <code>over</code> becomes a name no property may take, a multi-dim with no property still needs an entry under <code>properties</code>, and <code>dimensions</code> stops listing every dim, so a reader of <code>dimensions</code> alone (mathspec's included) misses it.</p>
-<ul>
-<li><strong>Whether a functional mapping over two coordinates justifies a dim.</strong> <code>plant_period</code> exists only to carry <code>zone</code>; its labels must be written before the property can be.</li>
-<li><strong>Whether a multi-dim in <code>partial</code> may be categorized.</strong> Once a group is a dim, the <a href="../../open-questions/#whether-a-group-in-partial-may-have-categories">open question</a> on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized.</li>
+<li><strong>Whether a multi-dim may be <code>over</code> another multi-dim.</strong> Nothing needs it yet; it is refused until something does. Carried on as an <a href="../../open-questions/#whether-a-multi-dim-may-be-over-another-multi-dim">open question</a>.</li>
+<li><strong>Whether a functional mapping over two coordinates justifies a dim.</strong> <code>plant_period</code> exists only to carry <code>zone</code>; its labels must be written before the property can be. Carried on as an <a href="../../open-questions/#whether-a-functional-mapping-over-two-coordinates-justifies-a-dim">open question</a>.</li>
+<li><strong>Whether a multi-dim in <code>partial</code> may be categorized.</strong> Once a group is a dim, the <a href="../../open-questions/#whether-a-multi-dim-in-partial-may-have-categories">open question</a> on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized, as its specification says; a later DEP may lift that.</li>
 </ul>
 
 

@@ -1519,7 +1519,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="reading">Reading<a class="headerlink" href="#reading" title="Permanent link">&para;</a></h1>
 <p><code>RecordLike</code> is the protocol that a reader codes against, and a framework object can satisfy it structurally.
 <code>Record</code> is the class that implements it.
-A record hands back DuckDB relations for dims, groups, properties and attributes, built lazily so that listing them costs no I/O.
+A record hands back DuckDB relations for dims, properties and attributes, built lazily so that listing them costs no I/O.
 <code>flags</code> reports which axes an attribute's rows set or leave NULL, so a consumer can plan containers before fetching anything.
 DuckDB is the one engine from fold to consumer.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nd">@runtime_checkable</span>
@@ -1534,21 +1534,22 @@ DuckDB is the one engine from fold to consumer.</p>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="nd">@property</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">properties</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># stored property values, keyed by subject</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">groups</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># each group's rows, keyed by group</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># long relations, keyed by attribute</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># long relations, keyed by attribute</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span> <span class="o">...</span>
 </code></pre></div>
 <p>A signature annotates against <code>RecordLike</code>, and a framework object satisfies it without depending on this package.
 <code>Record</code> is the interface over <a href="../../layers/resolution/#one-record-over-one-fold">one fold</a>, and <code>Revision.record</code> and <code>Workspace.at(uri)</code> both return one.
 The class has the short name because a caller constructs and holds it.
 The protocol is read-only.
 <a href="../writing/">Writing</a> goes through <code>store.root(source)</code>, <code>rev.child(source)</code> or <code>ws.write(source, uri)</code>, and <a href="../../storage/format/">the record format</a> is how a record is stored.</p>
-<p>Each accessor holds one section of <a href="../../model/schema/">the schema</a>: <code>dims</code> the labels, <code>properties</code> the metadata of those labels, <code>groups</code> the tuples that exist, and <code>attributes</code> the data.
+<p>Each accessor holds one section of <a href="../../model/schema/">the schema</a>: <code>dims</code> the labels, <code>properties</code> the metadata of those labels, and <code>attributes</code> the data.
 What a name is declared as decides where its values are read.</p>
+<p>A <a href="../../model/multi-dims/">multi-dim</a> reads as any dim does.
+<code>dims["connection"]</code> is its key column alone, the struct <code>connection STRUCT(entity, bus)</code>, one row per tuple in member order.
+Its properties are in <code>properties["connection"]</code>, <code>connection | role</code>.</p>
 <h2 id="properties-and-categories">Properties and categories<a class="headerlink" href="#properties-and-categories" title="Permanent link">&para;</a></h2>
-<p>A <a href="../../model/properties/#properties">property</a> holds one value per label of its subject, a dim or a group, as a column of the subject's file.</p>
+<p>A <a href="../../model/properties/#properties">property</a> holds one value per label of its subject, a dim or a multi-dim, as a column of the subject's file.</p>
 <p><code>properties[subject]</code> is the subject's key with every property declared for it, as stored.
 It is a record-wide view, NULL wherever no layer wrote a value.
 It has a key for each subject that declares properties, and its columns are the properties' plain names, since the relation already names the subject.</p>
@@ -1588,9 +1589,9 @@ Fetching is the expense, and the consumer decides when to fetch.</p>
 Only attributes with rows are present, so <code>set(record.flags())</code> also says which attributes the record has.</p>
 <p><code>flags(**categories)</code> answers for one category.
 The keywords are categorizing properties of one dim by their plain names, such as <code>ctype="Generator"</code>, each with one category or a list (<a href="#properties-and-categories">categories</a>).
-Only rows that reach a matching label count: a row naming it through the dim's own column or a group's single field over the dim, and a row leaving that column NULL, which reaches every label or tuple.
+Only rows that reach a matching label count: a row naming it through the dim's own column or a multi-dim's single coordinate drawing on the dim, and a row leaving that column NULL, which reaches every label or tuple.
 An attribute is present where such a row exists.
-Keywords that categorize several dims are refused, and so is a group that reaches the dim through two fields, since a row would then count towards no single label.</p>
+Keywords that categorize several dims are refused, and so is a multi-dim that draws on the dim through two coordinates, since a row would then count towards no single label.</p>
 <p>The sets name dims, so a consumer asks about a named axis: <code>"timestep" in flags["p_max_pu"].varies</code>.
 <code>breakpoints</code> is a boolean, since a breakpoint is an abscissa within one row's value and no axis (<a href="../../model/attributes/#wide-and-long-rows">wide and long rows</a>).</p>
 <p><code>varies</code> and <code>broadcast</code> can overlap.
@@ -1601,7 +1602,7 @@ For one label the two sets would be complements, and the union over many labels 
 For the same reason a framework asks per category: a Generator's per-timestep rows and a Link's single row, unioned, describe neither.</p>
 <p><code>varies | broadcast</code> tests whether an attribute touches a dim at all.
 Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.</p>
-<p>Both sets cover only the dims and groups an attribute is addressed by.
+<p>Both sets cover only the dims an attribute is addressed by, multi-dims included.
 A dim outside its <a href="../../model/attributes/#attributespec"><code>dims</code></a> is in neither set.
 The source the flags aggregate, such as the <a href="../../layers/resolution/#owner-map">owner map</a>, a scan of <code>attributes/</code> or a staging table, is one relation over every attribute.
 A dim one attribute uses reads NULL in the rows of another attribute that lacks it, and that NULL means the axis does not exist for that attribute.

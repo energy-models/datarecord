@@ -933,17 +933,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#datarecord.resolve.record.Record.groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;groups
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#datarecord.resolve.record.Record.flags" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -998,17 +987,6 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;properties
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#datarecord.protocols.RecordLike.groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;groups
       
     </span>
   </a>
@@ -1244,17 +1222,6 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#datarecord.resolve.record.Record.groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;groups
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
   <a href="#datarecord.resolve.record.Record.flags" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1309,17 +1276,6 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;properties
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#datarecord.protocols.RecordLike.groups" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;groups
       
     </span>
   </a>
@@ -1629,66 +1585,6 @@ staged rows are one more source on the end.</p>
 <div class="doc doc-object doc-function">
 
 
-<h3 id="datarecord.resolve.record.Record.groups" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">groups</span>
-
-
-<a href="#datarecord.resolve.record.Record.groups" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">groups</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            LazyRelations (datarecord.protocols.LazyRelations)" href="#datarecord.protocols.LazyRelations">LazyRelations</a></span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Each declared group's rows, keyed by group - one relation each.</p>
-<p>Only groups some layer wrote a row of; a declared group nothing
-populates is absent rather than present-and-empty.</p>
-
-
-<details class="note" open>
-  <summary>Notes</summary>
-  <ul>
-<li><a href="https://energy-models.github.io/datarecord/design/model/groups/">groups</a></li>
-</ul>
-</details>
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>src/datarecord/resolve/record.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-361">361</a></span>
-<span class="normal"><a href="#__codelineno-0-362">362</a></span>
-<span class="normal"><a href="#__codelineno-0-363">363</a></span>
-<span class="normal"><a href="#__codelineno-0-364">364</a></span>
-<span class="normal"><a href="#__codelineno-0-365">365</a></span>
-<span class="normal"><a href="#__codelineno-0-366">366</a></span>
-<span class="normal"><a href="#__codelineno-0-367">367</a></span>
-<span class="normal"><a href="#__codelineno-0-368">368</a></span>
-<span class="normal"><a href="#__codelineno-0-369">369</a></span>
-<span class="normal"><a href="#__codelineno-0-370">370</a></span>
-<span class="normal"><a href="#__codelineno-0-371">371</a></span>
-<span class="normal"><a href="#__codelineno-0-372">372</a></span>
-<span class="normal"><a href="#__codelineno-0-373">373</a></span>
-<span class="normal"><a href="#__codelineno-0-374">374</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="nd">@_stable_cache</span>
-<a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="k">def</span><span class="w"> </span><span class="nf">groups</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LazyRelations</span><span class="p">:</span>
-<a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="w">    </span><span class="sd">"""Each declared group's rows, keyed by group - one relation each.</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">    Only groups some layer wrote a row of; a declared group nothing</span>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">    populates is absent rather than present-and-empty.</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a><span class="sd">    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)</span>
-<a id="__codelineno-0-371" name="__codelineno-0-371"></a><span class="sd">    """</span>
-<a id="__codelineno-0-372" name="__codelineno-0-372"></a>    <span class="n">groups</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_coords</span><span class="o">.</span><span class="n">groups</span>
-<a id="__codelineno-0-373" name="__codelineno-0-373"></a>    <span class="n">names</span> <span class="o">=</span> <span class="nb">tuple</span><span class="p">(</span><span class="n">g</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">groups</span> <span class="k">if</span> <span class="n">g</span> <span class="ow">in</span> <span class="n">groups</span><span class="p">)</span>
-<a id="__codelineno-0-374" name="__codelineno-0-374"></a>    <span class="k">return</span> <span class="n">LazyRelations</span><span class="p">(</span><span class="n">names</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_group_frame</span><span class="p">)</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
 <h3 id="datarecord.resolve.record.Record.flags" class="doc doc-heading">
 <code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">flags</span>
 
@@ -1718,21 +1614,21 @@ populates is absent rather than present-and-empty.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/resolve/record.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-380">380</a></span>
-<span class="normal"><a href="#__codelineno-0-381">381</a></span>
-<span class="normal"><a href="#__codelineno-0-382">382</a></span>
-<span class="normal"><a href="#__codelineno-0-383">383</a></span>
-<span class="normal"><a href="#__codelineno-0-384">384</a></span>
-<span class="normal"><a href="#__codelineno-0-385">385</a></span>
-<span class="normal"><a href="#__codelineno-0-386">386</a></span>
-<span class="normal"><a href="#__codelineno-0-387">387</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-380" name="__codelineno-0-380"></a><span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span>
-<a id="__codelineno-0-381" name="__codelineno-0-381"></a><span class="w">    </span><span class="sd">"""Straight off the owner map, which folded these in for free.</span>
-<a id="__codelineno-0-382" name="__codelineno-0-382"></a>
-<a id="__codelineno-0-383" name="__codelineno-0-383"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-384" name="__codelineno-0-384"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-385" name="__codelineno-0-385"></a><span class="sd">    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)</span>
-<a id="__codelineno-0-386" name="__codelineno-0-386"></a><span class="sd">    """</span>
-<a id="__codelineno-0-387" name="__codelineno-0-387"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fold</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="o">**</span><span class="n">categories</span><span class="p">)</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-363">363</a></span>
+<span class="normal"><a href="#__codelineno-0-364">364</a></span>
+<span class="normal"><a href="#__codelineno-0-365">365</a></span>
+<span class="normal"><a href="#__codelineno-0-366">366</a></span>
+<span class="normal"><a href="#__codelineno-0-367">367</a></span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span>
+<span class="normal"><a href="#__codelineno-0-369">369</a></span>
+<span class="normal"><a href="#__codelineno-0-370">370</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="w">    </span><span class="sd">"""Straight off the owner map, which folded these in for free.</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)</span>
+<a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">    """</span>
+<a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fold</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="o">**</span><span class="n">categories</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1850,7 +1746,9 @@ a framework's own <code>RecordLike</code> reaches it through an adapter.</p>
     <div class="doc doc-contents ">
 
         <p>Axis relations keyed by dim, each holding only the dim's label column.</p>
-<p>Properties are in <code>properties</code>, attributes in <code>attributes</code>.</p>
+<p>A multi-dim's label column is its struct column, a field per
+coordinate. Properties are in <code>properties</code>, attributes in
+<code>attributes</code>.</p>
 
 
 <details class="note" open>
@@ -1887,54 +1785,13 @@ a framework's own <code>RecordLike</code> reaches it through an adapter.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Per dim or group declaring properties, its key and their stored values, no default applied.</p>
+        <p>Per dim declaring properties, its key and their stored values, no default applied.</p>
 
 
 <details class="note" open>
   <summary>Notes</summary>
   <ul>
 <li><a href="https://energy-models.github.io/datarecord/design/model/properties/#properties">properties</a></li>
-</ul>
-</details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-attribute">
-
-
-
-<h3 id="datarecord.protocols.RecordLike.groups" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">groups</span>
-
-
-  <span class="doc doc-labels">
-      <small class="doc doc-label doc-label-property"><code>property</code></small>
-  </span>
-
-<a href="#datarecord.protocols.RecordLike.groups" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">groups</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Relations
-
-
-  
-      module-attribute
-   (datarecord.protocols.Relations)" href="#datarecord.protocols.Relations">Relations</a></span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>Each declared group's rows, keyed by group - one relation each.</p>
-<p>A group declares which tuples over several dims exist - <code>connection</code>
-over <code>(entity, bus)</code> is the one every record with connections has, and
-it is one instance rather than a member of its own.</p>
-
-
-<details class="note" open>
-  <summary>Notes</summary>
-  <ul>
-<li><a href="https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group">attributes over a group</a></li>
-<li><a href="https://energy-models.github.io/datarecord/design/model/groups/">groups</a></li>
-<li><a href="https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives">where the rows live</a></li>
 </ul>
 </details>
     </div>
@@ -2039,37 +1896,37 @@ count, and only attributes those labels carry.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/protocols.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span>
-<span class="normal"><a href="#__codelineno-0-202">202</a></span>
-<span class="normal"><a href="#__codelineno-0-203">203</a></span>
-<span class="normal"><a href="#__codelineno-0-204">204</a></span>
-<span class="normal"><a href="#__codelineno-0-205">205</a></span>
-<span class="normal"><a href="#__codelineno-0-206">206</a></span>
-<span class="normal"><a href="#__codelineno-0-207">207</a></span>
-<span class="normal"><a href="#__codelineno-0-208">208</a></span>
-<span class="normal"><a href="#__codelineno-0-209">209</a></span>
-<span class="normal"><a href="#__codelineno-0-210">210</a></span>
-<span class="normal"><a href="#__codelineno-0-211">211</a></span>
-<span class="normal"><a href="#__codelineno-0-212">212</a></span>
-<span class="normal"><a href="#__codelineno-0-213">213</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a><span class="w">    </span><span class="sd">"""Every attribute with rows, mapped to the shape its rows take.</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a><span class="sd">    Given `categories` of one dim, only rows reaching a label among them</span>
-<a id="__codelineno-0-202" name="__codelineno-0-202"></a><span class="sd">    count, and only attributes those labels carry.</span>
-<a id="__codelineno-0-203" name="__codelineno-0-203"></a>
-<a id="__codelineno-0-204" name="__codelineno-0-204"></a><span class="sd">    Raises</span>
-<a id="__codelineno-0-205" name="__codelineno-0-205"></a><span class="sd">    ------</span>
-<a id="__codelineno-0-206" name="__codelineno-0-206"></a><span class="sd">    ValueError</span>
-<a id="__codelineno-0-207" name="__codelineno-0-207"></a><span class="sd">        If the keywords categorize no dim or several.</span>
-<a id="__codelineno-0-208" name="__codelineno-0-208"></a>
-<a id="__codelineno-0-209" name="__codelineno-0-209"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-210" name="__codelineno-0-210"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-211" name="__codelineno-0-211"></a><span class="sd">    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)</span>
-<a id="__codelineno-0-212" name="__codelineno-0-212"></a><span class="sd">    """</span>
-<a id="__codelineno-0-213" name="__codelineno-0-213"></a>    <span class="o">...</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
+<span class="normal"><a href="#__codelineno-0-190">190</a></span>
+<span class="normal"><a href="#__codelineno-0-191">191</a></span>
+<span class="normal"><a href="#__codelineno-0-192">192</a></span>
+<span class="normal"><a href="#__codelineno-0-193">193</a></span>
+<span class="normal"><a href="#__codelineno-0-194">194</a></span>
+<span class="normal"><a href="#__codelineno-0-195">195</a></span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span>
+<span class="normal"><a href="#__codelineno-0-197">197</a></span>
+<span class="normal"><a href="#__codelineno-0-198">198</a></span>
+<span class="normal"><a href="#__codelineno-0-199">199</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-184" name="__codelineno-0-184"></a><span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="w">    </span><span class="sd">"""Every attribute with rows, mapped to the shape its rows take.</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">    Given `categories` of one dim, only rows reaching a label among them</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">    count, and only attributes those labels carry.</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a><span class="sd">        If the keywords categorize no dim or several.</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)</span>
+<a id="__codelineno-0-198" name="__codelineno-0-198"></a><span class="sd">    """</span>
+<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

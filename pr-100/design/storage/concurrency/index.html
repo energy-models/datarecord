@@ -1549,9 +1549,9 @@ Anything else they cache is plain data that every thread computes the same way.
 A relation and a <code>WorkingRecord</code> belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as <a href="#a-relation-from-another-connection-is-rejected">a relation from another connection</a> is.</p>
 <p>A fold caches its results as shared tables.
-The frozen prefix's folded axes and groups are the tables <code>dims_&lt;dim&gt;_&lt;id&gt;</code> and <code>group_&lt;name&gt;_&lt;id&gt;</code>, beside the <a href="../../layers/resolution/#owner-map">owner map</a> <code>owner_map_&lt;key&gt;_&lt;id&gt;</code>.
+The frozen prefix's folded axes are the tables <code>dims_&lt;dim&gt;_&lt;id&gt;</code>, a <a href="../../model/multi-dims/">multi-dim</a>'s like any other, beside the <a href="../../layers/resolution/#owner-map">owner map</a> <code>owner_map_&lt;key&gt;_&lt;id&gt;</code>.
 A last table, <code>coords_&lt;id&gt;</code>, lists them and is created after them, so a reader that finds it finds them all.
-A dim or group name is a caller's string, so the table name holds its hash, and <code>&lt;key&gt;</code> is the hash of the owner map's key columns.
+A dim's name is a caller's string, so the table name holds its hash, and <code>&lt;key&gt;</code> is the hash of the owner map's key columns.
 <code>&lt;id&gt;</code> is the node whose frozen layers were folded: a revision's id, the base's id for a <code>WorkingRecord</code>, or the <a href="../../model/schema/#one-schema-per-record">id in the manifest</a> for a standalone directory.</p>
 <p>The schema is no part of the key beyond <code>partial</code>, so a fold made before the manifest widened is read as it is under the wider schema, while one made before a dim joined or left <code>partial</code> is folded again.
 A <a href="../../model/schema/#versioning">compatible widening</a> only adds, and changes no column a table already has.
@@ -1587,7 +1587,7 @@ No widening is silently lost.</p>
 A writer that loses ten times, with a jittered backoff in between, gives up with an error.
 A credential that can write <code>manifest.json</code> but cannot read it meets the same error, because a remote read answered 403 counts as missing and every create-only write then fails.</p>
 <p><code>materialise()</code> follows the same rule.
-<code>owner_map.parquet</code> <a href="../../layers/resolution/#materialised-node-caches">marks a node as materialised</a>, so it is written last, after the resolved dims and groups.
+<code>owner_map.parquet</code> <a href="../../layers/resolution/#materialised-node-caches">marks a node as materialised</a>, so it is written last, after the resolved dims.
 Locally each file is written under a temporary name and renamed.
 A parquet file appears at its final path before it is complete, and a reader that meets it mid-write fails.
 Two writers that materialise one node write the same content, so that race is harmless.</p>

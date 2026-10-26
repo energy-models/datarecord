@@ -2377,7 +2377,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td>Status</td>
-<td>Implemented 2026-10-12, <a href="#amendment-a-group-is-a-dim">amendment</a> 2026-10-13</td>
+<td>Superseded 2026-10-26 (implemented 2026-10-12, <a href="#amendment-a-group-is-a-dim">amendment</a> 2026-10-13)</td>
 </tr>
 <tr>
 <td>Created</td>
@@ -2389,16 +2389,16 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td>Superseded-By</td>
-<td><a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a> (its group tombstones anti-joining the owner map)</td>
+<td><a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a> (its group tombstones anti-joining the owner map), <a href="../dep-0023-multi-dims/">DEP 23</a> (its groups, which become multi-dims)</td>
 </tr>
 </tbody>
 </table>
-<p>Landed in the <a href="#landing">steps below</a> on <a href="../../model/groups/">the schema</a>, <a href="../../model/attributes/#the-broadcast-rule">the record</a>, <a href="../../storage/format/#the-long-schema">the format</a>, <a href="../../layers/resolution/#owner-map">the read path</a>, <a href="../../use/editing/#set">the working record</a> and <a href="../../tools/pypsa/#results-on-connections">consuming a record</a>; this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+<p>Landed in the <a href="#landing">steps below</a> on <a href="../../model/multi-dims/">the schema</a>, <a href="../../model/attributes/#the-broadcast-rule">the record</a>, <a href="../../storage/format/#the-long-schema">the format</a>, <a href="../../layers/resolution/#owner-map">the read path</a>, <a href="../../use/editing/#set">the working record</a> and <a href="../../tools/pypsa/#results-on-connections">consuming a record</a>; this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 <a href="#what-the-implementation-found">What the implementation found</a> records where it departs from or adds to the argument below.</p>
-<p>An attribute over a <a href="../../model/groups/">group</a> carries the group as <strong>one column, named for the group, of a <code>STRUCT</code> dtype over the group's key</strong> — <code>connection STRUCT(entity, bus)</code> — rather than the group's coordinates spread out as columns of their own.</p>
+<p>An attribute over a <a href="../../model/multi-dims/">group</a> carries the group as <strong>one column, named for the group, of a <code>STRUCT</code> dtype over the group's key</strong> — <code>connection STRUCT(entity, bus)</code> — rather than the group's coordinates spread out as columns of their own.</p>
 <p>That gives back broadcasting to every dim a group draws on, and makes the <a href="../../layers/resolution/#owner-map">owner map</a> key one column per membership, so a group shows up there as itself.</p>
 <h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
-<p><a href="../../model/groups/#attributes-over-a-group">Addressing</a> expands a group in <code>dims</code> to its coordinates, so <code>inputs/efficiency.parquet</code> is <code>entity | bus | timestep | …</code> and the fold key is the flat union of every group's coordinate names (<a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial_dims</code></a>).
+<p><a href="../../model/multi-dims/#attributes-over-a-multi-dim">Addressing</a> expands a group in <code>dims</code> to its coordinates, so <code>inputs/efficiency.parquet</code> is <code>entity | bus | timestep | …</code> and the fold key is the flat union of every group's coordinate names (<a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial_dims</code></a>).
 A column in the fold key is either broadcast or membership, never both, and a group coordinate <a href="../../model/attributes/#the-broadcast-rule">never broadcasts</a>.
 So <code>Schema.broadcast_dims</code> drops every coordinate any group is keyed by, <strong>schema-wide</strong>:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">sparse</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span> <span class="k">for</span> <span class="n">g</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">groups</span><span class="o">.</span><span class="n">values</span><span class="p">()</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="n">g</span><span class="o">.</span><span class="n">key</span><span class="p">}</span>
@@ -2417,7 +2417,7 @@ A group's tombstones are a multi-column anti-join over coordinates that other gr
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>inputs/flow.parquet         corridor STRUCT("from", "to")  | timestep | attribute | breakpoint | value
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>inputs/marginal_price       bus | timestep | attribute | breakpoint | value
 </code></pre></div>
-<p><code>coordinates_of("efficiency")</code> is <code>("connection", "timestep")</code>: <a href="../../model/groups/#attributes-over-a-group">addressing</a> still resolves a name in <code>dims</code> to the dim of that name first and to the group otherwise, but a group resolves to itself rather than expanding.</p>
+<p><code>coordinates_of("efficiency")</code> is <code>("connection", "timestep")</code>: <a href="../../model/multi-dims/#attributes-over-a-multi-dim">addressing</a> still resolves a name in <code>dims</code> to the dim of that name first and to the group otherwise, but a group resolves to itself rather than expanding.</p>
 <p><strong>The membership keys are <code>entity</code> and one column per group</strong>, and every declared dim but <code>entity</code> and the type axis broadcasts.
 <code>broadcast_dims</code> loses its <code>sparse</code> exclusion; <code>bus</code> broadcasts like <code>scenario</code>.
 The fold key stays <a href="../../layers/tree/#partial-the-granularity-of-an-override">one fixed tuple</a>, its columns now <code>entity | connection | corridor | &lt;partial value dims&gt;</code>.</p>
@@ -2476,7 +2476,7 @@ It is the same "keyed twice over" rule <a href="../../model/schema/"><code>into<
 <li>The fold and the read path: owner-map key and the group tombstone anti-join on the struct column; the resolve join on it.</li>
 <li>Staging: pack coordinate keywords and flat frame columns into the struct.</li>
 <li>The PyPSA tool packs on <code>to_datarecord</code> and unpacks on <code>build</code>.</li>
-<li><a href="../../model/groups/">Schema</a>, <a href="../../model/attributes/#the-broadcast-rule">record</a>, <a href="../../storage/format/#the-long-schema">format</a> and <a href="../../layers/resolution/#owner-map">read-path</a> pages rewritten; this page marked landed.</li>
+<li><a href="../../model/multi-dims/">Schema</a>, <a href="../../model/attributes/#the-broadcast-rule">record</a>, <a href="../../storage/format/#the-long-schema">format</a> and <a href="../../layers/resolution/#owner-map">read-path</a> pages rewritten; this page marked landed.</li>
 </ol>
 <h2 id="what-the-implementation-found">What the implementation found<a class="headerlink" href="#what-the-implementation-found" title="Permanent link">&para;</a></h2>
 <ul>
@@ -2492,7 +2492,7 @@ It is the same "keyed twice over" rule <a href="../../model/schema/"><code>into<
 </ul>
 <h2 id="amendment-a-group-is-a-dim">Amendment: a group is a dim<a class="headerlink" href="#amendment-a-group-is-a-dim" title="Permanent link">&para;</a></h2>
 <p>Status: <strong>Implemented</strong> · Drafted 2026-10-13 · Implemented 2026-10-13</p>
-<p>As for the proposal above, the <a href="../../model/groups/">schema</a>, <a href="../../model/attributes/#the-broadcast-rule">record</a>, <a href="../../layers/resolution/#owner-map">read-path</a> and <a href="../../use/editing/#set">working-record</a> pages are authoritative; <a href="#what-the-amendment-found">what the implementation found</a> records where it departs.</p>
+<p>As for the proposal above, the <a href="../../model/multi-dims/">schema</a>, <a href="../../model/attributes/#the-broadcast-rule">record</a>, <a href="../../layers/resolution/#owner-map">read-path</a> and <a href="../../use/editing/#set">working-record</a> pages are authoritative; <a href="#what-the-amendment-found">what the implementation found</a> records where it departs.</p>
 <p>Once a group is one column, the reasons it stayed a membership key, apart from the dims, are gone.
 <strong>A group is a dim whose axis is the resolved group</strong>: <code>groups/&lt;group&gt;.parquet</code>, keyed by the column named for the group, as <code>dims/&lt;dim&gt;.parquet</code> is.
 It broadcasts, enters the owner map only where <code>partial</code> names it, and is owned whole otherwise — the rules <code>snapshot</code> follows, unchanged.</p>
@@ -2566,7 +2566,7 @@ The gain is one rule where there were two: everything said of a dim — broadcas
 <li>The fold: <code>expand_dims</code> over a group's relation; a partial group's tombstone; the flags gain a field per group.</li>
 <li>The whole-or-NULL check in staging and the writer; <code>set</code> stages a NULL struct where no coordinate is given.</li>
 <li>The PyPSA tool declares <code>connection</code> partial.</li>
-<li><a href="../../model/groups/">Schema</a>, <a href="../../model/attributes/#the-broadcast-rule">record</a>, <a href="../../layers/resolution/#owner-map">read-path</a> and <a href="../../use/editing/#set">working-record</a> pages; the open question widened.</li>
+<li><a href="../../model/multi-dims/">Schema</a>, <a href="../../model/attributes/#the-broadcast-rule">record</a>, <a href="../../layers/resolution/#owner-map">read-path</a> and <a href="../../use/editing/#set">working-record</a> pages; the open question widened.</li>
 </ol>
 <h3 id="what-the-amendment-found">What the amendment found<a class="headerlink" href="#what-the-amendment-found" title="Permanent link">&para;</a></h3>
 <ul>

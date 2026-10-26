@@ -1581,7 +1581,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="pypsa">PyPSA<a class="headerlink" href="#pypsa" title="Permanent link">&para;</a></h1>
 <p>The PyPSA tool maps components to <code>entity</code> labels with <code>ctype</code> as a category, and buses and carriers to dims of their own.
-Each port of a component is a <code>connection</code> tuple, and per-port inputs and results are attributes over that group.
+Each port of a component is a <code>connection</code> tuple, and per-port inputs and results are attributes over that multi-dim.
 Multi-period snapshots are one flat axis with a <code>period</code> property.
 A solve writes its results as a thin child layer.</p>
 <h2 id="entities-and-their-properties">Entities and their properties<a class="headerlink" href="#entities-and-their-properties" title="Permanent link">&para;</a></h2>
@@ -1672,6 +1672,7 @@ An entity that it leaves attached to no bus is <code>verify</code>'s to report, 
 <code>remove("carrier", …)</code> is refused while a stored <code>carrier</code> names the label.</p>
 <h2 id="ports">Ports<a class="headerlink" href="#ports" title="Permanent link">&para;</a></h2>
 <p>Each port of a component is a <code>connection</code> tuple <code>(entity, bus)</code>.
+The schema declares <code>connection</code> under <code>dimensions</code> as the <a href="../../model/multi-dims/">multi-dim</a> <code>Dimension(over={"entity": "entity", "bus": "bus"})</code>, and its tuples live in <code>dims/connection.parquet</code> with <code>role</code> beside them.
 A per-connection input follows its connection's position: <code>efficiency</code> on a Link's <code>bus2</code> connection is PyPSA's <code>efficiency2</code>, static or per snapshot.
 The tool collapses bus-keyed connections back to PyPSA's positional encoding, ordered by the <a href="../../model/dims/#axis-order">connection order</a>.
 It translates a curve or reports it unbuildable.</p>
@@ -1681,7 +1682,7 @@ A Process's ports default differently, <code>-1</code> at the input end and <cod
 <p>The tool reads which stems are per port off PyPSA's registry: a name that ends in a port index, plus a Link's unsuffixed <code>efficiency</code>, <code>delay</code> and <code>cyclic_delay</code>.
 Every per-port input, <code>delay</code> and <code>cyclic_delay</code> included, is long rows of <code>attributes/</code> over <code>connection</code>, since a number is an attribute whatever its <code>dims</code>.</p>
 <h2 id="results-on-connections">Results on connections<a class="headerlink" href="#results-on-connections" title="Permanent link">&para;</a></h2>
-<p>A per-port result is stored like a per-port input: one attribute over the <a href="#ports"><code>connection</code> group</a>, one row per <code>(entity, bus)</code>, carried as the one <code>connection</code> struct column.
+<p>A per-port result is stored like a per-port input: one attribute over the <a href="#ports"><code>connection</code> multi-dim</a>, one row per <code>(entity, bus)</code>, carried as the one <code>connection</code> struct column.
 <code>to_datarecord</code> packs the struct, and <code>build</code> unpacks it back to <code>entity</code> and <code>bus</code> where it places ports.
 PyPSA's <code>p0</code>, <code>p1</code>, <code>p2</code>, … on a Line, Transformer, Link or Process and the one-port <code>p</code> on a Generator, Load, Store, StorageUnit or ShuntImpedance are all the result <code>p</code>.
 Each row sits on the connection its port attaches to and keeps PyPSA's sign for that port.
@@ -1751,7 +1752,7 @@ A result at its default is written too, so a re-solve's value stands over its pa
 <code>base</code>'s inputs are never written.</p>
 <p>A result row that <code>base</code> holds and the solve does not write again, such as the <code>mu_*</code> duals under <code>assign_all_duals=False</code>, is restated as NULL, so no stale value is inherited.
 NULL reads as no value, where a <code>marginal_price</code> at its default <code>0.0</code> would read as a price, and <code>build</code> leaves PyPSA its own default there.
-A layer removes a label or a tuple by restating its axis or group without it, and has no way to remove a value, so restating is how a value is replaced.</p>
+A layer removes a label or a tuple by restating its axis without it, a multi-dim's included, and has no way to remove a value, so restating is how a value is replaced.</p>
 <p>A PyPSA SubNetwork is a label of the dim <code>sub_network</code>, <code>0</code>, <code>1</code>, … as PyPSA names it.
 <code>sub_network.carrier</code> is a property that refers to <code>carrier</code>, <code>slack_bus</code> is an attribute over <code>sub_network</code>, and a line's <code>sub_network</code> is an attribute over <code>entity</code> that holds the plain label.
 <code>sub_network</code> stays outside <code>partial</code>, since a results layer writes every SubNetwork's values.

@@ -1496,15 +1496,15 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="removing-labels">Removing labels<a class="headerlink" href="#removing-labels" title="Permanent link">&para;</a></h1>
 <p>A layer removes a label by restating the axis without it.
-Removing a label also removes its values on every attribute and the tuples of every group that name it.
+Removing a label also removes its values on every attribute and the tuples of every <a href="../../model/multi-dims/">multi-dim</a> that name it.
 A property that still holds the label blocks its removal.
-The writer checks every layer against its final axes and groups, so every value and tuple names a label that is there.
+The writer checks every layer against its final axes, a multi-dim's tuples included, so every value and tuple names a label that is there.
 Sibling branches keep a label that one branch removes.</p>
 <h2 id="restating-an-axis">Restating an axis<a class="headerlink" href="#restating-an-axis" title="Permanent link">&para;</a></h2>
 <p>A layer that changes an axis writes <code>dims/&lt;dim&gt;.parquet</code> whole: every label the axis has at its revision, with their properties, in order.
 A layer removes a label when its axis file omits a label that its parent's axis holds.</p>
-<p>A layer removes a group tuple the same way, by restating <code>groups/&lt;group&gt;.parquet</code> without it.
-An axis or group loses a label or tuple only where its own file omits it.</p>
+<p>A layer removes a multi-dim's tuple the same way, by restating <code>dims/&lt;multi-dim&gt;.parquet</code> without it.
+An axis loses a label or tuple only where its own file omits it.</p>
 <p>A hand-written layer whose axis file holds only a few labels is a restatement too, so it removes every label it omits.</p>
 <h2 id="what-a-removal-reaches">What a removal reaches<a class="headerlink" href="#what-a-removal-reaches" title="Permanent link">&para;</a></h2>
 <p>Removing the entity <code>e1</code> removes its <code>p_nom</code>, its <code>p_max_pu</code> at every snapshot and scenario, and its value in every other attribute.</p>
@@ -1512,11 +1512,11 @@ An axis or group loses a label or tuple only where its own file omits it.</p>
 <a href="../resolution/#owner-map"><code>fold_attributes</code></a> drops the parent's owner-map rows that name a label or tuple the layer removes.
 A key whose label or tuple was removed is then absent from the resolved map.
 A row that leaves the coordinate NULL names no label and stays.
-A dim or group outside <code>partial</code> is in no key, so its rows are <a href="../resolution/#a-label-outside-the-key">dropped at read</a> against that coordinate's dead labels.</p>
+A dim outside <code>partial</code>, multi or not, is in no key, so its rows are <a href="../resolution/#a-label-outside-the-key">dropped at read</a> against that coordinate's dead labels.</p>
 <p>A removed tuple takes its values with it.
 The labels it names keep their other rows, so removing a connection leaves the entity it attached.</p>
 <p>Removing a label is one cascade, the same for every dim.
-<a href="../../use/editing/#add-remove"><code>remove(dim, labels)</code></a> restates the axis without the labels, and every group with a field over <code>dim</code> without the tuples that name one, in one layer.
+<a href="../../use/editing/#add-remove"><code>remove(dim, labels)</code></a> restates the axis without the labels, and every multi-dim with a coordinate over <code>dim</code> without the tuples that name one, in one layer.
 The tuples' values go with them.
 Re-adding a label or tuple in <code>partial</code> brings back the label and no value that named it below the removal.
 Every broadcast covering it, written before or after the removal, <a href="../resolution/#what-a-row-reaches">reaches it</a> again.
@@ -1533,15 +1533,15 @@ A property that holds a label must be cleared before the label goes, and <a href
 </ul>
 <p>It checks them against the dead labels at the layer's revision.
 The labels a layer removes are its parent's axis minus its restatement.
-A restated group's tuples are held to the layer's final axes, which hold no dead label.
+A restated multi-dim's tuples are held to the layer's final axes, which hold no dead label.
 A reference that an ancestor left dangling therefore fails the next write that touches its subject.
 That write restates the subject whole, so it can drop or repair the row.</p>
-<p>A layer's attribute rows name only labels of its final axes and tuples of its final groups.
-Its group tuples name only labels of its final axes.
+<p>A layer's attribute rows name only labels of its final axes and tuples of its final multi-dims.
+Its multi-dims' tuples name only labels of its final axes.
 <a href="../../use/writing/">The writer</a> checks both, so a value or a tuple names only a label that some layer added and this layer keeps.</p>
 <h2 id="a-layer-from-elsewhere">A layer from elsewhere<a class="headerlink" href="#a-layer-from-elsewhere" title="Permanent link">&para;</a></h2>
 <p>A layer may be a parquet directory that this package did not write.
-Each of its <code>dims/</code> and <code>groups/</code> files must restate its axis or group whole and hold each key once.
+Each of its <code>dims/</code> files must restate its axis whole and hold each key once.
 Each such file carries its key and its subject's declared properties, and no other column.</p>
 
 

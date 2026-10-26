@@ -939,17 +939,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#add_group-remove_group" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_group / remove_group
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#edits" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1502,17 +1491,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#add_group-remove_group" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        add_group / remove_group
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#edits" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1585,7 +1563,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="editing">Editing<a class="headerlink" href="#editing" title="Permanent link">&para;</a></h1>
 <p>A <code>WorkingRecord</code> stages edits over a base record and reads back as that record with the edits applied.
 Each edit is already a row of the layer it will become.
-<code>set</code> writes attribute rows or patches a property, <code>add</code> and <code>remove</code> change an axis, and <code>add_group</code> and <code>remove_group</code> change a group.
+<code>set</code> writes attribute rows or patches a property, and <code>add</code> and <code>remove</code> change an axis, a multi-dim's tuples included.
 Each edit is checked when it is staged.
 The staged rows live in DuckDB tables shaped like the files they become.
 The caller writes <code>edits</code> as a child layer to keep them.</p>
@@ -1598,18 +1576,15 @@ The caller writes <code>edits</code> as a child layer to keep them.</p>
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="bp">self</span><span class="p">,</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="n">attribute</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>  <span class="c1"># an attribute or a property</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="n">value</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>  <span class="c1"># scalar | sequence | mapping | series | relation or frame</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="o">**</span><span class="n">coords</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>  <span class="c1"># coordinates, a group's fields, properties of a dim reached</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="o">**</span><span class="n">coords</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>  <span class="c1"># coordinates, a multi-dim's included, properties of a dim reached</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">],</span> <span class="o">**</span><span class="n">columns</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="n">Any</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">add</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="o">**</span><span class="n">columns</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">remove</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">labels</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 <a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">add_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">frame</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># a relation or frame</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">remove_group</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">group</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">keys</span><span class="p">:</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">tuple</span><span class="p">[</span><span class="n">Any</span><span class="p">,</span> <span class="o">...</span><span class="p">]])</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">edits</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LayerData</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># the staged layer alone</span>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="nd">@property</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">edits</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">LayerData</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># the staged layer alone</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">rollback</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 </code></pre></div>
 <p><code>WorkingRecord(revision.record)</code> stages on the base's connection, <code>record.con</code>.
 The base must be a <code>Record</code>.
@@ -1623,7 +1598,7 @@ A caller can read an edit back, or hand the record to something that only reads,
 <ul>
 <li>An edit costs a row in a staging table.
   A hundred edits to one attribute are a hundred rows, collapsed once when written.
-  The first edit of an axis or group copies the base's resolved one into its table.</li>
+  The first edit of an axis copies the base's resolved one into its table.</li>
 <li>Nothing touches the record until <a href="#edits"><code>edits</code></a> is written as a child.
   A caller that fails halfway leaves no layer, and a caller that changes its mind calls <code>rollback()</code>.</li>
 </ul>
@@ -1649,28 +1624,23 @@ A caller can read an edit back, or hand the record to something that only reads,
 <td>the dim's axis key</td>
 </tr>
 <tr>
-<td>set a group's property</td>
-<td>the whole <code>groups/&lt;group&gt;.parquet</code>, one column of a row changed</td>
-<td>the group's struct</td>
+<td>set a multi-dim's property</td>
+<td>the whole <code>dims/&lt;multi-dim&gt;.parquet</code>, one column of a row changed</td>
+<td>the multi-dim's struct</td>
 </tr>
 <tr>
-<td>add labels</td>
-<td>the whole <code>dims/&lt;dim&gt;.parquet</code>, the labels' rows added</td>
+<td>add labels or tuples</td>
+<td>the whole <code>dims/&lt;dim&gt;.parquet</code>, their rows added</td>
 <td>the dim's axis key</td>
 </tr>
 <tr>
-<td>remove labels</td>
-<td>the whole <code>dims/&lt;dim&gt;.parquet</code> without them, each group without its tuples</td>
-<td>the dim's axis key, the group's key</td>
-</tr>
-<tr>
-<td>add_group / remove_group</td>
-<td>the whole <code>groups/&lt;group&gt;.parquet</code>, tuples added or left out</td>
-<td>the group's own key coordinates</td>
+<td>remove labels or tuples</td>
+<td>the whole <code>dims/&lt;dim&gt;.parquet</code> without them, each multi-dim without its tuples</td>
+<td>the dim's axis key, the multi-dim's key</td>
 </tr>
 </tbody>
 </table>
-<p><code>add</code> and <code>remove</code> take any dim, and an attribute's <a href="../../model/attributes/#attributespec"><code>dims</code></a> decide which coordinates its rows carry.</p>
+<p><code>add</code> and <code>remove</code> take any dim, a multi-dim among them, and an attribute's <a href="../../model/attributes/#attributespec"><code>dims</code></a> decide which coordinates its rows carry.</p>
 <p>An edit is expressed in the format's own terms.
 Setting <code>p_nom</code> on twenty entities stages twenty <code>attributes/p_nom.parquet</code> rows, which is what a patch layer holds.
 A staged edit is already the row it will be written as, so writing <code>edits</code> is a concatenation.</p>
@@ -1687,7 +1657,7 @@ A staged edit is already the row it will be written as, so writing <code>edits</
 <a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"entity.carrier"</span><span class="p">,</span> <span class="s2">"solar"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g2"</span><span class="p">)</span>  <span class="c1"># a property, by its subject</span>
 <a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"bus.x"</span><span class="p">,</span> <span class="mf">10.2</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># a property; `x` alone names an attribute</span>
 </code></pre></div>
-<p>Every coordinate is a keyword, a <a href="../../model/groups/">group</a>'s fields included: <code>entity=</code>, <code>snapshot=</code>, <code>bus="north"</code> for one connection, <code>from=</code> and <code>to=</code> for one corridor.
+<p>Every coordinate is a keyword, a <a href="../../model/multi-dims/">multi-dim</a>'s coordinates included: <code>entity=</code>, <code>snapshot=</code>, <code>bus="north"</code> for one connection, <code>from=</code> and <code>to=</code> for one corridor.
 The schema declares which coordinates exist, so none has a parameter of its own.
 A keyword holds one label, which fixes that coordinate, or a list of labels, at each of which the value is staged.</p>
 <p>A coordinate that no keyword names is NULL.
@@ -1696,20 +1666,20 @@ So <code>set("p_max_pu", 0.9)</code> is one row that reaches every entity, loads
 <code>set("p_max_pu", 0.9, ctype="Generator")</code> is one row per generator that exists now.</p>
 <p>A later <code>set</code> replaces what it covers.
 It drops each row of the attribute that an earlier call staged and that one of its own rows covers.
-A new row covers an old one when, at every coordinate, it names the same label or is NULL, counting labels selected by a property keyword or a group's fields.
+A new row covers an old one when, at every coordinate, it names the same label or is NULL, counting labels selected by a property keyword or a multi-dim's coordinates.
 So <code>set("p_nom", 0.9, entity=["a"])</code> followed by <code>set("p_nom", 0.95)</code> stages one row, and <code>a</code> reads 0.95.
 The other order keeps both rows, and <code>a</code> reads 0.9, since within one layer <a href="../../model/attributes/#the-broadcast-rule">the more specific row wins</a>.
 A default set first keeps the exceptions set after it.</p>
-<p><code>set</code> packs a group's fields into the group's <a href="../../model/groups/">struct column</a>, so <code>entity="dc", bus="north"</code> stages <code>connection = {entity: dc, bus: north}</code>.
-A group value is <a href="../../model/attributes/#the-broadcast-rule">a whole tuple or NULL</a>, so every field must be given or none.
+<p><code>set</code> packs a multi-dim's coordinates into its <a href="../../model/multi-dims/#one-struct-column">struct column</a>, so <code>entity="dc", bus="north"</code> stages <code>connection = {entity: dc, bus: north}</code>.
+A multi-dim's value is <a href="../../model/attributes/#the-broadcast-rule">a whole tuple or NULL</a>, so every coordinate must be given or none.
 Omitting <code>bus</code> alone is refused, since <code>{entity: dc, bus: NULL}</code> names no tuple.
-Naming no field stages the NULL struct, which is every tuple.
-A field is named by its own name: a contract <code>(from, to)</code> over <code>entity</code> is addressed as <code>from="plant", to="mill"</code>.
-<code>entity=</code> beside those fields is refused, since it could name either party.</p>
+Naming no coordinate stages the NULL struct, which is every tuple.
+A coordinate is named by its own name: a contract <code>(from, to)</code> over <code>entity</code> is addressed as <code>from="plant", to="mill"</code>.
+<code>entity=</code> beside those coordinates is refused, since it could name either party.</p>
 <p>A property as a keyword selects labels when <code>set</code> is called.
 A keyword is bare.
 It names a coordinate of the attribute first, else any property of a dim the attribute reaches, categorizing or not.
-So <code>bus="north"</code> on a connection attribute is the field even where <code>entity</code> has a property <code>bus</code>.
+So <code>bus="north"</code> on a connection attribute is the coordinate even where <code>entity</code> has a property <code>bus</code>.
 <code>carrier="gas"</code> on an attribute over the <code>carrier</code> dim is that dim, and on <code>p_max_pu</code> it is <code>entity.carrier</code>.
 A dotted keyword is refused, and so is a name that several dims the attribute reaches declare a property of.
 <code>ctype="Generator", carrier="wind"</code> resolves to the labels that match every keyword on the record as staged, and <code>set</code> writes one row per label.
@@ -1720,7 +1690,8 @@ The property's dim must be one the attribute reaches through exactly one coordin
 A plain name is an attribute.
 Setting a property patches one column of its subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with a <code>dim=</code> keyword naming the labels, or a scalar for every label the axis has.
-A group's property takes a scalar, with its fields as keywords selecting the tuples.
+A multi-dim's property takes a scalar, with its coordinates as keywords selecting the tuples, none selecting every tuple: <code>set("connection.role", "input", entity="g1", bus="north")</code>.
+A <a href="../../model/multi-dims/#coordinates">coordinate</a> is part of the key, not a property, so <code>set("connection.bus", ...)</code> is refused; the caller <code>remove</code>s the tuples and <code>add</code>s them again.
 Changing a category is such a patch: <code>set("entity.ctype", "Load", entity="g1")</code>.
 Every value <code>g1</code> holds stays stored and read, and the per-category reads of <code>ctype="Load"</code> now include those values.</p>
 <p><code>value</code> takes five forms, since assigning one value to many labels and a different value to each are equally ordinary:</p>
@@ -1773,9 +1744,9 @@ The caller says which coordinate, by naming the series' index after it or by nam
 Where neither settles it, the call is refused.
 <code>set</code> never infers the coordinate from the labels.
 A test against the axis would make one call mean different things in two records: a scenario labelled <code>wind1</code> would capture a series meant per entity, and a partial overlap would pick a reading silently.</p>
-<p>A frame over a group carries it as the struct column, <code>connection STRUCT(entity, bus)</code>.
-A frame that carries a field flat, <code>entity</code> or <code>bus</code>, is refused with the struct to pass.
-So is a struct whose fields differ from the group's key, which a cast would silently re-key.
+<p>A frame over a multi-dim carries it as the struct column, <code>connection STRUCT(entity, bus)</code>.
+A frame that carries a coordinate flat, <code>entity</code> or <code>bus</code>, is refused with the struct to pass.
+So is a struct whose fields differ from the multi-dim's coordinates, which a cast would silently re-key.
 A struct with some fields NULL is refused too.
 A NULL struct broadcasts over every tuple.</p>
 <p>The first four forms become a long frame before staging, so there is one staging path.
@@ -1789,6 +1760,10 @@ A frame decides where the labels come from, and those labels must still exist.</
 <a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"g2"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
 <a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"old_coal"</span><span class="p">])</span>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"gas"</span><span class="p">])</span>  <span class="c1"># refused while entity.carrier holds it</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}],</span> <span class="n">role</span><span class="o">=</span><span class="s2">"output"</span><span class="p">)</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">])</span>  <span class="c1"># the struct column `connection`</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># an `entity` and a `bus` column, `role` beside them</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}])</span>
 </code></pre></div>
 <p><code>add(dim, labels, **columns)</code> stages whole axis rows.
 <code>columns</code> are the other columns of <code>dims/&lt;dim&gt;.parquet</code>: the dim's properties, bare since the subject is <code>dim</code>.
@@ -1806,39 +1781,39 @@ A tool that grows a column declares it first, which <a href="../../model/schema/
 <a href="#validation">Validation</a> refuses a value for a label no layer declares.
 Adding a bus with no properties is an edit with nothing to <code>set</code>.
 One axis row holds each label, so an <code>add</code> of a label the record already resolves restates its row.</p>
-<p>Adding a component with its connections and varying values is <code>add</code>, then <a href="#add_group-remove_group"><code>add_group</code></a>, then a <code>set</code> per attribute.</p>
+<p>A <a href="../../model/multi-dims/">multi-dim</a>'s labels are tuples, which <code>add</code> and <code>remove</code> take as a frame or a list.
+A frame, anything DuckDB scans, holds the multi-dim's <a href="../../model/multi-dims/#one-struct-column">struct column</a>, <code>connection STRUCT(entity, bus)</code>, which is what <code>dims["connection"]</code> reads, so a read goes back in as it stands.
+A frame may instead carry one column per coordinate, <code>entity</code> and <code>bus</code>.
+A frame carrying both the struct column and a coordinate column is refused, since it gives each tuple twice.
+Either frame may carry property columns beside the tuples, and beside a frame a keyword property must be a scalar.
+A list of mappings from coordinate to label, such as <code>{"entity": "g1", "bus": "north"}</code>, takes its properties as keywords, each a scalar or a sequence aligned to the list.
+The list is made into a frame with a column per coordinate up front, and the struct column is unpacked to the same, so every form takes the same path and the same type checks.
+The coordinates are packed into the multi-dim's <a href="../../model/multi-dims/#one-struct-column">struct column</a>, and each tuple is staged as one row of <code>dims/&lt;multi-dim&gt;.parquet</code>, placed as any label is.
+A tuple with a coordinate missing or NULL is refused, since it names no tuple.
+A tuple naming a label that its coordinate's axis, as staged, lacks is refused (<a href="#validation">validation</a>).
+A multi-dim's attributes are long rows, set through <a href="#set"><code>set</code></a> with its coordinates as keywords.</p>
+<p>Adding a component with its connections and varying values is <code>add</code> of the entity, then <code>add</code> of its connections, then a <code>set</code> per attribute.</p>
 <p><code>remove(dim, labels)</code> deletes each label's row from the staged axis.
 It need not list what it deletes.
-Where <code>dim</code> is <code>partial</code>, <a href="../../layers/removal/">the fold</a> drops every value keyed by the label, and a group attribute's value through the label inside its struct (<a href="../../layers/resolution/#owner-map">the owner map</a>).
-<code>remove</code> also deletes every tuple, of any group, with a field over <code>dim</code> that names one of <code>labels</code>.
+Where <code>dim</code> is <code>partial</code>, <a href="../../layers/removal/">the fold</a> drops every value keyed by the label, and a multi-dim attribute's value through the label inside its struct (<a href="../../layers/resolution/#owner-map">the owner map</a>).
+<code>remove</code> also deletes every tuple, of any multi-dim, with a coordinate drawing on <code>dim</code> that names one of <code>labels</code>.
 It reads those tuples from the record as it resolves with pending edits, so <a href="../../layers/removal/#what-the-writer-checks">the writer</a> never meets a dangling tuple.
-An <code>add</code> of the same label brings back the label alone, and its tuples come back through <a href="#add_group-remove_group"><code>add_group</code></a>.</p>
+An <code>add</code> of the same label brings back the label alone, and its tuples come back through an <code>add</code> of each multi-dim.</p>
 <p><code>remove</code> is refused while a <a href="../../model/properties/#properties">property that refers to</a> <code>dim</code> stores one of the labels, read from the record as staged.
 A tuple goes with its label, and a property's row belongs to its subject and outlives the label.
 The caller <code>set</code>s such a property to another label or None first.</p>
-<h2 id="add_group-remove_group"><code>add_group</code> / <code>remove_group</code><a class="headerlink" href="#add_group-remove_group" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add_group</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># a `connection` struct column, `role` beside it</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">remove_group</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[(</span><span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"north"</span><span class="p">)])</span>
-</code></pre></div>
-<p>Every declared <a href="../../model/groups/">group</a> stages through these two calls.</p>
-<p><code>frame</code> is shaped like the group's file: one struct column named for the group, such as <code>connection STRUCT(entity, bus)</code> or <code>corridor STRUCT("from", "to")</code>, and the group's properties, such as PyPSA's <code>role</code>.
-Its columns are checked as <a href="#set"><code>set</code></a> checks a frame's.
-A field as a column of its own is refused with the struct to pass, as in <code>set</code>.
-A tuple that names a label which its field's axis, as staged, lacks is refused (<a href="#validation">validation</a>).
-<code>keys</code> holds one tuple per row in the group's <a href="../../model/groups/">key</a> order, and <code>remove_group</code> packs each into the struct.</p>
-<p>A group's attributes are long rows, set through <a href="#set"><code>set</code></a> with the group's fields as keywords.</p>
 <h2 id="edits">Edits<a class="headerlink" href="#edits" title="Permanent link">&para;</a></h2>
 <p>A <code>WorkingRecord</code> does not write.
 It holds two things that the <a href="../writing/">writers</a> take:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"gen1"</span><span class="p">])</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># the delta, as a child layer</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># base plus edits, flattened</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"gen1"</span><span class="p">])</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># the delta, as a child layer</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># base plus edits, flattened</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
 </code></pre></div>
 <ul>
 <li><code>w.edits</code> is the staged layer alone, the <a href="../writing/#layerdata"><code>LayerData</code></a> it already is.
-  Written as a child of the revision <code>w</code> was built over, it holds only the edits: the attribute rows it set, and each axis and group it changed, restated whole.
+  Written as a child of the revision <code>w</code> was built over, it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
   The fold resolves the rest from the parent.
   The layer lands in the child, so the revision that <code>child</code> returns reads the edits back.</li>
 <li><code>w</code> itself is what is staged plus what the record already reads: the whole resolved record.
@@ -1854,7 +1829,7 @@ A write clears nothing, so a <code>WorkingRecord</code> that still holds its edi
 Edits over a directory have no revision as their base, so they are a child of none.
 <code>rev.child(w)</code> writes the whole resolved record as a child layer.
 That layer reads back correctly and is larger than the delta, so <code>edits</code> is the name to use.</p>
-<p>An edited axis or group is restated whole, whatever <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a> says.
+<p>An edited axis, a multi-dim's included, is restated whole, whatever <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a> says.
 The layer holds every label the axis has with the edits applied, with its properties, in <a href="../../model/dims/#axis-order">axis order</a>.
 A layer's axis file then says what the axis is there, and reads without its parent (<a href="../../layers/removal/">removing labels</a>).
 A standalone write of <code>w</code> writes the resolved axis whole as well, and an axis nothing touched is written by neither.</p>
@@ -1862,7 +1837,7 @@ A standalone write of <code>w</code> writes the resolved axis whole as well, and
 It deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and reads without a fold.
 The coordinate it replaces on is the one a read would have collapsed, so the delete removes at least what a last-writer-wins fold would have discarded.
 An attribute's <code>set</code> also deletes every earlier row it <a href="#set">covers</a>.
-An axis or group property differs in mechanism and has the same effect.
+A property of an axis, a multi-dim's included, differs in mechanism and has the same effect.
 A row's columns are independently editable, so a property <code>set</code> patches its one column in place (<code>UPDATE</code>), which keeps a sibling property that another <code>set</code> wrote.</p>
 <p>An edit replaces per coordinate.
 The ownership key leaves out the dims an attribute is <a href="../../layers/tree/#partial-the-granularity-of-an-override">not owned per</a>, so replacing on it would collapse a whole staged series to one row.
@@ -1874,7 +1849,7 @@ The same distinction governs <a href="#reading-with-pending-edits">the read over
   A removal reaches another file's rows, so it stays an anti-join at read and at write.
   Attribute rows are keyed by coordinate, and the axis by label.
   A layer's removals apply only to its parents in <a href="../../layers/resolution/#owner-map">the fold</a>, so the staged collapse drops its own rows itself.
-  It drops a row that names a label the staged axis removed, and a row whose group column names a tuple the staged group removed, by <code>remove_group</code> or by <code>remove</code>'s cascade.
+  It drops a row that names a label the staged axis removed, and a row whose multi-dim column names a tuple the staged multi-dim removed, by <code>remove</code> of the tuple or by the cascade of <code>remove</code> on a label.
   <code>set</code> refuses a label the staged axis lacks (<a href="#validation">validation</a>), so a removal after the <code>set</code> is the only way a staged row comes to name one.</li>
 <li><code>add</code> after <code>remove</code> of the same label: the label exists again, at its base position.
   The staged axis then holds it as the base does, so the parent's values for it come back.
@@ -1887,7 +1862,7 @@ That is the one read of parent data an edit makes.
 It happens when the rows are staged, so the staging table already holds what the layer will hold, and a write of <code>edits</code> has no completion step.</p>
 <p>The fill covers the key the edit named.
 A label no edit mentioned keeps its rows in the parent, since a layer that carried them would claim an extent it was never given.
-A group outside <code>partial</code> is owned whole the same way.
+A multi-dim outside <code>partial</code> is owned whole the same way.
 A <code>set</code> on one connection's <code>efficiency</code> stages every other connection's resolved value beside it.
 A connection attribute's key names no label of a <code>partial</code> dim, so the key the edit named is <code>(attribute)</code> alone.
 A staged row that leaves the axis NULL needs no fill, since <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a> already makes it cover every label, and a carried row beside it would overlap.
@@ -1901,24 +1876,23 @@ Editing adds checks at the edit, caught when the edit is staged, so a caller lea
 <ul>
 <li>an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name that only properties carry is refused naming their dotted forms, so <code>set("carrier", …)</code> suggests <code>bus.carrier</code> and <code>entity.carrier</code>;</li>
 <li>a label that its dim's axis, as staged, lacks, for every dim, <code>partial</code> or not; <code>add</code> the label first;</li>
-<li>a tuple that its group, as staged, lacks, in <code>set</code>; <code>add_group</code> the tuple first;</li>
-<li>a tuple that names a label which its field's axis, as staged, lacks, in <code>add_group</code> or <code>set</code>, naming the group, the field and up to three such labels; <code>set</code> checks this before the tuple itself, so a <code>set</code> at a connection with an unknown bus names the bus;</li>
+<li>a tuple that its multi-dim, as staged, lacks, in <code>set</code>; <code>add</code> the tuple first;</li>
+<li>a tuple that names a label which its coordinate's axis, as staged, lacks, in <code>add</code> or <code>set</code>, naming the multi-dim, the coordinate and up to three such labels; <code>set</code> checks this before the tuple itself, so a <code>set</code> at a connection with an unknown bus names the bus;</li>
 <li>a label that a <a href="../../model/dims/#a-dim-with-one_of">dim with <code>one_of</code></a> does not list, in <code>add</code> or <code>set</code>;</li>
 <li>a frame column whose type does not fit its dtype, timestamps with a time zone among them; by the same rule a label given to <code>set</code>, <code>add</code> or <code>remove</code>, or a value of a property that refers to a dim, so a string is not parsed into a <code>datetime</code> dim's label;</li>
 <li>a value of a <a href="../../model/properties/#properties">property that refers to a dim</a> that is no label of the dim as staged, in <code>add</code> or <code>set</code>, such as <code>set("entity.carrier", "coal", entity="g1")</code> with no <code>carrier</code> label <code>coal</code>; NULL names no label and passes;</li>
 <li>an <code>add</code> that names an attribute.</li>
 </ul>
-<p>Each label and tuple check is one DuckDB query that anti-joins the staged rows against the axis or group as staged, for every checked column at once.</p>
+<p>Each label and tuple check is one DuckDB query that anti-joins the staged rows against the axis as staged, for every checked column at once.</p>
 <h2 id="staging">Staging<a class="headerlink" href="#staging" title="Permanent link">&para;</a></h2>
 <p>Staged rows live in DuckDB tables on the record's own connection:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_attributes_</span><span class="o">&lt;</span><span class="n">attr</span><span class="w"> </span><span class="n">digest</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w"> </span><span class="p">(</span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="n">attribute</span><span class="s1">'s long columns&gt;);</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="s1">CREATE TABLE staged_axis_&lt;dim digest&gt;_&lt;id&gt;        (&lt;the axis key&gt;, &lt;the dim'</span><span class="n">s</span><span class="w"> </span><span class="n">properties</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="k">position</span><span class="o">&gt;</span><span class="p">);</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_</span><span class="o">&lt;</span><span class="k">group</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w">                  </span><span class="p">(</span><span class="o">&lt;</span><span class="k">group</span><span class="w"> </span><span class="n">struct</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="n">the</span><span class="w"> </span><span class="k">group</span><span class="err">'</span><span class="n">s</span><span class="w"> </span><span class="n">properties</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="k">position</span><span class="o">&gt;</span><span class="p">);</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_attributes_</span><span class="o">&lt;</span><span class="n">attr</span><span class="w"> </span><span class="n">digest</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w"> </span><span class="p">(</span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="n">attribute</span><span class="s1">'s long columns&gt;);</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="s1">CREATE TABLE staged_axis_&lt;dim digest&gt;_&lt;id&gt;        (&lt;the axis key&gt;, &lt;the dim'</span><span class="n">s</span><span class="w"> </span><span class="n">properties</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="k">position</span><span class="o">&gt;</span><span class="p">);</span>
 </code></pre></div>
 <p><code>&lt;id&gt;</code> is the staged layer's own id, so two <code>WorkingRecord</code>s on one connection share no table.
 An attribute or dim name is a caller's string, so the table name carries a digest of it.</p>
 <p>Every table is shaped like the file it becomes.
-An axis or group table adds only a position column, since a DuckDB table keeps no row order.
+An axis table adds only a position column, since a DuckDB table keeps no row order.
 No table unions columns that the format keeps apart, so a column the schema does not declare has no table to go in, and <a href="#add-remove"><code>add</code></a> refuses it.</p>
 <p>There is one table per staged attribute, since that is the file it becomes.
 Its columns are <a href="../../storage/format/#the-long-schema">the attribute's own coordinates</a>, and <code>value</code> has the attribute's declared type.
@@ -1926,8 +1900,8 @@ A shared table would have to widen <code>value</code> to text and carry every de
 The value would then need casting back on the way out.
 A NULL in a dim column would also be ambiguous between an attribute without that axis and <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>'s every value.
 Per attribute, the table's shape answers both questions.</p>
-<p>There is one table per staged axis and per staged <a href="../../model/groups/">group</a>, holding it whole as a layer restates it: its key, its properties and a position column.
-The first edit copies the base's resolved axis or group into it in base order.
+<p>There is one table per staged axis, a <a href="../../model/multi-dims/">multi-dim</a>'s keyed by its struct column, holding it whole as a layer restates it: its key, its properties and a position column.
+The first edit copies the base's resolved axis into it in base order.
 <code>add</code> appends a new label at the next position and puts a label of the base back at its base position.
 <code>remove</code> deletes the label's row, and a property <code>set</code> patches one column in place.
 The writer and the reads take each table in position order.</p>
@@ -1944,7 +1918,7 @@ An attribute's table has no ordering column, and edit order is which edit ran la
 <p>The read members reflect the edits, so a <code>set</code> followed by a read returns the new value.</p>
 <p>A set of pending edits is a layer that is not yet written.
 The reads compose it the same way: the staged rows are the last layer, resolved over whatever the record read before.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>resolved = fold(parent layers..., staged rows)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>resolved = fold(parent layers..., staged rows)
 </code></pre></div>
 <p>This is one more fold step over the same <a href="../../layers/resolution/#owner-map">owner-map machinery</a>, with the staging tables in place of a layer directory.
 A broadcast of the base reaches a label staged here, since the fold keeps it NULL (<a href="../../layers/resolution/#what-a-row-reaches">what a row reaches</a>).
@@ -1957,7 +1931,7 @@ An edit then needs no invalidation, since nothing that depends on it is cached.<
 <p><code>flags</code> come from the map rows the staged layer folds to, as for any layer.
 A staged row that sets a dim adds it to <code>varies</code>, one that leaves it NULL adds it to <code>broadcast</code>, and a staged curve sets <code>breakpoints</code>.
 Properties are read from <code>properties</code>, staged edits included.</p>
-<p>A staged axis or group is read as its table stands, in position order.
+<p>A staged axis is read as its table stands, in position order.
 The table already holds the base's rows with the edits applied, so a read composes nothing.
 Two <code>set</code> calls for two properties of one label compose, each patching its own column of the row.</p>
 

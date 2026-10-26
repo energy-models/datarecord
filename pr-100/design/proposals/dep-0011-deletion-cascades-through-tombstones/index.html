@@ -2209,7 +2209,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 </tbody>
 </table>
-<p>A label is removed by a tombstone, and only by a tombstone: removing one tombstones every <a href="../../model/groups/">group</a> tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.</p>
+<p>A label is removed by a tombstone, and only by a tombstone: removing one tombstones every <a href="../../model/multi-dims/">group</a> tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.</p>
 <p>This supersedes the no-cascade rule <a href="../dep-0010-a-group-is-a-struct-column/#one-behaviour-that-must-not-move">the struct proposal</a> kept — "the tuples stand, dangling" — for group tuples; values still never cascade further than the rules below say.</p>
 <h2 id="what-is-wrong-today">What is wrong today<a class="headerlink" href="#what-is-wrong-today" title="Permanent link">&para;</a></h2>
 <p>Removing an entity drops the values that name it, but in four places, each covering part of the problem:</p>

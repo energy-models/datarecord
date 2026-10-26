@@ -2451,7 +2451,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 </tbody>
 </table>
-<p><strong>This page is the argument, not the design.</strong> What shipped is described by <a href="../../model/schema/">the schema</a> — <a href="../../model/groups/">groups</a>, traits, since removed by <a href="../dep-0016-remove-traits/">DEP 16</a> — together with <a href="../../storage/format/">the record format</a> and <a href="../../layers/resolution/">the read path</a>, and those pages are authoritative where the two disagree.
+<p><strong>This page is the argument, not the design.</strong> What shipped is described by <a href="../../model/schema/">the schema</a> — <a href="../../model/multi-dims/">groups</a>, traits, since removed by <a href="../dep-0016-remove-traits/">DEP 16</a> — together with <a href="../../storage/format/">the record format</a> and <a href="../../layers/resolution/">the read path</a>, and those pages are authoritative where the two disagree.
 The <code>on</code> mapping this page landed has since been <a href="../dep-0002-groups/">absorbed into groups as <code>into</code></a>, so its half of the argument describes a construct that no longer exists.</p>
 <p>It is kept because the reasoning is not reproduced there: why <code>keys</code> was deleted rather than replaced, why <code>bus</code> stopped being structural, and what the <a href="#a-pypsa-network-in-full">worked example</a> exposed about vocabulary collisions.
 Two things it raises stayed open and moved to <a href="../../open-questions/">open questions</a>: <a href="#may-existence-depend-on-a-dim">whether existence may depend on a dim</a>, and whether <code>flags(ctype)</code> needs a record-level counterpart.</p>
@@ -2595,7 +2595,7 @@ That test breaks the moment <code>entity</code> is a dim — <code>capacity</cod
 <p><strong>No separate payload declaration.</strong> A group's table columns, an axis file's payload columns and a component table's constant columns are all just attributes whose <code>dims</code> name exactly that one thing.
 Declaring them a second time on the <code>Group</code> or the <code>Dimension</code> would be two ways to say it, disagreeing eventually.</p>
 <p><code>role</code> follows from this rather than needing an exception: it becomes <code>AttributeSpec(dtype="VARCHAR", dims={"connection"})</code>.
-<a href="../../model/groups/#attributes-over-a-group">Today</a> it is described as describing the connection and identifying nothing, and it stays exactly that — a non-key column of the group's table — but it gains a declared type, a description, and a place in <a href="#flags-is-not-enough"><code>shape()</code></a>, none of which it has now.</p>
+<a href="../../model/multi-dims/#attributes-over-a-multi-dim">Today</a> it is described as describing the connection and identifying nothing, and it stays exactly that — a non-key column of the group's table — but it gains a declared type, a description, and a place in <a href="#flags-is-not-enough"><code>shape()</code></a>, none of which it has now.</p>
 <h2 id="traits">Traits<a class="headerlink" href="#traits" title="Permanent link">&para;</a></h2>
 <p>A trait is a named bundle of attributes; a component type subscribes to traits and may add its own.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">traits</span> <span class="o">=</span> <span class="p">{</span>

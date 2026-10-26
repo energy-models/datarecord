@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-100/design/model/properties/">
       
       
-        <link rel="prev" href="../groups/">
+        <link rel="prev" href="../multi-dims/">
       
       
         <link rel="next" href="../attributes/">
@@ -726,14 +726,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../groups/" class="md-nav__link">
+      <a href="../multi-dims/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Groups
+    Multi-dims
   
 
     
@@ -1585,7 +1585,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="properties-and-categories">Properties and categories<a class="headerlink" href="#properties-and-categories" title="Permanent link">&para;</a></h1>
-<p>A property holds one value per label of its subject, which is a dim or a group. It describes the label, so it has no <code>dims</code> of its own. A caller names a property as <code>subject.name</code>, and a plain name means an attribute. A property may refer to a dim, and then each value is a live label of that dim. If that dim has <code>one_of</code> and the subject is in <code>partial</code>, the property categorizes the subject. Categories select labels and key per-category defaults.</p>
+<p>A property holds one value per label of its subject, which is a dim, a <a href="../multi-dims/">multi-dim</a>'s tuples being its labels. It describes the label, so it has no <code>dims</code> of its own. A caller names a property as <code>subject.name</code>, and a plain name means an attribute. A property may refer to a dim, and then each value is a live label of that dim. If that dim has <code>one_of</code> and the subject is in <code>partial</code> and no multi-dim, the property categorizes the subject. Categories select labels and key per-category defaults.</p>
 <h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">&para;</a></h2>
 <p>Properties are declared per subject:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">dimensions</span> <span class="o">=</span> <span class="p">{</span>
@@ -1611,22 +1611,22 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="s2">"connection"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">)},</span>
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="p">}</span>
 </code></pre></div>
-<p>A property is a column of its subject's own file: <code>dims/&lt;dim&gt;.parquet</code> for a dim, <code>groups/&lt;group&gt;.parquet</code> for a group (<a href="../../storage/format/#where-a-value-lives">where a value lives</a>). <code>ctype</code> is a column of <code>dims/entity.parquet</code> because it is declared under <code>entity</code>.</p>
+<p>A property is a column of its subject's own file, <code>dims/&lt;dim&gt;.parquet</code>, a multi-dim's included (<a href="../../storage/format/#where-a-value-lives">where a value lives</a>). <code>ctype</code> is a column of <code>dims/entity.parquet</code> because it is declared under <code>entity</code>.</p>
 <p>An attribute is data: what a model reads as part of its problem and what a layer varies. Whether a name is a property or an attribute is the author's declaration. A tool reads it from its framework's registry where it can (<a href="../../tools/">PyPSA</a>). Each section decides the file a value is stored in, so widening an attribute's <code>dims</code> to <code>[entity, scenario]</code> is a <a href="../schema/#versioning">compatible</a> change that keeps its rows where earlier layers wrote them.</p>
 <h3 id="names">Names<a class="headerlink" href="#names" title="Permanent link">&para;</a></h3>
-<p>A property's name belongs to its subject. An attribute name is one spec record-wide, with one file and one <code>value</code> dtype (<a href="../attributes/#attributespec"><code>AttributeSpec</code></a>). A property name is unique within its subject's file only. <code>x</code> on <code>bus</code> sits beside an attribute <code>x</code>, a line's reactance, and <code>carrier</code> is a property of <code>entity</code>, a property of <code>bus</code> and a dim. The schema refuses at load a property named like a column of its subject's key, which is the dim or a group's struct column. It also refuses a group's property named like one of the group's coordinates, since those are the keywords that address a tuple. Two spellings that differ only in case are refused record-wide (<a href="../schema/#names">names</a>).</p>
-<p>A caller addresses a property as <code>subject.name</code>, such as <code>entity.ctype</code>, <code>bus.x</code> or <code>connection.role</code>. This holds wherever a caller names one: in <a href="../../use/editing/#set"><code>set</code></a>, as a <a href="#default_by-a-default-per-category"><code>default_by</code></a> key, and in <code>default_for</code>. A plain name is always an attribute, however few subjects declare a property of that name. Its meaning stays the same when another subject declares the name later. <code>Schema.resolve(name)</code> returns the <code>AttributeSpec</code>, or the subject and the <code>PropertySpec</code>. For an unknown plain name it raises an error that lists the dotted forms of the properties of that name.</p>
+<p>A property's name belongs to its subject. An attribute name is one spec record-wide, with one file and one <code>value</code> dtype (<a href="../attributes/#attributespec"><code>AttributeSpec</code></a>). A property name is unique within its subject's file only. <code>x</code> on <code>bus</code> sits beside an attribute <code>x</code>, a line's reactance, and <code>carrier</code> is a property of <code>entity</code>, a property of <code>bus</code> and a dim. The schema refuses at load a property named like a column of its subject's key, which is the dim's column, a multi-dim's struct column. It also refuses a multi-dim's property named like one of its coordinates, since those are the keywords that address a tuple and the <a href="../multi-dims/#coordinates">names a coordinate is addressed by</a>. Two spellings that differ only in case are refused record-wide (<a href="../schema/#names">names</a>).</p>
+<p>A caller addresses a property as <code>subject.name</code>, such as <code>entity.ctype</code>, <code>bus.x</code> or <code>connection.role</code>. This holds wherever a caller names one: in <a href="../../use/editing/#set"><code>set</code></a>, as a <a href="#default_by-a-default-per-category"><code>default_by</code></a> key, and in <code>default_for</code>. A plain name is always an attribute, however few subjects declare a property of that name. Its meaning stays the same when another subject declares the name later. <code>Schema.resolve(name)</code> returns the <code>AttributeSpec</code>, or the subject and the <code>PropertySpec</code>, or for a multi-dim's coordinate such as <code>connection.bus</code> the multi-dim and the dim the coordinate draws on. For an unknown plain name it raises an error that lists the dotted forms of the properties of that name.</p>
 <p>A column keeps its plain name. The frames of <code>properties[subject]</code>, and the categories that <a href="../../use/reading/#flags"><code>flags</code></a> and <code>default_for</code> take, are each read against one subject already. A <a href="../../use/editing/#set">selector keyword</a> is bare: it matches a coordinate of the attribute first, else any property of a dim the attribute reaches.</p>
 <h3 id="referring-to-a-dim">Referring to a dim<a class="headerlink" href="#referring-to-a-dim" title="Permanent link">&para;</a></h3>
-<p>A property may refer to a dim with <code>one_of: &lt;dim&gt;</code> in place of <code>dtype</code>. Its values are that dim's labels, typed as the dim (<a href="../schema/#dtypes">dtypes</a>). Above, <code>entity.carrier</code> and <code>bus.carrier</code> refer to <code>carrier</code>, and <code>bus.country</code> to <code>country</code>. Any subject, a dim or a group, may declare such a property. The schema refuses at load a property that refers to an undeclared dim.</p>
-<p>A stored value that is not NULL must be a live label of the dim. The record checks it where it checks a group's field. <a href="../../use/editing/#validation"><code>set</code> and <code>add</code></a> refuse a label that the record as staged lacks. The <a href="../../layers/removal/">writer</a> refuses a layer that stores a label the layer removes. <a href="../../use/editing/#add-remove"><code>remove</code></a> refuses a label that a property still holds. NULL is no label.</p>
-<p>A property of a dim holds one value per label, so a classification of a dim's label is single-valued. A many-to-many classification is an ordinary <a href="../groups/">group</a>. A group's property is one column of its tuple's row in the same way. It may be NULL, so a tuple may carry no label (<a href="../../open-questions/">open questions</a>).</p>
+<p>A property may refer to a dim with <code>one_of: &lt;dim&gt;</code> in place of <code>dtype</code>. Its values are that dim's labels, typed as the dim (<a href="../schema/#dtypes">dtypes</a>). Above, <code>entity.carrier</code> and <code>bus.carrier</code> refer to <code>carrier</code>, and <code>bus.country</code> to <code>country</code>. Any subject, a multi-dim or not, may declare such a property. The schema refuses at load a property that refers to an undeclared dim or to a multi-dim.</p>
+<p>A stored value that is not NULL must be a live label of the dim. The record checks it where it checks a multi-dim's coordinate. <a href="../../use/editing/#validation"><code>set</code> and <code>add</code></a> refuse a label that the record as staged lacks. The <a href="../../layers/removal/">writer</a> refuses a layer that stores a label the layer removes. <a href="../../use/editing/#add-remove"><code>remove</code></a> refuses a label that a property still holds. NULL is no label.</p>
+<p>A property of a dim holds one value per label, so a classification of a dim's label is single-valued. A many-to-many classification is an ordinary <a href="../multi-dims/">multi-dim</a>. A multi-dim's property is one column of its tuple's row in the same way. It may be NULL, so a tuple may carry no label (<a href="../../open-questions/">open questions</a>).</p>
 <p>A chain of classifications is stored as a chain of properties. bus→state→country is two properties, <code>bus.state</code> and <code>state.country</code>, and the chain is a join over two axis files.</p>
 <p>An attribute over <code>country</code> reads back keyed by country. A consumer that needs it per bus joins through the classification.</p>
 <h2 id="categories">Categories<a class="headerlink" href="#categories" title="Permanent link">&para;</a></h2>
 <p>A property categorizes its subject when both of these hold:</p>
 <ul>
-<li>The subject is a dim in <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a>. Only there is a dim owned per label, and a default per label needs that.</li>
+<li>The subject is a dim in <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a>, and no multi-dim. Only there is a dim owned per label, and a default per label needs that. A <a href="../multi-dims/#one-struct-column">multi-dim</a> is never categorized.</li>
 <li>The property refers to a dim with <code>one_of</code>. The <code>one_of</code> is a declared list, so the schema checks each category that a default or a selection names.</li>
 </ul>
 <p><code>entity.ctype: {one_of: ctype}</code> with <code>ctype: {one_of: [Generator, Line, ...]}</code> is one. Its values are the subject's categories along that property. A <a href="#default_by-a-default-per-category"><code>default_by</code></a> keys on them, and a <a href="../../use/editing/#set">selector keyword</a> selects by them. <code>Schema.categorizing(dim)</code> lists a dim's categorizing properties in declaration order. A dim may have several: a <code>technology</code> property that refers to a dim <code>technology</code> with <code>one_of</code> categorizes <code>entity</code> beside <code>ctype</code>. The schema refuses a <code>default_by</code> key on a property that fails a condition, and the error names the property and the reason.</p>
@@ -1647,7 +1647,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <p>An unset value takes the first <code>default_by</code> key, in declaration order, whose map lists the label's category. Otherwise it takes <code>default</code>.</p>
 <ul>
-<li>Each key must categorize a dim the value reaches. Such a dim is one the value names directly, such as <code>entity</code>, or one a field of its group draws on, such as the <code>entity</code> field of <code>connection</code>.</li>
+<li>Each key must categorize a dim the value reaches. Such a dim is one the value names directly, such as <code>entity</code>, or one a coordinate of its multi-dim draws on, such as the <code>entity</code> coordinate of <code>connection</code>.</li>
 <li>The schema refuses a category that is not in the <code>one_of</code> of the dim the key refers to.</li>
 <li>A categorizing property takes a plain <code>default</code> and no <code>default_by</code>, since a category defaulted by a category is circular.</li>
 <li>Only the default varies. <code>dtype</code>, <code>unit</code> and <code>description</code> belong to the spec, which keeps one name to one column and one <code>attributes/</code> file.</li>
@@ -1688,7 +1688,7 @@ SPDX-License-Identifier: CC-BY-4.0
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../groups/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Groups">
+          <a href="../multi-dims/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Multi-dims">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1698,7 +1698,7 @@ SPDX-License-Identifier: CC-BY-4.0
                 Previous
               </span>
               <div class="md-ellipsis">
-                Groups
+                Multi-dims
               </div>
             </div>
           </a>

@@ -16,7 +16,7 @@
         <link rel="prev" href="../../">
       
       
-        <link rel="next" href="../groups/">
+        <link rel="next" href="../multi-dims/">
       
       
         
@@ -806,14 +806,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../groups/" class="md-nav__link">
+      <a href="../multi-dims/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Groups
+    Multi-dims
   
 
     
@@ -1530,9 +1530,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="dims-and-labels">Dims and labels<a class="headerlink" href="#dims-and-labels" title="Permanent link">&para;</a></h1>
 <p>A dim is a set of unique labels, declared with a dtype from mathspec. The row order of a dim's file is its order. A dim with <code>one_of</code> allows only the labels its <code>one_of</code> names. The axis holds the labels that layers have added. A property may map each label to a label of another dim, such as a snapshot to its period (<a href="#mapping-labels-to-another-dim">mapping labels to another dim</a>).</p>
-<p>Every dim is declared in the schema, so a record with <code>region</code>, <code>technology</code> or <code>vintage</code> needs no code change. A <code>Dimension</code> declares the axis's type and, optionally, its <code>one_of</code>, <code>unit</code> and <code>description</code> (<a href="../schema/">the schema</a>). Which dims an attribute varies over is <a href="../attributes/#attributespec">declared per attribute</a>. The patch granularity is <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a>. What describes or classifies a label is one of the dim's <a href="../properties/#properties">properties</a>.</p>
+<p>Every dim is declared in the schema, so a record with <code>region</code>, <code>technology</code> or <code>vintage</code> needs no code change. A <code>Dimension</code> declares the axis's type and, optionally, its <code>one_of</code>, <code>unit</code> and <code>description</code> (<a href="../schema/">the schema</a>). A dim declaring <code>over</code> instead is a <a href="../multi-dims/">multi-dim</a>, whose labels are tuples of other dims' labels. Which dims an attribute varies over is <a href="../attributes/#attributespec">declared per attribute</a>. The patch granularity is <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a>. What describes or classifies a label is one of the dim's <a href="../properties/#properties">properties</a>.</p>
 <h2 id="axis-order">Axis order<a class="headerlink" href="#axis-order" title="Permanent link">&para;</a></h2>
-<p>An axis's order is the row order of its frame in <code>dims</code>. The labels of an axis and the rows of a group come in the row order of the deepest layer file for that axis or group (<a href="../../layers/resolution/#one-fold-for-every-axis">one fold for every axis</a>). A label or tuple that one layer removes and a later layer adds again sits where the later layer's file puts it.</p>
+<p>An axis's order is the row order of its frame in <code>dims</code>. The labels of an axis, a multi-dim's tuples among them, come in the row order of the deepest layer file for that axis (<a href="../../layers/resolution/#one-fold-for-every-axis">one fold for every axis</a>). A label or tuple that one layer removes and a later layer adds again sits where the later layer's file puts it.</p>
 <p>Writers need to ensure data is not inadvertently reordered from its parent's labels, since the order may carry meaning, such as port numbering, which follows from the <code>connection</code> order.</p>
 <h2 id="a-dim-with-one_of">A dim with <code>one_of</code><a class="headerlink" href="#a-dim-with-one_of" title="Permanent link">&para;</a></h2>
 <p>A dim with <code>one_of: [labels]</code> allows only those labels, as a mathspec dimension does. Its <code>dtype</code> is <code>str</code>, the default. A <code>one_of</code> on any other dtype is refused at load. So is an empty list, a label listed twice, a label that is no string, and a dim name in place of the list. The dim's column is an <code>ENUM</code> of the labels (<a href="../schema/#dtypes">dtypes</a>).</p>
@@ -1598,13 +1598,13 @@ SPDX-License-Identifier: CC-BY-4.0
         
         
           
-          <a href="../groups/" class="md-footer__link md-footer__link--next" aria-label="Next: Groups">
+          <a href="../multi-dims/" class="md-footer__link md-footer__link--next" aria-label="Next: Multi-dims">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Groups
+                Multi-dims
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -1495,17 +1495,16 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="the-record-format">The record format<a class="headerlink" href="#the-record-format" title="Permanent link">&para;</a></h1>
-<p>A record on disk is a directory with <code>manifest.json</code>, <code>dims/</code>, <code>groups/</code> and <code>attributes/</code>, and any parquet reader can open it.
-An axis or group file holds its key, then its properties, in order.
+<p>A record on disk is a directory with <code>manifest.json</code>, <code>dims/</code> and <code>attributes/</code>, and any parquet reader can open it.
+An axis file holds its key, then its properties, in order.
 An attribute file holds the attribute's own coordinates, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code>.
 The section in which a name is declared decides the file its values go in.</p>
 <p><a href="../../use/writing/">A write</a> produces the directory, and <code>Workspace.at(uri)</code> reads it.
 A record that is never written has no directory and answers <a href="../../use/reading/">the protocol</a> all the same.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>record/
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── manifest.json                   # the schema, and the record's id
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── dims/&lt;dim&gt;.parquet              # one axis per declared dim: labels and properties
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── groups/&lt;group&gt;.parquet          # which tuples of the group exist, and their properties
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>└── attributes/&lt;attr&gt;.parquet       # one attribute per file, results included
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── dims/&lt;dim&gt;.parquet              # one axis per declared dim, multi-dims included: labels and properties
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>└── attributes/&lt;attr&gt;.parquet       # one attribute per file, results included
 </code></pre></div>
 <p>Each file is named for what it holds: <code>dims/scenario.parquet</code> holds the <code>scenario</code> axis, and <code>attributes/p_nom.parquet</code> holds <code>p_nom</code>.
 A file takes the declared name unchanged, so the dim <code>bus</code> lives in <code>dims/bus.parquet</code>.</p>
@@ -1536,8 +1535,8 @@ A property belongs to its subject and is a column of that subject's file alone, 
 <td><code>dims/&lt;dim&gt;.parquet</code>, a column of the axis file</td>
 </tr>
 <tr>
-<td>property of a group</td>
-<td><code>groups/&lt;group&gt;.parquet</code>, a column of the group file</td>
+<td>property of a multi-dim</td>
+<td><code>dims/&lt;multi-dim&gt;.parquet</code>, likewise</td>
 </tr>
 <tr>
 <td>attribute, any <code>dims</code></td>
@@ -1549,25 +1548,25 @@ A property belongs to its subject and is a column of that subject's file alone, 
 Widening <code>p_nom</code> over <code>scenario</code> adds a <code>scenario</code> column to the same file.
 That column is NULL in every row written before, and <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a> reads those rows unchanged.
 A scenario <code>weight</code> over <code>scenario</code> alone is long rows too.</p>
-<p>An axis or group file therefore carries its key and its subject's properties, and no attribute values.
+<p>An axis file therefore carries its key and its subject's properties, and no attribute values.
 A framework's constant frame per category joins the category's properties with the coordinate-only rows of its attributes, and the <a href="../../tools/">tool</a> builds it.</p>
-<p>A <a href="../../model/groups/">group</a>'s tuples live in <code>groups/&lt;group&gt;.parquet</code>: every tuple the group has at the layer's node, in order.
-The file is keyed by one struct column named for the group, as an axis file is keyed by the column named for its dim.
-For the <code>connection</code> group over <code>(entity, bus)</code>, <code>groups/connection.parquet</code> is <code>connection STRUCT(entity, bus) | role</code>, where <code>role</code> is a property of <code>connection</code>.
-An attribute row carries the group in the same struct column, so no read or write converts between two shapes.
-A record with no file for a group has no tuples of that group.</p>
-<p>A <a href="../../model/groups/#one-struct-column">group's property</a> that refers to a dim is a plain column of the group's file beside the key: <code>groups/bus_country.parquet</code> is <code>bus_country STRUCT(bus, scenario) | country</code>.
+<p>A <a href="../../model/multi-dims/">multi-dim</a>'s tuples live in <code>dims/&lt;multi-dim&gt;.parquet</code>: every tuple the multi-dim has at the layer's node, in order.
+The file is keyed by <a href="../../model/multi-dims/#one-struct-column">one struct column</a> named for the multi-dim, as a plain dim's file is keyed by the column named for it.
+For the <code>connection</code> multi-dim over <code>(entity, bus)</code>, <code>dims/connection.parquet</code> is <code>connection STRUCT(entity, bus) | role</code>, where <code>role</code> is a property of <code>connection</code>.
+An attribute row carries the multi-dim in the same struct column, so no read or write converts between two shapes.
+A record with no file for a multi-dim has no tuples of it.</p>
+<p>A multi-dim's property that refers to a dim is a plain column of its file beside the key: <code>dims/bus_country.parquet</code> is <code>bus_country STRUCT(bus, scenario) | country</code>.
 A classification of one coordinate is a <a href="../../model/properties/#properties">property</a> of the dim, so <code>bus.country</code> is a column of <code>dims/bus.parquet</code>.
 A property that refers to a dim is stored like any other property, and nothing in the layout depends on it.</p>
 <h2 id="the-long-schema">The long schema<a class="headerlink" href="#the-long-schema" title="Permanent link">&para;</a></h2>
 <p>Every <code>attributes/</code> file carries its attribute's own coordinates, then the columns every row has:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>&lt;coordinate&gt; ... | attribute | breakpoint | value
 </code></pre></div>
-<p>The coordinates are what the attribute's <a href="../../model/attributes/#attributespec"><code>dims</code></a> declare, groups first.
-A <a href="../../model/groups/">group</a> is one struct column named for it, with a field per key coordinate.
-<code>attributes/efficiency.parquet</code> over the <code>connection</code> group carries <code>connection STRUCT(entity, bus)</code>.
+<p>The coordinates are what the attribute's <a href="../../model/attributes/#attributespec"><code>dims</code></a> declare, multi-dims first.
+A <a href="../../model/multi-dims/">multi-dim</a> is one struct column named for it, with a field per coordinate.
+<code>attributes/efficiency.parquet</code> over the <code>connection</code> multi-dim carries <code>connection STRUCT(entity, bus)</code>.
 <code>attributes/p_max_pu.parquet</code> over <code>entity</code> and <code>snapshot</code> carries <code>entity | snapshot</code> and no <code>bus</code>.
-The writer refuses a group column that is not a struct of exactly the group's key.
+The writer refuses a multi-dim's column that is not a struct of exactly its coordinates.
 DuckDB casts a struct by field name, so a missing field would turn NULL, an extra field would be dropped, and every row would silently change its key.</p>
 <p>Each attribute file has its own column set.
 A fixed prefix such as <code>entity | bus</code> would put an all-NULL <code>entity</code> on a record-level weighting, which has no entity.

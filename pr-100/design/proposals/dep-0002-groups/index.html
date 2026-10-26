@@ -2311,7 +2311,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td>Status</td>
-<td>Implemented 2026-09-01</td>
+<td>Superseded 2026-10-26 (implemented 2026-09-01)</td>
 </tr>
 <tr>
 <td>Created</td>
@@ -2321,10 +2321,14 @@ SPDX-License-Identifier: CC-BY-4.0
 <td>Version</td>
 <td>v0.1.0a1</td>
 </tr>
+<tr>
+<td>Superseded-By</td>
+<td><a href="../dep-0023-multi-dims/">DEP 23</a> (its groups, which become multi-dims)</td>
+</tr>
 </tbody>
 </table>
-<p>Landed in <a href="../../model/groups/">the schema</a> and <a href="../../storage/format/#where-a-value-lives">the record format</a>; this page is kept as the argument for the change rather than as the current description.</p>
-<p>Supersedes the split between <a href="../../model/groups/">groups</a> and <a href="../dep-0001-dims-groups-traits/#mappings"><code>on</code></a> that <a href="../dep-0001-dims-groups-traits/">dims, mappings, groups and traits</a> landed.
+<p>Landed in <a href="../../model/multi-dims/">the schema</a> and <a href="../../storage/format/#where-a-value-lives">the record format</a>; this page is kept as the argument for the change rather than as the current description.</p>
+<p>Supersedes the split between <a href="../../model/multi-dims/">groups</a> and <a href="../dep-0001-dims-groups-traits/#mappings"><code>on</code></a> that <a href="../dep-0001-dims-groups-traits/">dims, mappings, groups and traits</a> landed.
 Those two are one mechanism with one field's difference, and the field is worth having where the two models are not.</p>
 <h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
 <p>The schema declares two things that are both "which tuples over dims exist".</p>
@@ -2373,7 +2377,7 @@ Calliope is the same, one step further along — <code>select_from_lookup_arrays
 <p>Not a name the group invents.</p>
 <p>That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: <code>dims/country.parquet</code> gives <code>country</code> its <a href="../../model/dims/#axis-order">order</a> and somewhere for a per-country CO2 budget to live.
 A group whose <code>into</code> named nothing would be a tuple set with a labelled column — expressible, and it loses the axis, which is <a href="../dep-0001-dims-groups-traits/#mappings">the argument the superseded page makes</a> and which survives this refactor unchanged.</p>
-<p><strong>A group may share its name with a dim</strong>, and the <a href="../../model/groups/">existing prohibition</a> on the two colliding is dropped rather than narrowed.</p>
+<p><strong>A group may share its name with a dim</strong>, and the <a href="../../model/multi-dims/">existing prohibition</a> on the two colliding is dropped rather than narrowed.</p>
 <p>For a group with <code>into</code> the sharing is the natural spelling: the dim is the axis of labels, the group is the relation between it and <code>over</code>, and they are reached by different syntax — <a href="#addressing-dims-x"><code>dims: [country]</code></a> finds the dim, <a href="#aggregation"><code>by=country</code></a> finds the group. Keeping the prohibition would cost a name (<code>country_map</code>) invented only to satisfy it.</p>
 <p>Nothing then justifies the prohibition in the <code>into</code>-less case either. <a href="#addressing-dims-x">Addressing</a> resolves the dim namespace first, so a dim and a group both called <code>connection</code> is not ambiguous — <code>dims: [connection]</code> is the dim — and one rule covers every collision instead of a rule plus a guard.</p>
 <p>What it gives up is a schema error. A shadowed <code>into</code>-less group loses its only spelling in <code>dims</code>, and no longer says so at load time; a shadowed functional group loses a spelling it had no use for.
@@ -2410,7 +2414,7 @@ Where it does decide something is <a href="#aggregation">aggregation</a>: <code>
 <a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">float64</span>
 <a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">contract</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="c1"># seller | buyer</span>
 </code></pre></div>
-<p>The declaration is <a href="../../model/groups/">already possible</a> and this proposal does not introduce it — <code>over</code>'s dict form is what lets two coordinates draw on one dim, and <a href="#addressing-dims-x">addressing</a> expands <code>contract</code> to <code>seller | buyer</code> as it always did.
+<p>The declaration is <a href="../../model/multi-dims/">already possible</a> and this proposal does not introduce it — <code>over</code>'s dict form is what lets two coordinates draw on one dim, and <a href="#addressing-dims-x">addressing</a> expands <code>contract</code> to <code>seller | buyer</code> as it always did.
 What changes is that the shape stops being second-class:</p>
 <ul>
 <li><strong>It has a file of its own.</strong> <code>groups/contract.parquet</code>, keyed <code>(seller, buyer)</code>. The <a href="#where-the-rows-live"><code>&lt;Type&gt;</code> split</a> had no type to split on here — a contract is not a component and has no <code>entity_type</code> — so it never described this case at all, which is what shows the split was wrong rather than merely awkward.</li>

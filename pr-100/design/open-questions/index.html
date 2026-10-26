@@ -1124,10 +1124,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#whether-a-group-in-partial-may-have-categories" class="md-nav__link">
+  <a href="#whether-a-multi-dim-in-partial-may-have-categories" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Whether a group in partial may have categories
+        Whether a multi-dim in partial may have categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-a-multi-dim-may-be-over-another-multi-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a multi-dim may be over another multi-dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-a-functional-mapping-over-two-coordinates-justifies-a-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a functional mapping over two coordinates justifies a dim
       
     </span>
   </a>
@@ -1273,10 +1295,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-a-null-group-struct-reaches" class="md-nav__link">
+  <a href="#what-a-null-multi-dim-struct-reaches" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What a NULL group struct reaches
+        What a NULL multi-dim struct reaches
       
     </span>
   </a>
@@ -1674,10 +1696,32 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#whether-a-group-in-partial-may-have-categories" class="md-nav__link">
+  <a href="#whether-a-multi-dim-in-partial-may-have-categories" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Whether a group in partial may have categories
+        Whether a multi-dim in partial may have categories
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-a-multi-dim-may-be-over-another-multi-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a multi-dim may be over another multi-dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-a-functional-mapping-over-two-coordinates-justifies-a-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a functional mapping over two coordinates justifies a dim
       
     </span>
   </a>
@@ -1823,10 +1867,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#what-a-null-group-struct-reaches" class="md-nav__link">
+  <a href="#what-a-null-multi-dim-struct-reaches" class="md-nav__link">
     <span class="md-ellipsis">
       
-        What a NULL group struct reaches
+        What a NULL multi-dim struct reaches
       
     </span>
   </a>
@@ -1914,8 +1958,12 @@ What is open is the granularity: those are the same kind of question, and a prot
 Whatever is chosen, it has to be answerable off the fold, which is where a record's membership already lives.</p>
 <h3 id="whether-a-property-referring-to-a-dim-without-one_of-may-categorize-a-partial-dim">Whether a property referring to a dim without <code>one_of</code> may categorize a <code>partial</code> dim<a class="headerlink" href="#whether-a-property-referring-to-a-dim-without-one_of-may-categorize-a-partial-dim" title="Permanent link">&para;</a></h3>
 <p><code>entity.carrier</code> refers to <code>carrier</code>, and a <code>default_by</code> keyed on it would make a vocabulary that is data: a category that a layer adds and removes. Today a category is a label of <a href="../model/properties/#categories">a dim with <code>one_of</code></a>.</p>
-<h3 id="whether-a-group-in-partial-may-have-categories">Whether a group in <code>partial</code> may have categories<a class="headerlink" href="#whether-a-group-in-partial-may-have-categories" title="Permanent link">&para;</a></h3>
-<p>A <code>default_by</code> on <code>connection.role</code> would give each role of a connection its own default. The schema refuses it, since only <a href="../model/properties/#categories">a dim in <code>partial</code></a> has categories. Groups are likely to merge into dims, which would settle this, so it is on hold until then.</p>
+<h3 id="whether-a-multi-dim-in-partial-may-have-categories">Whether a multi-dim in <code>partial</code> may have categories<a class="headerlink" href="#whether-a-multi-dim-in-partial-may-have-categories" title="Permanent link">&para;</a></h3>
+<p>A <code>default_by</code> on <code>connection.role</code> would give each role of a connection its own default. The schema refuses it: <a href="../model/multi-dims/#one-struct-column">a multi-dim</a> is never categorized, even in <code>partial</code> and by a property referring to a dim with <code>one_of</code>. Whether <a href="../model/properties/#categories">the categories rule</a> extends to a multi-dim is open.</p>
+<h3 id="whether-a-multi-dim-may-be-over-another-multi-dim">Whether a multi-dim may be <code>over</code> another multi-dim<a class="headerlink" href="#whether-a-multi-dim-may-be-over-another-multi-dim" title="Permanent link">&para;</a></h3>
+<p>Each coordinate of <a href="../model/multi-dims/">a multi-dim</a> draws on a dim that is no multi-dim, and the schema refuses one that does. Nothing needs a tuple of tuples yet; the refusal stands until something does.</p>
+<h3 id="whether-a-functional-mapping-over-two-coordinates-justifies-a-dim">Whether a functional mapping over two coordinates justifies a dim<a class="headerlink" href="#whether-a-functional-mapping-over-two-coordinates-justifies-a-dim" title="Permanent link">&para;</a></h3>
+<p>A zone per plant and period is <a href="../model/multi-dims/#one-struct-column">a multi-dim</a> <code>plant_period</code> with the property <code>zone</code>. The multi-dim exists only to carry <code>zone</code>, and its tuples must be added before the property can be set.</p>
 <h3 id="how-the-published-package-depends-on-mathspec">How the published package depends on mathspec<a class="headerlink" href="#how-the-published-package-depends-on-mathspec" title="Permanent link">&para;</a></h3>
 <p>Core reads its dtypes from <code>mathspec.program</code>, and the environment pins mathspec at a commit of a pull request branch, which lasts only while the commit exists on GitHub. Before a release the pin moves to the merged commit. A PyPI release cannot declare a git pin as a dependency, so the package metadata names none until mathspec is published.</p>
 <h3 id="how-a-property-that-refers-to-a-dim-maps-onto-mathspec">How a property that refers to a dim maps onto mathspec<a class="headerlink" href="#how-a-property-that-refers-to-a-dim-maps-onto-mathspec" title="Permanent link">&para;</a></h3>
@@ -1938,15 +1986,15 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 <h3 id="whether-a-broadcast-survives-materialisation">Whether a broadcast survives materialisation<a class="headerlink" href="#whether-a-broadcast-survives-materialisation" title="Permanent link">&para;</a></h3>
 <p>It does. The owner map holds keys as written and the fold reads no axis, so a NULL reaches every label the axis holds at the node read: one added below a materialised revision and one staged in a <code>WorkingRecord</code> alike (<a href="../layers/resolution/#what-a-row-reaches">what a row reaches</a>). A map materialised before <code>partial</code> changed is no cache, and the read folds from the layers again (<a href="../layers/resolution/#materialised-node-caches">materialised node caches</a>).</p>
 <h3 id="whether-flags-needs-a-record-level-counterpart">Whether <code>flags</code> needs a record-level counterpart<a class="headerlink" href="#whether-flags-needs-a-record-level-counterpart" title="Permanent link">&para;</a></h3>
-<p>It is one. <code>flags()</code> answers per record, every attribute included, and <code>flags(**categories)</code> per category, restricted to the rows reaching its labels (<a href="../use/reading/#flags">flags</a>). An attribute over an axis alone or a group outside <code>partial</code> is reachable through the first.</p>
-<h3 id="what-a-null-group-struct-reaches">What a NULL group struct reaches<a class="headerlink" href="#what-a-null-group-struct-reaches" title="Permanent link">&para;</a></h3>
+<p>It is one. <code>flags()</code> answers per record, every attribute included, and <code>flags(**categories)</code> per category, restricted to the rows reaching its labels (<a href="../use/reading/#flags">flags</a>). An attribute over an axis alone or a multi-dim outside <code>partial</code> is reachable through the first.</p>
+<h3 id="what-a-null-multi-dim-struct-reaches">What a NULL multi-dim struct reaches<a class="headerlink" href="#what-a-null-multi-dim-struct-reaches" title="Permanent link">&para;</a></h3>
 <p>Every tuple, as a NULL on the dim itself reaches every label (<a href="../model/attributes/#the-broadcast-rule">the broadcast rule</a>). A constant <code>efficiency</code> lands on generators' connections too. One for links alone is <code>set("efficiency", 0.7, ctype="Link")</code>.</p>
 <h3 id="what-build-does-with-a-value-its-type-does-not-take">What <code>build</code> does with a value its type does not take<a class="headerlink" href="#what-build-does-with-a-value-its-type-does-not-take" title="Permanent link">&para;</a></h3>
 <p>It leaves the value out and reports it in <code>Requirements.ignored</code>, as an unknown type is reported. <code>build</code> does not raise (<a href="../tools/pypsa/#a-value-its-type-does-not-take">tools</a>).</p>
 <h3 id="what-a-connection-value-staged-without-its-bus-should-mean">What a connection value staged without its <code>bus</code> should mean<a class="headerlink" href="#what-a-connection-value-staged-without-its-bus-should-mean" title="Permanent link">&para;</a></h3>
 <p>Nothing. The call is <a href="../use/editing/#set">rejected</a>.
-<code>{entity: dc, bus: NULL}</code> is <a href="../model/attributes/#the-broadcast-rule">no group value</a>, a group value being a whole tuple or NULL, so it is refused wherever a row comes in.
-The alternative, "every connection of this entity", would broadcast over part of a tuple. A group column broadcasts only whole, and a NULL struct means every tuple.</p>
+<code>{entity: dc, bus: NULL}</code> is <a href="../model/attributes/#the-broadcast-rule">no multi-dim value</a>, a multi-dim value being a whole tuple or NULL, so it is refused wherever a row comes in.
+The alternative, "every connection of this entity", would broadcast over part of a tuple. A multi-dim's column broadcasts only whole, and a NULL struct means every tuple.</p>
 
 
 
