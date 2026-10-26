@@ -1456,10 +1456,19 @@ def test_schema_dims_stay_generic(exported):
         [(None, None, 1.0)],
         [(None, None, 1.0), ("a", None, 2.0), ("a", "x", 3.0)],
         [("a", None, 1.0), (None, "x", 2.0), ("a", "x", 3.0)],
+        [("c", "x", 1.0), (None, "x", 2.0), ("a", "z", 3.0)],
     ],
-    ids=["named", "entity-broadcast", "full-broadcast", "nested", "crossing"],
+    ids=[
+        "named",
+        "entity-broadcast",
+        "full-broadcast",
+        "nested",
+        "crossing",
+        "foreign",
+    ],
 )
-def test_settle_reads_the_same_whatever_flags_overstate(rows):
+@pytest.mark.parametrize("filtered", [True, False], ids=["filter", "no-filter"])
+def test_settle_reads_the_same_whatever_flags_overstate(rows, filtered):
     """Flags only let `settle` skip work: over-reporting them changes no value.
 
     Notes
@@ -1480,8 +1489,23 @@ def test_settle_reads_the_same_whatever_flags_overstate(rows):
         frozenset(d for d in dims if frame[d].isna().any()),
     )
     every = Flags(frozenset(dims), frozenset(dims))
-    settled = [sorted(settle(rel, labels, f).fetchall()) for f in (exact, every)]
+    settled = [
+        sorted(settle(rel, labels, f, filter=filtered).fetchall())
+        for f in (exact, every)
+    ]
     assert settled[0] == settled[1], "the flags of the rows read as every dim mixed"
+    if not filtered:
+        return
+    reached = {
+        (e, s)
+        for named_e, named_s, _ in rows
+        for e in ("a", "b")
+        for s in ("x", "y")
+        if named_e in (None, e) and named_s in (None, s)
+    }
+    assert {(e, s) for e, s, _ in settled[0]} == reached, (
+        "a NULL reaches each passed label, a label not passed is dropped"
+    )
 
 
 def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not():

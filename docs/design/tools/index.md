@@ -79,7 +79,8 @@ An attribute without an entry is read under its own name.
 
 A record answers an attribute's rows as written, and a tool settles them by [the broadcast rule](../model/attributes.md#the-broadcast-rule) ([relations](../use/reading.md#relations)).
 `settle(rel, labels, flags)` returns one row per coordinate.
-A row NULL on a coordinate in `labels` takes each label there, and a row reaching none is dropped.
+A row NULL on a coordinate in `labels` takes each label there, and a row naming a label outside `labels`, or reaching none, is dropped.
+With `filter=False` a named row is kept as written, for a caller whose own joins on the labels drop it anyway, as the PyPSA build's joins on `entity` do.
 At each coordinate the row naming every coordinate in `labels` that the other rows there name is kept, and where none does the query fails, naming the coordinate.
 A coordinate outside `labels` is kept as written, a NULL there being one more label, so a constant `p_max_pu` stays one row with `snapshot` NULL.
 

@@ -899,7 +899,8 @@ def _weightings(
         frame = record.attributes.get(attribute)
         if weighting.dim != dim or frame is None:
             continue
-        rows = settle(frame, labels, overstated).project(col(dim), col("value")).df()
+        rows = settle(frame, labels, overstated, filter=False)
+        rows = rows.project(col(dim), col("value")).df()
         values = rows.set_index(dim)["value"].reindex(table.index)
         restored[weighting.column] = values.fillna(table[weighting.column])
     return restored
@@ -1456,7 +1457,9 @@ class PyPSATool(Tool):
                 # A named row of another type's entity is left to the joins on
                 # `entity` (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim).
                 long = _unpack_connection(
-                    self.schema.resolve(record, ctype, attr, labels, flagged)
+                    self.schema.resolve(
+                        record, ctype, attr, labels, flagged, filter=False
+                    )
                 )
                 if CONNECTION in schema.attributes[attr].dims:
                     for column, rows in _port_columns(
@@ -1507,7 +1510,10 @@ class PyPSATool(Tool):
         attributes = {
             attr: (
                 _keyed_as_entity(
-                    self.schema.resolve(record, ctype, attr, over, flagged), dim
+                    self.schema.resolve(
+                        record, ctype, attr, over, flagged, filter=False
+                    ),
+                    dim,
                 ),
                 flags,
             )
