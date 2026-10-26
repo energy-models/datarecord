@@ -698,7 +698,7 @@ def test_a_stochastic_network_is_not_a_false_collision():
 
 
 def test_pypsa_schema_is_the_identity(single_revision):
-    """PyPSA defines the record vocabulary today, so nothing is renamed.
+    """PyPSA defines the record vocabulary, so nothing is renamed.
 
     The seam still routes every attribute, so an entry added later takes
     effect with no change to `build`.

@@ -1254,7 +1254,7 @@ class PyPSATool(Tool):
 
     name = "pypsa"
 
-    # PyPSA defines the record vocabulary today, so every attribute maps to
+    # PyPSA defines the record vocabulary, so every attribute maps to
     # itself and there is nothing to declare. The seam is here for the first
     # tool whose names differ, or whose value is computed from several of the
     # record's (`Attr.compute`).

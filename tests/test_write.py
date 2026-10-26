@@ -132,7 +132,7 @@ def _long(**overrides) -> pd.DataFrame:
     """One long row carrying its attribute's own coordinates, and no others.
 
     Shaped from the spec rather than spelled: a source handing over a column
-    the attribute is not addressed by is what the writer now rejects, so a
+    the attribute is not addressed by is what the writer rejects, so a
     helper that spelled every declared dim would be testing against a record no
     reader would accept.
 
