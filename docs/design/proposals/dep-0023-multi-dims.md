@@ -175,16 +175,5 @@ Checks that hold once built:
 ## Open Issues
 
 - **Whether a multi-dim may be `over` another multi-dim.** Nothing needs it yet; it is refused until something does. Carried on as an [open question](../open-questions.md#whether-a-multi-dim-may-be-over-another-multi-dim).
-- **Whether a multi-dim is declared under `properties` instead, with a reserved key.** The subject's entry names its coordinates, and its properties sit beside them:
-
-  ```yaml
-  properties:
-    plant_period:
-      over: [plant, period]
-      zone: { one_of: zone }
-  ```
-
-  The multi-dim is then declared once, where its only content is. Against it: `over` becomes a name no property may take, a multi-dim with no property still needs an entry under `properties`, and `dimensions` stops listing every dim, so a reader of `dimensions` alone (mathspec's included) misses it. Carried on as an [open question](../open-questions.md#whether-a-multi-dim-is-declared-under-properties-with-a-reserved-key).
-
 - **Whether a functional mapping over two coordinates justifies a dim.** `plant_period` exists only to carry `zone`; its labels must be written before the property can be. Carried on as an [open question](../open-questions.md#whether-a-functional-mapping-over-two-coordinates-justifies-a-dim).
 - **Whether a multi-dim in `partial` may be categorized.** Once a group is a dim, the [open question](../open-questions.md#whether-a-multi-dim-in-partial-may-have-categories) on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized, as its specification says; a later DEP may lift that.

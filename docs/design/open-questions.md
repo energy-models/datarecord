@@ -58,10 +58,6 @@ A `default_by` on `connection.role` would give each role of a connection its own
 
 Each coordinate of [a multi-dim](model/multi-dims.md) draws on a dim that is no multi-dim, and the schema refuses one that does. Nothing needs a tuple of tuples yet; the refusal stands until something does.
 
-### Whether a multi-dim is declared under `properties` with a reserved key
-
-A multi-dim's entry under `properties` could name its coordinates beside its properties, `plant_period: {over: [plant, period], zone: {one_of: zone}}`, declaring it once, where its only content is. Against it: `over` becomes a name no property may take, a multi-dim with no property still needs an entry, and `dimensions` stops listing every dim, so a reader of `dimensions` alone, mathspec's included, misses it.
-
 ### Whether a functional mapping over two coordinates justifies a dim
 
 A zone per plant and period is [a multi-dim](model/multi-dims.md#one-struct-column) `plant_period` with the property `zone`. The multi-dim exists only to carry `zone`, and its tuples must be added before the property can be set.
