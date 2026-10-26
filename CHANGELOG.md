@@ -255,6 +255,8 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- A pointwise `set` leaving one of two dims outside `partial` NULL keeps the
+  rest of the series.
 - A broadcast reaches every label the record holds, including one added below
   a materialised revision or staged in a `WorkingRecord`, so materialising
   changes no answer.

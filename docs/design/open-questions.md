@@ -82,15 +82,15 @@ A bare [selector](use/editing.md#set) naming a property of two dims one attribut
 
 A snapshot mapped to its period is [a dim and a property that refers to the period](model/dims.md#mapping-labels-to-another-dim), two declarations a helper could make one.
 
-### A pointwise `set` leaving one of two whole-owned dims NULL drops the rest of the series
-
-It is a fold bug with any two whole-owned dims on one series.
-
 ### What PyPSA#1474 lands as
 
 Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none. The tool adds the one and stores the other as NULL today ([PyPSA](tools/pypsa.md#buses-and-carriers-are-dims)).
 
 ## Settled
+
+### What a pointwise `set` leaving one of two dims outside `partial` NULL reaches
+
+Every label of the dim it leaves NULL, at the label it names. The rest of the series keeps the parent's values, staged, committed or over a materialised parent ([a dim outside `partial`](layers/resolution.md#a-dim-outside-partial)).
 
 ### Whether a broadcast survives materialisation
 

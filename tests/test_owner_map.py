@@ -12,6 +12,7 @@ Notes
 """
 
 import json
+from itertools import product
 from pathlib import Path
 from uuid import uuid4
 
@@ -592,3 +593,56 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
     }
     for record in (staged, child, committed.child(child.edits).record):
         assert broadcast(record, "p_max_pu", "entity", "snapshot") == expected
+
+
+@pytest.mark.parametrize("materialised", [False, True])
+@pytest.mark.parametrize(
+    ("named", "null"), [("snapshot", "period"), ("period", "snapshot")]
+)
+def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
+    store, named, null, materialised
+):
+    """A child naming one of two dims outside `partial` leaves the rest of the series.
+
+    The root sets `x` at every `(period, snapshot)` of `a`; the child sets `a`
+    at one label of `named`, leaving `null` NULL.
+
+    Notes
+    -----
+    - [a dim outside partial](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
+    """
+    write_schema(
+        Schema(
+            dimensions={
+                "entity": {"dtype": "str"},
+                "period": {"dtype": "int"},
+                "snapshot": {"dtype": "int"},
+            },
+            attributes={
+                "x": {"dtype": "float", "dims": ["entity", "period", "snapshot"]}
+            },
+            partial=frozenset({"entity"}),
+        ),
+        store,
+    )
+    base = empty_root(store)
+    root = WorkingRecord(base.record)
+    root.add("entity", ["a"])
+    root.add("period", [1, 2])
+    root.add("snapshot", [0, 1])
+    for p, s in product([1, 2], [0, 1]):
+        root.set("x", 10.0 * p + s, entity="a", period=p, snapshot=s)
+    committed = base.child(root.edits)
+    if materialised:
+        committed.materialise()
+    child = WorkingRecord(committed.record)
+    child.set("x", 99.0, entity="a", **{named: 1})
+
+    expected = {
+        ("a", p, s): 99.0 if {"period": p, "snapshot": s}[named] == 1 else 10.0 * p + s
+        for p, s in product([1, 2], [0, 1])
+    }
+    for record in (child, committed.child(child.edits).record):
+        assert broadcast(record, "x", "entity", "period", "snapshot") == expected, (
+            f"the set reaches every {null} at {named}=1, the root keeps the rest"
+        )
