@@ -587,24 +587,33 @@ class _RecordLikeAsLayerData:
         Raises
         ------
         ValueError
-            Naming `dim`, the labels the axis lacks or adds, or the order
-            it holds them in.
+            Naming `dim` and whether the axis holds NULL, the labels it
+            repeats, lacks or adds, or else the order it holds them in.
 
         Notes
         -----
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
         rel = as_relation(self._dims[dim], self._con)
-        given = [str(label) for (label,) in rel.project(col(dim)).fetchall()]
+        given = [
+            None if label is None else str(label)
+            for (label,) in rel.project(col(dim)).fetchall()
+        ]
         expected = list(self.schema.dimensions[dim].one_of or ())
         if given == expected:
             return
-        missing = [label for label in expected if label not in given]
-        extra = [label for label in given if label not in expected]
-        if missing or extra:
-            difference = f"lacks {missing} and adds {extra}"
-        else:
-            difference = f"holds the labels in the order {given}"
+        labels = [label for label in given if label is not None]
+        repeated = [label for label in dict.fromkeys(labels) if labels.count(label) > 1]
+        missing = [label for label in expected if label not in labels]
+        extra = [label for label in dict.fromkeys(labels) if label not in expected]
+        problems = {
+            "holds NULL": None in given,
+            f"repeats {repeated}": repeated,
+            f"lacks {missing}": missing,
+            f"adds {extra}": extra,
+        }
+        found = [problem for problem, hit in problems.items() if hit]
+        difference = " and ".join(found) or f"holds the labels in the order {given}"
         msg = (
             f"the source's axis of {dim!r} {difference}, but {dim!r} lists its "
             f"labels with `one_of`, {expected}, so its axis is the schema's "

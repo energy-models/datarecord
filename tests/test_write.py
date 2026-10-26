@@ -322,11 +322,18 @@ def test_a_record_handing_over_the_one_of_list_writes_no_file_of_it(store):
 @pytest.mark.parametrize(
     ("labels", "match"),
     [
-        (["Process", "Bus"], r"'ctype' lacks \[.*\] and adds \[\]"),
-        ([*_CTYPES, "Nope"], r"'ctype' lacks \[\] and adds \['Nope'\]"),
+        (["Process", "Bus"], r"'ctype' lacks \[.*\], but"),
+        ([*_CTYPES, "Nope"], r"'ctype' adds \['Nope'\], but"),
         ([*reversed(_CTYPES)], r"'ctype' holds the labels in the order"),
+        ([*_CTYPES, _CTYPES[0]], rf"'ctype' repeats \['{_CTYPES[0]}'\], but"),
+        ([*_CTYPES, None], r"'ctype' holds NULL, but"),
+        (
+            [None, *_CTYPES[1:], "Nope", "Nope"],
+            rf"'ctype' holds NULL and repeats \['Nope'\] and lacks "
+            rf"\['{_CTYPES[0]}'\] and adds \['Nope'\], but",
+        ),
     ],
-    ids=["short", "extra", "reordered"],
+    ids=["short", "extra", "reordered", "repeated", "null", "several"],
 )
 def test_a_record_handing_over_another_one_of_axis_is_refused(store, labels, match):
     """Dropping it would lose what it says; the list is the axis, so it is refused.
