@@ -269,20 +269,25 @@ def unsettled(
     """
     sets = named_sets(rel, coordinates)
 
-    def exactly(named: frozenset[str], alias: str) -> DuckDBPyRelation:
-        rows = rel.filter(names_exactly(coordinates, named))
-        return rows.project(*map(col, coordinates)).distinct().set_alias(alias)
+    def exactly(named: frozenset[str]) -> DuckDBPyRelation:
+        return rel.filter(names_exactly(coordinates, named)).project(
+            *map(col, coordinates)
+        )
 
     for a, b in combinations(sets, 2):
         if a <= b or b <= a:
             continue
         on = [col("a", c) == col("b", c) for c in coordinates if c in a & b]
-        meets = join_on(exactly(a, "a"), exactly(b, "b"), on).project(
-            *(coalesce(col("a", c), col("b", c)).alias(c) for c in coordinates)
-        )
+        meets = join_on(
+            exactly(a).distinct().set_alias("a"),
+            exactly(b).distinct().set_alias("b"),
+            on,
+        ).project(*(coalesce(col("a", c), col("b", c)).alias(c) for c in coordinates))
         if a | b in sets:
             settled = ex_all(col("m", c) == col("u", c) for c in a | b)
-            meets = meets.set_alias("m").join(exactly(a | b, "u"), settled, how="anti")
+            meets = meets.set_alias("m").join(
+                exactly(a | b).set_alias("u"), settled, how="anti"
+            )
         yield a, b, meets
 
 
