@@ -243,7 +243,8 @@ def _dead_keys(
         col("h", key) == col("f", key),
         how="anti",
     )
-    if dead.limit(1).fetchone() is None:
+    # fetchone on a hit keeps the parquet open, and Windows then refuses the staging rename
+    if not dead.limit(1).fetchall():
         return None
     return dead
 
