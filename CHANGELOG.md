@@ -144,7 +144,8 @@ All notable changes to datarecord are documented here. The format follows
   is the list, and no `dims/<dim>.parquet` or `resolved/dims/<dim>.parquet` is
   written or read for it. The writer refuses a `LayerData` handing one over, a
   read refuses a layer holding one, and a `RecordLike`'s axis of it is dropped
-  where it is the list, same labels in the same order, and refused otherwise.
+  where it is the list, same labels in the same order, and refused otherwise,
+  naming a NULL, a repeated, missing or extra label, or else the order.
   `add` and `remove` on it are refused, and a property declared on it is
   refused at load. A record carrying such a file is written again. New on
   `Schema`: `one_of_dims`; `Schema.require_listed` is `require_one_of`. The
@@ -157,7 +158,7 @@ All notable changes to datarecord are documented here. The format follows
   tuples of an attribute over `connection`, narrowed by a coordinate keyword,
   and of a property of it: `set("connection.note", v, role="output")` patches
   the output connections, as `set("entity.note", v, ctype="Generator")` does
-  the generators.
+  the generators, and `ctype="Link"` on it the connections of links.
 - The design pages are grouped by topic: the data model, layers, using a
   record, storage, frameworks and the package. Each old design page URL
   redirects to its new page. The usage pages are organised by task, and the

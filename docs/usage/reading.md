@@ -43,7 +43,7 @@ A multi-dim's labels are its tuples, so `dims["connection"]` is the one struct c
 
 ```python
 record.dims["connection"]  # connection
-record.properties["connection"]  # connection | role
+record.properties["connection"]  # connection | role | note
 ```
 
 `properties[subject]` is a dim's key with every property declared for it, as stored.

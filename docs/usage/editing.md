@@ -71,11 +71,14 @@ A plain name is an attribute.
 
 A multi-dim's property takes a scalar, and its coordinates as keywords select the tuples it patches, none selecting every tuple.
 A category keyword selects for a property as for an attribute: `role="output"` picks the output connections, as `ctype="Generator"` picks the generators for `entity.carrier`.
+A category of a coordinate selects too: `ctype="Link"` picks the connections of links.
 A coordinate is part of the key, so `set("connection.bus", ...)` is refused: `remove` the tuple and `add` it anew.
 
 ```python
 w.set("connection.role", "input", entity="dc", bus="north")
 w.set("entity.carrier", "wind", ctype="Generator")
+w.set("connection.note", "export", role="output")  # every output connection
+w.set("connection.note", "link", ctype="Link", bus="north")  # links at north
 w.set("connection.bus", "south", entity="dc")  # refused: a coordinate is the key
 ```
 

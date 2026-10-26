@@ -147,7 +147,7 @@ def ports(store):
                 "bus": Dimension(dtype="str"),
                 "snapshot": Dimension(dtype="int"),
                 "role": Dimension(one_of=["input", "output", "attached"]),
-                "ctype": Dimension(one_of=["Generator", "Link"]),
+                "ctype": Dimension(one_of=["Generator", "Link", "Store"]),
                 "connection": Dimension(over=["entity", "bus"]),
             },
             properties={
@@ -255,8 +255,24 @@ def _noted(record, subject: str) -> set:
             {"role": ["input", "output"], "entity": "l", "bus": "b"},
             {("l", "b")},
         ),
+        ("connection", {"ctype": "Link"}, {("l", "a"), ("l", "b")}),
+        ("connection", {"ctype": "Link", "bus": "b"}, {("l", "b")}),
+        ("connection", {"ctype": "Link", "role": "input"}, {("l", "a")}),
+        ("connection", {"ctype": "Store"}, set()),
+        ("connection", {"ctype": "Store", "role": "input"}, set()),
     ],
-    ids=["dim", "dim-several", "multi-dim", "multi-dim-several", "multi-dim-narrowed"],
+    ids=[
+        "dim",
+        "dim-several",
+        "multi-dim",
+        "multi-dim-several",
+        "multi-dim-narrowed",
+        "coordinate-category",
+        "coordinate-category-narrowed",
+        "coordinate-category-and-role",
+        "coordinate-category-selecting-none",
+        "coordinate-category-and-role-selecting-none",
+    ],
 )
 def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
     ports, subject, keywords, selected

@@ -99,6 +99,17 @@ def _plain_labels(dim: str, labels: _Labels, call: str) -> list[Any]:
     return list(cast("Sequence[Any]", labels))
 
 
+def _field_in(multi: str, field: str, labels: Sequence[Any]) -> Expression:
+    """Whether coordinate `field` of the multi-dim column `multi` holds one of `labels`, none matching no tuple.
+
+    DuckDB's `isin` refuses an empty list, which a property keyword selecting
+    no label yields.
+    """
+    if not labels:
+        return lit(False)
+    return fn.struct_extract(col(multi), lit(field)).isin(*map(lit, labels))
+
+
 def _is_labels(value: Any) -> bool:
     """Whether a keyword's value lists several labels rather than naming one."""
     return isinstance(value, Sequence) and not isinstance(value, str | bytes)
@@ -737,7 +748,10 @@ class WorkingRecord(Record):
         and stores nothing of the filter, so a label added later is not reached.
         A property of a multi-dim `attribute` is over - `role="output"` -
         selects its tuples the same way, narrowed by any keyword naming one of
-        its coordinates.
+        its coordinates. On a multi-dim's property, the keywords select its
+        tuples as on an attribute over it: `set("connection.note", v,
+        role="output")` patches the output connections, and `ctype="Link"`
+        the connections of links.
 
         Raises
         ------
@@ -950,9 +964,7 @@ class WorkingRecord(Record):
         for coordinate, given in coords.items():
             labels = list(given) if _is_labels(given) else [given]
             self._require_typed(over[coordinate], labels, f"`{call}`")
-            tuples = tuples.filter(
-                fn.struct_extract(col(multi), lit(coordinate)).isin(*map(lit, labels))
-            )
+            tuples = tuples.filter(_field_in(multi, coordinate, labels))
         rel = tuples.project(col(multi))
         if coords and rel.limit(1).fetchone() is None:
             scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
@@ -1022,7 +1034,9 @@ class WorkingRecord(Record):
         property of a dim `name` reaches, else of any dim. A property of a
         multi-dim attribute `name` is over, or dotted `name` is a property
         of, selects its tuples instead, which the keywords naming its
-        coordinates narrow.
+        coordinates narrow. For dotted `name` of a multi-dim, a property of
+        a dim one of its coordinates draws on selects the tuples holding
+        those labels there.
 
         Returns
         -------
@@ -1045,8 +1059,12 @@ class WorkingRecord(Record):
         """
         call = f"set({name!r}, ...)"
         subject, dot, _ = name.partition(".")
-        flat = {subject: subject} if dot else _flat_coordinates(self.schema, name)
-        over = () if dot else self.schema.multi_dims_of(name)
+        if dot:
+            flat = self.schema.over(subject) or {subject: subject}
+            over: tuple[str, ...] = (subject,)
+        else:
+            flat = _flat_coordinates(self.schema, name)
+            over = self.schema.multi_dims_of(name)
         reached = {*flat.values(), *over}
         by_dim: dict[str, dict[str, list[Any]]] = {}
         rest: dict[str, Any] = {}
@@ -1079,6 +1097,7 @@ class WorkingRecord(Record):
             for m in self.schema.multi_dims
             if m in by_dim
         }
+        drawn = []
         for dim, wanted in by_dim.items():
             drawing = [c for c, d in flat.items() if d == dim]
             if len(drawing) != 1:
@@ -1097,16 +1116,17 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             self.schema.require_one_of(dim, wanted, f"`{call}`")
             rest[coordinate] = self._labels_matching(dim, wanted)
+            drawn.append(coordinate)
+        if dot and drawn and subject in self.schema.multi_dims:
+            held = self.dims.get(subject)
+            if held is not None:
+                tuples.setdefault(subject, held)
         for multi, chosen in tuples.items():
             for field in self.schema.over(multi):
                 if field in rest:
                     given = rest.pop(field)
                     labels = list(given) if _is_labels(given) else [given]
-                    chosen = chosen.filter(
-                        fn.struct_extract(col(multi), lit(field)).isin(
-                            *map(lit, labels)
-                        )
-                    )
+                    chosen = chosen.filter(_field_in(multi, field, labels))
             tuples[multi] = chosen
         return rest, tuples
 
@@ -1541,10 +1561,7 @@ class WorkingRecord(Record):
                 continue
             naming = reduce(
                 operator.or_,
-                (
-                    fn.struct_extract(col(m), lit(f)).isin(*map(lit, labels))
-                    for f in fields
-                ),
+                (_field_in(m, f, labels) for f in fields),
             )
             if staged[m].filter(naming).limit(1).fetchone() is None:
                 continue
