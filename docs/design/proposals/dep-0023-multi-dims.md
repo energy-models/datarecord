@@ -79,6 +79,7 @@ partial: [entity, bus, connection]
 
 - A **selector keyword** stays bare: `bus="north"` on an attribute over `connection` selects the tuples whose `bus` is `north`, coordinate first, as today.
 - A property of a multi-dim named like one of its coordinates stays refused, as [the schema](../model/properties.md#names) refuses it for a group.
+- **A multi-dim is never categorized.** A property of it may refer to a dim with `one_of`, as `role` does, and still categorizes nothing, `partial` listing the multi-dim or not; a `default_by` keyed on one is refused. Whether that changes is left [open](#open-issues).
 
 ### A functional group is a property of a multi-dim
 
@@ -106,14 +107,15 @@ One `zone` per tuple is what a property is: one value per label of its subject. 
 
 **With that, `groups` holds nothing and is removed.** `Group`, `Schema.groups`, `Schema.group_columns`, `Schema.groups_of`, `Schema.group_key`, `add_group`, `remove_group` and the `groups/` directory go. [`dims: [X]`](../model/groups.md#attributes-over-a-group) resolves a dim, and nothing else.
 
-**`add` and `remove` take a multi-dim's tuples**, each a mapping from coordinate to label:
+**`add` and `remove` take a multi-dim's tuples**, either as a frame with a column per coordinate, anything DuckDB scans, or as a list of mappings from coordinate to label, which is made into that frame up front and then takes the same path:
 
 ```python
 w.add("connection", [{"entity": "g1", "bus": "north"}], role="output")
+w.add("connection", pd.DataFrame({"entity": ["g2"], "bus": ["south"]}))
 w.remove("connection", [{"entity": "g1", "bus": "north"}])
 ```
 
-A tuple naming a label its coordinate's dim lacks is refused, as `add_group` refused it.
+A property is a keyword, as for any dim, or a further column of the frame. A tuple naming a label its coordinate's dim lacks is refused, as `add_group` refused it.
 
 ## Rationale
 
@@ -129,7 +131,7 @@ A tuple naming a label its coordinate's dim lacks is refused, as `add_group` ref
 ## Usage
 
 ```python
-record.dims["connection"]  # connection STRUCT(entity, bus) | role
+record.dims["connection"]  # connection STRUCT(entity, bus)
 record.properties["connection"]  # connection | role
 record.attributes[
     "efficiency"
@@ -146,10 +148,10 @@ w.remove("bus", ["north"])  # and every connection at it
 
 ## Implementation notes
 
-1. `Dimension.over`, parsed as a group's was; `over` exclusive with `dtype` and `one_of`; `groups` refused at load, naming `dimensions`.
+1. `Dimension.over`, parsed as a group's was; `over` exclusive with `dtype` and `one_of`; `groups` an unknown key, refused as any other.
 2. The group struct-column machinery keyed on the dim: fold key, broadcast, whole-or-NULL, cascade, the coordinate-name clash.
 3. `dims/<multi-dim>.parquet` for its table, restated whole; `groups/` and `resolved/groups/` dropped from the writer and reader.
-4. `add` and `remove` take tuples; `add_group`, `remove_group` removed.
+4. `add` and `remove` take tuples, as a frame or a list of mappings; `add_group`, `remove_group` removed.
 5. `Schema.resolve` resolves a coordinate.
 6. `Group`, `Schema.groups`, `group_columns`, `groups_of`, `group_key` removed; the PyPSA tool declares `connection` under `dimensions`.
 7. Pages, usage, changelog; fixtures re-exported.
@@ -184,4 +186,4 @@ Checks that hold once built:
   The multi-dim is then declared once, where its only content is. Against it: `over` becomes a name no property may take, a multi-dim with no property still needs an entry under `properties`, and `dimensions` stops listing every dim, so a reader of `dimensions` alone (mathspec's included) misses it.
 
 - **Whether a functional mapping over two coordinates justifies a dim.** `plant_period` exists only to carry `zone`; its labels must be written before the property can be.
-- **Whether a multi-dim in `partial` may be categorized.** Once a group is a dim, the [open question](../open-questions.md#whether-a-group-in-partial-may-have-categories) on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized.
+- **Whether a multi-dim in `partial` may be categorized.** Once a group is a dim, the [open question](../open-questions.md#whether-a-group-in-partial-may-have-categories) on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized, as its specification says; a later DEP may lift that.
