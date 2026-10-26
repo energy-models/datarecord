@@ -38,6 +38,7 @@ from datarecord.duck import (
     ex_all,
     fn,
     is_frame,
+    join_on,
     null_safe,
     struct_of,
     union_all_by_name,
@@ -1914,9 +1915,8 @@ def _spread(
             left = staged.filter(names_exactly(keys, s)).set_alias("s")
             right = base.filter(names_exactly(keys, b)).set_alias("b")
             on = [col("s", c) == col("b", c) for c in keys if c in s and c in b]
-            joined = left.join(right, ex_all(on)) if on else left.cross(right)
             parts.append(
-                joined.project(
+                join_on(left, right, on).project(
                     *(
                         col("b" if c in b and c not in s else "s", c).alias(c)
                         for c in staged.columns

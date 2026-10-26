@@ -22,7 +22,6 @@ import operator
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cached_property, reduce, wraps
-from itertools import combinations
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
@@ -35,7 +34,6 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
-    ex_all,
     fn,
     null_safe,
     struct_field,
@@ -50,8 +48,7 @@ from datarecord.resolve.owner_map import (
     _frozen_coords,
     _table,
     frozen_prefix,
-    named_sets,
-    names_exactly,
+    unsettled,
     with_columns,
 )
 from datarecord.resolve.sources import LayerSource, ParquetLayer
@@ -236,42 +233,15 @@ def _crossings(
 ) -> DuckDBPyRelation | None:
     """Rows failing the read at each key two rows of `rel` cover and neither names every dim of, unless a third names both.
 
-    `rel` is one layer's rows as written. One equi-join per pair of named
-    sets, so no join compares every row with every other; `None` where no two
-    named sets are incomparable, sparing the read the joins.
+    `rel` is one layer's rows as written. `None` where no two named sets are
+    incomparable, sparing the read the joins.
 
     Notes
     -----
     - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    masks = set(named_sets(rel, coordinates))
-
-    def exactly(mask: frozenset[str]) -> DuckDBPyRelation:
-        return rel.filter(names_exactly(coordinates, mask))
-
-    crossed = []
-    for a, b in combinations(masks, 2):
-        if a <= b or b <= a:
-            continue
-        other = exactly(b).project(*(col(c).alias(f"_b_{c}") for c in coordinates))
-        common = [col(c) == col(f"_b_{c}") for c in coordinates if c in a & b]
-        pairs = (
-            exactly(a).join(other, ex_all(common))
-            if common
-            else exactly(a).cross(other)
-        )
-        meets = pairs.project(
-            *(coalesce(col(c), col(f"_b_{c}")).alias(c) for c in coordinates)
-        )
-        if a | b in masks:
-            both = exactly(a | b).project(
-                *(col(c).alias(f"_u_{c}") for c in coordinates)
-            )
-            meets = meets.join(
-                both, ex_all(col(c) == col(f"_u_{c}") for c in a | b), how="anti"
-            )
-        crossed.append(meets)
+    crossed = [meets for _, _, meets in unsettled(rel, coordinates)]
     if not crossed:
         return None
     return reduce(DuckDBPyRelation.union, crossed).filter(

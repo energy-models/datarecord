@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from functools import reduce
 from hashlib import sha256
+from itertools import combinations
 from uuid import UUID, uuid4
 
 import duckdb
@@ -34,6 +35,7 @@ from datarecord.duck import (
     empty_relation,
     ex_all,
     fn,
+    join_on,
     null_safe,
     struct_field,
     struct_of,
@@ -251,6 +253,39 @@ def names_exactly(columns: Sequence[str], named: Set[str]) -> Expression:
     )
 
 
+def unsettled(
+    rel: DuckDBPyRelation, coordinates: Sequence[str]
+) -> Iterator[tuple[frozenset[str], frozenset[str], DuckDBPyRelation]]:
+    """Each pair of named sets of `rel` neither holds, with the coordinates its rows meet at that no row names both at.
+
+    Two rows meet where they agree on every one of `coordinates` both name; a
+    meeting coordinate takes the labels either names. There the broadcast rule
+    finds no row more specific than both. The relation is lazy and yields one
+    column per coordinate.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    sets = named_sets(rel, coordinates)
+
+    def exactly(named: frozenset[str], alias: str) -> DuckDBPyRelation:
+        rows = rel.filter(names_exactly(coordinates, named))
+        return rows.project(*map(col, coordinates)).distinct().set_alias(alias)
+
+    for a, b in combinations(sets, 2):
+        if a <= b or b <= a:
+            continue
+        on = [col("a", c) == col("b", c) for c in coordinates if c in a & b]
+        meets = join_on(exactly(a, "a"), exactly(b, "b"), on).project(
+            *(coalesce(col("a", c), col("b", c)).alias(c) for c in coordinates)
+        )
+        if a | b in sets:
+            settled = ex_all(col("m", c) == col("u", c) for c in a | b)
+            meets = meets.set_alias("m").join(exactly(a | b, "u"), settled, how="anti")
+        yield a, b, meets
+
+
 def _pair(
     kept: DuckDBPyRelation,
     own: DuckDBPyRelation,
@@ -266,8 +301,8 @@ def _pair(
     dims = schema.partial_dims
     mine = own.filter(names_exactly(dims, o))
     mine = mine.project(*(col(c).alias(f"_o_{c}") for c in mine.columns))
-    on = ex_all(col(c) == col(f"_o_{c}") for c in ("attribute", *(o & p)))
-    return kept.filter(names_exactly(dims, p)).join(mine, on)
+    on = [col(c) == col(f"_o_{c}") for c in ("attribute", *(o & p))]
+    return join_on(kept.filter(names_exactly(dims, p)), mine, on)
 
 
 def _overlaps(
