@@ -5,8 +5,6 @@
 [default.extend-words]
 # PyPSA's own attribute name: fixed operation & maintenance cost.
 fom = "fom"
-# Deliberate misspelling in DEP examples of a refused category label.
-Genrator = "Genrator"
 
 [default]
 # Heading anchors: mkdocs slugs drop apostrophes, e.g. "property's" -> "propertys".
