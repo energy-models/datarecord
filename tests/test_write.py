@@ -1588,7 +1588,7 @@ _AWKWARD = Schema(
         "Horizon": Dimension(dtype="str"),
     },
     attributes={
-        "Order Size": AttributeSpec(
+        "Order_Size": AttributeSpec(
             dtype="float", dims={"entity", "select", "Horizon"}
         ),
     },
@@ -1604,7 +1604,7 @@ def _awkward(values: dict[tuple[str, str], float]) -> _Source:
                 "entity": "plant",
                 "select": s,
                 "Horizon": h,
-                "attribute": "Order Size",
+                "attribute": "Order_Size",
                 "breakpoint": None,
                 "value": v,
             }
@@ -1613,7 +1613,7 @@ def _awkward(values: dict[tuple[str, str], float]) -> _Source:
     )
     return _Source(
         _AWKWARD,
-        attributes={"Order Size": long},
+        attributes={"Order_Size": long},
         dims={
             "entity": pd.DataFrame({"entity": ["plant"]}),
             "select": pd.DataFrame({"select": ["a", "b"]}),
@@ -1626,7 +1626,7 @@ def _awkward(values: dict[tuple[str, str], float]) -> _Source:
 
 
 def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_path):
-    """A space, mixed case and an SQL keyword are all a declared name may hold.
+    """Mixed case and an SQL keyword are names a declared name may be.
 
     The child patches one value along both `partial` dims, so the owner map's
     flag structs, keyed by those names, are built and folded.
@@ -1639,7 +1639,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     child = root.child(_awkward({("b", "far"): 5.0}))
 
     assert child.record.schema == _AWKWARD, "the manifest reads back unchanged"
-    rows = relation(child, "Order Size").df()
+    rows = relation(child, "Order_Size").df()
     got = dict(zip(zip(rows["select"], rows["Horizon"]), rows["value"]))
     assert got == {("a", "near"): 1.0, ("b", "far"): 5.0}, (
         "the child's value wins at its coordinate and the root's elsewhere"
@@ -1651,7 +1651,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     workspace.write(child.record, out)
     again = workspace.at(out)
     assert again.schema == _AWKWARD.model_copy(update={"id": again.schema.id})
-    flat = again.attributes["Order Size"].df()
+    flat = again.attributes["Order_Size"].df()
     assert dict(zip(zip(flat["select"], flat["Horizon"]), flat["value"])) == got, (
         "a flattened standalone copy reads the same"
     )

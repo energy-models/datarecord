@@ -325,7 +325,7 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
             lambda: _schema(
                 properties=_with_entity_property("a.b", PropertySpec(dtype="float"))
             ),
-            "contains `.`",
+            "is not a name",
             id="a-dotted-name",
         ),
         pytest.param(
@@ -945,17 +945,21 @@ WRITTEN = {
     "_first": "starts with `_`",
     "_broadcast": "starts with `_`",
     "_pos": "starts with `_`",
-    'say "hi"': 'contains `"`',
-    "a.b": "contains `.`",
+    'say "hi"': "is not a name",
+    "a.b": "is not a name",
+    "Order Size": "is not a name",
+    "carbon-price": "is not a name",
+    "1st": "is not a name",
+    "größe": "is not a name",
 }
 
 
 @pytest.mark.parametrize("position", POSITIONS)
 @pytest.mark.parametrize("name", list(WRITTEN))
 def test_a_name_that_cannot_be_its_own_column_is_refused(name, position):
-    """Every column the format or the fold writes beside a schema's own, `.` and
-    `"`, which `duckdb.ColumnExpression` cannot spell, and case folded as DuckDB
-    folds it. `value` as a dim gave the long file two columns of one name."""
+    """Every column the format or the fold writes beside a schema's own, and
+    anything mathspec's `NAME` refuses, case folded as DuckDB folds it. `value`
+    as a dim gave the long file two columns of one name."""
     with pytest.raises(ValidationError) as refused:
         _declaring(position, name)
     message = str(refused.value)
@@ -977,9 +981,9 @@ def test_names_differing_only_in_case_are_refused(position):
 
 
 @pytest.mark.parametrize("position", POSITIONS)
-@pytest.mark.parametrize("name", ["Order Size", "select", "Horizon", "1st"])
-def test_a_name_duckdb_quotes_is_accepted(name, position):
-    """A space, a keyword, mixed case or a leading digit all quote cleanly."""
+@pytest.mark.parametrize("name", ["select", "Horizon", "p_nom2"])
+def test_a_plain_identifier_is_accepted(name, position):
+    """A keyword, mixed case or a digit after the first character are names."""
     _declaring(position, name)
 
 
