@@ -21,11 +21,16 @@ uv = "*"
 
 [dependencies]
 datarecord = { path = "." }
-duckdb = ">=1.5.4,<2"
+duckdb = ">=2.0,<3"
 pydantic = ">=2.12"
 
 [pypi-dependencies]
 mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "8982c556114992d149a83b3c6f3604c72e569829" }
+
+[exclude-newer]
+# DuckDB 2.0 is younger than the 7d cooldown; drop once it has aged past it.
+duckdb = "0d"
+python-duckdb = "0d"
 
 [feature.test.dependencies]
 pytest = "*"

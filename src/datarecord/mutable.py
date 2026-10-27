@@ -621,7 +621,7 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
         if not value:
             return
-        edit = self._values_relation(
+        edit = self._columns_relation(
             {dim: list(value), name: list(value.values())},
             {dim: self._column_type(dim), name: self._column_type(name, dim)},
         )
@@ -840,7 +840,7 @@ class WorkingRecord(Record):
         else:
             values = [value]
             column = {}
-        rel = self._values_relation(
+        rel = self._columns_relation(
             {**column, "value": values},
             {
                 **{c: self._coordinate_type(attribute, c) for c in column},
@@ -849,7 +849,7 @@ class WorkingRecord(Record):
         )
         for c, labels in listed.items():
             rel = rel.cross(
-                self._values_relation(
+                self._columns_relation(
                     {c: labels}, {c: self._coordinate_type(attribute, c)}
                 )
             )
@@ -966,7 +966,7 @@ class WorkingRecord(Record):
             self._require_typed(over[coordinate], labels, f"`{call}`")
             tuples = tuples.filter(_field_in(multi, coordinate, labels))
         rel = tuples.project(col(multi))
-        if coords and rel.limit(1).fetchone() is None:
+        if coords and not rel.limit(1).fetchall():
             scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
             msg = f"`{call}` selects no tuple of {multi!r} at {scope}"
             raise KeyError(msg)
@@ -989,7 +989,7 @@ class WorkingRecord(Record):
         KeyError
             As `refuse_unheld` does.
         """
-        given = self._values_relation(
+        given = self._columns_relation(
             {column: labels}, {column: self._column_type(dim)}
         )
         refuse_unheld(
@@ -1183,7 +1183,7 @@ class WorkingRecord(Record):
             "tuple[str, DuckDBPyType, str]", self.schema.declared(dim)
         )
         for label in {type(n): n for n in labels if n is not None}.values():
-            given = self._values_relation({dim: [label]}, {dim: None}).types[0]
+            given = self._columns_relation({dim: [label]}, {dim: None}).types[0]
             if not takes(declared, given):
                 msg = (
                     f"{call}: label {label!r} has type {given}, which does not "
@@ -1408,7 +1408,7 @@ class WorkingRecord(Record):
         if spread is not None:
             self._insert(spread, table, {})
 
-    def _values_relation(
+    def _columns_relation(
         self,
         columns: Mapping[str, Sequence[Any]],
         schema: Mapping[str, DuckDBPyType | None],
@@ -1430,7 +1430,7 @@ class WorkingRecord(Record):
             f"unnest(${i}){'' if t is None else f'::{t}'} AS {col(name)}"
             for i, (name, t) in enumerate(built.items(), start=1)
         )
-        return self.con.sql(f"SELECT {unnested}", params=params)
+        return self.con.sql(f"SELECT {unnested}", params=params).materialize()
 
     def add(
         self,
@@ -1502,7 +1502,7 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
         self.schema.require_one_of(dim, data, f"`{call}`")
         self._require_live(dim, data, f"`{call}`")
-        rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
+        rel = self._columns_relation(data, {c: self._column_type(c, dim) for c in data})
         table = self._ensure(kind)
         self._insert_snapshot(
             self._positioned(rel, table, kind, dim), table, {}, key=(dim,)
@@ -1553,7 +1553,9 @@ class WorkingRecord(Record):
             return
         self._require_typed(dim, labels, call)
         self._require_unnamed(dim, labels)
-        gone = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
+        gone = self._columns_relation(
+            {dim: list(labels)}, {dim: self._column_type(dim)}
+        )
         staged = self.dims
         for m in self.schema.multi_dims:
             fields = [f for f, d in self.schema.over(m).items() if d == dim]
@@ -1563,7 +1565,7 @@ class WorkingRecord(Record):
                 operator.or_,
                 (_field_in(m, f, labels) for f in fields),
             )
-            if staged[m].filter(naming).limit(1).fetchone() is None:
+            if not staged[m].filter(naming).limit(1).fetchall():
                 continue
             table = self._ensure(f"{_AXIS_PREFIX}{m}")
             for f in fields:
@@ -1668,7 +1670,7 @@ class WorkingRecord(Record):
             if len(data[c]) != len(rows):
                 msg = f"{call} has {len(data[c])} {c!r} values for {len(rows)} tuples"
                 raise ValueError(msg)
-        return self._values_relation(data, dict.fromkeys(data))
+        return self._columns_relation(data, dict.fromkeys(data))
 
     def _tuples(self, multi: str, rel: DuckDBPyRelation, call: str) -> DuckDBPyRelation:
         """`rel` with its coordinate columns packed into the struct column of `multi`.
@@ -1690,7 +1692,7 @@ class WorkingRecord(Record):
         for c, d in over.items():
             self.schema.require_takes(rel.project(col(c).alias(d)), f"{call} in {c!r}")
         partly = reduce(operator.or_, (col(c).isnull() for c in over))
-        if rel.filter(partly).limit(1).fetchone() is not None:
+        if rel.filter(partly).limit(1).fetchall():
             msg = (
                 f"{call} gives a tuple of {multi!r} with a coordinate NULL; a "
                 f"tuple names a label of each of {list(over)}"

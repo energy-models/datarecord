@@ -282,11 +282,11 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
         "one of them (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)",
     )
     for a, b, meets in unsettled(rel, dims):
-        row = meets.limit(1).fetchone()
-        if row is None:
+        rows = meets.limit(1).fetchall()
+        if not rows:
             continue
         coordinate = ", ".join(
-            f"{d}={v}" for d, v in zip(dims, row, strict=True) if d in a | b
+            f"{d}={v}" for d, v in zip(dims, rows[0], strict=True) if d in a | b
         )
         msg = (
             f"attributes/{attribute}.parquet holds a row naming {[d for d in dims if d in a]} "
@@ -336,11 +336,11 @@ def _refuse_reordered(
         .order("_mine")
         .project(col(key))
         .limit(1)
-        .fetchone()
+        .fetchall()
     )
-    if first is not None:
+    if first:
         msg = (
-            f"{file} puts {key} {first[0]!r} out of its parent's order; a "
+            f"{file} puts {key} {first[0][0]!r} out of its parent's order; a "
             f"restatement keeps the order of the labels its parent holds and "
             f"places a new one anywhere (https://energy-models.github.io/datarecord/design/model/dims/#axis-order)"
         )
@@ -404,7 +404,7 @@ def _require_living_references(
                 how="anti",
             )
         )
-        if gone.limit(1).fetchone() is not None:
+        if gone.limit(1).fetchall():
             killed[dim] = gone
     if not whole and not killed:
         return

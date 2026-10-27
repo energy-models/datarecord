@@ -398,11 +398,11 @@ def _refuse_unfilled(
             *(col(f"_need_{d}") for d in others),
         )
         .limit(1)
-        .fetchone()
+        .fetchall()
     )
-    if row is None:
+    if not row:
         return
-    attribute, *key = row[: 1 + len(dims)]
+    attribute, *key = row[0][: 1 + len(dims)]
     dim = next(d for d, n in zip(others, row[1 + len(dims) :], strict=True) if n)
     at = {d: k for d, k in zip(dims, key, strict=True) if k is not None}
     msg = (

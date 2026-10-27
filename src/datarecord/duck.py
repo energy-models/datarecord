@@ -311,6 +311,26 @@ def struct_field(
     return coalesce(fn.struct_extract(col(column), lit(name)), default)
 
 
+def values_relation(
+    con: DuckDBPyConnection,
+    names: Sequence[str],
+    rows: Sequence[Sequence[Expression]],
+) -> DuckDBPyRelation:
+    """Return the literal table `rows`, its columns named `names`.
+
+    A SQL `VALUES` list under a table alias naming its columns; `con.values`
+    has no such alias, so its columns come out `col0`, `col1`, ...
+
+    Raises
+    ------
+    duckdb.InvalidInputException
+        Where `rows` is empty, which a `VALUES` list cannot be.
+    """
+    listed = ", ".join(f"({', '.join(map(str, row))})" for row in rows)
+    named = ", ".join(str(col(n)) for n in names)
+    return con.sql(f"FROM (VALUES {listed}) t({named})")
+
+
 def empty_relation(
     con: DuckDBPyConnection, **columns: DuckDBPyType
 ) -> DuckDBPyRelation:
@@ -320,10 +340,6 @@ def empty_relation(
     from the relation, so a shape is built as expressions rather than
     assembled as DDL text. One row of typed NULLs, kept for its types and
     dropped for its rows.
-
-    A tuple rather than a list is what routes `values` to its expression
-    overload; the stub types only the scalar one.
     """
-    return con.values(
-        tuple(lit(None).cast(t).alias(n) for n, t in columns.items())
-    ).limit(0)  # type: ignore[arg-type]
+    nulls = [lit(None).cast(t) for t in columns.values()]
+    return values_relation(con, list(columns), [nulls]).limit(0)

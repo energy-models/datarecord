@@ -361,7 +361,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
 
     rel = revision.record.attributes["p_max_pu"]
     stored = len(names) * snapshots
-    assert rel.count("*").fetchone() == (stored,), "one row per stored value"
+    assert rel.count("*").fetchall() == [(stored,)], "one row per stored value"
     assert _largest_intermediate(store, rel) <= stored, (
         "no operator produces more rows than the layer holds"
     )
@@ -406,11 +406,11 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
     record = root.child(staged.edits).record
 
     for plan in (
-        _fold_map(record.sources, record.con, record.schema).explain(),
-        record.attributes["weight"].explain(),
+        _fold_map(record.sources, record.con, record.schema).explain().upper(),
+        record.attributes["weight"].explain().upper(),
     ):
-        assert "HASH_JOIN" in plan, "it joins at all"
-        assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan
+        assert "HASH JOIN" in plan, "it joins at all"
+        assert "NL JOIN" not in plan and "NESTED LOOP" not in plan, plan
     assert _rows(record._fold.owner_map, "attribute", "entity", "snapshot") == {
         ("weight", None, None),
         ("weight", None, 1),

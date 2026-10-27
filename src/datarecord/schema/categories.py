@@ -16,7 +16,6 @@ Notes
 from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
-from functools import reduce
 from typing import Any
 
 from duckdb import CoalesceOperator as coalesce
@@ -25,7 +24,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb import StarExpression as star
 
-from datarecord.duck import ex_all, null_safe
+from datarecord.duck import ex_all, join_on, null_safe, values_relation
 from datarecord.schema.schema import Schema
 
 Categories = Mapping[str, "str | Sequence[str]"]
@@ -97,13 +96,13 @@ def with_defaults(
     if not names:
         return rel.project(col(subject))
 
-    def columns(cats: dict[str, str]) -> list[Expression]:
-        return [
-            lit(schema.default_for(f"{subject}.{n}", **cats))
-            .cast(schema.duck_type(schema.properties[subject][n]))
-            .alias(f"_default_{n}")
+    def columns(cats: dict[str, str]) -> dict[str, Expression]:
+        return {
+            f"_default_{n}": lit(schema.default_for(f"{subject}.{n}", **cats)).cast(
+                schema.duck_type(schema.properties[subject][n])
+            )
             for n in names
-        ]
+        }
 
     return _per_combination(schema, subject, rel, columns, con).project(
         col("r", subject),
@@ -146,7 +145,7 @@ def _per_combination(
     schema: Schema,
     subject: str,
     rel: DuckDBPyRelation,
-    columns: Callable[[dict[str, str]], list[Expression]],
+    columns: Callable[[dict[str, str]], dict[str, Expression]],
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
     """`rel` as `r`, joined on its categories to `t`, `columns` of them.
@@ -157,22 +156,11 @@ def _per_combination(
     keys, combos = _combinations(schema, subject, rel)
     types = dict(zip(rel.columns, rel.types, strict=True))
 
-    def row(combo: Sequence[Any]) -> DuckDBPyRelation:
-        return con.values(
-            (
-                *(
-                    lit(c).cast(types[k]).alias(k)
-                    for k, c in zip(keys, combo, strict=True)
-                ),
-                *columns(_categories_of(keys, combo)),
-            )  # type: ignore[arg-type]
-        )
+    def row(combo: Sequence[Any]) -> dict[str, Expression]:
+        keyed = {k: lit(c).cast(types[k]) for k, c in zip(keys, combo, strict=True)}
+        return keyed | columns(_categories_of(keys, combo))
 
-    table = (
-        reduce(DuckDBPyRelation.union, map(row, combos))
-        if combos
-        else row((None,) * len(keys)).limit(0)
-    ).set_alias("t")
-    if not keys:
-        return rel.set_alias("r").cross(table)
-    return rel.set_alias("r").join(table, null_safe("r", "t", keys))
+    rows = [row(c) for c in combos or [(None,) * len(keys)]]
+    table = values_relation(con, list(rows[0]), [list(r.values()) for r in rows])
+    table = (table if combos else table.limit(0)).set_alias("t")
+    return join_on(rel.set_alias("r"), table, [null_safe("r", "t", [k]) for k in keys])

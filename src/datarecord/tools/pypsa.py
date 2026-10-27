@@ -498,15 +498,12 @@ def _left_join_values(
                 coalesce(value, col("s", name)) if name in static.columns else value
             ).alias(name)
         return (
-            joined.order("s._pos")
-            .project(
-                *(
-                    col("s", c)
-                    for c in static.columns
-                    if c not in exprs and c != "_pos"
-                ),
+            joined.project(
+                *(col("s", c) for c in static.columns if c not in exprs),
                 *exprs.values(),
             )
+            .order("_pos")
+            .project(star(exclude=["_pos"]))
             .df()
         )
     finally:
@@ -561,7 +558,7 @@ def _series_frame(
 
     wide = (
         snapshots.left_join(piv.set_alias("piv"), group_by)
-        .project(*(col("piv", str(p)) for p in present))
+        .project(*(col(str(p)) for p in present))
         .df()
     )
     wide.index = snapshots.index

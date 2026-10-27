@@ -13,7 +13,6 @@ from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
-import duckdb
 import pytest
 
 from datarecord.mutable import WorkingRecord
@@ -273,7 +272,7 @@ def test_a_removed_component_reaches_its_connections_through_their_removal(store
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
     frame = both.record.dims["connection"]
-    assert frame.count("*").fetchone() == (0,), "every connection row is removed"
+    assert frame.count("*").fetchall() == [(0,)], "every connection row is removed"
     assert "efficiency" not in both.record.attributes, "and their values go with them"
 
 
@@ -326,7 +325,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
     child = empty_child(root)
     target = Path(store.layer_dir(child.id), "attributes")
     target.mkdir(parents=True, exist_ok=True)
-    duckdb.sql(
+    store.workspace.con.sql(
         """
         SELECT NULL::STRUCT(entity VARCHAR, bus VARCHAR) AS connection,
                'efficiency' AS attribute, NULL::DOUBLE AS breakpoint, 0.5 AS value
@@ -558,7 +557,7 @@ def _contract_root(store) -> Revision:
         ],
     )
     Path(layer, "attributes").mkdir(parents=True, exist_ok=True)
-    duckdb.sql(
+    store.workspace.con.sql(
         """
         SELECT {'from': 'plant', 'to': c}::STRUCT("from" VARCHAR, "to" VARCHAR)
                    AS contract,
