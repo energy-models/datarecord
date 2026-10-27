@@ -36,7 +36,7 @@ The footprint is 175 lines in 9 files under `src/`, and 219 lines in 13 test fil
 
 ### mathspec
 
-datarecord pins mathspec at `9f180255a180ce7cc1f046fdc75020cdbfc9d90e`, the head of [energy-models/mathspec#915](https://github.com/energy-models/mathspec/pull/915). There a dimension may write `one_of: [labels]` beside `dtype: str`, and `dtype` defaults to `str`. `program.Dimension` carries `dtype: DimensionDtype` (`float`, `int`, `str`, `datetime`) and `one_of: tuple[str, ...] | None`. `ParameterDtype` is `float`, `int`, `bool`, `str`, and a parameter takes no `one_of`.
+datarecord pins mathspec at `8982c556114992d149a83b3c6f3604c72e569829`, the merge of [energy-models/mathspec#915](https://github.com/energy-models/mathspec/pull/915). There a dimension may write `one_of: [labels]` beside `dtype: str`, and `dtype` defaults to `str`. `program.Dimension` carries `dtype: DimensionDtype` (`float`, `int`, `str`, `datetime`) and `one_of: tuple[str, ...] | None`. `ParameterDtype` is `float`, `int`, `bool`, `str`, and a parameter takes no `one_of`.
 
 A git pin to a PR branch lasts only while the commit exists on GitHub. Before a release, the pin moves to the merged commit.
 
@@ -163,7 +163,7 @@ w.set("p_nom", polars_frame)  # or pandas, arrow, a relation
 
 ## Implementation notes
 
-1. `pixi.toml` (small): mathspec pinned at `9f18025`; narwhals goes from it and `pyproject.toml`; `pixi lock`.
+1. `pixi.toml` (small): mathspec pinned at `8982c55`; narwhals goes from it and `pyproject.toml`; `pixi lock`.
 2. `schema.py` (large): dtypes become mathspec strings, and dims and properties gain `one_of`; `_BARE_DTYPES`, `_dump_dtype` and `_parse_dtype` go; `PropertySpec.into` and `GroupSpec.into` go, with their checks; old names and `into` are refused at load; `categorizing` reads `one_of`; `group_type` and `flag_type` return DuckDB structs; `check_group_columns` runs in SQL.
 3. `duck.py` (small): the type map replaces `DuckTypes`' narwhals call; `as_relation` takes relations and pandas, polars or arrow frames.
 4. `record.py` and `layered/record.py` (medium): `Relations` and `LazyRelations`; `Record` moves into `record.py`, `layered/record.py` goes.

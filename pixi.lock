@@ -351,7 +351,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/xyzservices-2026.3.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - conda_source: datarecord[fb838e3d] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -659,7 +659,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zlib-ng-2.3.3-h646e873_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-h3eecb57_6.conda
       - conda_source: datarecord[77de44fd] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -967,7 +967,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hbf9d68e_6.conda
       - conda_source: datarecord[6b9df3f8] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -1270,7 +1270,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zlib-ng-2.3.3-h0261ad2_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_6.conda
       - conda_source: datarecord[47dbd5c6] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
   docs:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -1354,7 +1354,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/urllib3-2.7.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - conda_source: datarecord[ba2b77d7] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       - pypi: https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -1427,7 +1427,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/yaml-0.2.5-had63097_3.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
       - conda_source: datarecord[fda3eca8] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       - pypi: https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -1501,7 +1501,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/yaml-0.2.5-h74c22ad_3.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
       - conda_source: datarecord[4421907f] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       - pypi: https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -1576,7 +1576,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/yaml-0.2.5-h6a83c73_3.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_7.conda
       - conda_source: datarecord[1a912a2c] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       - pypi: https://files.pythonhosted.org/packages/38/bb/d215ee7c73b61497b28a5503f9f53523f294fcc936762b7caf90e0c1c2b5/pyparsing-3.3.3-py3-none-any.whl
   py312:
     channels:
@@ -1857,7 +1857,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/xyzservices-2026.3.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - conda_source: datarecord[fb838e3d] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -2119,7 +2119,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zlib-ng-2.3.3-h646e873_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
       - conda_source: datarecord[77de44fd] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -2381,7 +2381,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
       - conda_source: datarecord[6b9df3f8] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -2641,7 +2641,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zlib-ng-2.3.3-h0261ad2_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_7.conda
       - conda_source: datarecord[47dbd5c6] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
   py313:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -2920,7 +2920,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/xyzservices-2026.3.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - conda_source: datarecord[fb838e3d] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -3182,7 +3182,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zlib-ng-2.3.3-h646e873_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
       - conda_source: datarecord[77de44fd] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -3444,7 +3444,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
       - conda_source: datarecord[6b9df3f8] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -3704,7 +3704,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zlib-ng-2.3.3-h0261ad2_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_7.conda
       - conda_source: datarecord[47dbd5c6] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
   py314:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -3984,7 +3984,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/xyzservices-2026.3.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - conda_source: datarecord[fb838e3d] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -4247,7 +4247,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zlib-ng-2.3.3-h646e873_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-h3eecb57_6.conda
       - conda_source: datarecord[77de44fd] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -4510,7 +4510,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hbf9d68e_6.conda
       - conda_source: datarecord[6b9df3f8] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -4771,7 +4771,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zlib-ng-2.3.3-h0261ad2_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_6.conda
       - conda_source: datarecord[47dbd5c6] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
   pypsa:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -5052,7 +5052,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/xyzservices-2026.3.0-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
       - conda_source: datarecord[ba2b77d7] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -5316,7 +5316,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zlib-ng-2.3.3-h646e873_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
       - conda_source: datarecord[fda3eca8] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       osx-arm64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -5580,7 +5580,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zlib-ng-2.3.3-h31dac16_1.conda
       - conda: https://conda.anaconda.org/conda-forge/osx-arm64/zstd-1.5.7-hf451053_7.conda
       - conda_source: datarecord[4421907f] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
       win-64:
       - conda: https://conda.anaconda.org/conda-forge/noarch/_python_abi3_support-1.0-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/annotated-types-0.8.0-pyhd8ed1ab_0.conda
@@ -5842,7 +5842,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/win-64/zlib-ng-2.3.3-h0261ad2_1.conda
       - conda: https://conda.anaconda.org/conda-forge/win-64/zstd-1.5.7-h534d264_7.conda
       - conda_source: datarecord[1a912a2c] @ .
-      - pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+      - pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
 packages:
 - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
   build_number: 20
@@ -29339,9 +29339,9 @@ packages:
   - conda: https://conda.anaconda.org/conda-forge/osx-64/tk-8.6.13-ha6c374e_4.conda
   - conda: https://conda.anaconda.org/conda-forge/osx-64/uv-0.12.7-h6c1caad_0.conda
   - conda: https://conda.anaconda.org/conda-forge/osx-64/zstd-1.5.7-hbc1a06c_7.conda
-- pypi: git+https://github.com/energy-models/mathspec.git?rev=9f180255a180ce7cc1f046fdc75020cdbfc9d90e#9f180255a180ce7cc1f046fdc75020cdbfc9d90e
+- pypi: git+https://github.com/energy-models/mathspec.git?rev=8982c556114992d149a83b3c6f3604c72e569829#8982c556114992d149a83b3c6f3604c72e569829
   name: mathspec
-  version: 0.3.1.dev25+g9f180255a
+  version: 0.4.1.dev3+g8982c5561
   requires_dist:
   - pydantic>=2.1
   - pyparsing>=3.1
