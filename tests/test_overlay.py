@@ -29,7 +29,6 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     export_network,
-    outputs,
     relation,
     schema,
     write_component,
@@ -161,17 +160,6 @@ def test_closed_child_reads_own_resolver(store, network):
 
     df = relation(reloaded, "p_max_pu").df()
     assert df[df["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
-
-
-def test_outputs_do_not_overlay(store, parent):
-    """Results come from the node's own layer only.
-
-    Notes
-    -----
-    - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
-    """
-    child = empty_child(parent)
-    assert outputs(child, "p").df().empty
 
 
 def test_resolved_reads_same_as_unresolved(store, parent):
@@ -306,7 +294,6 @@ def test_a_schema_narrowing_is_refused(store, parent):
         dims = EMPTY
         groups: dict = {}
         attributes = EMPTY
-        outputs = EMPTY
 
         def flags(self):
             return {}

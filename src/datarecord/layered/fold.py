@@ -5,7 +5,7 @@
 """A node's resolved view: the folded axes, groups and owner map, and the reads.
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the
-folded axes, groups and the `inputs` owner map, each
+folded axes, groups and the owner map, each
 folded over the node's whole ancestry. `Resolver.fold` takes the deepest
 materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
@@ -120,7 +120,7 @@ class Fold:
     groups
         Each resolved group's relation, keyed by group.
     owner_map
-        The resolved `inputs` owner map: `(input_key, layer_uuid, varies,
+        The resolved owner map: `(input_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per owned key.
     dead
         Each `resolve.mortal` coordinate's dead labels, where it has any.
@@ -241,12 +241,12 @@ class Fold:
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised.
 
-        The `inputs` owner map is the presence marker: the maps, dims and groups
+        The owner map is the presence marker: the map, dims and groups
         are written together (`resolve.materialise`), so if the map is absent
         the node has no `resolved/` cache at all.
         """
         base = store.resolved_dir(revision_id)
-        owner_map = try_read_parquet(f"{base}owner_map/inputs.parquet", con)
+        owner_map = try_read_parquet(store.owner_map_uri(revision_id), con)
         if owner_map is None:
             return None
         return cls(

@@ -26,10 +26,7 @@ class RecordLike(Protocol):
     @property
     def groups(self) -> Frames: ...  # each group's rows, keyed by group
     @property
-    def attributes(self) -> Frames: ...  # long input frames, keyed by attribute
-
-    @property
-    def outputs(self) -> Frames: ...  # long result frames, keyed by attribute
+    def attributes(self) -> Frames: ...  # long frames, keyed by attribute
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]: ...
 ```
@@ -52,10 +49,8 @@ class LayerData(Protocol):
     def axis(self, dim: str) -> DuckDBPyRelation | None: ...
     def groups(self) -> Iterable[str]: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...
-    def attributes(self, kind: Kind = "inputs") -> Iterable[str]: ...
-    def attribute(
-        self, name: str, kind: Kind = "inputs"
-    ) -> DuckDBPyRelation | None: ...
+    def attributes(self) -> Iterable[str]: ...
+    def attribute(self, name: str) -> DuckDBPyRelation | None: ...
 ```
 
 Each pair is an enumerator — the keys of that kind — and a read for one key.
@@ -90,7 +85,7 @@ groups["connection"]               connection STRUCT(entity, bus) | role | ...
 `groups` is keyed by the group alone, one frame each: `groups/connection.parquet` holds every attachment whatever the categories of its entities ([where the rows live](format.md#where-a-value-lives)).
 A group's own frame is keyed by the one struct column named for it, as an axis's is by the column named for the dim, its `into` label and its properties beside it.
 
-`attributes` and `outputs` are **long** — one row per value, keyed by the attribute's name:
+`attributes` are **long** — one row per value, keyed by the attribute's name:
 
 ```text
 attributes["p_nom"]        entity | attribute | breakpoint | value
@@ -208,7 +203,7 @@ That is also why a framework asks per category: a Generator's per-timestep rows 
 Both sets empty for a dim means the attribute has no values along it, so the consumer builds no container there.
 
 **Both sets are scoped to what the attribute is addressed by.** A dim outside its [`dims`](schema.md#attributespec) is in neither, never in `broadcast`.
-The two are easy to conflate because whatever the flags are aggregated from — the [owner map](read-path.md#owner-map), a scan of `inputs/`, a staging table — is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not; but that NULL means "no such axis", not "every value of it".
+The two are easy to conflate because whatever the flags are aggregated from — the [owner map](read-path.md#owner-map), a scan of `attributes/`, a staging table — is one relation over every attribute, so a dim one attribute uses reads NULL for the rows of one that does not; but that NULL means "no such axis", not "every value of it".
 Reporting it as broadcast would answer the question above wrongly for every attribute in the record: a consumer would build a constant container along an axis the attribute has no values on.
 
 `entity` is a dim like the others here: `p_nom` set per entity reports `entity` in `varies`, and a single `entity = NULL` row puts it in `broadcast`. An attribute with no rows at all is [absent from the mapping](#flags) entirely.

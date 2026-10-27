@@ -65,7 +65,7 @@ It is purely additive, writing files under `resolved/` and changing no answer, o
 ## Deletion
 
 A `deleted = true` row in `dims/<dim>.parquet` — [the entity axis](format.md#the-entity-axis) like any other — tombstones a label from every attribute, and from every value of every other dim — [existence does not vary along one](schema.md#existence-does-not-vary-along-a-dim), so there is nothing to scope a deletion by.
-A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself, and its `inputs/` rows where the group is `partial` — leaving the labels it names and their other rows intact, so a connection is removed without touching the entity it attached.
+A `deleted = true` row in `groups/<group>.parquet` tombstones one row of that group — the row itself, and its `attributes/` rows where the group is `partial` — leaving the labels it names and their other rows intact, so a connection is removed without touching the entity it attached.
 
 A tombstone is honoured by the [one fold](read-path.md#one-fold-for-every-axis) that resolves every axis: the deepest statement of a key wins, and where it is a tombstone the key leaves the resolved relation (a deeper restatement reviving it).
 An _attribute's_ orphaned rows stop surfacing the same way, for every key column: an attribute row is keyed by the partial dims and groups its `dims` name, and [`fold_inputs`](read-path.md#owner-map) anti-joins the map against each one's `deleted` rows as it folds — so a key whose entity, connection tuple or dim coordinate was deleted is absent from the resolved map.
@@ -77,7 +77,7 @@ Re-adding the label does not revive its tuples. Re-adding a tuple outside `parti
 A tombstone only affects the branch that carries it; sibling branches keep the label.
 
 The fold treats an absent `deleted` column as "tombstones nothing", so a layer may be any standard parquet directory, not only one this package wrote.
-Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `inputs/*.parquet`, `dims/*.parquet`, `groups/*.parquet` — so nothing under `resolved/` is reachable by one.
+Every derived cache lives under `resolved/` for the same reason: every glob the read path issues into a layer is single-level — `attributes/*.parquet`, `dims/*.parquet`, `groups/*.parquet` — so nothing under `resolved/` is reachable by one.
 A reader pointed at a layer directory therefore sees exactly what that layer wrote, and materialising a node's caches never changes what it sees.
 
 ## The store

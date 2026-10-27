@@ -12,7 +12,6 @@ Notes
 """
 
 import json
-import shutil
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,7 +20,7 @@ import pytest
 
 from datarecord import WorkingRecord
 from datarecord.duck import union_all_by_name
-from datarecord.layered.resolve import _fold_kind, write_schema
+from datarecord.layered.resolve import _fold_map, write_schema
 from datarecord.layered.sources import LayerSource, ParquetLayer
 from datarecord.schema import Schema
 from datarecord.tools.pypsa import PyPSA
@@ -113,7 +112,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    assert Path(store.resolved_dir(parent.id), "owner_map", "inputs.parquet").exists()
+    assert Path(store.resolved_dir(parent.id), "owner_map.parquet").exists()
     # The entity axis folds like an axis now, materialised under `dims/`, not as
     # an owner map (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     assert Path(store.resolved_dir(parent.id), "dims", "entity.parquet").exists()
@@ -132,8 +131,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
         p
         for pattern in (
             "*.parquet",
-            "inputs/*.parquet",
-            "outputs/*.parquet",
+            "attributes/*.parquet",
             "dims/*.parquet",
             "dims/*/*.parquet",
         )
@@ -225,7 +223,7 @@ def test_a_removed_cache_falls_back_to_the_fold(store, parent):
     child.materialise()
     expected = keys(child)
 
-    shutil.rmtree(Path(store.resolved_dir(child.id), "owner_map"))
+    Path(store.resolved_dir(child.id), "owner_map.parquet").unlink()
     fresh = store.revision(child.id)
     assert keys(fresh) == expected
 
@@ -276,7 +274,7 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     """The fold names files and the source says where they are.
 
     `Store.layer_dir` is what a `ParquetLayer` derives from, so this pins the
-    seam rather than the layout: a reader asks for `inputs/p_nom.parquet` and
+    seam rather than the layout: a reader asks for `attributes/p_nom.parquet` and
     never builds the path itself.
 
     Notes
@@ -290,11 +288,11 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     )
 
     assert source.uri() == store.layer_dir(revision_id), "empty is the layer root"
-    assert source.uri("inputs/p_nom.parquet") == (
-        store.layer_dir(revision_id) + "inputs/p_nom.parquet"
+    assert source.uri("attributes/p_nom.parquet") == (
+        store.layer_dir(revision_id) + "attributes/p_nom.parquet"
     )
     # A glob is a path like any other: the source neither parses nor validates.
-    assert source.uri("inputs/*.parquet").endswith("inputs/*.parquet")
+    assert source.uri("attributes/*.parquet").endswith("attributes/*.parquet")
 
 
 def _largest_intermediate(store, rel):
@@ -414,8 +412,6 @@ def test_the_fold_broadcasts_by_hash_join(store):
     )
     resolver = base.child(staged.edits).resolver
 
-    plan = _fold_kind(
-        "inputs", resolver.sources, resolver.con, resolver.schema
-    ).explain()
+    plan = _fold_map(resolver.sources, resolver.con, resolver.schema).explain()
     assert "HASH_JOIN" in plan, "the fold joins at all"
     assert "NL_JOIN" not in plan and "NESTED_LOOP" not in plan, plan

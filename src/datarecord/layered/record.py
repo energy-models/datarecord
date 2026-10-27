@@ -133,15 +133,8 @@ class Record:
             names, lambda attr: nw.from_native(self.resolver.attribute(attr))
         )
 
-    @_stable_cache
-    def outputs(self) -> LazyFrames:
-        names = tuple(self.resolver.attributes("outputs"))
-        return LazyFrames(
-            names, lambda attr: nw.from_native(self.resolver.attribute(attr, "outputs"))
-        )
-
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Straight off the `inputs` owner map, which folded these in for free.
+        """Straight off the owner map, which folded these in for free.
 
         Notes
         -----

@@ -17,10 +17,8 @@ class WorkingRecord:
 
     def set(
         self,
-        attribute: str,  # an attribute, a result, or a property
+        attribute: str,  # an attribute or a property
         value: Any,  # scalar | sequence | mapping | series | frame
-        *,
-        kind: Literal["inputs", "outputs"] = "inputs",
         **coords: Any,  # coordinates, a group's fields, properties of a dim reached
     ) -> None: ...
 
@@ -59,7 +57,7 @@ Each edit maps onto exactly one part of the format:
 
 | edit                     | writes                                                 | key it targets                      |
 | ------------------------ | ------------------------------------------------------ | ----------------------------------- |
-| set an attribute         | `inputs/<attr>.parquet` rows                           | the attribute's coordinates         |
+| set an attribute         | `attributes/<attr>.parquet` rows                       | the attribute's coordinates         |
 | set a property           | one column of existing `dims/<dim>.parquet` rows       | the dim's axis key                  |
 | set a group's property   | one column of existing `groups/<group>.parquet` rows   | the group's struct                  |
 | add labels               | whole `dims/<dim>.parquet` rows                        | the dim's axis key                  |
@@ -69,7 +67,7 @@ Each edit maps onto exactly one part of the format:
 Nothing names `entity` or a category: `add` and `remove` take any dim, and which coordinates an attribute's row carries is its [`dims`](schema.md#attributespec).
 Nor is there a `connect`/`disconnect` pair beside `add_group` — `connection` is one group among however many the schema declares, and a call naming it would be the record layer holding one framework's vocabulary.
 
-The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty entities _is_ twenty `inputs/p_nom.parquet` rows, which is what a patch layer would hold anyway.
+The crucial property: **an edit is expressed in the format's own terms.** Setting `p_nom` on twenty entities _is_ twenty `attributes/p_nom.parquet` rows, which is what a patch layer would hold anyway.
 So a staged edit is already the row it will be written as, and writing `edits` is a concatenation rather than a translation.
 
 ## `set`
@@ -86,7 +84,6 @@ w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped
 w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
-w.set("p", solved, kind="outputs")  # a result
 ```
 
 **Every coordinate is a keyword**, a [group](schema.md#groups)'s fields included: `entity=`, `snapshot=`, `bus="north"` for one connection, `from=`/`to=` for one corridor.
@@ -104,11 +101,8 @@ A field is named by its own name: a contract `(from, to)` over `entity` is addre
 A label added later is not reached — a plain NULL and [`default_by`](schema.md#default_by-a-default-per-category) are the two ways a value reaches labels not yet added.
 The property's dim must be one the attribute reaches through exactly one coordinate, and the keyword is refused beside that coordinate's own.
 
-**`set` writes a property too**, a category included, when `attribute` names one as [`subject.name`](schema.md#properties) — a plain name is an attribute or result, never a property: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result, so `kind="outputs"` is refused for one.
+**`set` writes a property too**, a category included, when `attribute` names one as [`subject.name`](schema.md#properties) — a plain name is an attribute, never a property: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples.
 Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`. Every value `g1` holds stays stored and read: a label carries every attribute it addresses, so the per-category reads of `ctype="Load"` now include them.
-
-`kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
-`"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is written.
 
 `value` takes five forms, because assigning one value to many labels and assigning a different value to each are equally ordinary and neither should require building a frame:
 
@@ -132,38 +126,6 @@ The first four normalise to a long frame before staging, so there is one staging
 A length mismatch between a sequence and its keyword is an error at the call, not a silently truncated edit.
 
 Every form is checked against [the labels the record resolves](#validation), the frame form included: "supplies its own keys" decides where the labels come from, not whether they have to exist.
-
-## Results through `kind="outputs"`
-
-A tool solves against a record and hands back what it computed:
-
-```python
-w = WorkingRecord(record)
-w.set("p_max_pu", 0.8, entity=["wind1"])
-model = PyPSA.build(w)  # solve the edited record
-model.optimize()
-for attr, frame in PyPSA.results(model, w.con).items():
-    w.set(attr, frame, kind="outputs")
-rev.child(w.edits)  # one layer, inputs and results together
-```
-
-In memory only: the results live in the staging area beside the input edits and become part of the same layer when `edits` is written, so a solve produces one new record rather than a record plus a separate results record.
-Nothing on disk is mutated, and [write-once](layers.md#a-layers-data-is-write-once) stands unchanged.
-
-Two things differ from an input edit, both following from [outputs](read-path.md#outputs):
-
-- **The name is checked against `results`, not `attributes`.**
-  A result attribute is [declared](schema.md#results) in its own vocabulary, so an unknown name is an error exactly as it is for an input — what differs is which mapping answers.
-  A tool reads its result vocabulary off the same registry it reads its inputs from, so declaring them costs it no list of its own: PyPSA's `status` field marks them, and the [tool](tools.md) forwards what it finds.
-  The dim vocabulary is checked for both, and a result's coordinates are its own rather than every declared dim.
-- **No label check.**
-  An input value for a label no layer declares is [rejected](#validation), because it would resolve to nothing.
-  A result may legitimately name a label the record never declared: PyPSA's `SubNetwork` exists only after a solve, so rejecting it would refuse a real result.
-- **No extent completion when staged.**
-  Results are complete as produced rather than [a partial override of a parent's](schema.md#partial-the-granularity-of-an-override), so there is nothing to carry forward from the base.
-
-Keeping results coherent with the inputs they were computed from is the caller's business.
-Editing an input after attaching results leaves results describing a record that no longer exists, and nothing here silently discards them — a record that dropped them on the next `set` would be guessing at which of the two the caller meant to keep.
 
 ## `add` / `remove`
 
@@ -238,11 +200,7 @@ A standalone write of `w` writes the resolved axis whole either way, and an axis
 
 Restating on edit is what an axis outside `partial` costs, and it is [the cheaper side of that trade](schema.md#partial-the-granularity-of-an-override) — which is the reason not to reach for `partial` when an axis merely gains a property.
 
-Neither carries the **base's** results across.
-An edit changes the inputs a result was computed from, so a parent's `outputs/` says nothing about the child — results belong to the node that was solved, and a node with different inputs is a different node.
-
-What a write does carry is results **staged into this record** through [`set(..., kind="outputs")`](#results-through-kindoutputs).
-Those were computed against these pending inputs, so they describe exactly the layer being written, and both readings write them: a child written from `edits` holds the edits and the results computed from them together.
+A base's results are [attributes](schema.md#a-result-is-an-attribute), carried like any other: a child written from `edits` inherits them from its parent, and a whole-record write holds them resolved. A solve's own results are not staged here but written as a thin layer by the tool ([writing results](tools.md#writing-results)).
 
 An edit **replaces the rows it names** rather than appending beside them: it deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and no fold is needed to read it.
 The key it replaces on is the coordinate — the same one a read would have collapsed — so the delete removes exactly what a last-writer-wins fold would have discarded.
@@ -259,7 +217,7 @@ Three interactions need stating, because each is where replacing by coordinate a
 - **`add` after `remove`** of the same label: the label exists again.
   The axis replaces on its key, so the `add` row displaces the tombstone by construction.
   So do the parent's values for it, which only the displaced tombstone reached; its tuples stay removed.
-- **`set` on a label this record also added**: correct as-is, the attribute living in `inputs/` and a property patching the staged row.
+- **`set` on a label this record also added**: correct as-is, the attribute living in `attributes/` and a property patching the staged row.
 
 The [non-`partial` rule](schema.md#partial-the-granularity-of-an-override) is the subtle one.
 Overwriting one value along a non-partial axis means the layer must carry that label's _whole_ extent along it, so such a `set` reads the resolved series for that key and stages the untouched coordinates alongside the edit.
@@ -275,7 +233,7 @@ Carried rows go in only where no edit already holds the coordinate, so a later `
 [The writer](writing.md) validates structurally, so writing `edits` inherits that.
 What editing adds is edit-level, caught when the edit is **staged**, not at write — a caller should learn about a typo'd attribute at the line that typed it, not fifty edits later:
 
-- an undeclared attribute, result, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
+- an undeclared attribute, property or keyword, or a keyword the attribute does not vary over; a plain name only properties are called is refused naming their dotted forms, `set("carrier", …)` suggesting `bus.carrier` and `entity.carrier`;
 - a label of a `partial` dim the record does not resolve, `add` them first;
 - a value an `Enum` property does not list, in `add` or `set`;
 - a value of a [property `into` a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
@@ -288,8 +246,7 @@ A label's categories are not checked against the attribute: every label carries 
 Staged rows live in DuckDB tables on the record's own connection:
 
 ```sql
-CREATE TABLE staged_inputs_<attr>_<id>   (<that attribute's long columns>);
-CREATE TABLE staged_outputs_<attr>_<id>  (<that attribute's long columns>);
+CREATE TABLE staged_attributes_<attr>_<id> (<that attribute's long columns>);
 CREATE TABLE staged_axis_<dim>_<id>      (<the axis key>, <the dim's properties>, deleted BOOLEAN);
 CREATE TABLE staged_<group>_<id>         (<group struct>, <into>, <the group's properties>, deleted BOOLEAN);
 ```
@@ -299,8 +256,6 @@ CREATE TABLE staged_<group>_<id>         (<group struct>, <into>, <the group's p
 **One table per staged attribute**, because that is the file it becomes: its columns are [the attribute's own coordinates](format.md#the-long-schema) and `value` has the attribute's declared type.
 A shared table would have to widen `value` to text and carry every declared dim, which costs twice: the value needs casting back on the way out, and a NULL in a dim column becomes ambiguous between "this attribute has no such axis" and [the broadcast rule](record.md#the-broadcast-rule)'s "every value of it".
 Per attribute both questions are answered by the table's shape, so neither is asked.
-
-A result the schema never declares has no declared type to take; the table records the one its frame arrived with, settled once at creation rather than guessed per read.
 
 **One table per staged axis and per declared [group](schema.md#groups)**, mirroring [the maps the fold builds](read-path.md#owner-map): its key, its properties and a tombstone column, so `add` writes one row per label and `remove` one tombstone. Both replace on the key, so re-adding or removing a label displaces its earlier row rather than stacking beside it, while a property `set` patches one column in place.
 `entity` is staged as any other dim, `staged_axis_entity_<id>`, and reaches [the fold](read-path.md) as `axis("entity")` with no special case.

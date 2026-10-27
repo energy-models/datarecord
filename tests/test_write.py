@@ -41,7 +41,6 @@ class _Source:
         schema,
         attributes=None,
         connections=None,
-        outputs=None,
         dims=None,
         properties=None,
     ):
@@ -49,7 +48,6 @@ class _Source:
         self.built: list[str] = []
         self._attributes = attributes or {}
         self._connections = connections or {}
-        self._outputs = outputs or {}
         self._dims = dims or {}
         self._properties = properties or {}
 
@@ -80,10 +78,6 @@ class _Source:
     @property
     def attributes(self):
         return self._frames(self._attributes, "attributes")
-
-    @property
-    def outputs(self):
-        return self._frames(self._outputs, "outputs")
 
     def flags(self, **categories):
         return {}
@@ -160,7 +154,7 @@ def test_a_write_creates_a_new_layer(store):
     revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
 
     base = Path(store.layer_dir(revision.id))
-    assert (base / "inputs" / "p_nom.parquet").exists()
+    assert (base / "attributes" / "p_nom.parquet").exists()
     assert not (base / "manifest.json").exists()
     # Written once for the whole tree, and it is what the layer is read under.
     assert read_schema(store) == _SCHEMA
@@ -419,7 +413,7 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
             },
         )
     )
-    inputs = Path(store.layer_dir(revision.id), "inputs")
+    inputs = Path(store.layer_dir(revision.id), "attributes")
 
     def columns(attribute: str) -> set[str]:
         return set(
@@ -453,9 +447,8 @@ def test_a_write_rejects_an_undeclared_attribute(store):
     """An attribute with no spec has no shape, so there is nothing to write it as.
 
     Its `dims` are what say which columns the file carries, so writing one the
-    schema does not declare would put a file in `inputs/` whose column set no
-    reader could derive. A *result* is exempt - a tool derives those from its
-    own registry, never from the schema.
+    schema does not declare would put a file in `attributes/` whose column set no
+    reader could derive.
 
     Notes
     -----
@@ -639,8 +632,8 @@ def _plant_layer(store, schema: Schema, **columns):
     return root.child(staged.edits)
 
 
-def test_a_single_dim_attribute_is_long_rows_of_inputs(store):
-    """`p_nom` over `entity` alone is one `inputs/` row per label, not an axis column.
+def test_a_single_dim_attribute_is_long_rows_of_attributes(store):
+    """`p_nom` over `entity` alone is one `attributes/` row per label, not an axis column.
 
     Notes
     -----
@@ -650,7 +643,7 @@ def test_a_single_dim_attribute_is_long_rows_of_inputs(store):
 
     assert "p_nom" in layer.record.attributes
     on_disk = pd.read_parquet(
-        Path(store.layer_dir(layer.id), "inputs", "p_nom.parquet")
+        Path(store.layer_dir(layer.id), "attributes", "p_nom.parquet")
     )
     assert list(on_disk.columns) == ["entity", "attribute", "breakpoint", "value"]
     assert dict(zip(on_disk["entity"], on_disk["value"])) == {"g1": 1.0, "g2": 2.0}, (

@@ -64,6 +64,7 @@ nav:
           - "DEP 14: Combining a record with an extension": design/proposals/dep-0014-combining-records.md
           - "DEP 15: A dim is flat": design/proposals/dep-0015-a-dim-is-flat.md
           - "DEP 16: Remove traits": design/proposals/dep-0016-remove-traits.md
+          - "DEP 17: Results are attributes": design/proposals/dep-0017-results-are-attributes.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:

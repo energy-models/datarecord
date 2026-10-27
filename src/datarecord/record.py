@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, runtime_checkable
+from typing import TYPE_CHECKING, Protocol, runtime_checkable
 
 import narwhals as nw
 
@@ -26,9 +26,6 @@ from datarecord.schema import Schema
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyRelation
-
-Kind = Literal["inputs", "outputs"]
-"""Which long directory an attribute lives in - the alias `set` takes."""
 
 Frames = Mapping[str, "nw.LazyFrame"]
 """What a `Record` hands over: named frames, each an unmaterialised plan.
@@ -190,7 +187,7 @@ class RecordLike(Protocol):
 
     @property
     def attributes(self) -> Frames:
-        """Long input frames, keyed by attribute name - one per file.
+        """Long attribute frames, keyed by attribute name - one per file.
 
         A row carries its coordinates alone; select by category through
         `properties`.
@@ -198,22 +195,6 @@ class RecordLike(Protocol):
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        """
-        ...
-
-    @property
-    def outputs(self) -> Frames:
-        """Long result frames, keyed by attribute name.
-
-        Empty for a record carrying no results.
-
-        Unlike its neighbours, this does **not** overlay on a layered record: a
-        record's results are its own layer's, never a resolution over its
-        ancestors'.
-
-        Notes
-        -----
-        - [outputs](https://energy-models.github.io/datarecord/design/read-path/#outputs)
         """
         ...
 
@@ -270,7 +251,5 @@ class LayerData(Protocol):
     def groups(self) -> Iterable[str]: ...
     def group(self, name: str) -> DuckDBPyRelation | None: ...
 
-    def attributes(self, kind: Kind = "inputs") -> Iterable[str]: ...
-    def attribute(
-        self, name: str, kind: Kind = "inputs"
-    ) -> DuckDBPyRelation | None: ...
+    def attributes(self) -> Iterable[str]: ...
+    def attribute(self, name: str) -> DuckDBPyRelation | None: ...

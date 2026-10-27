@@ -14,12 +14,13 @@ record/
 ├── manifest.json                   # the schema, and the record's id
 ├── dims/<dim>.parquet              # one axis table per declared dim: labels and properties
 ├── groups/<group>.parquet          # which tuples of the group exist, and their properties
-├── inputs/<attr>.parquet           # one input attribute per file
-└── outputs/<attr>.parquet          # one result attribute per file
+└── attributes/<attr>.parquet       # one attribute per file, results included
 ```
 
-Every file under `dims/` and `groups/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `inputs/p_nom.parquet` is for `p_nom`.
+Every file under `dims/` and `groups/` is named for what it holds, singular: `dims/scenario.parquet` for the `scenario` axis, as `attributes/p_nom.parquet` is for `p_nom`.
 A dim's file is its name and nothing else — no pluralisation, which would be English grammar applied to a declared identifier and would spell a dim named `bus` as `buss.parquet`.
+
+A solve's results are [attributes](schema.md#a-result-is-an-attribute) like any other, in the one `attributes/` directory.
 
 ## The entity axis
 
@@ -39,16 +40,15 @@ It is **an axis file like any other**, with nothing about it particular to `enti
 
 ## Where a value lives
 
-Decided by the section a name is [declared in](schema.md#properties), not by how many coordinates address it. One name is one spec across attributes and results, each one file; a property's name is its subject's, a column of that subject's file alone, so `bus.x` and an attribute `x` are two places:
+Decided by the section a name is [declared in](schema.md#properties), not by how many coordinates address it. One name is one spec, one file; a property's name is its subject's, a column of that subject's file alone, so `bus.x` and an attribute `x` are two places:
 
 | declared as           | lands in                                              |
 | --------------------- | ----------------------------------------------------- |
 | property of a dim     | `dims/<dim>.parquet` — a column of the axis file      |
 | property of a group   | `groups/<group>.parquet` — a column of the group file |
-| attribute, any `dims` | `inputs/<attr>.parquet` — long rows                   |
-| result, any `dims`    | `outputs/<attr>.parquet` — long rows                  |
+| attribute, any `dims` | `attributes/<attr>.parquet` — long rows               |
 
-`inputs/p_nom.parquet` is `entity | attribute | breakpoint | value`, one row per entity, and widening `p_nom` over `scenario` adds a column to the same file — NULL in every row written before, which is what [the broadcast rule](record.md#the-broadcast-rule) needs to read them unchanged. A scenario `weight` over `scenario` alone is long rows too: an attribute with one coordinate is still data.
+`attributes/p_nom.parquet` is `entity | attribute | breakpoint | value`, one row per entity, and widening `p_nom` over `scenario` adds a column to the same file — NULL in every row written before, which is what [the broadcast rule](record.md#the-broadcast-rule) needs to read them unchanged. A scenario `weight` over `scenario` alone is long rows too: an attribute with one coordinate is still data.
 
 An axis or group file then carries only its key, its tombstones and its subject's properties — no data. A framework's constant frame per category is the category's properties joined with the coordinate-only rows of its attributes; the [tool](tools.md) builds it.
 
@@ -62,13 +62,13 @@ A functional group's [`into`](schema.md#into-a-group-that-classifies) label is a
 
 ## The long schema
 
-Every `inputs/` and `outputs/` file carries its attribute's own coordinates, then the columns every row has:
+Every `attributes/` file carries its attribute's own coordinates, then the columns every row has:
 
 ```text
 <coordinate> ... | attribute | breakpoint | value
 ```
 
-The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, groups first, with a [group](schema.md#groups) carried as **one struct column named for it**, a field per key coordinate — so `inputs/efficiency.parquet` over the `connection` group carries `connection STRUCT(entity, bus)`, and `inputs/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `bus`.
+The coordinates are what the attribute's [`dims`](schema.md#attributespec) declare, groups first, with a [group](schema.md#groups) carried as **one struct column named for it**, a field per key coordinate — so `attributes/efficiency.parquet` over the `connection` group carries `connection STRUCT(entity, bus)`, and `attributes/p_max_pu.parquet` over `entity` and `snapshot` carries `entity | snapshot` and no `bus`.
 The writer rejects a group column that is not a struct of exactly the group's key: DuckDB casts a struct by field name, so a missing field would turn NULL and an extra one be dropped, silently re-keying every row.
 
 **Per attribute rather than schema-wide.** One attribute is one file, so one column set per file; a fixed prefix of `entity | bus` would put an all-NULL `entity` on a record-level weighting, claiming an entity the value has none of, and would privilege one group's spelling of `bus` over every other group's coordinates.
@@ -77,7 +77,7 @@ That the shapes differ costs nothing, because `UNION ALL BY NAME` supplies NULL 
 The fold's _key_ is uniform even though the files are not: it is [`partial_dims`](schema.md#partial-the-granularity-of-an-override) plus `attribute`, one fixed tuple over every attribute, and a coordinate an attribute does not carry reads as NULL there.
 
 One attribute per file, so `value` carries that attribute's dtype.
-There is **no category column**: `entity` is unique across every category ([below](#entity-is-unique-across-types)), so `inputs/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins the entity axis.
+There is **no category column**: `entity` is unique across every category ([below](#entity-is-unique-across-types)), so `attributes/p_max_pu.parquet` holds every type's `p_max_pu` keyed by entity alone, and a reader wanting one type's rows joins the entity axis.
 
 ## `entity` is unique across types
 
@@ -85,7 +85,7 @@ A label identifies one member of its dim across the whole record — an `entity`
 A `Generator` and a `Load` both called `north` are a collision, not two entities; a bus `north` beside them is a label of another dim, and no collision.
 
 That is what removes `ctype` from every attribute key.
-An `inputs/` row addresses `(entity, …, attribute)`, a group in place of `entity` where the attribute is over one, and the category it belongs to is recoverable but not part of the address.
+An `attributes/` row addresses `(entity, …, attribute)`, a group in place of `entity` where the attribute is over one, and the category it belongs to is recoverable but not part of the address.
 The alternative — carrying the category in the key — makes it an _entity's_ identity in one place and a _row's_ in another, and every join then has to agree about which.
 
 **The axis carries the categories.** `ctype` is a column of `dims/entity.parquet`, carried on its resolved row, never of the attribute rows — so `entity -> ctype` is one read of one file, and a consumer wanting one type's `p_max_pu` joins the resolved attribute frame to the resolved entity axis on `entity`.
