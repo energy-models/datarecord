@@ -418,18 +418,19 @@ class Record:
         con = self.con
         tables = {
             (kind, name): con.table(_coord_table(kind, name, self.revision_id))
-            for kind, name in self._coord_names
+            for kind, name, _ in self._coord_names
         }
         axes = {n: rel for (k, n), rel in tables.items() if k == "dims"}
         axes |= {n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims}
         return Coords(
             schema=self.schema,
             axes={n: axes[n] for n in self.schema.dimensions if n in axes},
+            dim_owners={n: o for _, n, o in self._coord_names if o is not None},
             dead={n: rel for (k, n), rel in tables.items() if k == "dead"},
         )
 
     @cached_property
-    def _coord_names(self) -> list[tuple[str, str]]:
+    def _coord_names(self) -> list[tuple[str, str, UUID | None]]:
         """Return which axes and dead labels the frozen prefix's fold resolved.
 
         Plain data, which any thread computes the same.
@@ -449,6 +450,7 @@ class Record:
         return Fold(
             schema=self.schema,
             axes=coords.axes,
+            dim_owners=coords.dim_owners,
             owner_map=_table(
                 self.revision_id, self.sources, self.con, self.schema, self._prefix
             ),

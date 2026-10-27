@@ -50,6 +50,7 @@ from datarecord.schema.categories import (
     matching,
     selected,
 )
+from datarecord.schema.schema import LAYER_COLUMN
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -118,6 +119,9 @@ class Fold:
         The record's one schema, which says which broadcast dims the flags carry.
     axes
         Each resolved dim's axis relation, keyed by dim.
+    dim_owners
+        Each axis's owner: the layer whose `dims/<dim>.parquet` it resolved
+        to, a dim with `one_of` having none.
     owner_map
         The resolved owner map: `(owner_map_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per key as its layer wrote it,
@@ -128,6 +132,7 @@ class Fold:
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
+    dim_owners: dict[str, UUID]
     owner_map: DuckDBPyRelation
     dead: dict[str, DuckDBPyRelation]
 
@@ -265,19 +270,28 @@ class Fold:
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised under `schema`.
 
-        The owner map is the presence marker: the map and the dims
-        are written together (`cache.materialise`), so if the map is absent
-        or stale (`read_owner_map`) the node reads as having no cache at all.
+        The owner map is the presence marker: the map is written last
+        (`cache.materialise`), so if it is absent or stale (`read_owner_map`)
+        the node reads as having no cache at all. Each axis is read from the
+        layer `dim_owners.parquet` names for it.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
-        base = store.resolved_dir(revision_id)
         owner_map = read_owner_map(revision_id, con, schema, store)
         if owner_map is None:
             return None
+        dim_owners = read_dim_owners(revision_id, con, store)
         return cls(
             schema=schema,
-            axes=_read_dir(f"{base}dims/", con),
+            axes={
+                dim: con.read_parquet(store.axis_uri(layer, dim))
+                for dim, layer in dim_owners.items()
+            },
+            dim_owners=dim_owners,
             owner_map=owner_map,
-            dead=_read_dir(f"{base}dead/", con),
+            dead=_read_dir(f"{store.resolved_dir(revision_id)}dead/", con),
         )
 
 
@@ -301,6 +315,26 @@ def read_owner_map(
     if rel is None or set(rel.columns) != set(schema.owner_map_columns):
         return None
     return rel
+
+
+def read_dim_owners(
+    revision_id: UUID, con: DuckDBPyConnection, store: Store
+) -> dict[str, UUID]:
+    """`revision_id`'s materialised dim owners: each dim's axis-holding layer.
+
+    A dim absent has no axis.
+
+    Raises
+    ------
+    duckdb.IOException
+        If the node holds no `dim_owners.parquet`.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    """
+    rel = con.read_parquet(store.dim_owners_uri(revision_id))
+    return dict(rel.project(col("dim"), col(LAYER_COLUMN)).fetchall())
 
 
 def _read_dir(dir_uri: str, con: DuckDBPyConnection) -> dict[str, DuckDBPyRelation]:

@@ -82,7 +82,7 @@ A writer that loses ten times, with a jittered backoff in between, gives up with
 A credential that can write `manifest.json` but cannot read it meets the same error, because a remote read answered 403 counts as missing and every create-only write then fails.
 
 `materialise()` follows the same rule.
-`owner_map.parquet` [marks a node as materialised](../layers/resolution.md#materialised-node-caches), so it is written last, after the resolved dims.
+`owner_map.parquet` [marks a node as materialised](../layers/resolution.md#materialised-node-caches), so it is written last, after the dim owners and dead labels.
 Locally each file is written under a temporary name and renamed.
 A parquet file appears at its final path before it is complete, and a reader that meets it mid-write fails.
 Two writers that materialise one node write the same content, so that race is harmless.

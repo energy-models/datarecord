@@ -19,8 +19,9 @@ from uuid import uuid4
 import pandas as pd
 import pytest
 
-from datarecord import WorkingRecord
+from datarecord import WorkingRecord, Workspace
 from datarecord.duck import union_all_by_name
+from datarecord.resolve.fold import read_dim_owners
 from datarecord.resolve.owner_map import _fold_map
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
@@ -33,7 +34,10 @@ from tests.fixtures import (
     export_network,
     schema,
     write_attribute,
+    write_axis,
     write_component,
+    write_connections,
+    write_scenarios,
     write_schema,
 )
 
@@ -118,9 +122,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     assert Path(store.resolved_dir(parent.id), "owner_map.parquet").exists()
-    # The entity axis folds like an axis now, materialised under `dims/`, not as
-    # an owner map (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis).
-    assert Path(store.resolved_dir(parent.id), "dims", "entity.parquet").exists()
+    assert Path(store.dim_owners_uri(parent.id)).exists()
     assert not Path(
         store.resolved_dir(parent.id), "owner_map", "entities.parquet"
     ).exists()
@@ -144,6 +146,66 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     }
     assert reachable
     assert not any("resolved" in p.parts for p in reachable)
+
+
+def _dims(store, revision):
+    """`revision`'s resolved axes as records, read through a workspace of its own.
+
+    A fresh workspace holds no fold of an earlier read, so it reads whatever
+    caches are on disk now.
+    """
+    workspace = Workspace()
+    try:
+        dims = workspace.store(store.uri).revision(revision.id).record.dims
+        return {d: dims[d].df().to_dict("records") for d in dims}
+    finally:
+        workspace.close()
+
+
+@pytest.mark.parametrize(
+    "cached",
+    [(), ("root",), ("middle",), ("root", "middle")],
+    ids=["leaf-only", "root", "middle", "root-and-middle"],
+)
+def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached):
+    """A node cache names each axis's layer, and reads back as the full fold.
+
+    `scenario` and `connection` are restated only in the root, so a leaf cache
+    seeded from a cache above it carries their owners forward.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    """
+    write_schema(schema(), store)
+    root = empty_root(store)
+    write_component(root, "Generator", [{"entity": "wind"}])
+    write_axis(root, "bus", [{"bus": "north"}])
+    write_connections(root, [{"entity": "wind", "bus": "north"}])
+    write_scenarios(root, [{"scenario": "low"}, {"scenario": "high"}])
+    middle = empty_child(root)
+    write_component(middle, "Generator", [{"entity": "gas"}])
+    leaf = empty_child(middle)
+    write_axis(leaf, "bus", [{"bus": "south"}])
+    reader = empty_child(leaf)
+    full = _dims(store, reader)
+
+    nodes = {"root": root, "middle": middle}
+    for name in cached:
+        store.revision(nodes[name].id).materialise()
+    store.revision(leaf.id).materialise()
+
+    owners = read_dim_owners(leaf.id, store.workspace.con, store)
+    assert owners == {
+        "entity": middle.id,
+        "bus": leaf.id,
+        "connection": root.id,
+        "scenario": root.id,
+    }, "each axis is owned by the deepest layer restating it; `ctype` by none"
+    assert _dims(store, reader) == full, "the cache changes no answer"
+    assert not list(Path(store.uri, "layers").glob("*/resolved/dims")), (
+        "no axis is copied into a cache"
+    )
 
 
 def test_last_writer_wins_per_key(store, parent):
