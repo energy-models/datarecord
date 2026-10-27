@@ -416,22 +416,25 @@ class Record:
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
         con = self.con
-        tables = {
-            (kind, name): con.table(_coord_table(kind, name, self.revision_id))
-            for kind, name, _ in self._coord_names
+        rows = self._dim_owners
+        axes = {
+            d: con.table(_coord_table("dims", d, self.revision_id)) for d, _, _ in rows
         }
-        axes = {n: rel for (k, n), rel in tables.items() if k == "dims"}
         axes |= {n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims}
         return Coords(
             schema=self.schema,
             axes={n: axes[n] for n in self.schema.dimensions if n in axes},
-            dim_owners={n: o for _, n, o in self._coord_names if o is not None},
-            dead={n: rel for (k, n), rel in tables.items() if k == "dead"},
+            dim_owners={d: layer for d, layer, _ in rows},
+            dead={
+                d: con.table(_coord_table("dead", d, self.revision_id))
+                for d, _, has_dead in rows
+                if has_dead
+            },
         )
 
     @cached_property
-    def _coord_names(self) -> list[tuple[str, str, UUID | None]]:
-        """Return which axes and dead labels the frozen prefix's fold resolved.
+    def _dim_owners(self) -> list[tuple[str, UUID, bool]]:
+        """Return the frozen prefix's `(dim, layer_uuid, has_dead)` rows.
 
         Plain data, which any thread computes the same.
         """

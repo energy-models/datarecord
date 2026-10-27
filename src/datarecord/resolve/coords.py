@@ -25,7 +25,7 @@ from duckdb.sqltypes import VARCHAR
 from datarecord.duck import fn, values_relation
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.sources import LayerSource
-from datarecord.schema.schema import Schema
+from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
 
 
 def _fold_axis(
@@ -487,3 +487,25 @@ class Coords:
     axes: dict[str, DuckDBPyRelation]
     dim_owners: dict[str, UUID]
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
+
+    def owners(self, con: DuckDBPyConnection) -> DuckDBPyRelation:
+        """Return `(dim, layer_uuid, has_dead)`, one row per `dim_owners` entry.
+
+        `has_dead` says whether the dim has dead labels; every dim with dead
+        labels has an axis, so none is left out.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        """
+        return con.sql(
+            "SELECT unnest($dims::VARCHAR[]) AS dim, "
+            f"unnest($layers::VARCHAR[])::{LAYER_UUID_TYPE} AS {LAYER_COLUMN}, "
+            "unnest($dead::BOOLEAN[]) AS has_dead",
+            params={
+                "dims": list(self.dim_owners),
+                "layers": [str(u) for u in self.dim_owners.values()],
+                "dead": [d in self.dead for d in self.dim_owners],
+            },
+        )

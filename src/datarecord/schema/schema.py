@@ -70,6 +70,10 @@ LONG_TAIL = ("attribute", "breakpoint", "value")
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
+# The owner map's `layer_uuid` column type - a layering mechanism, not
+# something a schema declares.
+LAYER_UUID_TYPE = "UUID"
+
 LAYER_COLUMN = "layer_uuid"
 """The owner map's column naming the layer each row's value is read from.
 
