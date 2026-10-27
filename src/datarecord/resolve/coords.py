@@ -21,7 +21,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb.sqltypes import VARCHAR
 
-from datarecord.duck import fn
+from datarecord.duck import fn, values_relation
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.schema import Schema
@@ -56,14 +56,23 @@ def _fold_axis(
 def one_of_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
     """Return the axis of `dim`, a dim with `one_of`: its labels, in list order.
 
+    Raises
+    ------
+    ValueError
+        Where `dim` has no `one_of`.
+
     Notes
     -----
     - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
     spec = schema.dimensions[dim]
-    return con.sql(
-        "SELECT unnest($labels) AS label", params={"labels": spec.one_of}
-    ).project(col("label").cast(schema.duck_type(spec)).alias(dim))
+    if spec.one_of is None:
+        msg = f"{dim!r} has no `one_of`, so its axis is not the schema's"
+        raise ValueError(msg)
+    dtype = schema.duck_type(spec)
+    return values_relation(
+        con, [dim], [[lit(label).cast(dtype)] for label in spec.one_of]
+    )
 
 
 def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
@@ -113,11 +122,11 @@ def refuse_twice(
         rel.aggregate(f"{key}, count(*) AS _rows", key)
         .filter(col("_rows") > lit(1))
         .limit(1)
-        .fetchone()
+        .fetchall()
     )
-    if twin is None:
+    if not twin:
         return
-    *values, rows = twin
+    *values, rows = twin[0]
     at = ", ".join(
         f"{k}={v}" for k, v in zip(keys, values, strict=True) if v is not None
     )
@@ -246,11 +255,11 @@ def _first_unheld(
         .aggregate("_i, list(DISTINCT _label ORDER BY _label)[1:3] AS _labels", "_i")
         .order("_i")
         .limit(1)
-        .fetchone()
+        .fetchall()
     )
-    if first is None:
+    if not first:
         return None
-    return list(named)[first[0]], first[1]
+    return list(named)[first[0][0]], first[0][1]
 
 
 def _dead_keys(
@@ -276,7 +285,6 @@ def _dead_keys(
         col("h", key) == col("f", key),
         how="anti",
     )
-    # fetchone on a hit keeps the parquet open, and Windows then refuses the staging rename
     if not dead.limit(1).fetchall():
         return None
     return dead

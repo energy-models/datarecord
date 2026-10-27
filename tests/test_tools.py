@@ -175,7 +175,7 @@ def test_flags_per_role_name_the_attributes_reaching_a_connection_of_it(
         if record.attributes[a]
         .join(tuples.project("connection"), "connection")
         .limit(1)
-        .fetchone()
+        .fetchall()
     }
     assert set(record.flags(role=role)) == reaching
 
@@ -1601,7 +1601,7 @@ def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
     from datarecord.mutable import WorkingRecord
 
     record = multiperiod_revision.record
-    first = record.dims["snapshot"].fetchone()[0]
+    first = record.dims["snapshot"].limit(1).fetchall()[0][0]
     periods = multiperiod.snapshots.get_level_values("period")
     selector, changed = {
         "period": ({"period": 2040}, periods == 2040),

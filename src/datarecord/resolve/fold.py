@@ -225,7 +225,7 @@ class Fold:
                 for a in self.schema.attributes
                 if column in self.schema.coordinates_of(a)
             ]
-            if over and hit.limit(1).fetchone() is not None:
+            if over and hit.limit(1).fetchall():
                 reached.append(
                     om.filter(
                         col("o", column).isnull()

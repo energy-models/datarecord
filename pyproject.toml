@@ -29,7 +29,7 @@ classifiers = [
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-  "duckdb>=1.5.4",
+  "duckdb>=2.0",
   "pydantic>=2.12",
   "mathspec @ git+https://github.com/energy-models/mathspec.git@8982c556114992d149a83b3c6f3604c72e569829",
 ]

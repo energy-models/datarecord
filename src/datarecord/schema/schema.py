@@ -617,7 +617,7 @@ class Schema(_Declared):
                 f"{fn.struct_extract(col(multi), lit(c))} IS NULL" for c in key
             )
             partly = sql(f"{col(multi)} IS NOT NULL AND ({some})")
-            if rel.filter(partly).limit(1).fetchone() is not None:
+            if rel.filter(partly).limit(1).fetchall():
                 msg = (
                     f"{carrier} carries a {multi!r} with some fields NULL; a "
                     f"multi-dim value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
@@ -1051,7 +1051,7 @@ class Schema(_Declared):
             found = self.declared(c, subject, attribute)
             if found is None or takes(found[1], given):
                 continue
-            if rel.filter(col(c).isnotnull()).limit(1).fetchone() is None:
+            if not rel.filter(col(c).isnotnull()).limit(1).fetchall():
                 nulls[c] = found[1]
                 continue
             name, _, shown = found
