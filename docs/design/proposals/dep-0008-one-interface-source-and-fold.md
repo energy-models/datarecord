@@ -6,13 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 8: one interface, two objects — a source is its own rows, a fold is the resolution
 
-| DEP     | 8                                                                               |
-| ------- | ------------------------------------------------------------------------------- |
-| Title   | one interface, two objects — a source is its own rows, a fold is the resolution |
-| Author  | Jonas Hörsch                                                                    |
-| Status  | Implemented 2026-09-04                                                          |
-| Created | 2026-09-02                                                                      |
-| Version | v0.1.0a1                                                                        |
+| DEP           | 8                                                                                    |
+| ------------- | ------------------------------------------------------------------------------------ |
+| Title         | one interface, two objects — a source is its own rows, a fold is the resolution      |
+| Author        | Jonas Hörsch                                                                         |
+| Status        | Superseded 2026-10-21 (implemented 2026-09-04)                                       |
+| Created       | 2026-09-02                                                                           |
+| Version       | v0.1.0a1                                                                             |
+| Superseded-By | [DEP 19](dep-0019-one-record-and-a-package-layout.md) (its fold that is `LayerData`) |
 
 > All three commits below landed on `refactor/staging-as-a-layer` (`cd2ce92`,
 > `006c159`, `7f244a9`). The authoritative account is [the read

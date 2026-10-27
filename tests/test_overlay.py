@@ -13,16 +13,13 @@ Notes
 import pandas as pd
 import pytest
 
-from datarecord.layered.resolve import (
-    Resolver,
-    read_schema,
-    sources_to_read,
-    write_schema,
-)
-from datarecord.layered.revision import ancestry
-from datarecord.layered.sources import ParquetLayer
-from datarecord.record import EMPTY
-from datarecord.schema import AttributeSpec
+from datarecord.protocols import EMPTY
+from datarecord.resolve.record import Record
+from datarecord.resolve.sources import ParquetLayer
+from datarecord.schema.specs import AttributeSpec
+from datarecord.store.cache import sources_to_read
+from datarecord.store.manifest import read_schema
+from datarecord.store.store import ancestry
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
@@ -30,16 +27,11 @@ from tests.fixtures import (
     export_network,
     relation,
     schema,
+    write_attribute,
     write_component,
     write_group,
-    write_input,
+    write_schema,
 )
-
-
-def _entities(revision) -> set[str]:
-    axis = revision.resolver.axis("entity")
-    assert axis is not None, "every revision here has entities"
-    return set(axis.df()["entity"])
 
 
 @pytest.fixture
@@ -57,7 +49,7 @@ def parent(store):
     write_group(
         layer, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
     )
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -66,7 +58,7 @@ def parent(store):
             for d in (1, 2, 3)
         ],
     )
-    write_input(
+    write_attribute(
         layer, "efficiency", [{"entity": "Norway Wind", "bus": "NO", "value": 0.9}]
     )
     revision.materialise()
@@ -88,7 +80,7 @@ def test_child_overwrites_component(store, parent):
     - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
     child = empty_child(parent)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -108,7 +100,7 @@ def test_child_overwrites_component(store, parent):
 def test_child_overwrite_reaches_model(store, network):
     """The overwrite turns a series component into a static one in the model."""
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -123,7 +115,7 @@ def test_child_overwrite_reaches_model(store, network):
 def test_child_adds_attribute(store, network):
     """A child may write an attribute no ancestor had."""
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],
@@ -135,7 +127,7 @@ def test_child_adds_attribute(store, network):
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
 
 
-def test_closed_child_reads_own_resolver(store, network):
+def test_closed_child_reads_own_cache(store, network):
     """Reading a closed non-root record uses its own persisted dims/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
@@ -146,7 +138,7 @@ def test_closed_child_reads_own_resolver(store, network):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -173,7 +165,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     relation, and the group frames.
     """
     child = empty_child(parent)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.42}],
@@ -181,7 +173,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     child.materialise()
 
     grandchild = empty_child(child)
-    write_input(
+    write_attribute(
         store.layer_dir(grandchild.id),
         "p_max_pu",
         [{"entity": "Manchester Wind", "value": 0.99}],
@@ -198,19 +190,19 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     schema = read_schema(store)
     full = ancestry(store, grandchild.id)
     workspace = store.workspace
-    truncated = Resolver(
+    truncated = Record(
         grandchild.id, sources_to_read(full, store, schema), workspace, schema
     )
-    unresolved = Resolver(
+    unresolved = Record(
         grandchild.id,
         [_Unmaterialised(uid, schema, store) for uid in full],
         workspace,
         schema,
     )
 
-    def ownership(nc):
+    def ownership(record):
         return sorted(
-            nc.inputs.project("attribute, entity, layer_uuid").fetchall(),
+            record._fold.owner_map.project("attribute, entity, layer_uuid").fetchall(),
             key=str,
         )
 
@@ -218,18 +210,16 @@ def test_resolved_reads_same_as_unresolved(store, parent):
         "the owner map folded through the base matches folding from the root"
     )
 
-    t_axis, u_axis = truncated.axis("entity"), unresolved.axis("entity")
-    assert t_axis is not None and u_axis is not None
-    assert set(t_axis.df()["entity"]) == set(u_axis.df()["entity"]), (
-        "the resolved entity axis is the same either way"
-    )
+    assert set(truncated.dims["entity"].df()["entity"]) == set(
+        unresolved.dims["entity"].df()["entity"]
+    ), "the resolved entity axis is the same either way"
 
-    for attr in truncated.attributes():
-        a = sorted(truncated.attribute(attr).fetchall(), key=str)
-        b = sorted(unresolved.attribute(attr).fetchall(), key=str)
+    for attr in truncated.attributes:
+        a = sorted(truncated.attributes[attr].fetchall(), key=str)
+        b = sorted(unresolved.attributes[attr].fetchall(), key=str)
         assert a == b, f"{attr} resolves the same through the base as from the root"
 
-    manchester = truncated.attribute("p_max_pu").df()
+    manchester = truncated.attributes["p_max_pu"].df()
     assert manchester[manchester["entity"] == "Manchester Wind"]["value"].tolist() == [
         0.99
     ], "grandchild's value wins over the materialised base"
@@ -261,7 +251,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     assert amended.compatible_with(read_schema(store)) == []
 
     child = empty_child(network)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_min_pu",
         [{"entity": "Norway Gas", "value": 0.1}],

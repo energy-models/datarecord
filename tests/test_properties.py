@@ -13,10 +13,10 @@ import pandas as pd
 import pytest
 from duckdb import DuckDBPyRelation
 
-from datarecord.layered.resolve import write_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import AttributeSpec, Dimension, Group, PropertySpec, Schema
-from tests.fixtures import empty_root
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from tests.fixtures import empty_root, write_schema
 
 
 @pytest.fixture

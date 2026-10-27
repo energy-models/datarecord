@@ -32,8 +32,8 @@ import pandas as pd
 import pytest
 
 from datarecord import Workspace
-from datarecord.files import Absent, PreconditionFailedError, RemoteFiles
-from datarecord.layered.resolve import read_schema
+from datarecord.store.files import Absent, PreconditionFailedError, RemoteFiles
+from datarecord.store.manifest import read_schema
 from tests.fixtures import RivalWrite, relation, widened
 from tests.test_write import _SCHEMA, _long, _Source
 

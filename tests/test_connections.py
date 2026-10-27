@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Connections as bus-keyed rows, and `bus` in the inputs key.
+"""Connections as bus-keyed rows, and `bus` in the owner-map key.
 
 Notes
 -----
@@ -15,9 +15,9 @@ from typing import Any
 import duckdb
 import pytest
 
-from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import AttributeSpec
+from datarecord.schema.specs import AttributeSpec
+from datarecord.store.store import Revision
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -26,11 +26,11 @@ from tests.fixtures import (
     tombstone,
     tombstone_connection,
     unpacked,
+    write_attribute,
     write_axis,
     write_component,
     write_connections,
     write_group,
-    write_input,
     write_schema,
 )
 
@@ -38,14 +38,12 @@ PROCESS = "Process"
 
 
 def _connections(revision):
-    """`group_frame`, asserted non-`None` for tests where a row must exist.
+    """The resolved `connection` group, which these tests need a row of.
 
     No type: one `groups/connection.parquet` holds every type's rows, and these
     tests declare a single one.
     """
-    frame = revision.resolver.group_frame("connection")
-    assert frame is not None
-    return frame
+    return revision.record.groups["connection"]
 
 
 def _root(store) -> Revision:
@@ -63,7 +61,7 @@ def _root(store) -> Revision:
             {"entity": "steel_dri", "bus": "dri", "role": "output"},
         ],
     )
-    write_input(
+    write_attribute(
         layer,
         "efficiency",
         [
@@ -90,12 +88,12 @@ def test_connections_resolve_in_order(store):
 
 
 def test_patch_overrides_one_connection_only(store):
-    """The sibling-clobbering case: `bus` in `input_key` scopes ownership per connection."""
+    """The sibling-clobbering case: `bus` in `owner_map_key` scopes ownership per connection."""
     root = _root(store)
     root.materialise()
 
     child = empty_child(root)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "efficiency",
         [
@@ -125,7 +123,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
         store.layer_dir(middle.id),
         [{"entity": "steel_dri", "bus": "elec_north", "role": "input"}],
     )
-    write_input(
+    write_attribute(
         store.layer_dir(middle.id),
         "efficiency",
         [
@@ -140,7 +138,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
     middle.materialise()
 
     leaf = empty_child(middle)
-    write_input(
+    write_attribute(
         store.layer_dir(leaf.id),
         "efficiency",
         [
@@ -173,7 +171,7 @@ def test_component_level_attribute_is_unaffected(store):
     - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
     """
     root = _root(store)
-    write_input(
+    write_attribute(
         store.layer_dir(root.id),
         "p_nom",
         [{"ctype": PROCESS, "entity": "steel_dri", "value": 100.0}],
@@ -181,7 +179,7 @@ def test_component_level_attribute_is_unaffected(store):
     root.materialise()
 
     child = empty_child(root)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "p_nom",
         [{"ctype": PROCESS, "entity": "steel_dri", "value": 250.0}],
@@ -206,7 +204,7 @@ def test_per_connection_attribute_varies_by_snapshot(store):
     write_connections(
         layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
     )
-    write_input(
+    write_attribute(
         layer,
         "efficiency",
         [
@@ -256,7 +254,7 @@ def test_connection_tombstone_removes_one_connection(store):
     frame = unpacked(_connections(child))
     assert set(frame["bus"]) == {"h2_north", "dri"}
     # ... and the attribute rows go with it, which the map can scope per
-    # connection only because `bus` is in `input_key`.
+    # connection only because `bus` is in `owner_map_key`.
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 
@@ -276,10 +274,9 @@ def test_a_component_tombstone_reaches_its_connections_through_theirs(store):
         store.layer_dir(both.id),
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
-    frame = both.resolver.group_frame("connection")
-    assert frame is not None, "the group was written, so it is present"
+    frame = both.record.groups["connection"]
     assert frame.count("*").fetchone() == (0,), "every connection row is tombstoned"
-    assert _efficiencies(both) == {}, "and their values go with them"
+    assert "efficiency" not in both.record.attributes, "and their values go with them"
 
 
 def test_a_dim_a_group_draws_on_still_broadcasts(store):
@@ -300,11 +297,11 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
     root = empty_root(store)
     layer = store.layer_dir(root.id)
     write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
-    write_input(layer, "marginal_price", [{"value": 5.0}], connection=False)
+    write_attribute(layer, "marginal_price", [{"value": 5.0}], connection=False)
     root.materialise()
 
     child = empty_child(root)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "marginal_price",
         [{"bus": "south", "value": 7.0}],
@@ -317,7 +314,7 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
 
     assert prices(root) == {"north": 5.0, "south": 5.0}, "one row, every bus"
     assert prices(child) == {"north": 5.0, "south": 7.0}, "a patch hits its bus"
-    assert "bus" in root.resolver.fold.flags()["marginal_price"].broadcast
+    assert "bus" in root.record.flags()["marginal_price"].broadcast
 
 
 def test_a_null_connection_broadcasts_to_every_connection(store):
@@ -352,7 +349,7 @@ def test_a_group_outside_partial_is_owned_whole(store):
     root = _root(store)
     write_schema(schema(partial={"scenario"}), store)
     child = empty_child(root)
-    write_input(
+    write_attribute(
         store.layer_dir(child.id),
         "efficiency",
         [{"entity": "steel_dri", "bus": "h2_north", "value": 9.9}],

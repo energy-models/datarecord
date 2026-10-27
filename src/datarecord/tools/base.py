@@ -24,7 +24,7 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from datarecord.record import RecordLike
+    from datarecord.protocols import RecordLike
 
 
 @dataclass(frozen=True)
@@ -46,7 +46,7 @@ class Requirements:
         attribute it is missing.
     unsupported_keys : frozenset of tuple of (str, str)
         `(key, dim)` pairs the schema declares that this tool cannot honour;
-        `key` is `"input_key"`, the fold's unit of ownership. The record layer
+        `key` is `"owner_map_key"`, the fold's unit of ownership. The record layer
         trusts every declared key, so this is a tool's verdict on the record it
         was handed, not a schema rejection.
     unsupported_values : frozenset of tuple of (str, str)

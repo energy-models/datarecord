@@ -19,19 +19,19 @@ import duckdb
 import pytest
 
 from datarecord import Revision, Workspace
-from datarecord.files import Absent, PreconditionFailedError
-from datarecord.layered import write
-from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import Dimension
+from datarecord.schema.specs import Dimension
+from datarecord.store import manifest
+from datarecord.store.files import Absent, PreconditionFailedError
+from datarecord.store.manifest import read_schema
 from tests.fixtures import (
     RivalWrite,
     empty_child,
     empty_root,
     schema,
     widened,
+    write_attribute,
     write_component,
-    write_input,
     write_scenarios,
     write_schema,
 )
@@ -45,7 +45,7 @@ def tree(store):
     root = empty_root(store)
     layer = store.layer_dir(root.id)
     write_component(layer, "Generator", [{"entity": "wind"}])
-    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
+    write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     return root, empty_child(root)
 
 
@@ -186,11 +186,11 @@ def test_a_writer_that_always_loses_gives_up(workspace, store, monkeypatch):
     """
     files = _AlwaysLoses(workspace._local, store.manifest_uri)
     monkeypatch.setattr(workspace, "_local", files)
-    monkeypatch.setattr(write, "sleep", lambda _: None)
+    monkeypatch.setattr(manifest, "sleep", lambda _: None)
 
     with pytest.raises(RuntimeError, match=r"changed under each.*s3:GetObject"):
         store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
-    assert files.writes == write._ATTEMPTS, "one write per attempt, then the error"
+    assert files.writes == manifest._ATTEMPTS, "one write per attempt, then the error"
     assert store.revisions() == [], (
         "the layer that never declared its schema is unreachable"
     )
@@ -199,7 +199,7 @@ def test_a_writer_that_always_loses_gives_up(workspace, store, monkeypatch):
 def test_a_revision_crosses_a_process_boundary(workspace, tree):
     """Serialised as its store's location, read back through the process workspace.
 
-    Read before serialising, so a cached resolver would have to travel if any
+    Read before serialising, so a cached record would have to travel if any
     did. The fixture's workspace is not the process one, so the ancestry can
     only come from reading the revision files again.
 
@@ -255,8 +255,7 @@ def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
 
     def fold(_):
         fresh = store.revision(child.id)
-        fresh._resolver = None
-        return sorted(fresh.resolver.inputs.fetchall(), key=str)
+        return sorted(fresh.record._fold.owner_map.fetchall(), key=str)
 
     first, second = _in_threads(2, fold)
     assert first == second
@@ -288,8 +287,8 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_component(layer, "Generator", [{"entity": "wind"}])
-    write_input(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
-    before = revision.resolver.inputs
+    write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
+    before = revision.record._fold.owner_map
     assert "scenario" not in str(before.types[before.columns.index("varies")])
     if materialised:
         revision.materialise()
@@ -302,10 +301,10 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
     wide = {**_NARROW, "scenario": "str"}
     write_schema(schema(dims=wide, partial=set(partial)), store)
     after = store.revision(revision.id)
-    assert after.resolver is not revision.resolver
+    assert after.record is not revision.record
     if materialised:
         return empty_child(after)
-    inputs = after.resolver.inputs
+    inputs = after.record._fold.owner_map
     assert "scenario" not in str(inputs.types[inputs.columns.index("varies")]), (
         "the fold table is read as it was folded, not re-folded or cast"
     )
@@ -353,7 +352,7 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
     w = WorkingRecord(after.record)
     w.set("p_max_pu", 0.7, entity=["wind"], period=2030, scenario="high")
 
-    inputs = w.resolver.inputs
+    inputs = w._fold.owner_map
     assert "scenario" in str(inputs.types[inputs.columns.index("varies")])
     rows = (
         w.attributes["p_max_pu"]
@@ -389,7 +388,7 @@ def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
         layer,
         [{"scenario": "low"}, {"scenario": "high"}],
     )
-    write_input(
+    write_attribute(
         layer,
         "p_max_pu",
         [
@@ -418,18 +417,18 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
     """
-    from datarecord.layered import resolve
+    from datarecord.store import cache
 
     root, _ = tree
 
     def fail(*args, **kwargs):
         raise RuntimeError("the owner map write fails")
 
-    monkeypatch.setattr(resolve, "_fold_map", fail)
+    monkeypatch.setattr(cache, "_fold_map", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
     assert Path(store.resolved_dir(root.id), "dims", "entity.parquet").exists()
-    assert not resolve.materialised(root.id, store), "the rest is no cache yet"
+    assert not cache.materialised(root.id, store), "the rest is no cache yet"
     assert not list(Path(store.resolved_dir(root.id)).rglob("*.tmp")), (
         "no temporary file is left behind"
     )

@@ -22,15 +22,10 @@ import pytest
 from duckdb import sqltypes
 from pydantic import ValidationError
 
-from datarecord.layered.revision import Revision
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-)
+from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.store.store import Revision
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -228,7 +223,7 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
         [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
     )
 
-    axes = revision.resolver.dims.axes
+    axes = revision.record.dims
     assert axes["country"].df()["country"].tolist() == ["NO", "DE", "FR"], (
         "axis order is the file's row order, classified or not"
     )
@@ -325,7 +320,7 @@ def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
 
-    axis = revision.resolver.dims.axes["country"].df()
+    axis = revision.record.properties["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 40.0, "FR": 55.0}
     assert "co2_budget" not in revision.record.attributes, (
         "an axis-file column is no long frame"
@@ -334,7 +329,7 @@ def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
     staged = WorkingRecord(revision.record)
     staged.set("target", {"DE": 30.0})
     child = revision.child(staged.edits)
-    assert "target" not in child.resolver.dims.axes["country"].columns
+    assert "target" not in child.record._coords.axes["country"].columns
     rows = child.record.attributes["target"].to_arrow_table().to_pydict()
     assert rows["country"] == ["DE"]
     assert rows["value"] == [30.0]
@@ -404,7 +399,7 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
     # raw layer, so no node cache is required for the fold to see both labels.
     staged = WorkingRecord(revision.record)
     staged.set("country.co2_budget", {"DE": 12.0})
-    country = staged.resolver.sources[-1].axis("country")
+    country = staged.edits.axis("country")
     assert country is not None
     patch = country.df()
     assert patch["country"].tolist() == ["DE"], "only the touched label"
@@ -415,7 +410,7 @@ def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
     )
 
     child = revision.child(staged.edits)
-    axis = child.resolver.dims.axes["country"].df()
+    axis = child.record.properties["country"].df()
     resolved = dict(zip(axis["country"], axis["co2_budget"]))
     assert resolved == {"DE": 12.0, "FR": 55.0}, "last writer wins per label"
     assert axis["country"].tolist() == ["DE", "FR"], (
@@ -446,7 +441,7 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(store):
     staged = WorkingRecord(revision.record)
     staged.set("country.co2_budget", {"DE": 12.0})
 
-    country = staged.resolver.sources[-1].axis("country")
+    country = staged.edits.axis("country")
     assert country is not None
     patch = country.df()
     assert sorted(patch["country"].tolist()) == ["DE", "FR"], (
@@ -454,7 +449,7 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(store):
     )
 
     child = revision.child(staged.edits)
-    axis = child.resolver.dims.axes["country"].df()
+    axis = child.record.properties["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "FR": 55.0}, (
         "FR survives because this layer carried it"
     )
@@ -476,7 +471,7 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(store):
     child = empty_child(revision)
     write_axis(store.layer_dir(child.id), "country", [{"country": "NO"}])
 
-    labels = child.resolver.dims.axes["country"].df()["country"].tolist()
+    labels = child.record.dims["country"].df()["country"].tolist()
     assert labels == ["DE", "FR", "NO"], (
         "the parent's labels survive, in the order it introduced them"
     )
@@ -497,7 +492,7 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     staged.add("country", ["NO"])
     staged.set("country.co2_budget", {"DE": 12.0, "NO": 3.0})
     child = revision.child(staged.edits)
-    axis = child.resolver.dims.axes["country"].df()
+    axis = child.record.properties["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
 

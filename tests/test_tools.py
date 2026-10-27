@@ -20,7 +20,7 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord import Workspace
-from datarecord.layered.resolve import read_schema, write_schema
+from datarecord.store.manifest import read_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     CTYPE,
@@ -36,8 +36,9 @@ from tests.fixtures import (
     relation,
     schema,
     unpacked,
+    write_attribute,
     write_component,
-    write_input,
+    write_schema,
 )
 from tests.test_roundtrip import assert_networks_equal
 
@@ -119,6 +120,12 @@ def test_the_record_layer_imports_no_tool():
         "assert 'pypsa' not in sys.modules, sorted(sys.modules)"
     )
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
+
+
+def test_build_takes_only_a_record(workspace, ac_dc):
+    """A `RecordLike` that is no `Record` is refused, the tool's own network source included."""
+    with pytest.raises(TypeError, match="builds from a Record"):
+        PyPSA.build(PyPSA.to_datarecord(ac_dc, workspace.con))
 
 
 def test_verify_accepts_a_complete_record(single_revision):
@@ -415,7 +422,7 @@ def test_verify_reports_a_snapshot_key(exported):
     _with_schema(revision, partial={"scenario", "snapshot"})
 
     missing = PyPSA.verify(revision.record)
-    assert ("input_key", "snapshot") in missing.unsupported_keys
+    assert ("owner_map_key", "snapshot") in missing.unsupported_keys
     assert "snapshot" in missing.describe()
     with pytest.raises(UnsupportedRecordError, match="snapshot"):
         PyPSA.build(revision.record)
@@ -456,7 +463,7 @@ def test_verify_reports_a_piecewise_linear_attribute(exported):
     - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
     """
     revision, store = exported, exported.store
-    write_input(
+    write_attribute(
         store.layer_dir(revision.id),
         "marginal_cost",
         [{"entity": "Manchester Wind", "value": 20.0}],
@@ -466,7 +473,7 @@ def test_verify_reports_a_piecewise_linear_attribute(exported):
     )
 
     revision = empty_child(revision)
-    write_input(
+    write_attribute(
         store.layer_dir(revision.id),
         "marginal_cost",
         [
@@ -1312,15 +1319,15 @@ def test_schema_dims_stay_generic(exported):
     """
     revision = exported
     _with_schema(revision, dims={**_DIMS, "vintage": "str"})
-    dims = revision.resolver.dims
-    assert "vintage" in dims.schema.dims
+    record = revision.record
+    assert "vintage" in record.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
     # present-and-empty (https://energy-models.github.io/datarecord/design/record/#relations).
-    assert "vintage" not in dims.axes
+    assert "vintage" not in record.dims
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.
     assert not PyPSA.verify(revision.record)
-    assert "vintage" in dims.schema.long_columns
+    assert "vintage" in record.schema.long_columns
 
 
 def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not():

@@ -6,14 +6,15 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 5: one `Record`, over a `NodeCache`
 
-| DEP      | 5                                       |
-| -------- | --------------------------------------- |
-| Title    | one `Record`, over a `NodeCache`        |
-| Author   | Jonas Hörsch                            |
-| Status   | Implemented 2026-09-01                  |
-| Requires | [DEP 4](dep-0004-staging-as-a-layer.md) |
-| Created  | 2026-09-01                              |
-| Version  | v0.1.0a1                                |
+| DEP           | 5                                                                                       |
+| ------------- | --------------------------------------------------------------------------------------- |
+| Title         | one `Record`, over a `NodeCache`                                                        |
+| Author        | Jonas Hörsch                                                                            |
+| Status        | Superseded 2026-10-21 (implemented 2026-09-01)                                          |
+| Requires      | [DEP 4](dep-0004-staging-as-a-layer.md)                                                 |
+| Created       | 2026-09-01                                                                              |
+| Version       | v0.1.0a1                                                                                |
+| Superseded-By | [DEP 19](dep-0019-one-record-and-a-package-layout.md) (its `Record` over a `NodeCache`) |
 
 The design is [the read path](../read-path.md#one-record-over-one-fold) and [the Record protocol](../record.md); this page is the argument for the change rather than the current description, and those pages are authoritative where the two disagree.
 
