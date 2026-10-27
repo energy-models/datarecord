@@ -18,8 +18,8 @@ from tests.fixtures import (
     empty_root,
     relation,
     schema,
+    write_component,
     write_connections,
-    write_entity_type,
     write_input,
     write_schema,
 )
@@ -45,13 +45,13 @@ def _root_with_curve(store, *, scalar: float | None = None) -> Revision:
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     rows = (
-        [{"entity_type": PROCESS, "entity": "steel_dri", "value": scalar}]
+        [{"component": PROCESS, "entity": "steel_dri", "value": scalar}]
         if scalar is not None
         else [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "breakpoint": x,
                 "value": v,
@@ -79,7 +79,7 @@ def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
         "marginal_cost",
         [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "breakpoint": x,
                 "value": v,
@@ -105,7 +105,7 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
     write_input(
         store.layer_dir(revision.id),
         "p_nom",
-        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
+        [{"component": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
 
     curve = _flags(revision, "marginal_cost")
@@ -136,7 +136,7 @@ def test_curve_on_a_connection(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
         [
@@ -149,7 +149,7 @@ def test_curve_on_a_connection(store):
         "efficiency",
         [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": bus,
                 "breakpoint": x,
@@ -171,7 +171,7 @@ def test_curve_on_a_connection(store):
         "efficiency",
         [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "breakpoint": x,
@@ -201,13 +201,13 @@ def test_curve_varying_by_snapshot(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_input(
         layer,
         "marginal_cost",
         [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "snapshot": snap,
                 "breakpoint": x,

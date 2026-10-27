@@ -17,14 +17,14 @@ record.properties["entity"]  # stored property values, keyed by dim or group
 record.groups["connection"]  # group rows, keyed by group — one frame each
 record.attributes["p_max_pu"]  # long input frames, keyed by attribute
 record.outputs["p"]  # long result frames, keyed by attribute
-record.flags(entity_type="Generator")  # which axes each attribute actually uses
+record.flags(component="Generator")  # which axes each attribute actually uses
 ```
 
 Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`, and listing the keys reads nothing at all ([design](../design/record.md#frames)).
 
 ```python
 entities = record.properties["entity"]
-gens = entities.filter(nw.col("entity_type") == "Generator").collect().to_pandas()
+gens = entities.filter(nw.col("component") == "Generator").collect().to_pandas()
 ```
 
 ## Labels and properties
@@ -33,7 +33,7 @@ gens = entities.filter(nw.col("entity_type") == "Generator").collect().to_pandas
 
 `properties[subject]` is a dim's or a group's key with every property declared for it, **as stored**: a NULL is a value no layer wrote.
 
-One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. Which properties they carry is `Schema.properties_for(dim, **categories)`, and an unset one's default, `default_by` per category included, is `Schema.default_for(name, **categories)` ([design](../design/record.md#properties-and-categories)).
+One category's labels are `properties[dim]` filtered on a categorizing property — an `Enum` property of a `partial` dim. Which properties they carry is `Schema.properties_for(dim, **categories)`, and an unset one's default, `default_by` per category included, is `Schema.default_for("entity.sign", **categories)` — a property named by its subject, the categories by their plain names, as the frame's columns are ([design](../design/record.md#properties-and-categories)).
 
 ## Wide and long
 
@@ -45,7 +45,7 @@ One category's labels are `properties[dim]` filtered on a categorizing property 
 
 `attributes` holds **every** attribute, whatever its `dims` — `p_nom` over `entity` alone is long rows just like `p_max_pu`. The coordinates are the attribute's own — `entity` for `p_nom`, one `connection` struct column for a connection attribute like `efficiency`, and no entity column at all for one addressed by another axis alone ([design](../design/format.md#the-long-schema)).
 
-A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). `entity` broadcasts like any dim; on a categorized dim a NULL reaches only the labels whose categories carry the attribute, so one `p_max_pu` row with `entity = NULL` reaches every generator and no bus. A group column broadcasts the same way, a NULL `connection` meaning every connection. `breakpoint` carries the abscissa of a piecewise-linear value.
+A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant `p_max_pu` is one row with `timestep = NULL`, a varying one is a row per timestep ([design](../design/record.md#the-broadcast-rule)). `entity` broadcasts like any dim; on a categorized dim a NULL reaches only the labels whose categories carry the attribute, so one `p_max_pu` row with `entity = NULL` reaches every generator and no load. A group column broadcasts the same way, a NULL `connection` meaning every connection. `breakpoint` carries the abscissa of a piecewise-linear value.
 
 `attributes` shows stored rows only: a coordinate no row covers takes the attribute's default, which `Schema.default_for(name, **categories)` answers per category.
 
@@ -56,7 +56,7 @@ No property is a column of an attribute row — `attributes["p_max_pu"]` holds e
 `flags()` answers which axes each attribute's rows actually use, across the record in one query, so a consumer can plan its reads without opening a file. `flags(**categories)` answers for one category of one dim, counting only rows reaching a matching label and only attributes those labels carry:
 
 ```python
-flags = record.flags(entity_type="Generator")
+flags = record.flags(component="Generator")
 set(flags)  # which attributes generators have at all
 "timestep" in flags["p_max_pu"].varies  # some row sets it
 "timestep" in flags["p_max_pu"].broadcast  # some row leaves it NULL

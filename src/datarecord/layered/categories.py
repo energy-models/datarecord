@@ -192,8 +192,8 @@ def with_defaults(
             *(lit(n in carried).alias(f"_carries_{n}") for n in names),
             *(
                 duck.lit(
-                    schema.default_for(n, **cats),
-                    schema.property_spec(n).dtype,  # type: ignore[union-attr]
+                    schema.default_for(f"{subject}.{n}", **cats),
+                    schema.properties[subject][n].dtype,
                 ).alias(f"_default_{n}")
                 for n in names
             ),

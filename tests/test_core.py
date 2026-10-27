@@ -26,7 +26,7 @@ def _code_strings(path: Path) -> Iterator[tuple[int, str]]:
 
 
 def test_core_names_no_entity():
-    """Only a tool's schema declares `entity` or `entity_type`; core treats every dim alike."""
+    """Only a tool's schema declares `entity` or `component`; core treats every dim alike."""
     import datarecord
 
     package = Path(datarecord.__file__).parent

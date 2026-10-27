@@ -23,23 +23,22 @@ w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # a long frame
 w.set("p_max_pu", series.rename_axis("snapshot"), entity="wind1")  # a series
 w.set("p_max_pu", 0.9)  # every label carrying it, now and later
-w.set(
-    "p_max_pu", 0.8, entity_type="Generator", carrier="wind"
-)  # the ones there are now
+w.set("p_max_pu", 0.8, component="Generator", carrier="wind")  # the ones there are now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped to one scenario
 w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
-w.set("carrier", "solar", entity="g2")  # a property
+w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
+w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
 w.set("p", solved_frame, kind="outputs")  # a result
 ```
 
 **Every coordinate is a keyword**, a group's fields included — `bus="north"` with `entity="dc"` addresses one connection, `from=`/`to=` one corridor. A coordinate no keyword names is NULL, which means "every label of it": on a categorized dim, every label whose categories carry the attribute, including ones added later. A group's fields must all be given or none, since a group value is a whole tuple ([design](../design/working-record.md#set)).
 
-**A categorizing property as a keyword selects labels at call time**: `entity_type="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those.
+**A property as a keyword selects labels at call time**: a keyword is bare, a coordinate of the attribute first, else any property of a dim it reaches, so `component="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those. A name several reached dims declare a property of is refused: set it per dim.
 
 A mapping's keys or a series' index are labels of the one coordinate no keyword names, unless the series' index is named after a coordinate; where neither says, the call is refused rather than guessed.
 
-`set` writes **properties** too, a category included: `set("entity_type", "Load", entity="g1")` patches one column of `g1`'s axis row.
+`set` writes **properties** too, a category included, each named by its subject: `set("entity.component", "Load", entity="g1")` patches one column of `g1`'s axis row. A plain name is an attribute or result; `set("carrier", ...)` with only properties so called is refused, suggesting `bus.carrier` and `entity.carrier`.
 
 An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
@@ -48,9 +47,10 @@ An `nw.Expr` value is a **function of the current value**: it reads the resolved
 ```python
 import pandas as pd
 
+w.add("carrier", ["wind"])
 w.add("bus", ["north", "south"])
-w.add("entity", ["wind1", "wind2"], entity_type="Generator", carrier="wind")
-w.add("entity", ["dc"], entity_type="Link")
+w.add("entity", ["wind1", "wind2"], component="Generator", carrier="wind")
+w.add("entity", ["dc"], component="Link")
 w.set("p_nom", [100.0, 80.0], entity=["wind1", "wind2"])
 
 w.remove("entity", ["old_coal"])
@@ -70,9 +70,9 @@ w.add_group(
 w.remove_group("connection", [("dc", "south")])
 ```
 
-`add(dim, labels, **columns)` works on any dim. The keywords are the axis file's other columns — the dim's properties and a nested dim's parent keys — each a scalar or a sequence aligned to `labels`. An attribute keyword is refused: attributes go through `set`, whatever their `dims` ([design](../design/working-record.md#add-remove)). A label exists by virtue of its axis row, so `add` is not a sequence of `set` calls: adding a bus with no properties makes the point.
+`add(dim, labels, **columns)` works on any dim. The keywords are the axis file's other columns — the dim's properties, bare, and a nested dim's parent keys — each a scalar or a sequence aligned to `labels`. An attribute keyword is refused: attributes go through `set`, whatever their `dims` ([design](../design/working-record.md#add-remove)). A label exists by virtue of its axis row, so `add` is not a sequence of `set` calls: adding a bus with no properties makes the point.
 
-`remove(dim, labels)` stages a tombstone per label, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also tombstones every group tuple naming one ([design](../design/layers.md#deletion)).
+`remove(dim, labels)` stages a tombstone per label, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also tombstones every group tuple naming one ([design](../design/layers.md#deletion)). It is refused while a property `into` the dim still names one of the labels — `entity.carrier` naming `gas` — since that row is its subject's and outlives the label: `set` it to another label or None first ([design](../design/working-record.md#add-remove)).
 
 `add_group`/`remove_group` stage a group's tuples, as one struct column named for the group with the group's properties beside it. Every group is reached the same way — `connection` has no call of its own, being one group among however many the schema declares.
 

@@ -32,7 +32,7 @@ from tests.fixtures import (
     outputs,
     relation,
     schema,
-    write_entity_type,
+    write_component,
     write_group,
     write_input,
 )
@@ -55,7 +55,7 @@ def parent(store):
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     names = ["Manchester Wind", "Norway Wind"]
-    write_entity_type(layer, "Generator", [{"entity": n} for n in names])
+    write_component(layer, "Generator", [{"entity": n} for n in names])
     write_group(
         layer, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
     )
@@ -290,7 +290,7 @@ def test_a_new_attribute_is_a_schema_amendment(store, network):
     # And the amendment is visible from the record, not just from the layer
     # that happens to carry a row for it.
     assert "p_min_pu" in child.record.schema.attributes_for(
-        "entity", entity_type="Generator"
+        "entity", component="Generator"
     )
 
 

@@ -115,7 +115,8 @@ def write_layer(
     ValueError
         If a long frame is missing a long-schema column, or the schema declares a key
         dim no frame carries - either would make the fold misresolve the layer.
-        If a group tuple alive after the layer names a label dead after it.
+        If a group tuple or a property `into` a dim alive after the layer names
+        a label dead after it.
 
     Notes
     -----
@@ -161,10 +162,15 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                _write_frame(rel, f"{staging}{subdir}/{key}.parquet", schema)
+                _write_frame(
+                    rel,
+                    f"{staging}{subdir}/{key}.parquet",
+                    schema,
+                    key if kind in ("dims", "groups") else None,
+                )
         if data.groups() or data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
-            _require_living_tuples(parents, layer, workspace.con, schema)
+            _require_living_references(parents, layer, workspace.con, schema)
         # A standalone directory *is* one record, so its schema is in it, and
         # written last: a directory without one reads as no record.
         if manifest is not None:
@@ -245,7 +251,9 @@ _ATTEMPTS = 10
 """How many times `reconcile_schema` writes the manifest before giving up."""
 
 
-def _write_frame(rel: DuckDBPyRelation, uri: str, schema: Schema) -> None:
+def _write_frame(
+    rel: DuckDBPyRelation, uri: str, schema: Schema, subject: str | None
+) -> None:
     """Persist one relation as parquet, unmaterialised.
 
     Columns are cast to their declared types on the way out, so a reader can
@@ -264,91 +272,109 @@ def _write_frame(rel: DuckDBPyRelation, uri: str, schema: Schema) -> None:
     unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
-    cast_declared(schema, rel).to_parquet(uri)
+    cast_declared(schema, rel, subject).to_parquet(uri)
 
 
-def _require_living_tuples(
+def _require_living_references(
     parents: Sequence[LayerSource],
     layer: LayerSource,
     con: DuckDBPyConnection,
     schema: Schema,
 ) -> None:
-    """Reject a layer adding a group tuple that names a dead label, or killing one a tuple names.
+    """Reject a layer storing a reference to a dead label, or killing a label one names.
 
+    A reference is a group tuple's field over a dim, or a property `into` one.
     Removing a label tombstones the tuples naming it in the same layer, which
-    `WorkingRecord.remove` writes; a layer written otherwise carries its own.
-    Only what `layer` does is checked - the tuples it writes, and the tuples
-    still naming a label it tombstones - so a tuple an ancestor left dangling
-    fails no later write. Only a field over a dim keyed by its label alone is
-    checked: a nested dim's label names no point without its parents, which a
-    tuple does not carry. A layer adding no tuple and killing no such label
-    resolves nothing.
+    `WorkingRecord.remove` writes, and a property naming it must be cleared
+    first; a layer written otherwise carries both itself. Only what `layer`
+    does is checked - the rows it writes, and the rows still naming a label it
+    tombstones - so a reference an ancestor left dangling fails no later write.
+    Only a dim keyed by its label alone is checked: a nested dim's label names
+    no point without its parents, which a reference does not carry. A layer
+    writing no referring row and killing no referenced label resolves nothing.
 
     Raises
     ------
     ValueError
-        Naming up to three such tuples per group field.
+        Naming up to three such rows per reference.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    drawn = {
-        d
-        for g in schema.group_columns
-        for d in schema.groups[g].over.values()
-        if len(schema.axis_key(d)) == 1
-    }
+    references = [
+        *(
+            (g, f, fn.struct_extract(col("t", g), lit(f)), d)
+            for g in schema.group_columns
+            for f, d in schema.groups[g].over.items()
+        ),
+        *((s, p, col("t", p), d) for (s, p), d in schema.into_properties().items()),
+    ]
+    references = [r for r in references if len(schema.axis_key(r[3])) == 1]
+    referenced = {dim for *_, dim in references}
     killed = {
         d: tomb
         for d in layer.axes()
-        if d in drawn
+        if d in referenced
         and (rel := layer.axis(d)) is not None
         and "deleted" in rel.columns
         and (tomb := rel.filter(col("deleted"))).limit(1).fetchone() is not None
     }
-    added_by_group = {
-        g: rel
-        for g in schema.group_columns
-        if (rel := _living(layer.group(g))) is not None
+    written = {
+        s: rel
+        for s in {subject for subject, *_ in references}
+        if (rel := _living(_rows_of(layer, s, schema))) is not None
         and rel.limit(1).fetchone() is not None
     }
-    if not killed and not added_by_group:
+    if not killed and not written:
         return
     coords = resolve_coords(schema, [*parents, layer], con)
     problems = []
-    for g in schema.group_columns:
-        added = added_by_group.get(g)
-        for field, dim in schema.groups[g].over.items():
-            dead = coords.dead.get(dim)
-            if dead is None or len(schema.axis_key(dim)) > 1:
-                continue
-            suspects = [] if added is None else [(added, dead)]
-            if dim in killed and g in coords.groups:
-                mine = dead.set_alias("d").join(
-                    killed[dim].set_alias("k"),
-                    col("d", dim) == col("k", dim),
-                    how="semi",
-                )
-                suspects.append((coords.groups[g], mine))
-            on = fn.struct_extract(col("t", g), lit(field)) == col("x", dim)
-            hits = [
-                h
-                for tuples, labels in suspects
-                for (h,) in tuples.set_alias("t")
-                .join(labels.set_alias("x"), on, how="semi")
-                .project(col(g))
-                .limit(3)
-                .fetchall()
-            ]
-            if hits:
-                problems.append(f"{g} {hits[:3]} name a removed {dim} in {field!r}")
+    for subject, column, label, dim in references:
+        dead = coords.dead.get(dim)
+        if dead is None:
+            continue
+        stored = subject if subject in schema.groups else column
+        suspects = (
+            [(written[subject], dead)]
+            if subject in written and stored in written[subject].columns
+            else []
+        )
+        resolved = (coords.groups if subject in schema.groups else coords.axes).get(
+            subject
+        )
+        if dim in killed and resolved is not None:
+            mine = dead.set_alias("d").join(
+                killed[dim].set_alias("k"),
+                col("d", dim) == col("k", dim),
+                how="semi",
+            )
+            suspects.append((resolved, mine))
+        hits = [
+            h
+            for rows, labels in suspects
+            for (h,) in rows.set_alias("t")
+            .join(labels.set_alias("x"), label == col("x", dim), how="semi")
+            .project(col(subject))
+            .limit(3)
+            .fetchall()
+        ]
+        if hits:
+            problems.append(f"{subject} {hits[:3]} name a removed {dim} in {column!r}")
     if problems:
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
-            f"it, so tombstone them in the same layer (https://energy-models.github.io/datarecord/design/layers/#deletion)"
+            f"it and leaves no property naming it, so tombstone those tuples and "
+            f"clear those properties in the same layer (https://energy-models.github.io/datarecord/design/layers/#deletion)"
         )
         raise ValueError(msg)
+
+
+def _rows_of(
+    source: LayerSource, subject: str, schema: Schema
+) -> DuckDBPyRelation | None:
+    """`source`'s rows of `subject`, a group or a dim."""
+    return source.group(subject) if subject in schema.groups else source.axis(subject)
 
 
 def _living(rel: DuckDBPyRelation | None) -> DuckDBPyRelation | None:

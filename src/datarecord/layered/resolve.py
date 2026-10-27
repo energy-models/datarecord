@@ -148,15 +148,19 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     """The coordinates a fold keeps the dead labels of.
 
     One the owner map does not key, whose values naming a dead label only the
-    read can drop (`_living`), and a dim a group's tuples name, which the
-    writer checks them against (`write._require_living_tuples`). A keyed
-    coordinate's values the fold drops itself (`fold_inputs`).
+    read can drop (`_living`), and a dim a group's tuples or a property `into`
+    it name, which the writer checks them against
+    (`write._require_living_references`). A keyed coordinate's values the fold
+    drops itself (`fold_inputs`).
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    drawn = {d for g in schema.group_columns for d in schema.groups[g].over.values()}
+    drawn = {
+        *(d for g in schema.group_columns for d in schema.groups[g].over.values()),
+        *schema.into_properties().values(),
+    }
     unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
     return tuple(
         c for c in (*schema.dims, *schema.group_columns) if c in drawn | unkeyed
@@ -554,8 +558,12 @@ def _deleted_relation(
     return rel.filter(col("deleted")).project(*(col(c) for c in fixed)).distinct()
 
 
-def cast_declared(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+def cast_declared(
+    schema: Schema, rel: DuckDBPyRelation, subject: str | None = None
+) -> DuckDBPyRelation:
     """`rel`, with its columns of a declared type cast, others as-is.
+
+    `subject` names the dim or group whose file `rel` is, typing its properties.
 
     Notes
     -----
@@ -563,7 +571,9 @@ def cast_declared(schema: Schema, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     """
     duck_types = DuckTypes(rel)
     cols = [
-        col(c).cast(duck_types(t)).alias(c) if (t := schema.column_type(c)) else col(c)
+        col(c).cast(duck_types(t)).alias(c)
+        if (t := schema.column_type(c, subject))
+        else col(c)
         for c in rel.columns
     ]
     return rel.project(*cols)

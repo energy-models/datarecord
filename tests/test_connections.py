@@ -28,8 +28,8 @@ from tests.fixtures import (
     tombstone_connection,
     unpacked,
     write_axis,
+    write_component,
     write_connections,
-    write_entity_type,
     write_group,
     write_input,
     write_schema,
@@ -54,7 +54,7 @@ def _root(store) -> Revision:
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer,
         [
@@ -67,7 +67,7 @@ def _root(store) -> Revision:
         layer,
         "efficiency",
         [
-            {"entity_type": PROCESS, "entity": "steel_dri", "bus": b, "value": v}
+            {"component": PROCESS, "entity": "steel_dri", "bus": b, "value": v}
             for b, v in (("h2_north", 2.1), ("iron_ore", 1.6), ("dri", 1.0))
         ],
     )
@@ -100,7 +100,7 @@ def test_patch_overrides_one_connection_only(store):
         "efficiency",
         [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "value": 9.9,
@@ -130,7 +130,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
         "efficiency",
         [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": "elec_north",
                 "value": 0.4,
@@ -145,7 +145,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
         "efficiency",
         [
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": "dri",
                 "value": 7.7,
@@ -176,7 +176,7 @@ def test_component_level_attribute_is_unaffected(store):
     write_input(
         store.layer_dir(root.id),
         "p_nom",
-        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 100.0}],
+        [{"component": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
     root.materialise()
 
@@ -184,7 +184,7 @@ def test_component_level_attribute_is_unaffected(store):
     write_input(
         store.layer_dir(child.id),
         "p_nom",
-        [{"entity_type": PROCESS, "entity": "steel_dri", "value": 250.0}],
+        [{"component": PROCESS, "entity": "steel_dri", "value": 250.0}],
     )
 
     df = relation(child, "p_nom").df()
@@ -202,7 +202,7 @@ def test_per_connection_attribute_varies_by_snapshot(store):
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
-    write_entity_type(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
         layer, [{"entity": "steel_dri", "bus": "h2_north", "role": "input"}]
     )
@@ -212,20 +212,20 @@ def test_per_connection_attribute_varies_by_snapshot(store):
         [
             # one static row, and a two-snapshot series for the same connection
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "value": 2.0,
             },
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "snapshot": "2030-01-01",
                 "value": 2.5,
             },
             {
-                "entity_type": PROCESS,
+                "component": PROCESS,
                 "entity": "steel_dri",
                 "bus": "h2_north",
                 "snapshot": "2030-01-02",
@@ -388,7 +388,7 @@ def test_remove_tombstones_the_tuples_naming_the_entity(store):
     """
     base = _root(store)
     other = WorkingRecord(base.record)
-    other.add("entity", ["blast_furnace"], entity_type=PROCESS)
+    other.add("entity", ["blast_furnace"], component=PROCESS)
     other.add_group("connection", _connection_frame(other, "blast_furnace", "iron_ore"))
     other.set("efficiency", 3.0, entity=["blast_furnace"], bus="iron_ore")
     root = base.child(other.edits)
@@ -441,7 +441,7 @@ def test_a_tuple_an_ancestor_left_dangling_fails_no_later_write(store):
     tombstone(store.layer_dir(dangling.id), PROCESS, ["steel_dri"])
 
     staged = WorkingRecord(dangling.record)
-    staged.add("entity", ["blast_furnace"], entity_type=PROCESS)
+    staged.add("entity", ["blast_furnace"], component=PROCESS)
     child = dangling.child(staged.edits)
     entities = child.record.dims["entity"].collect()["entity"].to_list()
     assert "blast_furnace" in entities
@@ -498,7 +498,7 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
-    revived.add("entity", ["steel_dri"], entity_type=PROCESS)
+    revived.add("entity", ["steel_dri"], component=PROCESS)
     revived.add_group("connection", _connection_frame(revived, "steel_dri", "dri"))
     assert _efficiencies(removed.child(revived.edits)) == {"dri": 1.0}
 
@@ -528,8 +528,8 @@ def _contract_root(store) -> Revision:
     )
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
-    write_entity_type(layer, SELLER, [{"entity": "plant"}])
-    write_entity_type(layer, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
+    write_component(layer, SELLER, [{"entity": "plant"}])
+    write_component(layer, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
     write_group(
         layer,
         "contract",

@@ -24,11 +24,11 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture(scope="module")
 def carbon():
-    """`carbon_management`, with every type that shares a `Bus` name renamed off it.
+    """`carbon_management`, with its entity types renamed off one another.
 
-    Same reconciliation `ac_dc` needs (see `conftest.ac_dc`): the network names
-    its `Load`s, `Store`s, `Link`s and `Generator`s after the `Bus` they sit on,
-    which a record cannot represent (design doc §4.3).
+    The network names its `Load`s, `Store`s, `Link`s and `Generator`s after the
+    `Bus` they sit on, so two of them may share a name, which a record cannot
+    represent: names are unique across entity types.
     """
     import pypsa
 
