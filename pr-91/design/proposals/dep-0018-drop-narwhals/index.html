@@ -2216,7 +2216,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>The footprint is 175 lines in 9 files under <code>src/</code>, and 219 lines in 13 test files.</p>
 <h2 id="specification">Specification<a class="headerlink" href="#specification" title="Permanent link">&para;</a></h2>
 <h3 id="mathspec">mathspec<a class="headerlink" href="#mathspec" title="Permanent link">&para;</a></h3>
-<p>datarecord pins mathspec at <code>9f180255a180ce7cc1f046fdc75020cdbfc9d90e</code>, the head of <a href="https://github.com/energy-models/mathspec/pull/915">energy-models/mathspec#915</a>. There a dimension may write <code>one_of: [labels]</code> beside <code>dtype: str</code>, and <code>dtype</code> defaults to <code>str</code>. <code>program.Dimension</code> carries <code>dtype: DimensionDtype</code> (<code>float</code>, <code>int</code>, <code>str</code>, <code>datetime</code>) and <code>one_of: tuple[str, ...] | None</code>. <code>ParameterDtype</code> is <code>float</code>, <code>int</code>, <code>bool</code>, <code>str</code>, and a parameter takes no <code>one_of</code>.</p>
+<p>datarecord pins mathspec at <code>8982c556114992d149a83b3c6f3604c72e569829</code>, the merge of <a href="https://github.com/energy-models/mathspec/pull/915">energy-models/mathspec#915</a>. There a dimension may write <code>one_of: [labels]</code> beside <code>dtype: str</code>, and <code>dtype</code> defaults to <code>str</code>. <code>program.Dimension</code> carries <code>dtype: DimensionDtype</code> (<code>float</code>, <code>int</code>, <code>str</code>, <code>datetime</code>) and <code>one_of: tuple[str, ...] | None</code>. <code>ParameterDtype</code> is <code>float</code>, <code>int</code>, <code>bool</code>, <code>str</code>, and a parameter takes no <code>one_of</code>.</p>
 <p>A git pin to a PR branch lasts only while the commit exists on GitHub. Before a release, the pin moves to the merged commit.</p>
 <h3 id="dtypes">Dtypes<a class="headerlink" href="#dtypes" title="Permanent link">&para;</a></h3>
 <table>
@@ -2359,7 +2359,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
-<li><code>pixi.toml</code> (small): mathspec pinned at <code>9f18025</code>; narwhals goes from it and <code>pyproject.toml</code>; <code>pixi lock</code>.</li>
+<li><code>pixi.toml</code> (small): mathspec pinned at <code>8982c55</code>; narwhals goes from it and <code>pyproject.toml</code>; <code>pixi lock</code>.</li>
 <li><code>schema.py</code> (large): dtypes become mathspec strings, and dims and properties gain <code>one_of</code>; <code>_BARE_DTYPES</code>, <code>_dump_dtype</code> and <code>_parse_dtype</code> go; <code>PropertySpec.into</code> and <code>GroupSpec.into</code> go, with their checks; old names and <code>into</code> are refused at load; <code>categorizing</code> reads <code>one_of</code>; <code>group_type</code> and <code>flag_type</code> return DuckDB structs; <code>check_group_columns</code> runs in SQL.</li>
 <li><code>duck.py</code> (small): the type map replaces <code>DuckTypes</code>' narwhals call; <code>as_relation</code> takes relations and pandas, polars or arrow frames.</li>
 <li><code>record.py</code> and <code>layered/record.py</code> (medium): <code>Relations</code> and <code>LazyRelations</code>; <code>Record</code> moves into <code>record.py</code>, <code>layered/record.py</code> goes.</li>
