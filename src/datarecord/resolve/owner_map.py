@@ -695,10 +695,11 @@ def _frozen_coords(
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
     schema: Schema,
-) -> list[tuple[str, str]]:
-    """The `(kind, name)` of every axis and dead label set this frozen fold resolved.
+) -> list[tuple[str, str, UUID | None]]:
+    """The `(kind, name, owner)` of every axis and dead label set this frozen fold resolved.
 
     A `one_of` dim's axis is left out, being the schema's rather than the fold's.
+    `owner` is an axis's `Coords.dim_owners` entry, `None` for dead labels.
 
     Each is a shared table (`_coord_table`); the list is one more, created after
     them, so a reader finding it finds every table it names.
@@ -712,21 +713,26 @@ def _frozen_coords(
         coords = resolve_coords(schema, sources, con)
         made = [
             *(
-                ("dims", dim, rel)
+                ("dims", dim, rel, str(coords.dim_owners[dim]))
                 for dim, rel in coords.axes.items()
                 if dim not in schema.one_of_dims
             ),
-            *(("dead", name, rel) for name, rel in coords.dead.items()),
+            *(("dead", name, rel, None) for name, rel in coords.dead.items()),
         ]
-        for kind, name, rel in made:
+        for kind, name, rel, _ in made:
             table = _coord_table(kind, name, revision_id)
             _shared(con, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
         return con.sql(
-            "SELECT unnest($kinds::VARCHAR[]) AS kind, unnest($names::VARCHAR[]) AS name",
-            params={"kinds": [k for k, _, _ in made], "names": [n for _, n, _ in made]},
+            "SELECT unnest($kinds::VARCHAR[]) AS kind, unnest($names::VARCHAR[]) AS name, "
+            f"unnest($owners::VARCHAR[])::{LAYER_UUID_TYPE} AS owner",
+            params={
+                "kinds": [m[0] for m in made],
+                "names": [m[1] for m in made],
+                "owners": [m[3] for m in made],
+            },
         )
 
     rows = _shared(
         con, f"coords_{revision_id.hex}", lambda: nullcontext(fold())
     ).fetchall()
-    return [(kind, name) for kind, name in rows]
+    return [(kind, name, owner) for kind, name, owner in rows]
