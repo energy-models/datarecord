@@ -152,6 +152,13 @@ def ex_all(exprs: Iterable[Expression]) -> Expression:
     return reduce(lambda x, y: x & y, exprs)
 
 
+def join_on(
+    left: DuckDBPyRelation, right: DuckDBPyRelation, on: Sequence[Expression]
+) -> DuckDBPyRelation:
+    """Inner join `left` and `right` on every equality in `on`, a cross join where it is empty."""
+    return left.join(right, ex_all(on)) if on else left.cross(right)
+
+
 def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     """NULL-safe equality on `columns`, between two aliased relations.
 

@@ -9,7 +9,9 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+from collections import defaultdict
 from collections.abc import Sequence
+from itertools import product
 from pathlib import Path
 from typing import Any
 
@@ -524,3 +526,37 @@ def relation(revision, attribute: str):
     assert on `.df()`, so the affordance lives here.
     """
     return revision.record.attributes[attribute]
+
+
+def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
+    """`attribute`'s value per full coordinate over `dims`, by the broadcast rule.
+
+    A row reaches every label of a dim it leaves NULL, or every tuple of a
+    group, which reads as the tuple of its fields. At each coordinate the row
+    naming the union of the dims every row reaching it names wins; a coordinate
+    where no single row names that union fails the test.
+    """
+
+    def label(value: Any) -> Any:
+        return tuple(value.values()) if isinstance(value, dict) else value
+
+    def axis(d: str) -> duckdb.DuckDBPyRelation:
+        return record.groups[d] if d in record.schema.groups else record.dims[d]
+
+    labels = {d: [label(c) for (c,) in axis(d).project(d).fetchall()] for d in dims}
+    reaching: dict[tuple, list[tuple[frozenset, Any]]] = defaultdict(list)
+    for *raw, value in record.attributes[attribute].project(*dims, "value").fetchall():
+        coords = [label(c) for c in raw]
+        named = frozenset(d for d, c in zip(dims, coords, strict=True) if c is not None)
+        reach = [
+            labels[d] if c is None else [c] for d, c in zip(dims, coords, strict=True)
+        ]
+        for full in product(*reach):
+            reaching[full].append((named, value))
+    resolved = {}
+    for full, rows in reaching.items():
+        union = frozenset().union(*(named for named, _ in rows))
+        winners = [value for named, value in rows if named == union]
+        assert len(winners) == 1, f"at {full} no one row names {set(union)}: {rows}"
+        resolved[full] = winners[0]
+    return resolved

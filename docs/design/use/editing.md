@@ -302,6 +302,8 @@ A group outside `partial` is owned whole the same way.
 A `set` on one connection's `efficiency` stages every other connection's resolved value beside it.
 A connection attribute's key names no label of a `partial` dim, so the key the edit named is `(attribute)` alone.
 A staged row that leaves the axis NULL needs no fill, since [the broadcast rule](../model/attributes.md#the-broadcast-rule) already makes it cover every label, and a carried row beside it would overlap.
+Where a base row names a label of that axis and the staged row reaches it, the staged row is also written out along the base row's labels there, with the staged value.
+The two rows would otherwise cross on a dim the owner map has no column for, which [no overlap row settles](../layers/resolution.md#a-dim-outside-partial).
 Carried rows go in only where no edit holds the coordinate, so a later `set` on a carried coordinate replaces the fill.
 The anti-join that keeps a fill off an occupied coordinate is the whole of what orders the two.
 
@@ -376,13 +378,15 @@ resolved = fold(parent layers..., staged rows)
 ```
 
 This is one more fold step over the same [owner-map machinery](../layers/resolution.md#owner-map), with the staging tables in place of a layer directory.
+A broadcast of the base reaches a label staged here, since the fold keeps it NULL ([what a row reaches](../layers/resolution.md#what-a-row-reaches)).
+A staged layer has met no writer, so the read refuses two staged rows that cross with no staged row naming both, as the write of `edits` would.
 It works over a layered base and a plain directory alike, since a directory is a layer laid out like any other.
 It costs what one more layer costs, on every read.
 A written layer is folded once and cached, and the staged layer cannot be, since it is the only one that can still change.
 So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top stays a relation.
 An edit then needs no invalidation, since nothing that depends on it is cached.
 
-`flags` come from the fold's own ownership group-by, as for any layer.
+`flags` come from the map rows the staged layer folds to, as for any layer.
 A staged row that sets a dim adds it to `varies`, one that leaves it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
 Properties are read from `properties`, staged edits included.
 

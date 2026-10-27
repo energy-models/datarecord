@@ -29,6 +29,7 @@ Removing the entity `e1` removes its `p_nom`, its `p_max_pu` at every snapshot a
 The fold removes the values.
 [`fold_attributes`](resolution.md#owner-map) drops the parent's owner-map rows that name a label or tuple the layer removes.
 A key whose label or tuple was removed is then absent from the resolved map.
+A row that leaves the coordinate NULL names no label and stays.
 A dim or group outside `partial` is in no key, so its rows are [dropped at read](resolution.md#a-label-outside-the-key) against that coordinate's dead labels.
 
 A removed tuple takes its values with it.
@@ -37,7 +38,8 @@ The labels it names keep their other rows, so removing a connection leaves the e
 Removing a label is one cascade, the same for every dim.
 [`remove(dim, labels)`](../use/editing.md#add-remove) restates the axis without the labels, and every group with a field over `dim` without the tuples that name one, in one layer.
 The tuples' values go with them.
-Re-adding a label or tuple in `partial` brings back the label alone.
+Re-adding a label or tuple in `partial` brings back the label and no value that named it below the removal.
+Every broadcast covering it, written before or after the removal, [reaches it](resolution.md#what-a-row-reaches) again.
 Re-adding one outside `partial` brings back its values, since the read only hid them.
 
 ## What the writer checks

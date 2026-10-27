@@ -20,6 +20,7 @@ from datarecord.mutable import WorkingRecord
 from datarecord.schema.specs import AttributeSpec
 from datarecord.store.store import Revision
 from tests.fixtures import (
+    broadcast,
     drop_connections,
     drop_entities,
     empty_child,
@@ -75,8 +76,8 @@ def _root(store) -> Revision:
 
 
 def _efficiencies(revision) -> dict[str, float]:
-    df = relation(revision, "efficiency").project("connection.bus AS bus, value").df()
-    return dict(zip(df["bus"], df["value"], strict=True))
+    resolved = broadcast(revision.record, "efficiency", "connection")
+    return {bus: v for ((_, bus),), v in resolved.items()}
 
 
 def test_connections_resolve_in_order(store):
@@ -306,8 +307,8 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
     )
 
     def prices(revision):
-        df = relation(revision, "marginal_price").df()
-        return dict(zip(df["bus"], df["value"], strict=True))
+        resolved = broadcast(revision.record, "marginal_price", "bus")
+        return {bus: v for (bus,), v in resolved.items()}
 
     assert prices(root) == {"north": 5.0, "south": 5.0}, "one row, every bus"
     assert prices(child) == {"north": 5.0, "south": 7.0}, "a patch hits its bus"

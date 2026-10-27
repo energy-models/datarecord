@@ -68,6 +68,11 @@ A `Record` hands back bare DuckDB relations, each a plan on the record's connect
 Every record is DuckDB underneath, so a value handed over as itself costs no wrapping per read, and a caller who wants SQL needs no unwrapping.
 A consumer filters, joins and aggregates with relation calls or SQL, and fetches with `.df()`, `.pl()` or `.to_arrow_table()`.
 
+An attribute's relation holds its rows as written, in no promised order.
+A NULL coordinate stays NULL, and two rows may cover one coordinate, of one layer or of two.
+The consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule): the row naming every dim the others there name wins, as [`settle`](#settling-rows) does.
+The record guarantees such a row wherever two rows cross ([resolution](../layers/resolution.md#crossing-rows)), so a consumer needs no knowledge of layers or of `partial`.
+
 `LazyRelations` builds each relation on first access.
 Building a relation is itself I/O: `read_parquet` opens the file to read the footer that binds the relation's columns.
 Locally that is a page-cache hit.
@@ -94,7 +99,7 @@ Only attributes with rows are present, so `set(record.flags())` also says which 
 
 `flags(**categories)` answers for one category.
 The keywords are categorizing properties of one dim by their plain names, such as `ctype="Generator"`, each with one category or a list ([categories](#properties-and-categories)).
-Only rows that reach a matching label count, through the dim's own column or through a group's single field over the dim.
+Only rows that reach a matching label count: a row naming it through the dim's own column or a group's single field over the dim, and a row leaving that column NULL, which reaches every label or tuple.
 An attribute is present where such a row exists.
 Keywords that categorize several dims are refused, and so is a group that reaches the dim through two fields, since a row would then count towards no single label.
 
@@ -118,9 +123,24 @@ A dim one attribute uses reads NULL in the rows of another attribute that lacks 
 Counting it as broadcast would mislead every consumer into building a constant container along an axis with no values.
 
 `p_nom` set per entity puts `entity` in `varies`, and a single `entity = NULL` row puts it in `broadcast`.
+The flags describe the rows the record holds, so a broadcast that more specific rows shadow at every label still puts its dim in `broadcast`.
 
 `flags` covers attributes alone.
 Properties are columns of their subject's file, read from `properties`.
+
+## Settling rows
+
+`settle(rel, labels, flags)`, exported as `from datarecord import settle`, settles an attribute's rows as written by [the broadcast rule](../model/attributes.md#the-broadcast-rule), one row per coordinate.
+A row NULL on a coordinate in `labels` takes each label there, and a row naming a label outside `labels`, or reaching none, is dropped.
+At each coordinate the row naming every coordinate in `labels` that the other rows there name is kept, and where none does the query fails, naming the coordinate.
+A coordinate outside `labels` is kept as written, a NULL there being one more label, so a constant `p_max_pu` stays one row with `snapshot` NULL.
+`filter=False` keeps a row naming a label outside `labels` as written, for a caller whose own joins on the labels drop it anyway.
+
+`flags` spares the work a record does not need, and flags overstating the rows change no value.
+Only a coordinate in `broadcast` is expanded, and rows are picked only where one is in `varies` as well.
+Elsewhere every row names the same coordinates, one row per key, and `settle` keeps those naming a passed label.
+
+The rule needs no knowledge of layers, so `settle` lives in core and reads a plain directory as it reads a tree.
 
 ## One engine
 

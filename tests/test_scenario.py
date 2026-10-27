@@ -18,6 +18,7 @@ import pytest
 from datarecord import Workspace
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
+    broadcast,
     empty_child,
     example,
     export_network,
@@ -70,27 +71,15 @@ def test_scenario_roundtrip(store, parent, stochastic):
     assert_networks_equal(n, stochastic)
 
 
-def test_map_is_scenario_expanded(store, parent, stochastic):
-    """A NULL-scenario row becomes one map entry per scenario.
+def test_a_read_is_scenario_expanded(store, parent, stochastic):
+    """A NULL-scenario row reads once per scenario.
 
     Notes
     -----
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
-    schema = parent.record.schema
-    df = parent.record._fold.owner_map.df()
-    by_scenario = df[
-        [
-            "scenario" in schema.coordinates_of(str(a))
-            for a in df["attribute"].astype(str)
-        ]
-    ]
-    assert not by_scenario.empty, "some attribute is addressed by scenario"
-    assert set(by_scenario["scenario"]) == set(stochastic.scenarios)
-
-    solar = df[
-        (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
+    df = relation(parent, "p_max_pu").df()
+    solar = df[df["entity"] == "solar Gen"]
     assert set(solar["scenario"]) == set(stochastic.scenarios)
 
 
@@ -215,10 +204,9 @@ def test_resolved_dims_are_node_scoped(store, parent, stochastic):
 def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
     """The scenario axis still comes from the root when a closed node sits in between.
 
-    `middle` is closed but writes nothing scenario-related, so its persisted
-    map carries no fresh expansion; the live fold at `grandchild` must expand
-    this NULL-scenario row itself, which requires the axis from the true
-    root, not just from the nearest closed ancestor.
+    `middle` is closed but writes nothing scenario-related; a NULL-scenario
+    row at `grandchild` reaches every scenario of the axis resolved from the
+    true root, not just from the nearest closed ancestor.
     """
     middle = empty_child(parent)
     middle.materialise()
@@ -229,14 +217,10 @@ def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
         [{"entity": "solar Gen", "value": 0.88}],
     )
 
-    df = grandchild.record._fold.owner_map.df()
-    solar = df[
-        (df["entity"] == "solar Gen") & (df["attribute"].astype(str) == "p_max_pu")
-    ]
-    assert set(solar["scenario"]) == set(stochastic.scenarios)
-    assert set(solar["layer_uuid"]) == {grandchild.id}, (
+    dims = ("entity", "scenario", "snapshot")
+    resolved = broadcast(grandchild.record, "p_max_pu", *dims)
+    solar = {(s, t): v for (e, s, t), v in resolved.items() if e == "solar Gen"}
+    assert {s for s, _ in solar} == set(stochastic.scenarios)
+    assert set(solar.values()) == {0.88}, (
         "the NULL-scenario row replaces the component in every scenario"
     )
-
-    rel = relation(grandchild, "p_max_pu").df()
-    assert set(rel[rel["entity"] == "solar Gen"]["value"]) == {0.88}

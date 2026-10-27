@@ -53,7 +53,9 @@ It also refuses a frame that carries a coordinate the attribute is not addressed
 The read path projects only the attribute's own coordinates, so such a column would be written and never read.
 A source that emits one disagrees with the schema about the attribute, and the error reports that disagreement.
 A group column must be the group's struct, with exactly the group's fields.
-Two rows of one attribute that cover one coordinate are refused when both name the same dims, or when each names a dim the other leaves NULL, naming the attribute and the coordinate.
+Two rows of one attribute that cover one coordinate are refused when both name the same dims, or when each names a dim the other leaves NULL and no row there names both, naming the attribute and the coordinate.
+A record holding rows of several layers, written whole by `ws.write(w, uri)`, passes: wherever two of its rows cross, it holds the row naming both ([crossing rows](../layers/resolution.md#crossing-rows)).
+A child layer that leaves a dim outside `partial` NULL over a parent row naming it, with no row naming the dim there, is refused by the fold rather than the writer ([a dim outside `partial`](../layers/resolution.md#a-dim-outside-partial)).
 
 A `dims/` file of a declared dim must carry the dim's key column, and a `groups/` file of a declared group the struct column named for the group.
 

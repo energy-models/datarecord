@@ -19,9 +19,10 @@ from uuid import UUID, uuid4
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from datarecord.duck import ensure_local_dir, try_read_parquet
+from datarecord.duck import ensure_local_dir
 from datarecord.resolve.coords import resolve_coords
-from datarecord.resolve.owner_map import _fold_map
+from datarecord.resolve.fold import read_owner_map
+from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.store.manifest import read_schema
@@ -30,11 +31,12 @@ if TYPE_CHECKING:
     from datarecord.store.store import Store
 
 
-def materialised(revision_id: UUID, store: Store) -> bool:
-    """Whether `revision_id`'s node caches are materialised.
+def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
+    """Whether `revision_id`'s node caches are materialised under `schema`.
 
     A node's caches are written together (`materialise`), so one map answers
-    for all three, and for the resolved dims and schema beside them.
+    for all three, and for the resolved dims and schema beside them. A map
+    keyed otherwise than `schema` keys one is no cache (`read_owner_map`).
 
     This is a filesystem question rather than recorded state: layers are
     write-once, so a materialised cache is valid forever and its
@@ -45,8 +47,7 @@ def materialised(revision_id: UUID, store: Store) -> bool:
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    uri = store.owner_map_uri(revision_id)
-    return try_read_parquet(uri, store.workspace.con) is not None
+    return read_owner_map(revision_id, store.workspace.con, schema, store) is not None
 
 
 def sources_to_read(
@@ -84,7 +85,7 @@ def sources_to_read(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     for depth in range(len(ancestry) - 2, -1, -1):
-        if materialised(ancestry[depth], store):
+        if materialised(ancestry[depth], store, schema):
             return [ParquetLayer(uid, schema, store) for uid in ancestry[depth:]]
     return [ParquetLayer(uid, schema, store) for uid in ancestry]
 
@@ -114,7 +115,8 @@ def materialise(
     schema = read_schema(store)
     con = store.workspace.con
     _materialise_dims(revision_id, sources, store, schema)
-    _to_parquet(_fold_map(sources, con, schema), store.owner_map_uri(revision_id))
+    with _checkpointed(sources, con, schema) as owner_map:
+        _to_parquet(owner_map, store.owner_map_uri(revision_id))
 
 
 def _to_parquet(rel: DuckDBPyRelation, uri: str) -> None:

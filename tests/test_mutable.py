@@ -24,7 +24,14 @@ from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
 from datarecord.store.manifest import read_schema
-from tests.fixtures import empty_root, export_network, schema, unpacked, write_schema
+from tests.fixtures import (
+    broadcast,
+    empty_root,
+    export_network,
+    schema,
+    unpacked,
+    write_schema,
+)
 
 GEN = "Generator"
 
@@ -94,13 +101,6 @@ def _layer_axis(revision, dim):
         dim
     )
     return rel.to_df() if rel is not None else pd.DataFrame()
-
-
-def _unpacked(frame, group="connection"):
-    """A group attribute's rows with the group's struct spread flat, as pandas."""
-    native = frame.df()
-    fields = pd.DataFrame(native.pop(group).tolist(), index=native.index)
-    return pd.concat([fields, native], axis=1)
 
 
 # -- the protocol (https://energy-models.github.io/datarecord/design/use/editing/#the-shape-of-an-edit) ----------------------------------------------------
@@ -1056,10 +1056,10 @@ def test_remove_group_stages_the_group_without_the_tuple(staged, root):
     assert "Norwich DC" in left
 
 
-def _efficiency(record, entity="Manchester Wind"):
+def _efficiency(record, entity="Manchester Wind") -> dict[str, float]:
     """`efficiency` per bus for one entity, as the record resolves it."""
-    rows = _unpacked(record.attributes["efficiency"])
-    return rows[rows["entity"] == entity].groupby("bus")["value"].unique().to_dict()
+    resolved = broadcast(record, "efficiency", "connection")
+    return {bus: v for ((e, bus),), v in resolved.items() if e == entity}
 
 
 def test_a_bus_keyword_addresses_one_connection(staged, root):
@@ -1077,10 +1077,10 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     assert own.project("connection").distinct().fetchall() == [
         ({"entity": "Manchester Wind", "bus": "Manchester"},)
     ]
-    assert list(_efficiency(staged)["Manchester"]) == [0.5]
+    assert _efficiency(staged)["Manchester"] == 0.5
 
     child = root.child(staged.edits)
-    assert list(_efficiency(child.record)["Manchester"]) == [0.5]
+    assert _efficiency(child.record)["Manchester"] == 0.5
 
 
 def test_no_group_field_given_broadcasts_over_every_tuple(staged):
@@ -1095,9 +1095,9 @@ def test_no_group_field_given_broadcasts_over_every_tuple(staged):
 
     own = staged.edits.attribute("efficiency")
     assert own.project("connection").fetchall() == [(None,)], "one broadcast row"
-    assert _efficiency(staged) and all(
-        list(v) == [0.7] for v in _efficiency(staged).values()
-    ), "every connection reads the broadcast"
+    assert _efficiency(staged) and set(_efficiency(staged).values()) == {0.7}, (
+        "every connection reads the broadcast"
+    )
 
 
 def test_a_frame_carries_a_group_as_its_struct(staged):
@@ -1115,7 +1115,7 @@ def test_a_frame_carries_a_group_as_its_struct(staged):
                 f"AS connection, {value} AS value"
             ),
         )
-    assert list(_efficiency(staged)["Manchester"]) == [0.25], "one key, replaced"
+    assert _efficiency(staged)["Manchester"] == 0.25, "one key, replaced"
 
 
 FRAMES = {

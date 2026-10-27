@@ -52,6 +52,7 @@ from datarecord.schema.specs import (
     Group,
     PropertySpec,
 )
+from datarecord.settle import settle
 from datarecord.tools.base import (
     Requirements,
     Schema,
@@ -427,9 +428,8 @@ def _assign_static(
         if addressed and SNAPSHOT not in flags.broadcast:
             continue
         rows = long
-        if shape.stochastic:
-            if SCENARIO not in rows.columns:
-                rows = rows.project(f"*, CAST(NULL AS VARCHAR) AS {SCENARIO}")
+        if shape.stochastic and SCENARIO not in rows.columns:
+            rows = rows.project(f"*, CAST(NULL AS VARCHAR) AS {SCENARIO}")
             rows = scenarios.expand(rows, SCENARIO)
         picked[attr] = rows
         if addressed:
@@ -461,8 +461,7 @@ def _left_join_values(
     A value fills its column where `static` has none (`COALESCE`); `_pos` is
     dropped. A left join from `static` drops a value with no matching static
     row rather than adding one, which also scopes the rows to `static`'s
-    members. The first row per key wins, as `values[~values.index.duplicated()]`
-    does; any deterministic order is fine since a valid record never collides.
+    members.
 
     Each relation is held in a table of its own before the joins, dropped
     after: the relation API binds the whole tree again at every step, and a
@@ -472,7 +471,8 @@ def _left_join_values(
     Parameters
     ----------
     values
-        Long rows carrying `keys` and `value`, by the column they fill.
+        Long rows carrying `keys` and `value`, by the column they fill, one
+        per key (`settle`).
     over_snapshots
         Names in `values` addressed by `snapshot`, of whose rows only the
         NULL-snapshot ones are static.
@@ -482,7 +482,6 @@ def _left_join_values(
     static.create(tables[0])
     try:
         joined = con.table(tables[0]).set_alias("s")
-        partition = ", ".join(keys)
         exprs = {}
         for i, (name, long) in enumerate(values.items()):
             rows = (
@@ -491,12 +490,7 @@ def _left_join_values(
             tables.append(f"_pypsa_value_{tag}_{i}")
             rows.project(*(col(k) for k in keys), col("value")).create(tables[-1])
             alias = f"a{i}"
-            picked = (
-                con.table(tables[-1])
-                .project(f"*, row_number() OVER (PARTITION BY {partition}) AS _rn")
-                .filter(col("_rn") == lit(1))
-                .set_alias(alias)
-            )
+            picked = con.table(tables[-1]).set_alias(alias)
             joined = joined.join(
                 picked, ex_all(col("s", k) == col(alias, k) for k in keys), how="left"
             )
@@ -547,8 +541,6 @@ def _series_frame(
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    if shape.stochastic:
-        rows = scenarios.expand(rows, SCENARIO)
     group_by = [SNAPSHOT]
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
@@ -854,7 +846,9 @@ def _apply_network_attributes(n: pypsa.Network, attrs: dict[str, Any]) -> None:
             setattr(n, attr, value)
 
 
-def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
+def _new_network(
+    record: RecordLike, shape: NetworkShape, con: DuckDBPyConnection
+) -> pypsa.Network:
     """An empty network with the record's axes already established."""
     import pypsa
 
@@ -870,11 +864,11 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
     if shape.multiperiod:
         n.periods = shape.periods[PERIOD]
         n.investment_period_weightings = _weightings(
-            record, PERIOD, n.investment_period_weightings
+            record, PERIOD, n.investment_period_weightings, con
         )
     labels = pd.Index(shape.snapshots[SNAPSHOT], name=SNAPSHOT)
     n.snapshot_weightings = _weightings(
-        record, SNAPSHOT, n.snapshot_weightings.set_axis(labels)
+        record, SNAPSHOT, n.snapshot_weightings.set_axis(labels), con
     ).set_axis(n.snapshots)
     if shape.stochastic:
         index = pd.Index(shape.scenarios[SCENARIO].astype(str), name=SCENARIO)
@@ -883,31 +877,31 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
         # each component's empty `static`/`dynamic` frames with the `scenario`
         # level, so later imports union against a correctly named 2-level index
         # instead of the single-level one a fresh component carries.
-        n.set_scenarios(_weightings(record, SCENARIO, equal)["weight"])
+        n.set_scenarios(_weightings(record, SCENARIO, equal, con)["weight"])
     return n
 
 
-def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFrame:
+def _weightings(
+    record: RecordLike, dim: str, table: pd.DataFrame, con: DuckDBPyConnection
+) -> pd.DataFrame:
     """`table`, PyPSA's weightings of `dim` by label, with each one `record` stores in place.
 
-    A label's own row wins over a NULL-label row, which reaches every label;
-    a label reached by neither keeps `table`'s value.
+    A label reached by no row keeps `table`'s value.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     restored = table.copy()
+    labels = {dim: Index.of(table.index.rename(dim), con).rel}
+    overstated = Flags(frozenset({dim}), frozenset({dim}))
     for attribute, weighting in _WEIGHTINGS.items():
         frame = record.attributes.get(attribute)
         if weighting.dim != dim or frame is None:
             continue
-        rows = frame.project(col(dim), col("value")).df()
-        unset = rows[dim].isna()
-        values = rows[~unset].set_index(dim)["value"].reindex(table.index)
-        broadcast = rows.loc[unset, "value"]
-        if len(broadcast):
-            values = values.fillna(broadcast.iloc[0])
+        rows = settle(frame, labels, overstated, filter=False)
+        rows = rows.project(col(dim), col("value")).df()
+        values = rows.set_index(dim)["value"].reindex(table.index)
         restored[weighting.column] = values.fillna(table[weighting.column])
     return restored
 
@@ -1419,6 +1413,7 @@ class PyPSATool(Tool):
         Notes
         -----
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
         missing, read = self._verify(record)
         if missing:
@@ -1427,16 +1422,21 @@ class PyPSATool(Tool):
         con = _connection(record)
         schema = record.schema
         shape = NetworkShape(record.dims, record.properties)
-        n = _new_network(record, shape)
-
+        n = _new_network(record, shape, con)
         flagged = record.flags()
+
         over_entity = [a for a in schema.attributes if schema.addresses(a, ENTITY)]
+        scenarios = {SCENARIO: record.dims[SCENARIO]} if shape.stochastic else {}
+        tuples = record.groups.get(CONNECTION)
         for ctype in _AXIS_TYPES:
-            self._add_labels(n, record, ctype, flagged, shape, con)
+            self._add_labels(n, record, ctype, flagged, shape, scenarios, con)
         for ctype, members in read.items():
             static = members.members
             if static is None:
                 continue
+            labels = {**scenarios, ENTITY: static}
+            if tuples is not None:
+                labels[CONNECTION] = _tuples_of(tuples, static)
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
             # `_pos` in member order before any join scrambles it: the member
@@ -1454,16 +1454,13 @@ class PyPSATool(Tool):
             for attr, flags in flagged.items():
                 if attr not in carried:
                     continue
-                # Both sets empty no longer means "no rows": the flags are
-                # scoped to what an attribute is addressed by (https://energy-models.github.io/datarecord/design/use/reading/#flags), so an
-                # attribute over `entity` alone has no broadcast dim to report
-                # and still has values. An attribute with no rows at all is
-                # absent from the map entirely, which is what this filtered.
-                # Through the schema, so a renamed or computed attribute
-                # reaches the pivot below as an ordinary long relation. Not
-                # scoped to this type's members here: every consumer joins it
-                # on `entity` against them (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim).
-                long = _unpack_connection(self.schema.resolve(record, ctype, attr))
+                # A named row of another type's entity is left to the joins on
+                # `entity` (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim).
+                long = _unpack_connection(
+                    self.schema.resolve(
+                        record, ctype, attr, labels, flagged, filter=False
+                    )
+                )
                 if CONNECTION in schema.attributes[attr].dims:
                     for column, rows in _port_columns(
                         long, attr, connections, ctype, con
@@ -1484,6 +1481,7 @@ class PyPSATool(Tool):
         ctype: str,
         flagged: dict[str, Flags],
         shape: NetworkShape,
+        scenarios: Mapping[str, DuckDBPyRelation],
         con: DuckDBPyConnection,
     ) -> None:
         """Add an `_AXIS_TYPES` type's members: its dim's labels, as `n.buses`, `n.carriers` or `n.sub_networks`.
@@ -1508,9 +1506,15 @@ class PyPSATool(Tool):
         static = _keyed_as_entity(_empty_for_none(labels), dim).project(
             "*, row_number() OVER () AS _pos"
         )
+        over = {**scenarios, dim: labels}
         attributes = {
             attr: (
-                _keyed_as_entity(self.schema.resolve(record, ctype, attr), dim),
+                _keyed_as_entity(
+                    self.schema.resolve(
+                        record, ctype, attr, over, flagged, filter=False
+                    ),
+                    dim,
+                ),
                 flags,
             )
             for attr, flags in flagged.items()
@@ -2827,6 +2831,15 @@ def _connection_frame(record: RecordLike) -> pd.DataFrame | None:
     if frame is None:
         return None
     return _unpack_connection(frame).df()
+
+
+def _tuples_of(tuples: DuckDBPyRelation, members: DuckDBPyRelation) -> DuckDBPyRelation:
+    """The `connection` tuples of `tuples` whose entity is one of `members`."""
+    return tuples.set_alias("t").join(
+        members.project(col(ENTITY)).set_alias("m"),
+        fn.struct_extract(col("t", CONNECTION), lit(ENTITY)) == col("m", ENTITY),
+        how="semi",
+    )
 
 
 def _ordered_connections(

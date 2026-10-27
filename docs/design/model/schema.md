@@ -127,7 +127,7 @@ A compatible change keeps old layers readable. `version` bumps and nothing else 
 - adding an attribute, a property or a group, since none changes the key of [the owner map](../layers/resolution.md#owner-map), which only `partial` widens. Until a layer writes a new group, it has no tuples.
 - adding a dim that no existing attribute varies over
 - widening an `AttributeSpec.dims`, since an unset dim is NULL and NULL means every label ([the broadcast rule](attributes.md#the-broadcast-rule))
-- adding to `partial`, which makes ownership finer while an existing layer's rows stay owned at the coarser granularity they were written with
+- adding to `partial`, which makes ownership finer while an existing layer's rows stay owned at the coarser granularity they were written with; a [materialised](../layers/resolution.md#materialised-node-caches) owner map keyed before the change is no cache, and the read folds from the layers again
 - changing a [`unit` or `description`](#unit-and-description), which decides how no row decodes
 
 An incompatible change makes existing rows decode differently, or not at all:

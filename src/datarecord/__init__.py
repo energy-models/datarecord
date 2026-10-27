@@ -37,6 +37,7 @@ from datarecord.schema import (
     PropertySpec,
     Schema,
 )
+from datarecord.settle import settle
 from datarecord.store import Revision, Store, Workspace
 
 __all__ = [
@@ -54,4 +55,5 @@ __all__ = [
     "Store",
     "WorkingRecord",
     "Workspace",
+    "settle",
 ]

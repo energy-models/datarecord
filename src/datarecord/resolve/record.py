@@ -33,7 +33,13 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import fn, null_safe, struct_field, union_all_by_name
+from datarecord.duck import (
+    fn,
+    null_safe,
+    struct_field,
+    struct_of,
+    union_all_by_name,
+)
 from datarecord.protocols import Flags, LazyRelations
 from datarecord.resolve.coords import Coords, resolve_coords
 from datarecord.resolve.fold import Fold
@@ -42,6 +48,7 @@ from datarecord.resolve.owner_map import (
     _frozen_coords,
     _table,
     frozen_prefix,
+    unsettled,
     with_columns,
 )
 from datarecord.resolve.sources import LayerSource, ParquetLayer
@@ -82,52 +89,59 @@ def _owned(dim: str) -> str:
 
 
 def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
-    """`om` with each of `dims` as its owning layer stored it, the owned value in `__owned_<dim>`.
+    """`om` with each of `dims` as its owning layer stored it, the owned label in `__owned_<dim>`.
 
     A raw row then finds its owned keys by NULL-safe equality, which hashes where
-    `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A key its layer
-    wrote both ways appears once per way. A flag field NULL from
-    `UNION ALL BY NAME`, or missing from a map folded before the dim was
-    declared, is a dim no row set: `varies` false, `broadcast` true.
+    `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A key NULL on a
+    dim stays NULL, the read returning it as written. The flags then say how
+    the layer stored it, and a key its layer wrote both ways appears once per
+    way. A flag field NULL from `UNION ALL BY NAME`, or missing from a map
+    folded before the dim was declared, is a dim no row set: `varies` false,
+    `broadcast` true.
 
     Notes
     -----
     - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     types = dict(zip(om.columns, om.types, strict=True))
     for d in dims:
         stored = fn.list_concat(
             duckdb.CaseExpression(
-                struct_field(om, "varies", d, lit(False)),
+                struct_field(om, "varies", d, lit(False)),  # noqa: FBT003
                 fn.list_value(col(d)),
             ),
             duckdb.CaseExpression(
-                struct_field(om, "broadcast", d, lit(True)),
+                struct_field(om, "broadcast", d, lit(True)),  # noqa: FBT003
                 fn.list_value(lit(None).cast(types[d])),
             ),
         )
         om = om.project(
-            star(exclude=(col(d),)), col(d).alias(_owned(d)), fn.unnest(stored).alias(d)
+            *(col(c) for c in types if c != d),
+            col(d).alias(_owned(d)),
+            fn.unnest(stored).alias(d),
         )
+        types = dict(zip(om.columns, om.types, strict=True))
     return om
 
 
 def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID], bool]]:
-    """Return the owning layers of each attribute in `om`, and whether one of its keys is owned both ways.
+    """Return per attribute in `om`: its owning layers, and whether one holds keys both ways.
 
-    A key is owned both ways where its `varies` and `broadcast` flags are both
-    set for one `partial` dim. A flag field missing from a map folded before
-    the dim was declared is unset.
+    A layer holds keys both ways where its rows of the attribute name
+    different sets of `partial` dims, read off `varies`. A flag field missing
+    from a map folded before the dim was declared is unset.
     """
-    both = [
-        struct_field(om, "varies", d, lit(False))  # noqa: FBT003
-        & struct_field(om, "broadcast", d, lit(False))  # noqa: FBT003
-        for d in schema.partial_dims
-        if d in schema.broadcast_dims
-    ]
-    contested = reduce(operator.or_, both, lit(False))  # noqa: FBT003
+    dims = schema.partial_dims
+    contested = "false"
+    if dims:
+        unset = lit(False)  # noqa: FBT003
+        named = struct_of({d: struct_field(om, "varies", d, unset) for d in dims})
+        ways = struct_of({"l": col(LAYER_COLUMN), "n": named})
+        contested = f"count(DISTINCT {ways}) > count(DISTINCT {LAYER_COLUMN})"
     rows = om.aggregate(
-        f"attribute, list(DISTINCT {LAYER_COLUMN}), bool_or({contested})", "attribute"
+        f"attribute, list(DISTINCT {LAYER_COLUMN}), {contested}", "attribute"
     ).fetchall()
     return {a: (layers, bool(c)) for a, layers, c in rows}
 
@@ -172,6 +186,27 @@ def _most_specific(
         sql(f"max(bit_count(_named)) {over}").alias("_most"),
         sql(f"count(*) OVER (PARTITION BY {by}, breakpoint, _named)").alias("_twins"),
     )
+    incomparable = _refusal(attribute, coordinates, _INCOMPARABLE)
+    twins = _refusal(attribute, coordinates, "both name the same dims")
+    keep = sql(
+        f"CASE WHEN bit_count(_all) <> _most THEN {incomparable} "
+        f"WHEN _twins > 1 AND _named = _all THEN {twins} ELSE _named = _all END"
+    )
+    return ranked.filter(keep).project(
+        star(exclude=("_named", "_all", "_most", "_twins"))
+    )
+
+
+_INCOMPARABLE = "each names a dim the other leaves NULL"
+
+
+def _refusal(attribute: str, coordinates: Sequence[str], why: str) -> Expression:
+    """An expression failing the query, naming `attribute`, the row's `coordinates` and `why`.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
     coordinate = fn.concat_ws(
         lit(", "),
         *(
@@ -181,27 +216,36 @@ def _most_specific(
             for c in coordinates
         ),
     )
-
-    def refuse(why: str) -> Expression:
-        return fn.error(
-            fn.concat(
-                lit(f"one layer holds two rows of {attribute!r} covering "),
-                coordinate,
-                lit(
-                    f", where {why}, so neither is the more specific there "
-                    "(https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
-                ),
-            )
+    return fn.error(
+        fn.concat(
+            lit(f"one layer holds two rows of {attribute!r} covering "),
+            coordinate,
+            lit(
+                f", where {why}, so neither is the more specific there "
+                "(https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+            ),
         )
-
-    incomparable = refuse("each names a dim the other leaves NULL")
-    twins = refuse("both name the same dims")
-    keep = sql(
-        f"CASE WHEN bit_count(_all) <> _most THEN {incomparable} "
-        f"WHEN _twins > 1 AND _named = _all THEN {twins} ELSE _named = _all END"
     )
-    return ranked.filter(keep).project(
-        star(exclude=("_named", "_all", "_most", "_twins"))
+
+
+def _crossings(
+    rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
+) -> DuckDBPyRelation | None:
+    """Rows failing the read at each key two rows of `rel` cover and neither names every dim of, unless a third names both.
+
+    `rel` is one layer's rows as written. `None` where no two named sets are
+    incomparable, sparing the read the joins.
+
+    Notes
+    -----
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    crossed = [meets for _, _, meets in unsettled(rel, coordinates)]
+    if not crossed:
+        return None
+    return reduce(DuckDBPyRelation.union, crossed).filter(
+        _refusal(attribute, coordinates, _INCOMPARABLE).isnull()
     )
 
 
@@ -424,7 +468,7 @@ class Record:
             axes=coords.axes,
             groups=coords.groups,
             owner_map=_table(
-                self.revision_id, self.sources, self.con, coords, self._prefix
+                self.revision_id, self.sources, self.con, self.schema, self._prefix
             ),
             dead=coords.dead,
         )
@@ -460,6 +504,10 @@ class Record:
         KeyError
             If no layer owns a row of `attribute`. Only a key set read before
             `rollback()` and used after it asks for such an attribute.
+        duckdb.Error
+            When fetched, where one layer holds two rows covering a key and
+            neither is the more specific there (`_most_specific`), or a staged
+            one holds two crossing rows without one naming both (`_crossings`).
 
         Notes
         -----
@@ -481,19 +529,25 @@ class Record:
         #
         # Of those that are, each - a dim or a group - matches NULL-aware
         # (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
-        coordinates = set(schema.coordinates_of(attribute))
+        coordinates = schema.coordinates_of(attribute)
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)
         owners, contested = self._owners(attribute, om)
-        layers = [
-            with_columns(schema, rel, *columns).project(
-                lit(layer_uuid).alias(LAYER_COLUMN), star()
-            )
-            for layer_uuid in owners
-            if (rel := self._source_for(layer_uuid).attribute(attribute)) is not None
-        ]
+        layers: list[DuckDBPyRelation] = []
+        crossed: list[DuckDBPyRelation] = []
+        for layer_uuid in owners:
+            source = self._source_for(layer_uuid)
+            rel = source.attribute(attribute)
+            if rel is None:
+                continue
+            rel = with_columns(schema, rel, *columns)
+            layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
+            if source.frozen:
+                continue
+            crossing = _crossings(rel, coordinates, attribute)
+            if crossing is not None:
+                crossed.append(crossing)
         if not layers:
             raise KeyError(attribute)
-
         unkeyed = [c for c in columns if c not in partial_dims]
         named = [_named_mask("l", broadcast_over).alias("_named")] if contested else []
         resolved = (
@@ -514,17 +568,23 @@ class Record:
             )
         )
         if contested:
-            resolved = _most_specific(
-                resolved, schema.coordinates_of(attribute), attribute
-            )
-        return _living(resolved, fold.dead, unkeyed)
+            resolved = _most_specific(resolved, coordinates, attribute)
+        resolved = _living(resolved, fold.dead, unkeyed)
+        if not crossed:
+            return resolved
+        types = dict(zip(resolved.columns, resolved.types, strict=True))
+        failing = [
+            rel.project(*(lit(None).cast(t).alias(c) for c, t in types.items()))
+            for rel in crossed
+        ]
+        return reduce(DuckDBPyRelation.union, failing, resolved)
 
     def _owners(self, attribute: str, om: DuckDBPyRelation) -> tuple[list[UUID], bool]:
-        """Return the layers owning a key of `attribute`, and whether one key is owned both ways.
+        """Return the layers owning a key of `attribute`, and whether one holds keys both ways.
 
-        A key is owned both ways where one layer holds a row naming a label of
-        a `partial` dim there and another row leaving that dim NULL. Only then
-        does `_relation` have to pick the more specific row.
+        A layer holds keys both ways where its rows name different sets of
+        `partial` dims. Only then does `_relation` have to pick the more
+        specific row.
 
         Where every source is frozen, one scan of the map answers every
         attribute and is kept; otherwise the map may change under the reader,

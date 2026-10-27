@@ -26,6 +26,7 @@ from datarecord.store.files import Absent, PreconditionFailedError
 from datarecord.store.manifest import read_schema
 from tests.fixtures import (
     RivalWrite,
+    broadcast,
     empty_child,
     empty_root,
     schema,
@@ -250,6 +251,17 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
     assert [t for (t,) in tables if child.id.hex in t], "the map is a shared table"
 
 
+def test_a_fold_keeps_no_table_of_its_steps(workspace, tree):
+    """The steps' tables go once the shared table or the persisted map holds the fold."""
+    _, child = tree
+    child.record.attributes["p_max_pu"].fetchall()
+    child.materialise()
+    steps = workspace.con.sql(
+        "SELECT table_name FROM duckdb_tables() WHERE starts_with(table_name, '_fold_')"
+    ).fetchall()
+    assert steps == []
+
+
 def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
     _, child = tree
 
@@ -350,20 +362,17 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
     """
     after = _folded_then_widened(store, partial={"period"})
     w = WorkingRecord(after.record)
-    w.add("period", [2030])
+    w.add("period", [2030, 2040])
     w.add("scenario", ["high"])
     w.set("p_max_pu", 0.7, entity=["wind"], period=2030, scenario="high")
 
     inputs = w._fold.owner_map
     assert "scenario" in str(inputs.types[inputs.columns.index("varies")])
-    rows = (
-        w.attributes["p_max_pu"]
-        .project("period, scenario, value")
-        .order("period NULLS LAST")
-        .fetchall()
-    )
-    assert rows == [(2030, "high", 0.7), (None, None, 0.4)], (
-        "the staged row and the frozen one both resolve"
+    assert broadcast(w, "p_max_pu", "period", "scenario") == {
+        (2030, "high"): 0.7,
+        (2040, "high"): 0.4,
+    }, (
+        "the staged row and the frozen one both resolve, the frozen one for the period the staged row leaves it"
     )
     flags = w.flags()["p_max_pu"]
     assert "scenario" in flags.varies, "the staged row sets it"
@@ -371,10 +380,10 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
 
 
 def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
-    """The axis table holds `scenario` as its file did, a layer row as declared.
+    """The cached fold and axis tables read under a schema declaring one more dim.
 
-    A broadcast row expands against the axis, so the two types meet in one
-    key, and neither fold table is cast on the way out.
+    A broadcast row reaches every label of the axis table, held as its file
+    held it, which neither fold table is cast for on the way out.
 
     Notes
     -----
@@ -398,11 +407,10 @@ def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
             {"entity": "gas", "scenario": "high", "value": 0.9},
         ],
     )
-    expected = [("gas", "high", 0.9), ("wind", "high", 0.4), ("wind", "low", 0.4)]
+    expected = {("gas", "high"): 0.9, ("wind", "high"): 0.4, ("wind", "low"): 0.4}
 
     def resolved(revision):
-        rel = revision.record.attributes["p_max_pu"]
-        return sorted(rel.project("entity, scenario, value").fetchall())
+        return broadcast(revision.record, "p_max_pu", "entity", "scenario")
 
     assert resolved(revision) == expected
     write_schema(schema(dims={**dims, "region": "str"}), store)
@@ -426,11 +434,13 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
     def fail(*args, **kwargs):
         raise RuntimeError("the owner map write fails")
 
-    monkeypatch.setattr(cache, "_fold_map", fail)
+    monkeypatch.setattr(cache, "_checkpointed", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
     assert Path(store.resolved_dir(root.id), "dims", "entity.parquet").exists()
-    assert not cache.materialised(root.id, store), "the rest is no cache yet"
+    assert not cache.materialised(root.id, store, root.record.schema), (
+        "the rest is no cache yet"
+    )
     assert not list(Path(store.resolved_dir(root.id)).rglob("*.tmp")), (
         "no temporary file is left behind"
     )

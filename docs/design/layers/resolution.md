@@ -6,10 +6,12 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Resolution
 
-The owner map records, for each override key, which layer owns it, with removals applied.
+The owner map records each layer's attribute keys as the layer wrote them, with removals applied.
+Where a deeper layer's row crosses a parent row, the map adds one overlap row, owned by the deeper layer.
 For axes and groups, the deepest file for each one is the answer.
-Reading an attribute joins the owning layers' files to the map with one hash join.
+Reading an attribute joins the owning layers' files to the map with one hash join and returns the owned rows as written.
 The read then drops rows that name a removed label outside the key.
+A consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule).
 A single directory folds as a tree with one layer.
 A revision can materialise its owner map and resolved axes under `resolved/`, and a read then stops at that revision.
 
@@ -24,7 +26,7 @@ The map's columns, keys first:
 
 ```text
 # owner map
-<partial dims>          -- the fold key: exactly the partial dims and groups
+<partial dims>          -- the fold key: exactly the partial dims and groups, NULL as written
   <owned_per coordinates> -- e.g. entity, scenario; a partial group as one STRUCT: connection STRUCT(entity, bus)
 attribute
 layer_uuid              -- the owning layer
@@ -34,15 +36,17 @@ breakpoints BOOLEAN
 ```
 
 The map holds no `value`, no value of a varying dim and no `breakpoint`, so its size is independent of the series data and of the length of a curve.
+It holds no depth either: the fold settles ownership across layers, so a read needs none.
 
 The key derives from the schema: it is [`partial_dims`](tree.md#partial-the-granularity-of-an-override) plus `attribute`.
 A coordinate that an attribute's own file lacks reads as NULL, so the key is one fixed tuple across attributes whose columns differ.
 A group is one column, so the map itself shows which columns name a group's tuple.
 A group outside `partial` is in no key, as a dim outside it is in none.
-A layer that touches one connection's value owns the attribute's whole extent along that group.
+A layer that touches one connection's value restates the attribute's whole extent along that group.
 An attribute over such a group and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
-The fold builds the map along the path from the root: the parent's map minus removals and overrides, union the layer's own keys.
+The map holds one row per layer and per distinct key the layer wrote, a NULL key column left NULL, and the overlap rows of [crossing rows](#crossing-rows).
+The fold builds it along the path from the root: the parent's map minus removals and the rows the layer covers, union the layer's own keys and its overlap rows.
 A revision whose caches are [materialised](#materialised-node-caches) persists the map and its resolved axes.
 A read then needs the ancestry only back to the nearest materialised revision, which is what lets a deep tree scale.
 
@@ -56,16 +60,33 @@ A label inside a struct is reached through its tuple, since [removing a label](r
 A row that leaves a key column NULL is not addressed by it, and the NULL-safe anti-join keeps it.
 Only a row that names a removed label or tuple is dropped.
 
-The fold expands a NULL against the whole axis, so `set("p_max_pu", 0.9)` reaches every entity, loads included ([the broadcast rule](../model/attributes.md#the-broadcast-rule)).
-A value scoped to generators is written per label, `set("p_max_pu", 0.9, ctype="Generator")`.
-A materialised ancestor's map is seeded already expanded, so its NULL rows do not reach labels a descendant adds ([open](../open-questions.md)).
+### Crossing rows
 
-### Why the map holds one row per label
+A row names a `partial` dim where its key holds a label, and any other dim where it varies along it, so a series over `snapshot` names `snapshot`.
+Only the dims the attribute uses count: its `dims` and the dims of its groups.
+Two rows cover a common key where, on each `partial` coordinate, they hold the same label or one of them holds NULL.
+They cross where they cover a common key and neither names every dim the other names.
+
+A layer folds onto its parent's map in four steps, none of which reads an axis:
+
+1. The parent rows naming a label or tuple that the layer removes are dropped, and a row NULL there never is.
+2. A parent row is dropped where a row of the layer covers it and names no `partial` dim the parent row leaves NULL.
+3. For each parent row and row of the layer that cross on `partial` dims, the layer gains an overlap row naming every label either names.
+   The crossed parent row stays as written, as does a parent row naming strictly fewer dims than a row of the layer covering it.
+4. The layer's rows and its overlap rows are added.
+
+An overlap row carries the owning layer's `varies` and `broadcast`, so the layer's value row finds it by the same NULL-safe join as its own key and reads the overlap row's labels.
+To a later fold it is an ordinary row, which that fold drops, crosses or removes like any other.
+The pairs are found by one equi-join per pair of named sets, over the dims both name, so no join compares every row with every other.
+
+### Why the map holds keys as written
 
 Two rules decide which row gives a value.
 Within one layer, the more specific row wins ([the broadcast rule](../model/attributes.md#the-broadcast-rule)).
-Across layers, the deeper layer wins, however specific its row is.
-With two `partial` dims, the two rules can disagree, so the fold settles ownership per label.
+Across layers, the deeper layer wins.
+The two disagree only where rows of two layers cross.
+There an overlap row, owned by the deeper layer and naming the labels of both, makes them agree.
+Everywhere else the rows stay as written, and the broadcast rule alone gives every answer.
 
 Take `partial = {entity, scenario}`, a root layer that sets `p_nom` per entity, and a child that sets it for one scenario:
 
@@ -78,25 +99,59 @@ wind    NULL      100
 
 At `(wind, high)` the root's row names `entity` and the child's row names `scenario`, so neither row is more specific.
 The child is deeper, so 999 wins there, while `(wind, low)` keeps the root's 100.
-No set of rows with NULLs states that answer without the depth of each row.
-The fold therefore expands each NULL along the `partial` dims and keeps the deepest layer per label:
+The fold adds an overlap row for each crossing pair:
 
 ```text
 # owner map                          # attributes["p_nom"]
 entity  scenario  attribute  layer   entity  scenario  value
-gas     high      p_nom      child   gas     high      999
-gas     low       p_nom      root    gas     low        50
+gas     NULL      p_nom      root    gas     NULL       50
+wind    NULL      p_nom      root    wind    NULL      100
+NULL    high      p_nom      child   NULL    high      999
+gas     high      p_nom      child   gas     high      999   -- overlap rows
 wind    high      p_nom      child   wind    high      999
-wind    low       p_nom      root    wind    low       100
 ```
 
-The map grows with the product of the `partial` labels each attribute reaches.
-A dim outside `partial`, such as `snapshot`, adds no row, and the read leaves its NULLs for the consumer ([the broadcast rule](../model/attributes.md#the-broadcast-rule)).
+At `(wind, high)` the overlap row names every dim the other two name, so the broadcast rule gives 999.
+A child writing `(gas, NULL) = 60` instead names no more than the root's `(gas, NULL)`, and step 2 drops the root's row.
+A child writing `(gas, high) = 70` names more and leaves the root's rows as written, and the broadcast rule gives `(gas, high)` to the child.
+
+The map grows with the rows layers write and the pairs that cross, not with the labels a broadcast reaches.
+A depth per row would let the read settle ownership instead, but every read would then pay what the fold pays once, and a consumer would have to know about layers.
+
+### What a row reaches
+
+A NULL on a `partial` coordinate reaches every label of that coordinate's axis, or every tuple of its group, as resolved at the node read.
+The fold reads no axis and splits no row, so a label added below a materialised node is reached, as is a label staged in a `WorkingRecord` and the first label of an axis that was empty when the broadcast was written.
+Adding the scenario `mid` below the child above reads `(gas, mid)` as 50.
+
+A row reaches every coordinate that no more specific row covers, whichever layer wrote it.
+A deeper layer thus owns only the coordinates its rows reach.
+With `partial = {entity, scenario}` and `x` also over `snapshot`, a root writing `(gas, NULL, 1) = 1.0` and a child writing `(NULL, high, 0) = 2.0`, `(gas, high, 1)` reads 1.0 from the root.
+
+A label removed and added again takes every broadcast covering it, written before or after the removal, and no row that named it below the removal ([what a removal reaches](removal.md#what-a-removal-reaches)).
+
+### A dim outside `partial`
+
+An overlap row cannot settle a crossing on a dim outside `partial`, since the key has no column to name its labels.
+A [`WorkingRecord`](../use/editing.md#edits) settles it as it stages: a staged row leaving such a dim NULL, over a base row naming it, is also written out along the base row's labels there, with the staged value.
+With `partial = {entity}`, a root writing a series over `snapshot` for every entity and a child setting `wind` to 0.9:
+
+```text
+root:             (NULL, 0) = 0.2   (NULL, 1) = 0.5
+child as staged:  (wind, NULL) = 0.9
+child as written: (wind, NULL) = 0.9   (wind, 0) = 0.9   (wind, 1) = 0.9
+```
+
+The child's rows at `wind` name `entity` and `snapshot`, a strict superset of the root's, so nothing crosses and the root's series stays as written.
+The fold refuses a layer written otherwise that leaves such a crossing, naming the layer, the attribute, the dim and the key.
 
 ### Flags
 
-The fold computes the [flags](../use/reading.md#flags) in the same group-by that settles ownership, so they cost nothing beyond it.
+The fold computes the [flags](../use/reading.md#flags) of each map row in the group-by that builds the layer's rows, so they cost nothing beyond it.
 It computes them per key, so per entity: whether this entity's `p_max_pu` sets `timestep` differs from whether any entity's does.
+An overlap row carries the flags of the layer's row it comes from.
+`flags()` aggregates the map's rows per attribute, `bool_or` over each field of `varies` and `broadcast` and over `breakpoints`.
+It describes the rows the map keeps, so a broadcast that deeper rows shadow at every label still counts.
 
 Each struct has a field per coordinate: every declared dim and every group.
 A dim that a group draws on has its own field, so a `marginal_price` constant over buses reports `bus` as broadcast.
@@ -112,7 +167,7 @@ The map's columns stay fixed, and only the fields change.
 The dim namespace lives entirely inside `varies` and `broadcast`, so a dim named `breakpoints` collides with nothing.
 
 `Record.flags()` unions the flags over the record.
-`flags(**categories)` unions them over the labels of those categories, restricted to what those labels carry.
+`flags(**categories)` unions them over the rows reaching the labels of those categories, a row NULL on the coordinate reaching every label.
 [Reading](../use/reading.md#flags) says what the union means to a consumer.
 
 ## One fold for every axis
@@ -173,11 +228,15 @@ A coordinate outside the key, here `timestep` or a group outside `partial`, is i
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
 A read runs no `MAX` or group-by of its own.
+It returns the owned rows as written: a key NULL on a dim stays NULL, an overlap row reads its labels, and no row is expanded or dropped by depth.
+The row order is unspecified.
+A consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule) over the full coordinates, `partial` or not, and needs neither depth nor the list of `partial` dims.
+Wherever two rows cross, the fold or the staging has written a row naming both, so the rule finds one winner wherever a row reaches.
 Its only filter of removed labels covers what the map cannot see ([below](#a-label-outside-the-key)).
 
 The join condition for each owned-per coordinate is NULL-aware.
-A stored NULL means every value, and the map may assign it to the layer for only some of them.
-The row then joins every map entry that names its layer, and takes that entry's value in the output.
+A stored NULL means every value.
+The row joins its own map row, where it stays NULL, and each overlap row of its layer that names its key, where it takes that row's label in the output.
 The plain condition `u.scenario IS NULL OR u.scenario IS NOT DISTINCT FROM o.scenario` is no hash key.
 DuckDB would join on the other columns and filter the dim afterwards, which costs the square of the dim's length per key.
 
@@ -185,19 +244,19 @@ So the map is keyed as its owning layer stored each key, which its [flags](#flag
 A map row keeps its value where the layer's row set the dim (`varies`), and holds NULL where the row left it NULL (`broadcast`), with the owned value carried beside it.
 A layer row then finds its owned keys by its stored values, NULLs included, on NULL-safe equality.
 That is one hash join, which scans the layers and the map once each.
-The keyed map holds one row per owned key, and two for a key its layer wrote both ways.
-A map row NULL in the dim itself, broadcast over an empty axis, has `varies` false, so only its NULL form exists and it matches once.
 A flag field missing from a map folded before the dim was declared counts as `broadcast` here, since the layers' rows hold NULL there.
 The flags a consumer reads count it as unset.
 
-A layer may hold a row that names a label beside one that leaves its dim NULL.
-Both join the key the label names, and the map records that key as written both ways.
-Where an attribute has such a key, the read keeps at each coordinate the row that names every `partial` dim another row there names, [the more specific one](../model/attributes.md#the-broadcast-rule), through a window over the attribute's coordinates.
+An overlap row reads its labels, so a layer that also wrote a row naming those labels answers that coordinate twice.
+Where a layer holds rows of an attribute naming different sets of `partial` dims, the read keeps at each coordinate the row that names every `partial` dim another row there names, [the more specific one](../model/attributes.md#the-broadcast-rule), through a window over the attribute's coordinates.
 A coordinate with no such row, or with two at one breakpoint, fails the read, naming the attribute and the coordinate.
 `breakpoint` is no coordinate, so the window keeps or drops a curve whole.
-An attribute with no such key, the common case, skips the window.
+An attribute whose layers each name one set of dims, the common case, skips the window.
 
-A `partial` group column such as `connection` joins NULL-aware exactly as `scenario` does, and [broadcasts](../model/attributes.md#the-broadcast-rule) over the resolved group.
+A staged layer has not met [the write's refusal](../use/writing.md#shape) of two rows neither more specific.
+So the read of a [`WorkingRecord`](../use/editing.md#reading-with-pending-edits) fails where two staged rows cross and no staged row names both, naming the attribute and the coordinate.
+
+A `partial` group column such as `connection` joins NULL-aware exactly as `scenario` does, and a NULL there [reaches](../model/attributes.md#the-broadcast-rule) every tuple of the resolved group.
 DuckDB hash-joins `IS NOT DISTINCT FROM` on a `STRUCT` key directly.
 A dim the group draws on, such as `bus` beside it on a per-bus attribute, is a coordinate of its own and joins NULL-aware where it is `partial`.
 
@@ -251,6 +310,7 @@ The map is already folded over everything above it, so a read walks the ancestry
 That truncation keeps a deep chain cheap.
 The same rule decides where resolved axes come from: a revision's own `resolved/dims/` where materialised, and its raw `dims/` otherwise.
 The presence of the cache answers this, and no recorded state is involved.
+A map whose key columns are not those the schema's [`partial`](tree.md#partial-the-granularity-of-an-override) gives is no cache: one persisted before a dim joined `partial` holds NULL there for a row varying along it, so the read folds from the layers as if nothing were materialised.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
 `resolved/dims/` and `resolved/groups/` hold copies of the deepest layer file for each axis and group at or below the revision, so a read of an axis stops there too.
 
@@ -261,3 +321,4 @@ A read above the revision seeds its dead labels from these files, since the copi
 
 Materialising is a policy: every N layers, at a branch point, or on demand.
 It only adds files under `resolved/`, so it changes no answer, only how many layers a read touches.
+The persisted map is the fold's result, and a NULL in it reaches the labels of the node read, so a label added below the node is reached as it would be without the cache.

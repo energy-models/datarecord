@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Title    | the owner map holds keys as written                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Author   | Jonas Hoersch                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| Status   | On hold (2026-10-22)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| Status   | Implemented (2026-10-25)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | Requires | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | Created  | 2026-10-21                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Version  | Unreleased                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -18,9 +18,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Abstract
 
-The owner map holds each layer's attribute keys as the layer wrote them, one row per layer and key with the layer's depth, and no longer expands a NULL into one row per label. The persisted map thus grows with the rows layers write rather than with the labels a broadcast reaches, and shrinks to 37% of today's size on the first benchmark below. The first read of an attribute at a frozen node expands that attribute's owner-map rows against the axes and groups resolved there, keeps for each key the deepest layer covering it, and stores the result in a session cache of the workspace, which every later read of the attribute scans before joining the value rows. A broadcast therefore also reaches every label the record holds, and materialising a node no longer changes any answer.
-
-DEP 21 is on hold because the session cache moves today's cost of expanding the map from materialising to the first read of each attribute in every session, where a first pass over every attribute takes 2.5 to 3.6 times today on a realistic benchmark. A cache shared across sessions and keyed by revision id is the next variant to measure, and [Open Issues](#open-issues) says what takes the DEP off hold.
+The owner map holds each layer's attribute keys as the layer wrote them. Where a deeper layer's row crosses a parent row, that is where the two cover a common key and neither names every dim the other names, the parent row stays as written and the fold adds one overlap row, owned by the deeper layer, naming every label either row names. The fold thus reads no axis, and the persisted map grows with the rows layers write and the pairs that cross, not with the labels a broadcast reaches: 0.63 times today's rows on the first benchmark below, 0.01 times on the realistic case at five `partial` dims. A read returns the owned rows as written, NULL included, and a consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule) alone, the more specific row winning, with no depth and no list of `partial` dims. Every broadcast therefore reaches every label the record holds, and materialising a node no longer changes an answer.
 
 ## Motivation
 
@@ -30,110 +28,146 @@ A fold seeded from either does not expand again, so a broadcast also misses ever
 
 A node holding `q = 0.9` for every entity, with a child adding the entity `n`, reads `n` as 0.9 while the node is unmaterialised and as nothing once it is materialised. A label staged in a `WorkingRecord` over the node reads as nothing in both cases. Over 210 random six-layer records, materialising or staging changes one of today's answers in 95 to 128 records, depending on where. [Materialised node caches](../layers/resolution.md#materialised-node-caches) promises that materialising changes no answer, and [open questions](../open-questions.md) lists the first two cases.
 
+The expansion settles one thing only: which layer owns a key that rows of two layers cover. Within a layer the more specific row wins, and across layers the deeper one does. The two rules disagree only where two rows of different layers cross, and there a single row at their overlap, owned by the deeper layer, makes them agree. Everywhere else the rows can stay as written and the broadcast rule alone gives every answer.
+
 ## Specification
 
 ### The owner map
 
-The owner map holds one row per layer and per distinct key as the layer wrote it, with a NULL key column left NULL:
+The owner map holds one row per layer and per distinct key, with a NULL key column left NULL, and no depth:
 
 ```text
 # owner map
-<partial dims>   -- the key as written: exactly the partial dims and groups, NULL included
+<partial dims>   -- the key: exactly the partial dims and groups, NULL included
 attribute
 layer_uuid
 varies      STRUCT(<coordinate>: BOOLEAN, ...)
 broadcast   STRUCT(<coordinate>: BOOLEAN, ...)
 breakpoints BOOLEAN
-depth       INTEGER  -- the layer's position in the ancestry, deeper being greater
 ```
 
-A row's named mask is the set of `partial` coordinates its key names, read off which key columns are NULL, and no map persists it. A map persisted before a dim joined `partial` lacks that dim's column, which reads as NULL, so the mask derived from it stays right and adding to `partial` stays [compatible](../model/schema.md#versioning).
+A row is either a key a layer wrote or an overlap row. An overlap row names labels on dims where the owning layer's key holds NULL and carries that layer's `varies` and `broadcast`, so the layer's value row finds it by one NULL-safe hash join on the key as stored and takes the overlap row's labels.
 
-A layer is folded onto its parent's map in four steps, none of which reads an axis. The parent rows naming a label or tuple that the layer removes by [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md)'s diff are dropped, and a row NULL there never is. The parent rows whose key equals one of the layer's, compared NULL-safe, are dropped. Every parent row of an attribute is dropped where the layer holds a row of that attribute leaving each `partial` coordinate NULL. The layer's rows are then added with its depth. A parent row that a deeper row covers in any other way stays in the map, and the read drops it.
+### Crossing
 
-### Which layer owns a label
+A row names a `partial` dim where its key holds a label, and any other dim where it varies along it, so a series over `snapshot` names `snapshot`. Only the dims the attribute uses count: its `dims` and the dims of its groups. Two rows cover a common key where, on each `partial` coordinate, they hold the same label or one of them holds NULL. They cross where they cover a common key and neither names every dim the other names.
 
-A row covers a key where, on each `partial` coordinate the attribute is over, it names the key's label or holds NULL. The deepest layer holding a covering row owns the key. Within that layer, the read keeps at each coordinate the more specific of its rows, and refuses two rows where neither is, as [the broadcast rule](../model/attributes.md#the-broadcast-rule) says today. Two layers never share a depth, so across layers the deeper row always wins and nothing is refused.
+### The fold
 
-### Reach
+A layer is folded onto its parent's map in four steps, none of which reads an axis:
 
-A NULL on a `partial` coordinate reaches every label of that coordinate's axis, or every tuple of its group, as resolved at the node being read. A label added below a materialised node is reached, as is a label staged in a `WorkingRecord` and the first label of an axis empty when the broadcast was written.
+1. The parent rows naming a label or tuple that the layer removes by [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md)'s diff are dropped, and a row NULL there never is.
+2. A parent row is dropped where a row of the layer covers it and names no `partial` dim the parent row leaves NULL.
+3. For each pair of a parent row and a layer's row crossing on `partial` dims, found by one equi-join per pair of named sets over the dims both name, the layer gains an overlap row naming every label either names. A parent row naming strictly fewer dims than the layer's row it overlaps stays as written, as does a crossed parent row.
+4. The layer's rows and its overlap rows are added.
 
-A label removed and added again takes every broadcast covering it, whether written before or after the removal, and never a row that named it below the removal. Taking the broadcasts and not the old named values is intended: a value written for every label reaches every label the record has, and a value written for one label goes with that label.
+An overlap row is an ordinary row to every later fold, which drops, crosses or removes it like any other.
 
-Materialising a node never changes an answer, since its persisted map is the fold's result with its depths shifted and the read expands against the same resolved axes either way.
+With `partial = {entity, scenario}`, a root writing `(gas, NULL) = 50` and `(wind, NULL) = 100` and a child writing `(NULL, high) = 999`:
+
+```text
+# today's owner map, one row per label
+(gas,  low)  root    (gas,  high) child
+(wind, low)  root    (wind, high) child
+
+# this DEP
+(gas,  NULL) root    # as written
+(wind, NULL) root
+(NULL, high) child   # as written
+(gas,  high) child   # overlap rows, naming both dims
+(wind, high) child
+```
+
+A child writing `(gas, NULL) = 60` instead names no more than the root's `(gas, NULL)` and drops it. A child writing `(gas, high) = 70` names more and leaves the root's rows as written, and the broadcast rule gives `(gas, high)` to the child.
+
+### A dim outside `partial`
+
+An overlap row cannot settle a crossing on a dim outside `partial`, since the key has no column to name its labels. A `WorkingRecord` therefore settles it as it stages: a staged row leaving such a dim NULL, over a base row naming it, is also written out along the base row's labels there, with the staged value. With `partial = {entity}`, a root writing a series over `snapshot` for every entity and a child writing `(wind, NULL) = 0.9`:
+
+```text
+# root:  (NULL, 0) = 0.2   (NULL, 1) = 0.5
+# child as staged: (wind, NULL) = 0.9
+# child as written: (wind, NULL) = 0.9, (wind, 0) = 0.9, (wind, 1) = 0.9
+```
+
+The child's rows at `wind` name `entity` and `snapshot`, a strict superset of the root's, so nothing crosses and the root's series stays as written. This extends the completion a `WorkingRecord` already makes, which carries the base rows a staged key reaches so that a layer holds a key's whole extent along every dim outside `partial`. The fold refuses a layer written otherwise that leaves such a crossing, naming the attribute, the dim and the key.
 
 ### The read
 
-A read of an attribute takes its owner-map rows, `S`, and settles ownership on them before it touches a value row, the result being the reached relation that [the session cache](#the-session-cache) stores. The read expands each row of `S` that is NULL on a `partial` coordinate against that coordinate's resolved axis or group, by a left join on the constant predicate `(d IS NULL) = true`, and carries the owned label beside the key as written. The read then drops each expanded row that a deeper row of `S` covers, with one anti-join per named mask `m`:
+A read of an attribute joins the value rows of the owning layers to the owner map's rows, as today, and returns the owned rows as written: a key NULL on a dim stays NULL, and an overlap row reads its labels. It expands no NULL and drops no row by depth. The anti-join against dead labels follows as today, and the row order stays unspecified.
 
-```sql
-R ANTI JOIN (SELECT <dims m names>, depth AS _deeper FROM S
-             WHERE <mask of the key's NULLs> = m AND depth > <lowest depth in S>) q
-  ON q.<dims m names> = R.<owned labels of those dims> AND q._deeper > R.depth
-```
+A consumer settles a coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule) over the full coordinates, `partial` or not: a row's value applies to every combination of its NULL dims, and at each coordinate the row naming a strict superset of every other row reaching it wins. Wherever two rows cross, the fold or the staging has written a row naming both, so the rule finds one winner wherever a row reaches, and a consumer needs neither depth nor the list of `partial` dims.
 
-A mask held only at the attribute's shallowest depth outranks nothing and is skipped. The value rows of the layers in `S` then find their owned keys by one NULL-safe hash join on the layer and the key as written, the join the read makes today, and each NULL coordinate takes its label from the owned key. Where one layer holds several masks, the window keeping the more specific row follows, and then the anti-join against dead labels, both as today. The row order of a resolved relation stays unspecified.
+### Reach
+
+A NULL on a `partial` coordinate reaches every label of that coordinate's axis, or every tuple of its group, as resolved at the node read, since the read leaves it NULL and no row is split. A label added below a materialised node is reached, as is a label staged in a `WorkingRecord` and the first label of an axis empty when the broadcast was written. Adding the scenario `mid` below the child of the first example reads `(gas, mid)` as 50, and adding the entity `solar` below the child of the series example reads the root's series for it.
+
+A row reaches every coordinate no more specific row covers, whichever layer wrote it. A deeper layer thus owns only the coordinates its rows reach, not the whole extent of a key along a dim outside `partial`. With `partial = {entity, scenario}` and `x` also over `snapshot`, a root writing `(gas, NULL, 1) = 1.0` and a child writing `(NULL, high, 0) = 2.0`, `(gas, high, 1)` reads 1.0 from the root, where today it reads nothing. Likewise a root writing `x = 1.0` with every coordinate NULL and a child writing `(gas, NULL, 0) = 2.0` reads `(gas, low, 1)` as 1.0, where today it reads nothing.
+
+A label removed and added again takes every broadcast covering it, whether written before or after the removal, and never a row that named it below the removal.
+
+Materialising a node changes no answer, since its persisted map is the fold's result and the read expands nothing against the axes of the node read. A map persisted for another set of `partial` dims holds NULL in a column for a row varying along it, so the read ignores it and folds the node from its layers again.
 
 ### `flags`
 
-`flags()` is today's aggregate run over the owner map's rows: per attribute, `bool_or` over each field of `varies` and `broadcast` and over `breakpoints`. `flags()` thus describes the dims used by the rows the fold keeps, and a broadcast that deeper layers shadow on every label still counts, which is an intended change. In probe P7, a child of the root sets `s = 0.9` with every coordinate NULL and its child sets `s` over `snapshot` for every entity, and `flags()["s"].broadcast` holds `entity` under this DEP, where today it lacks it.
+`flags()` is today's aggregate run over the owner map's rows: per attribute, `bool_or` over each field of `varies` and `broadcast` and over `breakpoints`. Both structs report only the dims the attribute uses, so `ctype` no longer reads true in `broadcast` for an attribute not over it. `flags()` describes the dims used by the rows the fold keeps, and a broadcast that deeper layers shadow on every label still counts. In probe P7, a child of the root sets `s = 0.9` with every coordinate NULL and its child sets `s` over `snapshot` for every entity, and `flags()["s"].broadcast` holds `entity`, where today it lacks it.
 
-`flags(**categories)` aggregates the same way over the rows reaching the category. A named row reaches it where its label, on the dim or through a `partial` group's field, is in the category, as today. A row of an attribute over that dim or group, leaving it NULL, reaches the category where the dim holds a label in it, or the group a tuple whose field is in it, so a fully shadowed broadcast counts per category too, as in probe X4.
-
-### The session cache
-
-A `Workspace` creates a session directory under `TMPDIR` and removes it on `close()` or when the workspace is collected. The first read of an attribute over a `partial` coordinate settles ownership over the frozen prefix's rows against the prefix's own resolved axes and groups, and writes the reached relation to `<session directory>/<revision id>_<hash of the attribute>.parquet`. The file holds the layer, the key as written and the owned label of each `partial` coordinate, one row per owned key, which are exactly today's per-label owner-map rows of that attribute. It is written under a temporary name and renamed into place, so two threads building the same file waste one build and corrupt nothing. Every later read of the attribute at that revision scans the file and joins the value rows on it as above. A revision's record, a `WorkingRecord`'s prefix and a `PinnedRecord` of one revision id share a file, as they share `owner_map_<rev>`. A read over no frozen layer, or of an attribute over no `partial` coordinate, settles ownership without a file.
-
-A `WorkingRecord` reads its staged tail on top of the prefix's file. For each `partial` dim or group the tail writes, one or two `LIMIT 1` fetches over the tail's own axis or group rows tell whether it adds or removes labels. The read drops the file's rows owning a removed label. It expands the prefix's as-written rows that are NULL on a dim over that dim's new labels alone, with each dim before it over its remaining prefix labels so that no key is reached twice, and keeps the deepest covering row as above. The tail's rows are expanded against the resolved axes and drop every prefix key they cover by one NULL-safe anti-join on the owned key. A tail that empties an axis or group takes the read without the file, which keeps a NULL row over an empty group reading once.
-
-A file never goes stale while a revision id resolves to the same layers, since [layers are write-once](../layers/tree.md#a-layers-data-is-write-once) and materialising changes no answer.
+`flags(**categories)` aggregates the same way over the rows reaching the category, as today.
 
 ### Files and shared tables
 
-The frozen prefix keeps its owner map as the shared table `owner_map_<rev>` ([a cursor per thread](../storage/concurrency.md#a-cursor-per-thread)), onto which a `WorkingRecord` folds its staged layer per read. A materialised node writes its owner map as `resolved/owner_map.parquet`, last, which marks the node as materialised as today.
-
-The file and the shared table store `depth` relative to their node, which holds 0 while its ancestors hold negative depths, and a read shifts it by the node's position in its ancestry. Both are ordered by attribute, so a read of one attribute skips every other attribute's row groups, then by the rest of the key, so two maps holding one attribute's rows hold them in one order. An owner map written by an earlier release is unsupported and not detected, the project being pre-alpha.
+The frozen prefix keeps its owner map as the shared table `owner_map_<key>_<rev>`, `<key>` the hash of its key columns ([a cursor per thread](../storage/concurrency.md#a-cursor-per-thread)), onto which a `WorkingRecord` folds its staged layer per read. A materialised node writes its owner map as `resolved/owner_map.parquet`, last, which marks the node as materialised as today. An owner map written by an earlier release is unsupported and not detected, the project being pre-alpha.
 
 ### The change to DEP 20
 
-This DEP keeps [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md)'s pruning of the owner map by the diff of a layer's restatement against the previous one, which takes no NULL row. DEP 20 is implemented, but both prototypes measured here ran on the tree before it, on tombstones, which drop the same parent rows as the diff for every layer `WorkingRecord` writes. The composition itself was therefore not run, and in this document "today" means that earlier tree. The session cache's staged read detects a removed label from the tail's tombstones, and on DEP 20 it has to read the diff of the tail's restatement instead. On implementing this DEP, these sentences of DEP 20 change:
+On implementing this DEP, these sentences of [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) change:
 
-| DEP 20, the sentence                                                                  | becomes                                                                                                                                                                                                                                                                                     |
-| ------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| "In every case probed on a prototype, …"                                              | In every case probed on a prototype, the rule gives today's answers, except that a label added again takes every broadcast covering it.                                                                                                                                                     |
-| "A keyed label's values from below its removal stay gone …"                           | A keyed label's named values from below its removal stay gone after it is added again, while every broadcast covering it reaches it again. An unkeyed coordinate's values come back, as [DEP 11](dep-0011-deletion-cascades-through-tombstones.md) accepted.                                |
-| "Pruning the owner map against each layer's restatement …", and the sentence after it | Pruning the owner map against each layer's restatement matches the diff except on a hand-written row naming a label in neither restatement, at a semi-join of the whole parent map per restating layer. Pruning against the final axis alone brings back named values from below a removal. |
+| DEP 20, the sentence                                        | becomes                                                                                                                                                                                                                                                      |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| "In every case probed on a prototype, …"                    | In every case probed on a prototype, the rule gives today's answers, except that a label added again takes every broadcast covering it.                                                                                                                      |
+| "A keyed label's values from below its removal stay gone …" | A keyed label's named values from below its removal stay gone after it is added again, while every broadcast covering it reaches it again. An unkeyed coordinate's values come back, as [DEP 11](dep-0011-deletion-cascades-through-tombstones.md) accepted. |
 
 ## Rationale
 
-`depth` is persisted because `layer_uuid` is unordered and a table's row order is no contract. With one `partial` dim no order is needed, since a deeper row leaving it NULL drops every parent row of its attribute in the fold, but with two the order decides which layer owns a key, and PyPSA declares four.
+The fold settles ownership across layers, so the map needs no depth and the read no anti-join. A depth would let the read or the consumer settle it instead, by taking the deepest covering layer first and the most specific row within it, but every way of doing so measured below costs each read more than the fold costs once, and a consumer would have to know about layers.
 
-The persisted depths are relative because a shared table outlives its ancestry: an ancestor materialised after `owner_map_<rev>` was built truncates a later reader's ancestry, and with absolute depths that reader's staged layer sits below the table's deepest rows. On a prototype with absolute depths, a staged `(b, NULL) = 9.0` over a prefix row `(b, s1) = 4.0` read `(b, s1)` as 4.0.
+An overlap row settles a crossing without an axis. Its labels come from the two rows, so a later label reaches the crossed parent row unchanged, and its value from the deeper layer, whose value rows hold the dims the overlap row's key leaves NULL. Any parent row more specific than the overlap within the deeper row's reach is one that deeper row covers, and step 2 has dropped it.
 
-The named mask is derived rather than stored, because a positional bitmask over `partial_dims` shifts every later bit when a dim joins `partial`. On a prototype persisting one, a node materialised before `snapshot` joined `partial` read a connection's patched 0.7 beside the broadcast 0.5 it shadows, with no error. Deriving the mask costs one projection over the whole map per frozen record, the likely cause of the worst ratio below.
+Crossing is judged over every dim the attribute uses, not over `partial` alone, because the broadcast rule a consumer applies runs over the full coordinates. Left as written, the series example holds the root's `(NULL, 0)` beside the child's `(wind, NULL)`, and at `(wind, 0)` the rule finds two rows, one naming `snapshot` and one naming `entity`, neither the winner. The key holds no `snapshot`, so that crossing is settled where the labels are, as the layer is staged.
 
-The fold drops exact keys and whole attributes only, because dropping every parent row that a layer's row covers takes one anti-join per NULL pattern, sixteen per layer for PyPSA, and took 6.2 s against 2.3 s on an earlier prototype's benchmark of the first benchmark's shape.
+A parent row that a deeper, more specific row covers stays as written, since there the two rules agree.
 
-The read settles ownership on the owner-map rows, one per key, before joining the value rows, which also run along every coordinate outside `partial`. On a series benchmark broadcasting one series over 8,760 snapshots to 2,000 entities, with a child naming 20 entities' series, a prototype expanding the value rows first built 17.5 million rows and read at 2.53 times today, 0.380 s against 0.150 s. Expanding the owner-map rows joins the 8,760 value rows once to the broadcast's 1,980 keys, at 0.97 to 1.04 times today on every read.
+On a prototype on DEP 20, against today, each figure the median of three interleaved rounds run alone. The first benchmark holds 60,000 entities, 100 attributes and two scenarios over ten layers, with a materialised leaf and a child adding one entity, and the second a materialised child broadcasting 20 of 40 attributes. The scaling benchmark varies the number `k` of `partial` dims: `entity` with 20,000 labels and `k - 1` further dims of three labels each, every attribute being over all of them. Its realistic case (R) holds nine layers and ten attributes, with at most four sets of named dims per attribute. Its worst case (W) holds `2^k` layers, each naming the dims of its own set, in counting order, so most layers cross the ones below them. Its series case (S) holds 20,000 entities, two scenarios and 8,760 snapshots.
 
-Two prototypes were measured. The read-time prototype settles ownership at every read and has no session cache, and the session prototype adds the session cache to it. Each figure is the median of three interleaved rounds, today's figure second.
+| case | map rows, today | map rows | first read, today  | first read | repeated read, today | repeated read |
+| ---- | --------------- | -------- | ------------------ | ---------- | -------------------- | ------------- |
+| 1    | 12.0 M          | 7.50 M   | 2.60 s             | 2.98 s     | 0.036 s              | 0.025 s       |
+| 2    | 4.80 M          | 1.20 M   | 0.77 s             | 0.24 s     | 0.018 s              | 0.007 s       |
+| R k3 | 1.80 M          | 223 k    | 0.70 s             | 0.69 s     | 0.019 s              | 0.013 s       |
+| R k4 | 5.40 M          | 223 k    | 1.85 s             | 0.75 s     | 0.049 s              | 0.015 s       |
+| R k5 | 16.2 M          | 223 k    | 6.25 s             | 0.81 s     | 0.147 s              | 0.017 s       |
+| W k3 | 720 k           | 8.8 k    | 0.70 s             | 0.56 s     | 0.028 s              | 0.020 s       |
+| W k4 | 2.16 M          | 35 k     | 2.30 s             | 3.02 s     | 0.107 s              | 0.049 s       |
+| W k5 | 6.48 M          | 163 k    | 13.7 s             | 20.1 s     | 0.315 s              | 0.160 s       |
+| S k2 | 120 k           | 124      | materialise 25.7 s | 0.22 s     |                      |               |
 
-The first benchmark holds 60,000 entities, 100 attributes and two scenarios over ten layers, with a materialised leaf and a child adding one entity, and the second a materialised child broadcasting 20 of 40 attributes. On the read-time prototype the worst ratio measured is 1.24 times today, the first read at the materialised leaf, 0.263 s against 0.212 s, and most metrics take 0.3 to 0.8 times. A broadcast attribute of the second benchmark reads in 0.011 s against 0.022 s, and every call of a `flags` benchmark of the first one's size takes 0.44 to 0.91 times today. Materialising takes 2.81 s against 4.76 s, and the persisted map holds 6.0 million rows in 25.3 MB against 12.0 million in 67.6 MB.
+The first read folds, and materialising follows it. The read returns rows as written, so its times leave out the consumer's expansion. A read of a record with two entities set in a staged layer over the materialised node takes 1.0 to 2.8 times today in the scaling benchmark, 0.11 times in the series case.
 
-The scaling benchmark varies the number `k` of `partial` dims from 1 to 6: `entity` with 20,000 labels and `k - 1` further dims of three labels each, every attribute being over all of them. Its realistic case holds nine layers and ten attributes, mixing full broadcasts with overrides over entities and over pairs of dims, so each attribute holds three masks. Its worst case holds `2^k` layers, each naming the dims of its own mask, so a read runs `2^k - 1` anti-joins. Its series case holds 20,000 entities, three scenarios and 8,760 snapshots, with four masks at four depths. It ran on DuckDB 1.5.5 with eight threads.
+The first read is slowest in the worst case, at 1.3 to 1.5 times today for `k = 4` and 5, since pairs of sets neither naming the other grow from 1 at `k = 2` to 55 at `k = 4` and 285 at `k = 5`, and the fold joins along each pair a parent row and a layer's row hold. This DEP accepts that cost: a record overriding one attribute along ever different sets of dims in a dozen layers is not one a workflow builds.
 
-On the read-time prototype, a repeated read at a materialised node takes 1.96 times today at `k = 2` and 1.55 times at `k = 6` in the realistic case, and 2.25, 6.7, 10.9 and 31 times today for `k = 2` to 5 in the worst case, which runs out of memory at 24.6 GiB for `k = 6`. The realistic case loses parallelism: the pipeline expanding the owner map and joining the value rows starts from an attribute's few hundred owner-map rows, one DuckDB morsel, and so runs on one thread, where today's read scans the stored per-label map in parallel. On one thread both reads of the realistic case at `k = 5` take 0.30 s against 0.31 s. In the worst case the expansion of shadowed named rows grows by 4/3 per `k` beyond the axis product, and DuckDB builds most anti-joins' hash tables on the expanded side. The series case reads at 1.00 to 1.12 times today and materialises in 0.14 s against 32 s. Wherever the read-time prototype completes, materialising takes 0.05 to 0.99 times today, a first read at an unmaterialised leaf, which includes the fold, takes 0.08 to 1.01 times, and the persisted map holds 0.3% to 35% of today's size.
-
-The session cache restores the parallel scan, and its per-attribute file of owned keys spares the read today's unnest of the flag structs and its filter over the whole map. On the session prototype a repeated read takes 0.15 to 0.90 times today in the realistic and the worst case for `k = 2` to 5, at the materialised node, at the unmaterialised leaf and over a sweep of every attribute, and 0.99 to 1.02 times in the series case. The realistic case at `k = 5` reads in 28 ms against 152 ms. Staged reads over the file take 0.3 to 1.4 times today, except a new label on a dim other than `entity` in the worst case, at 1.7 times today for `k = 4` and 3.9 times for `k = 5`.
-
-The first read of an attribute builds its file. It takes 1.6 to 2.2 times today in the realistic case and 1.0 times in the series case. In the worst case it takes 6.2 times today at `k = 4` and 22 times at `k = 5`, 9.3 s against 0.43 s, since the build pays the read-time prototype's anti-joins once per attribute. A first sweep over all ten attributes of the realistic case takes 2.5 to 3.6 times today, and 31 times today in the worst case at `k = 5`. Writing the parquet file is about 80% of a build in the realistic case at `k = 5`, and a build there pays for itself after four to five reads of its attribute. A session's files hold exactly today's per-label rows in 0.5 to 2 times the bytes of today's map, while the persisted map holds 0.01 to 0.23 times.
-
-Over 210 fuzzed records of six edit layers, with `entity`, `scenario` and the group `connection` as `partial` coordinates, the read-time prototype reads the same plainly, materialised at two depths, staged, and staged over a materialised parent. The 65 records that read without adding a label again equal today's plain read, and all but one of the 137 that add one again equal a plain-Python oracle of the rule, the exception being a group emptied of tuples, over which a NULL row reads once as today. `flags` equals an oracle aggregating the rows the fold keeps in every record. The session prototype equals the read-time prototype on every probe and on the first 90 of those records in all five ways, and neither prototype ran the test suite.
-
-On the read-time prototype, `src` grows by 264 lines and shrinks by 224, and the session cache adds 196 lines and removes 30.
+Over all 210 fuzzed records of six edit layers, with `entity`, `scenario` and the group `connection` as `partial` coordinates, reads and `flags` agree in all five ways: plain, materialised at depth 1 and 3, staged, and staged over a materialised parent. The plain read equals a plain-Python oracle of the broadcast rule over full coordinates, every row reaching the final axes, on 197 records. The 13 others hit the oracle's limits: 3 a group emptied of tuples, where the read keeps the NULL row; 2 a connection removed and added again within one layer, where DEP 20's diff sees no removal; and 5 a label new or added again in the layer writing a row over `snapshot` at it, where the shallower row reaches the other snapshot, as [Reach](#reach) accepts. A layer writing a full broadcast and a named row at once reads as the fold's step 2 gives, which an earlier oracle got wrong. Every probe reads the same materialised or not, staged or committed, and no fuzzed record triggers the refusal of a layer written without `WorkingRecord`.
 
 ## Usage
+
+A read returns the rows as written, overlap rows included:
+
+```python
+w.set("x", 50.0, entity="gas")  # the root
+w.set("x", 100.0, entity="wind")
+v.set("x", 999.0, scenario="high")  # its child
+child.record.attributes["x"]
+# (gas, NULL) 50, (wind, NULL) 100, (NULL, high) 999, (gas, high) 999, (wind, high) 999
+```
 
 A broadcast reaches a label added below a materialised node, committed or staged:
 
@@ -142,81 +176,50 @@ c = rev.child(w.edits)  # w.set("p_max_pu", 0.9)
 c.materialise()
 w = WorkingRecord(c.record)
 w.add("entity", ["n"], ctype="Generator")
-w.attributes["p_max_pu"]  # n reads 0.9
-c.child(w.edits).record.attributes["p_max_pu"]  # n reads 0.9
+w.attributes["p_max_pu"]  # (NULL) 0.9, which n takes by the broadcast rule
 ```
 
-A label removed and added again takes the broadcasts, not its old named value:
+A constant override of a broadcast series is written out along the series' snapshots:
 
 ```python
-w.set("q", 0.9)
-w.set("q", 0.5, entity="b")  # one layer
-# a child removes b, a grandchild adds b again
-grandchild.record.attributes["q"]  # b reads 0.9
-```
-
-The deeper layer owns a key, whichever row names more dims:
-
-```python
-w.set("p_max_pu", 1.0, entity="b")  # the root
-v.set("p_max_pu", 2.0, scenario="s1")  # its child
-child.record.attributes["p_max_pu"]  # (b, s1) reads 2.0, (b, s2) 1.0
-# with the two layers swapped, (b, s1) reads 1.0
-```
-
-A broadcast shadowed on every label still shows in `flags`:
-
-```python
-c = rev.child(w.edits)  # w.set("s", 0.9)
-# its child sets s over snapshot for every entity
-grandchild.record.flags()["s"].broadcast  # holds entity, which today it lacks
+w.set("p_max_pu", [0.2, 0.5], snapshot=[0, 1])  # the root, every entity
+v.set("p_max_pu", 0.9, entity="wind")  # its child
+# the child holds (wind, NULL), (wind, 0) and (wind, 1) at 0.9
 ```
 
 ## Implementation notes
 
-Paths are under `src/datarecord/` as they were on the tree the prototypes ran on, and an implementation ports both prototypes onto DEP 20.
+Paths are under `src/datarecord/`.
 
-1. `schema/schema.py`: the owner map gains `depth`.
-2. `resolve/owner_map.py`: `fold_attributes` takes the schema and the depth instead of `Coords`, loses the expansion and gains the whole-attribute drop. `_persisted` makes depths relative and orders the rows, and `_frozen_table` shifts depths back.
-3. `resolve/record.py`: `_reach` replaces `_as_stored`, splits into `_expand` and the anti-joins, and takes a dict of axes. `_owners` returns each attribute's masks and depths. `_reached` reads the session file through `_session_map`, which builds it on a miss, and `_staged_reach` reads a staged tail on top of it.
-4. `resolve/fold.py`: `_owned_reaching` gains the NULL-row arm, and `resolve/coords.py` loses `Coords.expand_dims`.
-5. `store/cache.py`: `materialise` writes the map through `_persisted`. `store/store.py`: `Workspace` creates and removes the session directory and names a file by `session_file(revision_id, attribute)`.
-6. Tests: three asserting the per-label map assert the read instead. New tests pin a dim joining `partial` over a materialised node, a shared map outliving its ancestry, reach, re-adding, and probes P7 and X4.
-7. `CHANGELOG.md` under `[Unreleased]`: a broadcast reaches every label, a re-added label takes broadcasts again, and `flags` counts a shadowed broadcast.
-8. On landing, update [read path](../layers/resolution.md), [layers](../layers/tree.md), [record](../use/reading.md), [writing](../use/writing.md), [schema](../model/schema.md), [format](../storage/format.md), [working record](../use/editing.md), [tools](../tools/index.md), [the index](../index.md), [module layout](../package.md) and the usage page on [layers](../../usage/layers.md) where they describe the owner map, its expansion or its file. In [open questions](../open-questions.md), close the item on a broadcast surviving materialisation, and rewrite the settled item on an attribute reaching every label, since a broadcast is one map row whatever it reaches.
+1. `resolve/owner_map.py`: `fold_attributes` drops the covered parent rows by `_masks` and `_exactly`, pairs crossing rows by `_pair` and adds the overlap rows by `_overlaps`, and refuses an unsettled crossing outside `partial` by `_refuse_unfilled`. It takes no axes.
+2. `resolve/record.py`: `_as_stored` returns the owned rows as written and reads the labels of an overlap row, and `_owners` returns each attribute's rows.
+3. `resolve/fold.py` folds without axes, and `resolve/coords.py` loses `Coords.expand_dims`.
+4. `mutable.py`: `_complete_owned_whole` also writes a staged row out along the base rows' labels on dims outside `partial` (`_spread`), and a staged layer folds onto the prefix's map the same way.
+5. Consumers: `tools/pypsa.py`'s attribute and series reads, `tools/base.py`'s `Attr.resolve`, and `store/write.py`'s refusal of a pair neither more specific when it flattens a record into one layer apply the broadcast rule over rows as written.
+6. Tests asserting per-label reads assert rows as written instead. New tests and probes pin a deeper entity winning over a series it crosses, a broadcast reaching a label added below a crossing, a series reaching an entity added below an override, and the two coordinates a shallower row now reaches.
+7. `CHANGELOG.md` under `[Unreleased]`: a read returns rows as written, a broadcast reaches every label, a deeper layer owns only the coordinates its rows reach, a re-added label takes broadcasts again, and `flags` counts a shadowed broadcast and reports only an attribute's dims.
+8. On landing, update [resolution](../layers/resolution.md), [the layer tree](../layers/tree.md), [reading](../use/reading.md), [writing](../use/writing.md), [editing](../use/editing.md), [the schema](../model/schema.md), [the format](../storage/format.md), [tools](../tools/index.md), [the index](../index.md), [module layout](../package.md) and the usage page on [layers](../../usage/layers.md) where they describe the owner map, its expansion or what a layer owns. In [open questions](../open-questions.md), close the item on a broadcast surviving materialisation.
 
-Checks: every probe reads the same materialised or not, staged or committed, and the 210 fuzzed records read the same in all five ways.
+Checks: every probe reads the same materialised or not, staged or committed, and the 210 fuzzed records read the same in all five ways: plain, materialised at two depths, staged, and staged over a materialised parent.
 
 ## Rejected Ideas
 
-Settling ownership at every read with no session cache, the read-time prototype, reads at 1.55 to 2.1 times today in the realistic case of the scaling benchmark from `k = 2` on, and at 31 times today in the worst case at `k = 5`. No variant measured on it brings a repeated read of the worst case within 1.5 times today for `k = 3` or more.
+Keeping keys as written with their depth and settling ownership at every read, by expanding the NULLs and one anti-join per named mask, reads at 1.55 to 2.1 times today in the realistic case from `k = 2` on and at 31 times today in the worst case at `k = 5`, and runs out of memory at 24.6 GiB for `k = 6`. Caching each attribute's settled rows in a session file restores repeated reads to 0.15 to 0.90 times today, but moves the cost to the first read of each attribute in every session: a first sweep over the realistic case takes 2.5 to 3.6 times today, and 31 times in the worst case at `k = 5`. Picking the owner by a window, `arg_max(depth)`, brings a repeated read of the worst case at `k = 5` from 31 to 5.5 times today but takes the realistic case to 3.3 times. Building the file root to leaf halves the worst case's first read at `k = 5` but slows the realistic case's by half, and disabling DuckDB's `build_side_probe_side` optimizer during a build takes it to 3.9 s against 9.3 s but holds for every concurrent cursor. A cache shared across sessions would pay the first pass once per revision, but needs a key covering the `partial` dims and a size cap, and keeps a per-label file per attribute.
+
+Splitting a crossed parent row instead of adding an overlap row, expanding it along the dims the deeper row names against the axis as the crossing layer resolves it and dropping the pieces a deeper row reaches, reads the same as this DEP wherever no label is added below a crossing. Its pieces name the labels of that axis only, so a label added later reaches none of them: adding `mid` below the child of the first example reads `(gas, mid)` as nothing, and in 8 of the first 70 fuzzed records a label added below a crossing reads differently from the oracle. Its first read takes 65 s against 20 s for the worst case at `k = 5`, and its map holds 2.01 million rows against 163,000. Splitting every parent row a deeper row names a dim of, more specific or not, splits where the two rules agree as well, and dropping at the read the rows a deeper one shadows by an `arg_max` window over a depth reads at 2 to 8 times that.
+
+Judging a crossing over the `partial` dims alone leaves the series example's rows crossing on `snapshot`, which the broadcast rule cannot order.
 
 Keeping the per-label owner map, with a map of keys as written beside it to derive the labels it lacks, needs a delta over every seed and three kinds of shared table, and materialising took 2.5 times today in its own round, 8.5 s against 3.4 s.
 
-Deciding `flags` per label, counting a row only where some label it covers has no deeper covering row, keeps today's `flags` exactly. On the `flags` benchmark it took 3 to 24 times today, 1.016 s against 0.043 s for a repeated `flags()` at the materialised leaf.
-
-Picking the owning layer by a window, `arg_max(depth)` per label, gives the same answers at 1.21 times today on a root-only attribute, where the anti-joins take 0.68 times, and reorders rows, which three tests notice. On the read-time prototype a window brings a repeated read of the worst case at `k = 5` from 31 to 5.5 times today, but takes the realistic case at `k = 5` and 6 to 3.3 and 3.7 times today, against 1.8 and 1.55 times for the anti-joins.
+Deciding `flags` per label, counting a row only where some label it covers has no deeper covering row, keeps today's `flags` exactly. On a `flags` benchmark of the first benchmark's size it took 3 to 24 times today, 1.016 s against 0.043 s for a repeated `flags()` at the materialised leaf.
 
 Letting the more specific row win across layers keeps an earlier named value under a later broadcast, which the fold then cannot drop, so every read of its attribute expands it against the named rows, 0.045 s against 0.023 s on the second benchmark.
 
-Keeping only the more specific key per label drops rows at coordinates outside `partial`, since a layer holding `s` at `(entity NULL, snapshot 0)` and at `(b, snapshot 1)` gives `b` both rows.
-
-Building a session file by walking the layers root to leaf, expanding each layer's rows and dropping the accumulated keys it covers, halves the worst case's first read at `k = 5`, 4.6 s against 9.3 s, but takes the realistic case's at `k = 5` to 0.96 s against 0.65 s.
-
-Building a session file with DuckDB's `build_side_probe_side` optimizer disabled, which keeps each anti-join's hash table on the small side, takes the worst case's first read at `k = 5` to 3.9 s against 9.3 s. The setting is database-wide and shows in every cursor, so a concurrent thread's queries run without the optimizer during a build, and DuckDB offers no per-query way to fix the build side.
-
 ## Open Issues
 
-DEP 21 is on hold for the cost of its first pass. A session pays for every attribute it reads once, at 2.5 to 3.6 times today for a first sweep over the realistic case and at 31 times today for the worst case at `k = 5`, and a workflow opening a fresh session per step pays that first pass at every step.
+The tools settle rows by one helper, `settle(rel, labels, flags)`, which expands a NULL only on a coordinate in `broadcast` and picks a row only where a coordinate is also in `varies`; `Attr.resolve` and `Schema.resolve` take `labels` and `flags`. `write_layer` accepts two crossing rows where a row naming both is there, so a record of several layers flattens into one. The read of a staged layer refuses two rows crossing with no row naming both, as `write_layer` refuses them on commit.
 
-The next variant to measure keeps the expanded files in a cache shared across sessions under the user's cache directory, keyed by revision id and attribute, so the first pass is paid once per revision rather than once per session. Such a cache needs `test_resolved_reads_same_as_unresolved` fixed first. The test builds a truncated and an unresolved record under one revision id in one workspace, so a cache keyed by revision id hands the second record the first one's answer, and the test compares the cache with itself.
+No fuzzed record holds a series over more than one `partial` dim.
 
-DEP 21 leaves hold when that cache, ported onto DEP 20, keeps repeated reads below today, pays the first pass once per revision, and passes the probes and the 210 fuzzed records in all five ways. Should the shared cache fail that, today's persisted per-label map stays.
-
-A file is keyed by revision id and attribute and not by the schema, so a dim joining `partial` within a session leaves a file without that dim's columns, which the read then binds wrongly or refuses. The key has to take the `partial` dims, or the workspace has to drop its files when the manifest changes.
-
-A session directory lives as long as its `Workspace` and has no size cap. `Workspace.process()` never closes, so its files stay until the process exits, and a process killed by a signal leaves its directory behind. A full sweep writes about one product-sized file per attribute.
-
-In a `WorkingRecord` over a `WorkingRecord`, a label removed in one tail layer and added again in the next reads nothing on the session prototype, where the read-time prototype reads the prefix's broadcasts for it. The staged read takes the label's tombstone as a removal and drops its rows from the file, and does not expand it as new, since the prefix held it. No probe or fuzz mode stages two tails, and a fix treats a label both removed and alive in the tail as new.
-
-A staged layer holding two rows that differ on a dim outside `partial`, neither more specific, reads without refusal, as today, though `write_layer` refuses it on commit.
+The worst case's first read stays at 1.3 to 1.5 times today for `k = 4` and 5, which [Rationale](#rationale) accepts.

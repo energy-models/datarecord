@@ -8,11 +8,11 @@ SPDX-License-Identifier: CC-BY-4.0
 
 A revision adds one layer on top of its parent, and the revisions form a tree.
 A layer's data is written once, so any revision can be a parent and every cache stays valid.
-Reading a revision folds its ancestry from the root, and the deepest layer wins.
+Reading a revision folds its ancestry from the root, and a deeper layer's row wins where it crosses a shallower one.
 A layer restates each axis and group it touches as a whole.
 For attributes, `partial` sets what one layer may override.
 Along a partial dim, a layer overrides one value per label.
-Along any other dim, it overrides the whole extent.
+Along any other dim, it restates the whole extent of each key it touches.
 
 ```python
 class Revision(BaseModel):
@@ -65,8 +65,9 @@ That question differs from the one [`AttributeSpec`](../model/attributes.md#attr
 partial = {"scenario"}  # snapshot absent, so a patch restates the series
 ```
 
-A layer that touches one value along a dim outside `partial` owns that dim's whole extent.
-Overriding one snapshot of `p_max_pu` therefore carries the entity's entire series.
+A layer that touches one value along a dim outside `partial` restates that key's whole extent along the dim.
+Overriding one snapshot of `p_max_pu` therefore carries the entity's entire series, which a [`WorkingRecord`](../use/editing.md#edits) stages beside the edit.
+Ownership itself follows reach: a row reaches every coordinate no more specific row covers, whichever layer wrote it ([what a row reaches](resolution.md#what-a-row-reaches)).
 A partial series would resolve into a mix: the layer's values at the snapshots it wrote, and its parent's at the rest.
 A framework that splits constant from varying data cannot receive half a series.
 That holds for every attribute over the axis, so the rule belongs to the axis.
@@ -97,7 +98,7 @@ With the group outside `partial`, a patch to one connection's `efficiency` resta
 A tuple is keyed by its labels, so an ancestor that inserts a tuple earlier cannot redirect a patch.
 
 `breakpoint` ([wide and long rows](../model/attributes.md#wide-and-long-rows)) is outside the overlay key.
-A layer owns a whole curve, as it owns a whole extent along a dim outside `partial`.
+A layer owns a whole curve, as it restates a whole extent along a dim outside `partial`.
 So a resolved curve never mixes a parent's breakpoints with a descendant's.
 
 `partial` governs attribute ownership alone.

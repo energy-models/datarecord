@@ -202,6 +202,33 @@ All notable changes to datarecord are documented here. The format follows
 - A value over a dim or group outside `partial` that names a removed label is
   dropped at read, including the per-bus values of a removed `bus` label. A
   materialised node keeps the removed labels in `resolved/dead/`.
+- `attributes[name]` returns the owned rows as written. A NULL coordinate
+  stays NULL, rows of two layers may cover one coordinate, and the row order
+  is unspecified. A consumer settles each coordinate by the broadcast rule,
+  the row naming every dim the others there name winning. The owner map holds
+  each layer's keys as written, plus one row naming both wherever a deeper
+  layer's row crosses a parent's, so it grows with the rows layers write
+  rather than with the labels a broadcast reaches.
+- A deeper layer owns only the coordinates its rows reach. A shallower row
+  keeps every coordinate that no more specific row covers.
+- A label removed and added again takes every broadcast covering it, written
+  before or after the removal, and no row that named it below the removal.
+- `flags()` counts a broadcast that more specific rows shadow at every label,
+  and reports in `varies` and `broadcast` only the dims an attribute uses.
+- `WorkingRecord.set` writes a row that leaves a dim outside `partial` NULL
+  out along the labels a parent row names there. The fold refuses a layer
+  written otherwise that leaves such a crossing, naming the layer, the
+  attribute, the dim and the key.
+- The writer accepts two rows that each name a dim the other leaves NULL
+  where a row naming both is there, so `ws.write(w, uri)` writes a record of
+  several layers. The read of a `WorkingRecord` refuses two staged rows that
+  cross with no staged row naming both.
+- A materialised owner map keyed on another `partial` set than the schema's
+  is ignored, and the read folds that node from its layers.
+- `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
+  each source by the broadcast rule over `labels` before a rename or a
+  computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
+  the same for one relation, dropping rows that name a label outside `labels`.
 
 ### Removed
 
@@ -229,6 +256,11 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- A pointwise `set` leaving one of two dims outside `partial` NULL keeps the
+  rest of the series.
+- A broadcast reaches every label the record holds, including one added below
+  a materialised revision or staged in a `WorkingRecord`, so materialising
+  changes no answer.
 - `set` refuses a frame column that the schema does not declare for the
   attribute, and names the column and the columns it takes.
 - A later `set` replaces the rows of an earlier one that it covers. A row is

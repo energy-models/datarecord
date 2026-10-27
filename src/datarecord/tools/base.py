@@ -21,10 +21,12 @@ from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from datarecord.settle import settle
 
-    from datarecord.protocols import RecordLike
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
+
+    from datarecord.protocols import Flags, RecordLike
 
 
 @dataclass(frozen=True)
@@ -141,8 +143,8 @@ class Attr:
     source : tuple of str
         Record attribute name(s) it is read from. A rename has one.
     compute : callable, optional
-        Maps one resolved long relation per `source`, in order, to this
-        attribute's long relation; `None` for a plain rename, which requires
+        Maps one settled long relation per `source` (`settle`), in order, to
+        this attribute's long relation; `None` for a plain rename, which requires
         exactly one `source`. A relation in, a relation out, so the plan stays
         unmaterialised and a computed attribute needs no special case downstream.
 
@@ -163,16 +165,32 @@ class Attr:
             )
             raise ValueError(msg)
 
-    def resolve(self, record: RecordLike) -> DuckDBPyRelation:
-        """This attribute's long relation, read through the `Record` interface.
+    def resolve(
+        self,
+        record: RecordLike,
+        labels: Mapping[str, DuckDBPyRelation],
+        flags: Mapping[str, Flags],
+        *,
+        filter: bool = True,
+    ) -> DuckDBPyRelation:
+        """This attribute's long relation, each source settled (`settle`) before `compute`.
 
-        The record rather than the record, so a tool builds from any backing.
+        Parameters
+        ----------
+        flags
+            Per source, its `Flags` as `settle` takes them.
+        filter
+            As `settle` takes it.
 
         Notes
         -----
         - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
+        - [settling rows](https://energy-models.github.io/datarecord/design/use/reading/#settling-rows)
         """
-        rels = [record.attributes[s] for s in self.source]
+        rels = [
+            settle(record.attributes[s], labels, flags[s], filter=filter)
+            for s in self.source
+        ]
         if self.compute is None:
             return rels[0]
         return self.compute(*rels)
@@ -214,9 +232,18 @@ class Schema:
         """
         return self.attr(ctype, name).source
 
-    def resolve(self, record: RecordLike, ctype: str, name: str) -> DuckDBPyRelation:
-        """`ctype`'s `name` as a long relation over `record`, mapping applied."""
-        return self.attr(ctype, name).resolve(record)
+    def resolve(
+        self,
+        record: RecordLike,
+        ctype: str,
+        name: str,
+        labels: Mapping[str, DuckDBPyRelation],
+        flags: Mapping[str, Flags],
+        *,
+        filter: bool = True,
+    ) -> DuckDBPyRelation:
+        """`ctype`'s `name` as a long relation over `record`, mapping applied and settled (`Attr.resolve`)."""
+        return self.attr(ctype, name).resolve(record, labels, flags, filter=filter)
 
 
 class UnsupportedRecordError(ValueError):

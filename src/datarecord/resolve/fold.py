@@ -34,7 +34,7 @@ from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation
+from duckdb import DuckDBPyRelation, Expression
 
 from datarecord.duck import (
     distinct_values,
@@ -122,7 +122,8 @@ class Fold:
         Each resolved group's relation, keyed by group.
     owner_map
         The resolved owner map: `(owner_map_key, layer_uuid, varies,
-        broadcast, breakpoints)`, one row per owned key.
+        broadcast, breakpoints)`, one row per key as its layer wrote it,
+        expanded along a dim only where a deeper layer crossed it there.
     dead
         Each `coords.mortal` coordinate's dead labels, where it has any.
     """
@@ -192,23 +193,46 @@ class Fold:
         return flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
-        """The owner-map rows naming one of `labels`, on `dim` or a group's field over it.
+        """The owner-map rows reaching one of `labels`, on `dim` or a group's field over it.
 
-        One semi-join per path, unioned rather than OR-ed into one condition,
-        which would be a nested loop; a row matched twice changes no flag.
+        A row names a label, or leaves the coordinate NULL for an attribute
+        over it, which reaches every label the coordinate holds: such a row
+        counts where `labels` holds a label of `dim`, or the group a tuple
+        whose field names one. One semi-join per path, unioned rather than
+        OR-ed into one condition, which would be a nested loop; a row matched
+        twice changes no flag.
         """
         om = self.owner_map.set_alias("o")
-        paths = []
-        if dim in om.columns:
-            paths.append(col("o", dim))
-        for group in self.schema.groups:
-            field = self.schema.field_over(group, dim)
-            if group in om.columns and field is not None:
-                paths.append(fn.struct_extract(col("o", group), lit(field)))
-        reached = [
-            om.join(labels.set_alias("l"), path == col("l", dim), how="semi")
-            for path in paths
+        named = labels.set_alias("l")
+        paths: list[tuple[str, str | None]] = [(dim, None)]
+        paths += [
+            (g, f) for g in self.schema.groups if (f := self.schema.field_over(g, dim))
         ]
+        reached = []
+        for column, field in paths:
+            if column not in om.columns:
+                continue
+            on = _path("o", column, field) == col("l", dim)
+            reached.append(om.join(named, on, how="semi"))
+            if field is None:
+                hit = labels
+            elif (held := self.groups.get(column)) is not None:
+                on = _path("g", column, field) == col("l", dim)
+                hit = held.set_alias("g").join(named, on, how="semi")
+            else:
+                continue
+            over = [
+                a
+                for a in self.schema.attributes
+                if column in self.schema.coordinates_of(a)
+            ]
+            if over and hit.limit(1).fetchone() is not None:
+                reached.append(
+                    om.filter(
+                        col("o", column).isnull()
+                        & col("o", "attribute").isin(*(lit(a) for a in over))
+                    )
+                )
         if not reached:
             return om.filter(lit(False))  # noqa: FBT003
         return reduce(DuckDBPyRelation.union, reached)
@@ -240,14 +264,14 @@ class Fold:
         schema: Schema,
         store: Store,
     ) -> Fold | None:
-        """This node's `Fold`, or `None` if it is not materialised.
+        """This node's `Fold`, or `None` if it is not materialised under `schema`.
 
         The owner map is the presence marker: the map, dims and groups
         are written together (`cache.materialise`), so if the map is absent
-        the node has no `resolved/` cache at all.
+        or stale (`read_owner_map`) the node reads as having no cache at all.
         """
         base = store.resolved_dir(revision_id)
-        owner_map = try_read_parquet(store.owner_map_uri(revision_id), con)
+        owner_map = read_owner_map(revision_id, con, schema, store)
         if owner_map is None:
             return None
         return cls(
@@ -257,6 +281,28 @@ class Fold:
             owner_map=owner_map,
             dead=_read_dir(f"{base}dead/", con),
         )
+
+
+def _path(alias: str, column: str, field: str | None) -> Expression:
+    """`column` under `alias`, or its struct's `field` where one is given."""
+    c = col(alias, column)
+    return c if field is None else fn.struct_extract(c, lit(field))
+
+
+def read_owner_map(
+    revision_id: UUID, con: DuckDBPyConnection, schema: Schema, store: Store
+) -> DuckDBPyRelation | None:
+    """`revision_id`'s persisted owner map, `None` where it is absent or keyed otherwise than `schema` keys one.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    """
+    rel = try_read_parquet(store.owner_map_uri(revision_id), con)
+    if rel is None or set(rel.columns) != set(schema.owner_map_columns):
+        return None
+    return rel
 
 
 def _read_dir(dir_uri: str, con: DuckDBPyConnection) -> dict[str, DuckDBPyRelation]:
