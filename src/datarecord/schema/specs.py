@@ -55,9 +55,10 @@ class Dimension(_Declared):
         The axis labels' type, a mathspec `DimensionDtype`; `"str"` where
         undeclared, None on a multi-dim.
     one_of
-        The labels the dim allows, in order, or None for any. A dim with
-        `one_of` has an `ENUM` of them as its column, and `add` refuses a
-        label outside the list. Only a `str` dim takes `one_of`.
+        The dim's labels, in order, or None for labels a layer writes. A
+        dim with `one_of` has its axis derived from the list, no axis file
+        and no properties, and an `ENUM` of the labels as its column; `add`
+        and `remove` refuse it. Only a `str` dim takes `one_of`.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -246,9 +247,8 @@ class PropertySpec(_ValueSpec):
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
     A property declares exactly one of `dtype` and `one_of`. A property of a
-    dim in `partial` that refers to a dim with `one_of`
-    categorizes its subject (`Schema.categorizing`). A property of a
-    multi-dim never does.
+    dim in `partial` that refers to a dim with
+    `one_of` categorizes its subject (`Schema.categorizing`).
 
     Attributes
     ----------

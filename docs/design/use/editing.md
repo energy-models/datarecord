@@ -116,6 +116,7 @@ So `bus="north"` on a connection attribute is the coordinate even where `entity`
 `carrier="gas"` on an attribute over the `carrier` dim is that dim, and on `p_max_pu` it is `entity.carrier`.
 A dotted keyword is refused, and so is a name that several dims the attribute reaches declare a property of.
 `ctype="Generator", carrier="wind"` resolves to the labels that match every keyword on the record as staged, and `set` writes one row per label.
+A property of a multi-dim the attribute is over selects its tuples the same way: `role="output"` on an attribute over `connection` writes one row per output connection, and a keyword naming one of its coordinates, such as `bus="north"`, narrows those tuples.
 The filter itself is not stored, so a label added later is not reached.
 A plain NULL and [`default_by`](../model/properties.md#default_by-a-default-per-category) are the two ways a value reaches labels not yet added.
 The property's dim must be one the attribute reaches through exactly one coordinate, and the keyword is refused beside that coordinate's own keyword.
@@ -125,6 +126,7 @@ A plain name is an attribute.
 Setting a property patches one column of its subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has.
 A multi-dim's property takes a scalar, with its coordinates as keywords selecting the tuples, none selecting every tuple: `set("connection.role", "input", entity="g1", bus="north")`.
+A property keyword selects the labels or tuples a property is set on as it selects them for an attribute: `set("entity.carrier", "wind", ctype="Generator")` patches every generator, and `set("connection.note", "x", role="output")` every output connection, which a coordinate keyword such as `bus="north"` narrows; a category of a coordinate's dim selects too, `ctype="Link"` the connections of links.
 A [coordinate](../model/multi-dims.md#coordinates) is part of the key, not a property, so `set("connection.bus", ...)` is refused; the caller `remove`s the tuples and `add`s them again.
 Changing a category is such a patch: `set("entity.ctype", "Load", entity="g1")`.
 Every value `g1` holds stays stored and read, and the per-category reads of `ctype="Load"` now include those values.
@@ -187,9 +189,8 @@ w.remove("connection", [{"entity": "g1", "bus": "north"}])
 Each is a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
 A new label goes after the axis's last, and a removed label of the base goes back to its base position.
-A label of a [dim with `one_of`](../model/dims.md#a-dim-with-one_of) must be one of those it lists, both in `add(dim, ...)` and as the value of a property that refers to the dim.
-The axis of such a dim holds only the labels added.
-A property value that `one_of` lists and the axis lacks is refused as any unknown label is, and `remove` takes such a label as it takes any other.
+A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) is refused by `add` and `remove` alike, since its axis is the schema's list; a new label is a schema change.
+A property value that refers to such a dim must be one of the labels it lists, and is refused as any unknown label is.
 An attribute keyword is refused with a pointer to `set`, since an attribute's values are long rows whatever its `dims`.
 A column the schema does not declare is refused.
 A [staging table is shaped like the file it becomes](#staging), so it has no dtype for such a column.

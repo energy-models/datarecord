@@ -48,8 +48,6 @@ def root(store, categorized):
     write_schema(categorized, store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("ctype", ["Bus", "Generator", "Link", "Load"])
-    staged.add("carrier", ["gas", "wind"])
     staged.add("entity", ["g1"], ctype="Generator", carrier="gas")
     staged.add("entity", ["w1"], ctype="Load", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load", carrier="gas")
@@ -111,7 +109,6 @@ def buses(store):
     )
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("bus_type", ["AC", "DC"])
     staged.add("bus", ["ac1", "ac2"], bus_type="AC")
     staged.add("bus", ["dc1"], bus_type="DC")
     return revision.child(staged.edits)
@@ -138,3 +135,164 @@ def test_attributes_leave_a_default_by_unapplied(buses):
     assert _values(record, "frequency", "bus") == {"ac1": 60.0}, (
         "ac2 has no row, so it is absent rather than its default_by 50.0"
     )
+
+
+@pytest.fixture
+def ports(store):
+    """A link `l` taking from `a` and giving to `b`, and a generator `g` attached to `b`."""
+    write_schema(
+        Schema(
+            dimensions={
+                "entity": Dimension(dtype="str"),
+                "bus": Dimension(dtype="str"),
+                "snapshot": Dimension(dtype="int"),
+                "role": Dimension(one_of=["input", "output", "attached"]),
+                "ctype": Dimension(one_of=["Generator", "Link", "Store"]),
+                "connection": Dimension(over=["entity", "bus"]),
+            },
+            properties={
+                "entity": {
+                    "ctype": PropertySpec(one_of="ctype"),
+                    "note": PropertySpec(dtype="str"),
+                },
+                "connection": {
+                    "role": PropertySpec(one_of="role"),
+                    "note": PropertySpec(dtype="str"),
+                },
+            },
+            attributes={
+                "efficiency": AttributeSpec(
+                    dtype="float",
+                    dims={"connection", "snapshot"},
+                    default=1.0,
+                    default_by={"connection.role": {"output": 0.9}},
+                ),
+                "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
+            },
+            partial=frozenset({"entity", "bus", "connection"}),
+        ),
+        store,
+    )
+    revision = empty_root(store)
+    staged = WorkingRecord(revision.record)
+    staged.add("entity", ["l", "g"], ctype=["Link", "Generator"])
+    staged.add("bus", ["a", "b"])
+    staged.add("snapshot", [0, 1])
+    tuples = [
+        {"entity": "l", "bus": "a"},
+        {"entity": "l", "bus": "b"},
+        {"entity": "g", "bus": "b"},
+    ]
+    staged.add("connection", tuples, role=["input", "output", "attached"])
+    return revision.child(staged.edits)
+
+
+def test_a_multi_dim_is_categorized_by_its_property(ports):
+    """`role=` selects connections in `set` and `flags` as `ctype=` selects entities.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    """
+    staged = WorkingRecord(ports.record)
+    staged.set("efficiency", 0.5, role="output", snapshot=[0])
+    staged.set("efficiency", 0.8, role=["input", "attached"], bus="b")
+    staged.set("p_nom", 1.0)
+    record = ports.child(staged.edits).record
+
+    assert broadcast(record, "efficiency", "connection", "snapshot") == {
+        (("l", "b"), 0): 0.5,
+        (("g", "b"), 0): 0.8,
+        (("g", "b"), 1): 0.8,
+    }, "the role selects the tuples, a coordinate keyword narrows them"
+    assert set(record.flags(role="output")) == {"efficiency"}
+    assert record.flags(role="input") == {}, "the input's value was narrowed away"
+    assert record.schema.categorizing("connection") == ("role",)
+    assert [
+        record.schema.default_for("efficiency", role=r) for r in ("input", "output")
+    ] == [
+        1.0,
+        0.9,
+    ]
+
+
+def test_a_multi_dims_category_selects_only_for_an_attribute_over_it(ports):
+    staged = WorkingRecord(ports.record)
+    with pytest.raises(ValueError, match="'p_nom' is not over"):
+        staged.set("p_nom", 1.0, role="output")
+
+
+def test_a_multi_dims_category_combines_with_a_category_of_its_coordinate(ports):
+    staged = WorkingRecord(ports.record)
+    staged.set("efficiency", 0.5, role=["output", "attached"], ctype="Generator")
+    record = ports.child(staged.edits).record
+    assert broadcast(record, "efficiency", "connection", "snapshot") == {
+        (("g", "b"), 0): 0.5,
+        (("g", "b"), 1): 0.5,
+    }, "the link's output is no generator's"
+
+
+def _noted(record, subject: str) -> set:
+    """The labels of `subject` whose `note` is set, a tuple as `(entity, bus)`."""
+    rows = record.properties[subject].df()
+    noted = rows[rows["note"].notna()][subject]
+    return {tuple(v.values()) if isinstance(v, dict) else v for v in noted}
+
+
+@pytest.mark.parametrize(
+    ("subject", "keywords", "selected"),
+    [
+        ("entity", {"ctype": "Generator"}, {"g"}),
+        ("entity", {"ctype": ["Generator", "Link"]}, {"g", "l"}),
+        ("connection", {"role": "output"}, {("l", "b")}),
+        (
+            "connection",
+            {"role": ["output", "attached"], "bus": "b"},
+            {("l", "b"), ("g", "b")},
+        ),
+        (
+            "connection",
+            {"role": ["input", "output"], "entity": "l", "bus": "b"},
+            {("l", "b")},
+        ),
+        ("connection", {"ctype": "Link"}, {("l", "a"), ("l", "b")}),
+        ("connection", {"ctype": "Link", "bus": "b"}, {("l", "b")}),
+        ("connection", {"ctype": "Link", "role": "input"}, {("l", "a")}),
+        ("connection", {"ctype": "Store"}, set()),
+        ("connection", {"ctype": "Store", "role": "input"}, set()),
+    ],
+    ids=[
+        "dim",
+        "dim-several",
+        "multi-dim",
+        "multi-dim-several",
+        "multi-dim-narrowed",
+        "coordinate-category",
+        "coordinate-category-narrowed",
+        "coordinate-category-and-role",
+        "coordinate-category-selecting-none",
+        "coordinate-category-and-role-selecting-none",
+    ],
+)
+def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
+    ports, subject, keywords, selected
+):
+    """`role=` selects the tuples of `connection.note` as `ctype=` selects the labels of `entity.note`.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    """
+    staged = WorkingRecord(ports.record)
+    staged.set(f"{subject}.note", "x", **keywords)
+    assert _noted(ports.child(staged.edits).record, subject) == selected
+
+
+def test_a_one_of_dim_widened_in_is_on_a_record_read_before(store, root, categorized):
+    """A record read once keeps its fold; the `one_of` dim's axis comes from the schema in force."""
+    assert set(root.record.dims) >= {"ctype", "carrier"}
+    dimensions = {**categorized.dimensions, "sector": Dimension(one_of=["power"])}
+    write_schema(categorized.model_copy(update={"dimensions": dimensions}), store)
+    assert store.revision(root.id).record.dims["sector"].df()["sector"].tolist() == [
+        "power"
+    ]

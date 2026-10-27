@@ -64,6 +64,7 @@ A `dims/` file of a declared dim must carry the dim's key column, the struct col
 A `dims/` file is the whole axis at the new revision, a multi-dim's tuples included, in order ([removing labels](../layers/removal.md)).
 The writer refuses a file that holds a key twice, or that carries a column other than its key and its subject's declared properties.
 It refuses a file that orders its parent's labels differently from the parent, naming the first label out of place, since a consumer numbers ports by [that order](../model/dims.md#axis-order).
+A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) has no file: a `LayerData` handing one over is refused, and a `RecordLike`'s axis of it is dropped where it is the list, the same labels in the same order, and refused otherwise, naming the dim and the difference.
 
 Every row must name labels and tuples that the layer keeps:
 

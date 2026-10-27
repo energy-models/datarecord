@@ -99,6 +99,17 @@ def _plain_labels(dim: str, labels: _Labels, call: str) -> list[Any]:
     return list(cast("Sequence[Any]", labels))
 
 
+def _field_in(multi: str, field: str, labels: Sequence[Any]) -> Expression:
+    """Whether coordinate `field` of the multi-dim column `multi` holds one of `labels`, none matching no tuple.
+
+    DuckDB's `isin` refuses an empty list, which a property keyword selecting
+    no label yields.
+    """
+    if not labels:
+        return lit(False)
+    return fn.struct_extract(col(multi), lit(field)).isin(*map(lit, labels))
+
+
 def _is_labels(value: Any) -> bool:
     """Whether a keyword's value lists several labels rather than naming one."""
     return isinstance(value, Sequence) and not isinstance(value, str | bytes)
@@ -735,6 +746,12 @@ class WorkingRecord(Record):
         the labels of that dim matching it on the record as staged, the
         keywords combining as an intersection; `set` writes one row per label,
         and stores nothing of the filter, so a label added later is not reached.
+        A property of a multi-dim `attribute` is over - `role="output"` -
+        selects its tuples the same way, narrowed by any keyword naming one of
+        its coordinates. On a multi-dim's property, the keywords select its
+        tuples as on an attribute over it: `set("connection.note", v,
+        role="output")` patches the output connections, and `ctype="Link"`
+        the connections of links.
 
         Raises
         ------
@@ -764,14 +781,15 @@ class WorkingRecord(Record):
         if isinstance(self.schema.resolve(attribute), tuple):
             self._set_dotted(attribute, value, coords)
             return
-        coords = self._select(attribute, coords)
+        coords, tuples = self._select(attribute, coords)
         listed = {c: list(v) for c, v in coords.items() if _is_labels(v)}
 
         if is_frame(value) and not keyed:
-            if listed:
+            if listed or tuples:
                 msg = (
                     f"`set({attribute!r}, <frame>)` supplies its own keys, so "
-                    f"keywords {sorted(listed)} may give one label each, not a list"
+                    f"keywords {sorted(listed)} may give one label each, not a "
+                    f"list, and none may select the tuples of {sorted(tuples)}"
                 )
                 raise ValueError(msg)
             call = f"`set({attribute!r}, <frame>)`"
@@ -800,7 +818,8 @@ class WorkingRecord(Record):
         self._validate_input(attribute, coords)
 
         if keyed:
-            key = self._key_coordinate(attribute, value, coords)
+            selected = [c for m in tuples for c in self.schema.over(m)]
+            key = self._key_coordinate(attribute, value, [*coords, *selected])
             keys, values = normalise_value(value)
             dim = _flat_coordinates(self.schema, attribute)[key]
             self._require_typed(
@@ -834,6 +853,8 @@ class WorkingRecord(Record):
                     {c: labels}, {c: self._coordinate_type(attribute, c)}
                 )
             )
+        for chosen in tuples.values():
+            rel = rel.cross(chosen)
         fixed = {c: v for c, v in coords.items() if not _is_labels(v)}
         self._insert_long(
             rel,
@@ -859,10 +880,13 @@ class WorkingRecord(Record):
                 f"the tuples and `add` them with the new label instead"
             )
             raise ValueError(msg)
+        rest, tuples = self._select(dotted, coords)
         if subject in self.schema.multi_dims:
-            self._set_multi_dim_property(subject, name, value, coords)
+            self._set_multi_dim_property(
+                subject, name, value, rest, tuples.get(subject)
+            )
             return
-        self._set_property(subject, name, value, self._select(dotted, coords))
+        self._set_property(subject, name, value, rest)
 
     def _set_property(
         self, dim: str, name: str, value: Any, coords: Mapping[str, Any]
@@ -884,16 +908,25 @@ class WorkingRecord(Record):
         if keyed:
             self._require_typed(dim, list(values), call)
         data = {name: list(values.values()) if keyed else [values]}
-        self.schema.require_listed(dim, data, call)
+        self.schema.require_one_of(dim, data, call)
         self._require_live(dim, data, call)
         if keyed:
             self._require_existing(dim, dim, list(values), call)
         self._stage_axis(dim, name, values)
 
     def _set_multi_dim_property(
-        self, multi: str, name: str, value: Any, coords: Mapping[str, Any]
+        self,
+        multi: str,
+        name: str,
+        value: Any,
+        coords: Mapping[str, Any],
+        chosen: DuckDBPyRelation | None,
     ) -> None:
         """Stage scalar property `name` of `multi` on the tuples its coordinate keywords select, all if none.
+
+        `chosen` are the tuples a category keyword selected, as `_select`
+        returns them, which the coordinate keywords narrow; None where no
+        category keyword was given.
 
         Raises
         ------
@@ -922,18 +955,16 @@ class WorkingRecord(Record):
                 f"{name!r} being a property of the multi-dim {multi!r}"
             )
             raise ValueError(msg)
-        self.schema.require_listed(multi, {name: [value]}, f"`{call}`")
+        self.schema.require_one_of(multi, {name: [value]}, f"`{call}`")
         self._require_live(multi, {name: [value]}, f"`{call}`")
-        tuples = self.dims.get(multi)
+        tuples = self.dims.get(multi) if chosen is None else chosen
         if tuples is None:
             msg = f"`{call}` finds no tuple of {multi!r}; `add` them first"
             raise KeyError(msg)
         for coordinate, given in coords.items():
             labels = list(given) if _is_labels(given) else [given]
             self._require_typed(over[coordinate], labels, f"`{call}`")
-            tuples = tuples.filter(
-                fn.struct_extract(col(multi), lit(coordinate)).isin(*map(lit, labels))
-            )
+            tuples = tuples.filter(_field_in(multi, coordinate, labels))
         rel = tuples.project(col(multi))
         if coords and rel.limit(1).fetchone() is None:
             scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
@@ -991,22 +1022,36 @@ class WorkingRecord(Record):
                 self._require_typed(dim, values, call)
                 self._require_existing(name, dim, values, call, subject)
 
-    def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
-        """`coords` with each property keyword replaced by the labels it selects.
+    def _select(
+        self, name: str, coords: Mapping[str, Any]
+    ) -> tuple[dict[str, Any], dict[str, DuckDBPyRelation]]:
+        """`coords` with each property keyword replaced by the labels or tuples it selects.
 
         Those of its dim storing one of the keyword's values, as staged, each
         under the one coordinate of attribute or dotted dim property `name`
         over the dim. A keyword naming a coordinate of `name` is that
         coordinate, whatever property shares its name; any other names a
-        property of a dim `name` reaches, else of any dim.
+        property of a dim `name` reaches, else of any dim. A property of a
+        multi-dim attribute `name` is over, or dotted `name` is a property
+        of, selects its tuples instead, which the keywords naming its
+        coordinates narrow. For dotted `name` of a multi-dim, a property of
+        a dim one of its coordinates draws on selects the tuples holding
+        those labels there.
+
+        Returns
+        -------
+        tuple of dict and dict
+            The keywords, each property one replaced by the labels it
+            selects; and per multi-dim selected by a property, its tuples.
 
         Raises
         ------
         ValueError
             Where the keyword is a property of several dims `name` reaches,
             `name` reaches the dim through no coordinate or several, the
-            coordinate is also given as a keyword, a keyword is dotted, or a
-            value is a label its dim does not list.
+            coordinate is also given as a keyword, a keyword is dotted, a
+            value is a label its dim does not list, or the keyword is a
+            property of a multi-dim `name` is not over.
 
         Notes
         -----
@@ -1014,8 +1059,13 @@ class WorkingRecord(Record):
         """
         call = f"set({name!r}, ...)"
         subject, dot, _ = name.partition(".")
-        flat = {subject: subject} if dot else _flat_coordinates(self.schema, name)
-        reached = set(flat.values())
+        if dot:
+            flat = self.schema.over(subject) or {subject: subject}
+            over: tuple[str, ...] = (subject,)
+        else:
+            flat = _flat_coordinates(self.schema, name)
+            over = self.schema.multi_dims_of(name)
+        reached = {*flat.values(), *over}
         by_dim: dict[str, dict[str, list[Any]]] = {}
         rest: dict[str, Any] = {}
         for c, given in coords.items():
@@ -1026,7 +1076,9 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
             owners = [
-                d for d in self.schema.dims if c in self.schema.properties.get(d, {})
+                d
+                for d in self.schema.dimensions
+                if c in self.schema.properties.get(d, {})
             ]
             if c in flat or not owners:
                 rest[c] = given
@@ -1040,6 +1092,12 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             values = list(given) if _is_labels(given) else [given]
             by_dim.setdefault((among or owners)[0], {})[c] = values
+        tuples = {
+            m: self._tuples_matching(m, by_dim.pop(m), name)
+            for m in self.schema.multi_dims
+            if m in by_dim
+        }
+        drawn = []
         for dim, wanted in by_dim.items():
             drawing = [c for c, d in flat.items() if d == dim]
             if len(drawing) != 1:
@@ -1056,9 +1114,47 @@ class WorkingRecord(Record):
                     f"{sorted(wanted)} too; give its labels one way"
                 )
                 raise ValueError(msg)
-            self.schema.require_listed(dim, wanted, f"`{call}`")
+            self.schema.require_one_of(dim, wanted, f"`{call}`")
             rest[coordinate] = self._labels_matching(dim, wanted)
-        return rest
+            drawn.append(coordinate)
+        if dot and drawn and subject in self.schema.multi_dims:
+            held = self.dims.get(subject)
+            if held is not None:
+                tuples.setdefault(subject, held)
+        for multi, chosen in tuples.items():
+            for field in self.schema.over(multi):
+                if field in rest:
+                    given = rest.pop(field)
+                    labels = list(given) if _is_labels(given) else [given]
+                    chosen = chosen.filter(_field_in(multi, field, labels))
+            tuples[multi] = chosen
+        return rest, tuples
+
+    def _tuples_matching(
+        self, multi: str, wanted: Mapping[str, list[Any]], name: str
+    ) -> DuckDBPyRelation:
+        """The tuples of `multi`, as staged, storing one of `wanted`'s values of each property.
+
+        Raises
+        ------
+        ValueError
+            Where `name` is neither an attribute over `multi` nor a dotted
+            property of it, or a value is a label its dim does not list.
+        """
+        call = f"set({name!r}, ...)"
+        if multi != name.partition(".")[0] and multi not in self.schema.multi_dims_of(
+            name
+        ):
+            msg = (
+                f"`{call}` selects by {sorted(wanted)}, properties of the "
+                f"multi-dim {multi!r}, which {name!r} is not over"
+            )
+            raise ValueError(msg)
+        self.schema.require_one_of(multi, wanted, f"`{call}`")
+        axis = self.properties.get(multi)
+        if axis is None:
+            return empty_relation(self.con, **{multi: self._column_type(multi)})
+        return matching(axis, wanted).project(col(multi))
 
     def _labels_matching(self, dim: str, wanted: Mapping[str, list[Any]]) -> list[Any]:
         """The labels of `dim`, as staged, storing one of `wanted`'s values of each property."""
@@ -1371,11 +1467,12 @@ class WorkingRecord(Record):
             On a frame for a dim that is no multi-dim, or a value that is no
             frame DuckDB rescans.
         ValueError
-            On an attribute, a column the axis file has no place for, a
-            sequence of the wrong length, a label its dim does not list,
-            `dim`'s own included, a label whose type does not fit the dtype
-            of `dim`, a tuple missing a coordinate or naming NULL in one, or a
-            frame carrying both the struct column and a coordinate column.
+            On a dim with `one_of`, whose axis is the schema's, an
+            attribute, a column the axis file has no place for, a sequence of
+            the wrong length, a property value its dim does not list, a label
+            whose type does not fit the dtype of `dim`, a tuple missing a
+            coordinate or naming NULL in one, or a frame carrying both the
+            struct column and a coordinate column.
 
         Notes
         -----
@@ -1386,10 +1483,11 @@ class WorkingRecord(Record):
         if dim not in self.schema.dimensions:
             msg = f"the schema declares no dim {dim!r}"
             raise KeyError(msg)
+        call = f"add({dim!r}, ...)"
+        self._refuse_one_of(dim, f"`{call}`")
         if dim in self.schema.multi_dims:
             self._add_tuples(dim, labels, columns)
             return
-        call = f"add({dim!r}, ...)"
         kind = f"{_AXIS_PREFIX}{dim}"
         names = _plain_labels(dim, labels, f"`{call}`")
         self._reject_undeclared(f"`{call}`", _axis_columns(self.schema, dim), columns)
@@ -1402,7 +1500,7 @@ class WorkingRecord(Record):
                     f"`{call}` has {len(data[c])} {c!r} values for {len(names)} labels"
                 )
                 raise ValueError(msg)
-        self.schema.require_listed(dim, data, f"`{call}`")
+        self.schema.require_one_of(dim, data, f"`{call}`")
         self._require_live(dim, data, f"`{call}`")
         rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
         table = self._ensure(kind)
@@ -1431,10 +1529,10 @@ class WorkingRecord(Record):
         TypeError
             As `add` does.
         ValueError
-            On a label whose type does not fit the dtype of `dim`, a tuple
-            given as `add` refuses it, or while a property
-            that refers to `dim` stores one of `labels` in the record as
-            staged.
+            On a dim with `one_of`, whose axis is the schema's, a label whose
+            type does not fit the dtype of `dim`, a tuple given as `add`
+            refuses it, or while a property that refers to `dim` stores one of
+            `labels` in the record as staged.
 
         Notes
         -----
@@ -1442,6 +1540,7 @@ class WorkingRecord(Record):
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
         """
         call = f"`remove({dim!r}, ...)`"
+        self._refuse_one_of(dim, call)
         if dim in self.schema.multi_dims:
             if not is_frame(labels) and not labels:
                 return
@@ -1462,10 +1561,7 @@ class WorkingRecord(Record):
                 continue
             naming = reduce(
                 operator.or_,
-                (
-                    fn.struct_extract(col(m), lit(f)).isin(*map(lit, labels))
-                    for f in fields
-                ),
+                (_field_in(m, f, labels) for f in fields),
             )
             if staged[m].filter(naming).limit(1).fetchone() is None:
                 continue
@@ -1474,6 +1570,28 @@ class WorkingRecord(Record):
                 self._delete(table, gone, dim, fn.struct_extract(col(table, m), lit(f)))
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._delete(table, gone, dim, col(table, dim))
+
+    def _refuse_one_of(self, dim: str, call: str) -> None:
+        """Refuse an edit to the axis of `dim` where it has `one_of`.
+
+        Raises
+        ------
+        ValueError
+            Naming `call` and the list.
+
+        Notes
+        -----
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        """
+        if dim not in self.schema.one_of_dims:
+            return
+        msg = (
+            f"{call} is refused: {dim!r} lists its labels with `one_of`, "
+            f"{list(self.schema.dimensions[dim].one_of or ())}, so its axis is "
+            f"the schema's; change the schema instead "
+            f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+        )
+        raise ValueError(msg)
 
     def _add_tuples(
         self, multi: str, tuples: _Labels, columns: Mapping[str, Any]

@@ -78,6 +78,7 @@ def test_a_property_takes_its_dims_type_and_categorizes_if_the_dim_lists_labels(
     """Its values are the dim's labels, typed as them; categories only where the dim has `one_of`."""
     s = _schema(
         dimensions={**_schema().dimensions, "state": Dimension(one_of=one_of)},
+        properties={"bus": _schema().properties["bus"]},
         partial=frozenset({"bus"}),
     )
     assert s.column_type("state", "bus") == duck
@@ -523,9 +524,10 @@ def test_add_refuses_a_tuple_property_label_the_dim_does_not_list(store):
     revision = empty_root(store)
     dimensions = {**_schema().dimensions, "country": Dimension(one_of=["DE", "NO"])}
     write_schema(_schema(dimensions=dimensions), store)
-    write_axis(revision, "country", [{"country": "DE"}])
     staged = WorkingRecord(revision.record)
-    with pytest.raises(KeyError, match="has `one_of`, so use one of its labels"):
+    with pytest.raises(
+        KeyError, match=r"its `one_of`, \['DE', 'NO'\], does not hold; use one of"
+    ):
         staged.add("bus_state", [{"bus": "a", "state": "b"}], country="coal")
 
 

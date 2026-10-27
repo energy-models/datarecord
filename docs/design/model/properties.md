@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Properties and categories
 
-A property holds one value per label of its subject, which is a dim, a [multi-dim](multi-dims.md)'s tuples being its labels. It describes the label, so it has no `dims` of its own. A caller names a property as `subject.name`, and a plain name means an attribute. A property may refer to a dim, and then each value is a live label of that dim. If that dim has `one_of` and the subject is in `partial` and no multi-dim, the property categorizes the subject. Categories select labels and key per-category defaults.
+A property holds one value per label of its subject, which is a dim, a [multi-dim](multi-dims.md)'s tuples being its labels. It describes the label, so it has no `dims` of its own. A caller names a property as `subject.name`, and a plain name means an attribute. A property may refer to a dim, and then each value is a live label of that dim. If that dim has `one_of` and the subject is in `partial`, the property categorizes the subject, a multi-dim's tuples as a dim's labels. Categories select labels and key per-category defaults.
 
 ## Properties
 
@@ -15,6 +15,7 @@ Properties are declared per subject:
 ```python
 dimensions = {
     "ctype": Dimension(one_of=["Generator", "Line", "Load"]),
+    "role": Dimension(one_of=["input", "output", "attached"]),
     "carrier": Dimension(dtype="str"),
     "country": Dimension(dtype="str"),
     ...,
@@ -33,7 +34,7 @@ properties = {
         "country": PropertySpec(one_of="country"),
     },
     "carrier": {"color": PropertySpec(dtype="str", default="")},
-    "connection": {"role": PropertySpec(dtype="str")},
+    "connection": {"role": PropertySpec(one_of="role")},
 }
 ```
 
@@ -51,7 +52,7 @@ A column keeps its plain name. The frames of `properties[subject]`, and the cate
 
 ### Referring to a dim
 
-A property may refer to a dim with `one_of: <dim>` in place of `dtype`. Its values are that dim's labels, typed as the dim ([dtypes](schema.md#dtypes)). Above, `entity.carrier` and `bus.carrier` refer to `carrier`, and `bus.country` to `country`. Any subject, a multi-dim or not, may declare such a property. The schema refuses at load a property that refers to an undeclared dim or to a multi-dim.
+A property may refer to a dim with `one_of: <dim>` in place of `dtype`. Its values are that dim's labels, typed as the dim ([dtypes](schema.md#dtypes)). Above, `entity.carrier` and `bus.carrier` refer to `carrier`, and `bus.country` to `country`. Any subject, a multi-dim or not, may declare such a property. The schema refuses at load a property that refers to an undeclared dim or to a multi-dim. A [dim with `one_of`](dims.md#a-dim-with-one_of) may be referred to but declares no property of its own, having no axis file to hold one.
 
 A stored value that is not NULL must be a live label of the dim. The record checks it where it checks a multi-dim's coordinate. [`set` and `add`](../use/editing.md#validation) refuse a label that the record as staged lacks. The [writer](../layers/removal.md) refuses a layer that stores a label the layer removes. [`remove`](../use/editing.md#add-remove) refuses a label that a property still holds. NULL is no label.
 
@@ -65,10 +66,10 @@ An attribute over `country` reads back keyed by country. A consumer that needs i
 
 A property categorizes its subject when both of these hold:
 
-- The subject is a dim in [`partial`](../layers/tree.md#partial-the-granularity-of-an-override), and no multi-dim. Only there is a dim owned per label, and a default per label needs that. A [multi-dim](multi-dims.md#one-struct-column) is never categorized.
-- The property refers to a dim with `one_of`. The `one_of` is a declared list, so the schema checks each category that a default or a selection names.
+- The subject is in [`partial`](../layers/tree.md#partial-the-granularity-of-an-override), a [multi-dim](multi-dims.md#categories-of-a-multi-dim) among them. Only there is a dim owned per label, and a default per label needs that.
+- The property refers to a dim with `one_of`. The `one_of` is a declared list, the axis of that dim, so the schema checks each category that a default or a selection names, and every category it accepts is a label the record holds.
 
-`entity.ctype: {one_of: ctype}` with `ctype: {one_of: [Generator, Line, ...]}` is one. Its values are the subject's categories along that property. A [`default_by`](#default_by-a-default-per-category) keys on them, and a [selector keyword](../use/editing.md#set) selects by them. `Schema.categorizing(dim)` lists a dim's categorizing properties in declaration order. A dim may have several: a `technology` property that refers to a dim `technology` with `one_of` categorizes `entity` beside `ctype`. The schema refuses a `default_by` key on a property that fails a condition, and the error names the property and the reason.
+`entity.ctype: {one_of: ctype}` with `ctype: {one_of: [Generator, Line, ...]}` is one, and so is `connection.role: {one_of: role}` with `connection` in `partial`. Its values are the subject's categories along that property. A [`default_by`](#default_by-a-default-per-category) keys on them, and a [selector keyword](../use/editing.md#set) selects by them. `Schema.categorizing(dim)` lists a dim's categorizing properties in declaration order. A dim may have several: a `technology` property that refers to a dim `technology` with `one_of` categorizes `entity` beside `ctype`. The schema refuses a `default_by` key on a property that fails a condition, and the error names the property and the reason.
 
 A label's categories are its values of the categorizing properties. An entity with `ctype = Generator` has the category `Generator`, which is itself a label of the dim `ctype`.
 
@@ -77,7 +78,7 @@ Categories do two things:
 - They select labels. [`flags(ctype="Generator")`](../use/reading.md#flags), a [selector keyword](../use/editing.md#set) and a consumer's per-category frame all pick the labels with that category.
 - They pick a default. `default_for(name, ctype="Generator")` gives the default of an attribute or property for such a label.
 
-The keyword is the property's plain name, `ctype`, not `entity.ctype`. A category in the `one_of` that no label holds is valid and selects no label.
+The keyword is the property's plain name, `ctype`, not `entity.ctype`. A category in the `one_of` that no label holds is valid and selects no label. A multi-dim's category selects its tuples the same way: `flags(role="output")` and the keyword `role="output"` on an attribute over `connection` pick the output connections.
 
 A label's category can change, because `set` patches a categorizing property like any other. The label keeps its attribute values, and a per-category read uses its current categories.
 

@@ -165,8 +165,8 @@ class Schema(_Declared):
         Subject dim -> property name -> spec: the columns of
         `dims/{dim}.parquet` that describe its labels. A name is unique
         within its subject only, addressed as `subject.name`. A property of a
-        dim in `partial` that refers to a dim with `one_of` categorizes its
-        subject, unless the subject is a multi-dim.
+        dim in `partial` that refers to a dim with
+        `one_of` categorizes its subject. A dim with `one_of` has none.
     attributes
         Attribute -> spec, record-wide. One attribute is one spec and
         one `attributes/<attr>.parquet` with one dtype.
@@ -271,14 +271,10 @@ class Schema(_Declared):
         """
         subject, _, prop = name.partition(".")
         coordinate = prop in self.over(subject) if subject in self.dimensions else False
-        if prop not in self.properties.get(subject, {}) and not coordinate:
+        if coordinate:
+            reason = f"is a coordinate of the multi-dim {subject!r}, part of its key"
+        elif prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
-        elif subject in self.multi_dims:
-            kind = "a coordinate" if coordinate else "a property"
-            reason = (
-                f"is {kind} of the multi-dim {subject!r}; a multi-dim is never "
-                f"categorized"
-            )
         elif (one_of := self.properties[subject][prop].one_of) is None:
             reason = "refers to no dim"
         elif self.dimensions[one_of].one_of is None:
@@ -297,6 +293,15 @@ class Schema(_Declared):
             msg = (
                 f"properties are declared on undeclared dims {unknown}; "
                 f"a property is a column of its subject's axis file"
+            )
+            raise ValueError(msg)
+        on_one_of = sorted(set(self.properties) & set(self.one_of_dims))
+        if on_one_of:
+            msg = (
+                f"properties are declared on {on_one_of}, which list their labels "
+                f"with `one_of`; such a dim's axis is the schema's list, with "
+                f"no axis file to hold a property "
+                f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
             )
             raise ValueError(msg)
         for (subject, name), dim in self.one_of_properties().items():
@@ -371,10 +376,8 @@ class Schema(_Declared):
         }
 
     def _reached_by(self, subject: str) -> frozenset[str]:
-        """The dims a property of `subject` reaches: the dim, or those its coordinates draw on."""
-        if subject in self.multi_dims:
-            return frozenset(self.over(subject).values())
-        return frozenset({subject})
+        """The dims a property of `subject` reaches: the dim, and those its coordinates draw on."""
+        return frozenset({subject, *self.over(subject).values()})
 
     def _check_names(self) -> None:
         """Refuse every declared name that cannot be a column of its own.
@@ -472,6 +475,16 @@ class Schema(_Declared):
         - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
         return tuple(d for d, spec in self.dimensions.items() if spec.over is not None)
+
+    @property
+    def one_of_dims(self) -> tuple[str, ...]:
+        """Every dim with `one_of`, in declaration order: those whose axis is the schema's list.
+
+        Notes
+        -----
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        """
+        return tuple(d for d, spec in self.dimensions.items() if spec.one_of)
 
     def over(self, dim: str) -> dict[str, str]:
         """The coordinates of `dim`, each to the dim it draws on, in field order; empty for a dim that is no multi-dim.
@@ -635,13 +648,13 @@ class Schema(_Declared):
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
 
         A categorizing property is a property of `dim` that refers to a dim with
-        `one_of`. Only a dim in `partial` that is no multi-dim has any.
+        `one_of`. Only a dim in `partial` has any.
 
         Notes
         -----
         - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
-        if dim not in self.dims or dim not in (self.partial or set()):
+        if dim not in (self.partial or set()):
             return ()
         return tuple(
             name
@@ -655,9 +668,9 @@ class Schema(_Declared):
 
         These are the `one_of` labels of the dim the property refers to; there are none if that dim has no `one_of`.
         """
-        return self._listed(self.properties[dim][name]) or ()
+        return self._one_of_labels(self.properties[dim][name]) or ()
 
-    def _listed(self, spec: Dimension | PropertySpec) -> tuple[str, ...] | None:
+    def _one_of_labels(self, spec: Dimension | PropertySpec) -> tuple[str, ...] | None:
         """Return the `one_of` labels of a dim, or None if it has none.
 
         `spec` is the dim, or a property that refers to the dim.
@@ -689,7 +702,7 @@ class Schema(_Declared):
             )
             raise ValueError(msg)
 
-    def require_listed(
+    def require_one_of(
         self, subject: str, data: Mapping[str, Iterable[Any]], what: str
     ) -> None:
         """Refuse a label its dim does not list.
@@ -712,18 +725,18 @@ class Schema(_Declared):
         specs = self.properties.get(subject, {})
         for name, values in data.items():
             if name in specs:
-                listed = self._listed(specs[name])
+                labels = self._one_of_labels(specs[name])
             elif name == subject and subject in self.dimensions:
-                listed = self._listed(self.dimensions[subject])
+                labels = self._one_of_labels(self.dimensions[subject])
             else:
                 continue
-            if listed is None:
+            if labels is None:
                 continue
-            unknown = sorted({str(v) for v in values if v is not None} - {*listed})
+            unknown = sorted({str(v) for v in values if v is not None} - {*labels})
             if unknown:
                 msg = (
                     f"{what} gives {name!r} labels {unknown}, which its dim's "
-                    f"`one_of` does not hold; `one_of` is {list(listed)}"
+                    f"`one_of` does not hold; `one_of` is {list(labels)}"
                 )
                 raise ValueError(msg)
 

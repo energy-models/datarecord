@@ -19,8 +19,8 @@ Every other input, every number among them, is an attribute, so `p_nom` is long 
 
 `entity.ctype` is `{one_of: ctype}`, where `ctype` is a dim with `one_of` that holds the types exported as entities.
 `connection.role` is `{one_of: role}`, where `role` is a dim with `one_of` that holds `input`, `output` and `attached`.
-`to_datarecord` writes both axes whole, with every label in `one_of`, those the network leaves unused included.
-This is the tool's convention, since the axis of a dim with `one_of` holds [only the labels that layers added](../model/schema.md#dtypes).
+`to_datarecord` writes neither axis: the axis of a [dim with `one_of`](../model/dims.md#a-dim-with-one_of) is its list, every type and role, those the network leaves unused included.
+`connection` is in `partial`, so `role` [categorizes it](../model/multi-dims.md#categories-of-a-multi-dim): `flags(role="output")` answers for the output connections, and `role="output"` selects them in `set`.
 
 A default that differs per component, such as `sign`, `p_min_pu` or `p_set`, is a [`default_by`](../model/properties.md#default_by-a-default-per-category) on `entity.ctype`.
 `build` applies it when it builds a component's static frame from the type's entities and the entity-only rows of its attributes.

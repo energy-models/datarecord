@@ -73,7 +73,6 @@ def _small(store, **declared):
     write_schema(schema(**declared), store)
     revision = empty_root(store)
     staged = WorkingRecord(revision.record)
-    staged.add("ctype", [GEN, "Bus"])
     staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
     staged.add("entity", ["Norway"], ctype="Bus")
     staged.add("bus", ["Norway"])
@@ -347,11 +346,6 @@ _ENTITY = "does not fit 'entity' of dtype str"
             lambda s: s.add("entity", ["zz"], carrier=5),
             "does not fit 'carrier' of dtype str",
             id="add-a-property-referring-to-a-dim",
-        ),
-        pytest.param(
-            lambda s: s.add("ctype", [5]),
-            """does not fit 'ctype' of dtype {"dtype": "str", "one_of":""",
-            id="add-to-a-dim-listing-labels",
         ),
         pytest.param(
             lambda s: s.remove("entity", [1]),
@@ -754,7 +748,6 @@ def units(store):
     )
     staged = WorkingRecord(empty_root(store).record)
     staged.add("hour", [0])
-    staged.add("tech", ["plant", "node"])
     staged.add(
         "unit",
         ["p1", "p2", "n1"],
@@ -814,13 +807,6 @@ def test_set_may_change_a_category(units):
             "'tech' labels \\['mill'\\]",
         ),
         (
-            "add",
-            ("tech", ["mill"]),
-            {},
-            ValueError,
-            "'tech' labels \\['mill'\\].*`one_of` is \\['plant', 'node'\\]",
-        ),
-        (
             "set",
             ("output", 1.0),
             {"tech": "plant", "unit": ["p1"], "hour": [0]},
@@ -840,7 +826,6 @@ def test_set_may_change_a_category(units):
         "unknown-category",
         "add-unknown-category",
         "keyword-unknown-category",
-        "add-unlisted-label",
         "keyword-and-label",
         "keyword-reaching-no-coordinate",
     ],
@@ -858,29 +843,23 @@ def test_an_edit_refuses_an_unknown_label_category_or_keyword(
         getattr(units, op)(*args, **kwargs)
 
 
-def test_a_dim_listing_labels_holds_the_labels_added_and_removes_like_any_dim(units):
-    """Its list bounds what may be added; its axis is what was.
+@pytest.mark.parametrize("op", ["add", "remove"])
+def test_a_dim_with_one_of_is_the_schemas_list(units, op):
+    """Its axis is its list, in order, which no edit changes.
 
     Notes
     -----
-    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
-    with pytest.raises(ValueError, match="names them"):
-        units.remove("tech", ["node"])
-    units.set("unit.tech", "plant", unit=["n1"])
-    units.remove("tech", ["node"])
-    assert units.dims["tech"].df()["tech"].tolist() == ["plant"], (
-        "a listed label not on the axis is absent"
-    )
     with pytest.raises(
-        KeyError, match="names 'tech' labels \\['node'\\] in 'unit.tech'"
+        ValueError, match=rf"`{op}\('tech', ...\)` is refused: 'tech' lists its labels"
     ):
-        units.add("unit", ["n2"], tech="node")
-
-    units.add("tech", ["node"])
-    units.add("unit", ["n2"], tech="node")
-    assert _unit_axis(units).loc["n2", "tech"] == "node"
+        getattr(units, op)("tech", ["node"])
+    assert units.dims["tech"].df()["tech"].tolist() == ["plant", "node"], (
+        "the axis is the list"
+    )
+    assert "tech" not in units.edits.axes(), "nothing is staged for it"
 
 
 def _output_units(record):

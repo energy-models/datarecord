@@ -21,6 +21,7 @@ import pytest
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.protocols import EMPTY, LazyRelations
+from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from datarecord.store.manifest import read_schema
@@ -124,6 +125,7 @@ def _named_axes(schema, frames) -> dict[str, pd.DataFrame]:
 
 
 _SCHEMA = schema()
+_CTYPES = list(_SCHEMA.dimensions["ctype"].one_of or ())
 
 
 def _long(**overrides) -> pd.DataFrame:
@@ -261,6 +263,87 @@ def test_a_write_rejects_a_category_its_dim_does_not_list(store):
                 properties={"entity": entities},
             )
         )
+    _nothing_reachable(store)
+
+
+def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
+    """Its axis is the schema's list: no write, cache or layer holds a file of it.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
+    assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
+    revision.materialise()
+    out = tmp_path / "flat"
+    store.workspace.write(revision.record, str(out))
+    written = [
+        Path(store.layer_dir(revision.id)),
+        Path(store.resolved_dir(revision.id)),
+        out,
+    ]
+    assert not [d for d in written if (d / "dims" / "ctype.parquet").exists()], (
+        "neither the layer, its cache nor a record written whole holds the list"
+    )
+
+    forged = empty_root(store)
+    write_axis(forged, "ctype", [{"ctype": "Process"}])
+    with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
+        store.root(ParquetLayer(forged.id, _SCHEMA, store))
+    with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
+        forged.record.dims  # noqa: B018
+
+
+def _with_ctype_axis(labels) -> _Source:
+    """A record answering `labels` as its axis of `ctype`, a dim with `one_of`."""
+    return _Source(
+        _SCHEMA,
+        attributes={"p_nom": _long()},
+        dims={
+            "entity": pd.DataFrame({"entity": ["steel_dri"]}),
+            "ctype": pd.DataFrame({"ctype": labels}),
+        },
+    )
+
+
+def test_a_record_handing_over_the_one_of_list_writes_no_file_of_it(store):
+    """A `RecordLike` answers every dim's axis, the list of a dim with `one_of` included.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    revision = store.root(_with_ctype_axis(_CTYPES))
+    assert not (Path(store.layer_dir(revision.id)) / "dims" / "ctype.parquet").exists()
+    assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
+
+
+@pytest.mark.parametrize(
+    ("labels", "match"),
+    [
+        (["Process", "Bus"], r"'ctype' lacks \[.*\], but"),
+        ([*_CTYPES, "Nope"], r"'ctype' adds \['Nope'\], but"),
+        ([*reversed(_CTYPES)], r"'ctype' holds the labels in the order"),
+        ([*_CTYPES, _CTYPES[0]], rf"'ctype' repeats \['{_CTYPES[0]}'\], but"),
+        ([*_CTYPES, None], r"'ctype' holds NULL, but"),
+        (
+            [None, *_CTYPES[1:], "Nope", "Nope"],
+            rf"'ctype' holds NULL and repeats \['Nope'\] and lacks "
+            rf"\['{_CTYPES[0]}'\] and adds \['Nope'\], but",
+        ),
+    ],
+    ids=["short", "extra", "reordered", "repeated", "null", "several"],
+)
+def test_a_record_handing_over_another_one_of_axis_is_refused(store, labels, match):
+    """Dropping it would lose what it says; the list is the axis, so it is refused.
+
+    Notes
+    -----
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    """
+    with pytest.raises(ValueError, match=match):
+        store.root(_with_ctype_axis(labels))
     _nothing_reachable(store)
 
 
@@ -788,7 +871,6 @@ def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
     write_schema(_SCHEMA, store)
     base = empty_root(store)
     staged = WorkingRecord(base.record)
-    staged.add("ctype", ["Generator"])
     staged.add("entity", _ENTITIES, ctype="Generator")
     staged.add("bus", _BUSES)
     staged.add("scenario", _SCENARIOS)
@@ -1411,7 +1493,6 @@ def _plant_layer(store, schema: Schema, **columns):
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
-    staged.add("ctype", ["Gen"])
     staged.add("entity", ["g1", "g2"], **columns)
     staged.set("p_nom", {"g1": 1.0, "g2": 2.0})
     return root.child(staged.edits)

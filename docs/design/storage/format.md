@@ -17,7 +17,7 @@ A record that is never written has no directory and answers [the protocol](../us
 ```text
 record/
 ├── manifest.json                   # the schema, and the record's id
-├── dims/<dim>.parquet              # one axis per declared dim, multi-dims included: labels and properties
+├── dims/<dim>.parquet              # one axis per declared dim but those with one_of, multi-dims included: labels and properties
 └── attributes/<attr>.parquet       # one attribute per file, results included
 ```
 
@@ -39,6 +39,9 @@ A label exists at a node when the deepest `dims/<dim>.parquet` on its path has a
 That file's row order is the axis order.
 A layer removes a label by writing the file without it ([removal](../layers/removal.md)).
 Each property is one column, NULL where no layer wrote a value, so a category's frame is a filter on its property column.
+
+A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) has no axis file: its axis is the schema's list, at every node.
+The writer refuses a layer that hands one over, and a read refuses a layer directory that holds one.
 
 ## Where a value lives
 

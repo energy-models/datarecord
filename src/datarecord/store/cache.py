@@ -160,6 +160,9 @@ def _materialise_dims(
 ) -> None:
     """Fold this node's resolved axes into its node cache, not its layer.
 
+    A dim with `one_of` is left out: every read derives its axis from the
+    schema.
+
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
@@ -169,7 +172,8 @@ def _materialise_dims(
     base = store.resolved_dir(revision_id) + "dims/"
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
-        _to_parquet(rel, f"{base}{dim}.parquet")
+        if dim not in schema.one_of_dims:
+            _to_parquet(rel, f"{base}{dim}.parquet")
     dead = store.resolved_dir(revision_id) + "dead/"
     ensure_local_dir(dead)
     for name, rel in dims.dead.items():

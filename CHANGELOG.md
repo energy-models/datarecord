@@ -26,13 +26,12 @@ All notable changes to datarecord are documented here. The format follows
   of that dim. `set` and `add` check them, and the writer checks every layer.
   `remove(dim, labels)` fails while such a property still holds a label.
 - A property that refers to a dim with `one_of`, on a subject in
-  `partial`, categorizes the subject. Categories select labels in
+  `partial`, a multi-dim among them, categorizes the subject. Categories select labels in
   `flags(ctype="Generator")` and in `set("p_max_pu", 0.9, ctype="Generator")`.
   `default_by` gives a default per category. `Schema.categorizing` lists the
   categorizing properties of a subject.
 - A dim of dtype `str` may declare `one_of: [...]`, as in mathspec. Its column
-  is an `ENUM` of those labels, `add` refuses a label outside the list, and
-  its axis holds the labels that were added.
+  is an `ENUM` of those labels, and its axis is the list, in order.
 - `WorkingRecord` edits any dim: `add(dim, labels, **properties)`,
   `remove(dim, labels)` and `set(name, value, **coords)`. `set` writes
   attributes and properties, and a property keyword selects labels when `set`
@@ -138,10 +137,28 @@ All notable changes to datarecord are documented here. The format follows
   one with a column per coordinate instead, or as a list of mappings from
   coordinate to label.
   `connection.bus` names a coordinate wherever `subject.name` stands, and
-  `set` refuses it. A multi-dim is never categorized, and no property refers
-  to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,
+  `set` refuses it. No property refers to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,
   `check_multi_dim_columns` and `coordinate_over`; `dims` lists every dim but
   the multi-dims. The PyPSA tool declares `connection` under `dimensions`.
+- A dim with `one_of` has its axis derived from the list: `record.dims["ctype"]`
+  is the list, and no `dims/<dim>.parquet` or `resolved/dims/<dim>.parquet` is
+  written or read for it. The writer refuses a `LayerData` handing one over, a
+  read refuses a layer holding one, and a `RecordLike`'s axis of it is dropped
+  where it is the list, same labels in the same order, and refused otherwise,
+  naming a NULL, a repeated, missing or extra label, or else the order.
+  `add` and `remove` on it are refused, and a property declared on it is
+  refused at load. A record carrying such a file is written again. New on
+  `Schema`: `one_of_dims`; `Schema.require_listed` is `require_one_of`. The
+  PyPSA tool no longer writes the `ctype` and `role` axes.
+- A multi-dim in `partial` is categorized by a property that refers to a dim
+  with `one_of`, as a dim is: `connection.role` categorizes `connection`, so a
+  `default_by` keyed `connection.role` loads, `Schema.categorizing("connection")`
+  lists `role`, and `flags(role="output")`, `default_for(name, role="output")`
+  and the `set` keyword `role="output"` select by it. A role keyword picks the
+  tuples of an attribute over `connection`, narrowed by a coordinate keyword,
+  and of a property of it: `set("connection.note", v, role="output")` patches
+  the output connections, as `set("entity.note", v, ctype="Generator")` does
+  the generators, and `ctype="Link"` on it the connections of links.
 - The design pages are grouped by topic: the data model, layers, using a
   record, storage, frameworks and the package. Each old design page URL
   redirects to its new page. The usage pages are organised by task, and the

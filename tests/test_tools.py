@@ -20,6 +20,7 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord import Workspace
+from datarecord.schema.categories import matching
 from datarecord.store.manifest import read_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
@@ -136,19 +137,47 @@ def test_verify_accepts_a_complete_record(single_revision):
 
 
 @pytest.mark.parametrize("dim", ["ctype", "role"])
-def test_the_tool_writes_every_type_and_role_it_lists(single_revision, dim):
-    """A tool convention, not a rule of dims that list labels: the axis is the whole list.
+def test_the_tool_writes_no_type_or_role_axis(single_revision, dim):
+    """The schema lists every type and role, so the record reads them from it.
 
     Notes
     -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
     record = single_revision.record
-    listed = record.schema.dimensions[dim].one_of
-    assert listed is not None
-    assert record.dims[dim].df()[dim].tolist() == list(listed), (
-        "every label listed, those the network leaves unused included"
+    layer = Path(single_revision.store.layer_dir(single_revision.id))
+    assert not (layer / "dims" / f"{dim}.parquet").exists()
+    one_of = record.schema.dimensions[dim].one_of
+    assert one_of is not None
+    assert record.dims[dim].df()[dim].tolist() == list(one_of), (
+        "every label of `one_of`, those the network leaves unused included"
     )
+
+
+@pytest.mark.parametrize("role", ["input", "output", "attached"])
+def test_flags_per_role_name_the_attributes_reaching_a_connection_of_it(
+    single_revision, role
+):
+    """`role` categorizes `connection`, so `flags(role=...)` reads as `flags(ctype=...)` does.
+
+    Notes
+    -----
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    """
+    record = single_revision.record
+    tuples = matching(record.properties["connection"], {"role": (role,)})
+    over = [
+        a for a in record.attributes if "connection" in record.schema.coordinates_of(a)
+    ]
+    reaching = {
+        a
+        for a in over
+        if record.attributes[a]
+        .join(tuples.project("connection"), "connection")
+        .limit(1)
+        .fetchone()
+    }
+    assert set(record.flags(role=role)) == reaching
 
 
 def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
@@ -415,7 +444,7 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision, store = exported, exported.store
-    # Declared alongside PyPSA's own types, since the listed labels pin the
+    # Declared alongside PyPSA's own types, since the `one_of` labels pin the
     # vocabulary.
     declared = read_schema(store)
     assert declared.categorizing("entity") == (CTYPE,)

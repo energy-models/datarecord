@@ -30,6 +30,7 @@ from duckdb import StarExpression as star
 from datarecord.duck import as_relation, fn, null_safe
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
+    refuse_one_of_file,
     refuse_twice,
     refuse_unheld,
     resolve_coords,
@@ -112,6 +113,8 @@ def write_layer(
         If a multi-dim's tuple or a property that refers to a dim names
         a label dead after the layer, in a subject the layer restates or whose
         rows name a label the layer removes.
+        If `data` hands over the axis of a dim with `one_of`, whose axis is
+        the schema's list.
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
@@ -146,6 +149,7 @@ def write_layer(
     if local:
         Path(staging).mkdir(parents=True)
     try:
+        refuse_one_of_file(schema, data.axes(), "the layer")
         kinds = [
             (
                 "dims",
@@ -558,7 +562,65 @@ class _RecordLikeAsLayerData:
         return as_relation(frames[key], self._con)
 
     def axes(self) -> set[str]:
-        return set(self._dims)
+        """The source's dims but those with `one_of`, whose axis a `RecordLike` answers from the schema.
+
+        Raises
+        ------
+        ValueError
+            As `_require_one_of_axis` does.
+        """
+        return self._axes
+
+    @cached_property
+    def _axes(self) -> set[str]:
+        one_of = set(self._dims) & set(self.schema.one_of_dims)
+        for dim in sorted(one_of):
+            self._require_one_of_axis(dim)
+        return set(self._dims) - one_of
+
+    def _require_one_of_axis(self, dim: str) -> None:
+        """Refuse the source's axis of `dim`, a dim with `one_of`, unless it is the list.
+
+        Dropped rather than written, it may differ from the list only by
+        nothing: the same labels in the same order.
+
+        Raises
+        ------
+        ValueError
+            Naming `dim` and whether the axis holds NULL, the labels it
+            repeats, lacks or adds, or else the order it holds them in.
+
+        Notes
+        -----
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        """
+        rel = as_relation(self._dims[dim], self._con)
+        given = [
+            None if label is None else str(label)
+            for (label,) in rel.project(col(dim)).fetchall()
+        ]
+        expected = list(self.schema.dimensions[dim].one_of or ())
+        if given == expected:
+            return
+        labels = [label for label in given if label is not None]
+        repeated = [label for label in dict.fromkeys(labels) if labels.count(label) > 1]
+        missing = [label for label in expected if label not in labels]
+        extra = [label for label in dict.fromkeys(labels) if label not in expected]
+        problems = {
+            "holds NULL": None in given,
+            f"repeats {repeated}": repeated,
+            f"lacks {missing}": missing,
+            f"adds {extra}": extra,
+        }
+        found = [problem for problem, hit in problems.items() if hit]
+        difference = " and ".join(found) or f"holds the labels in the order {given}"
+        msg = (
+            f"the source's axis of {dim!r} {difference}, but {dim!r} lists its "
+            f"labels with `one_of`, {expected}, so its axis is the schema's "
+            f"list and is written only as it stands "
+            f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+        )
+        raise ValueError(msg)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
         """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.
