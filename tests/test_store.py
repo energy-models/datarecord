@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import duckdb
-import narwhals as nw
 import pytest
 
 from datarecord import Revision, Workspace
@@ -24,6 +23,7 @@ from datarecord.files import Absent, PreconditionFailedError
 from datarecord.layered import write
 from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
+from datarecord.schema import Dimension
 from tests.fixtures import (
     RivalWrite,
     empty_child,
@@ -237,7 +237,7 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
     record = child.record
 
     def read(_):
-        rows = record.attributes["p_max_pu"].collect().to_native()
+        rows = record.attributes["p_max_pu"].fetchall()
         return workspace.con, len(rows)
 
     results = _in_threads(8, read)
@@ -274,7 +274,7 @@ def test_two_threads_adding_one_revision_row_both_succeed(workspace, store, tree
         fresh.close()
 
 
-_NARROW = {"snapshot": nw.Datetime(), "period": nw.Int64()}
+_NARROW = {"snapshot": "datetime", "period": "int"}
 
 
 def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
@@ -299,7 +299,7 @@ def _folded_then_widened(store, partial=frozenset(), *, materialised=False):
             "the map on disk knows nothing of `scenario`"
         )
 
-    wide = {**_NARROW, "scenario": nw.String()}
+    wide = {**_NARROW, "scenario": "str"}
     write_schema(schema(dims=wide, partial=set(partial)), store)
     after = store.revision(revision.id)
     assert after.resolver is not revision.resolver
@@ -328,8 +328,8 @@ def test_a_fold_reads_under_a_widened_schema(store, materialised):
     - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
     """
     after = _folded_then_widened(store, materialised=materialised)
-    rows = after.record.attributes["p_max_pu"].collect()
-    assert rows["value"].to_list() == [0.4], (
+    rows = after.record.attributes["p_max_pu"].df()
+    assert rows["value"].tolist() == [0.4], (
         "a fold made under the narrower schema reads under the wider one"
     )
     flags = after.record.flags()["p_max_pu"]
@@ -357,10 +357,9 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
     assert "scenario" in str(inputs.types[inputs.columns.index("varies")])
     rows = (
         w.attributes["p_max_pu"]
-        .collect()
-        .select("period", "scenario", "value")
-        .sort("period", nulls_last=True)
-        .rows()
+        .project("period, scenario, value")
+        .order("period NULLS LAST")
+        .fetchall()
     )
     assert rows == [(2030, "high", 0.7), (None, None, 0.4)], (
         "the staged row and the frozen one both resolve"
@@ -370,7 +369,7 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
     assert "scenario" not in flags.broadcast, "the frozen row's missing field is unset"
 
 
-def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
+def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
     """The axis table holds `scenario` as its file did, a layer row as declared.
 
     A broadcast row expands against the axis, so the two types meet in one
@@ -381,7 +380,7 @@ def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
     """
-    dims = {**_NARROW, "scenario": nw.Enum(["low", "high"])}
+    dims = {**_NARROW, "scenario": Dimension(one_of=["low", "high"])}
     write_schema(schema(dims=dims), store)
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
@@ -401,14 +400,14 @@ def test_an_enum_dim_resolves_from_fold_tables_after_a_widening(store):
     expected = [("gas", "high", 0.9), ("wind", "high", 0.4), ("wind", "low", 0.4)]
 
     def resolved(revision):
-        frame = revision.record.attributes["p_max_pu"].collect()
-        return sorted(frame.select("entity", "scenario", "value").rows())
+        rel = revision.record.attributes["p_max_pu"]
+        return sorted(rel.project("entity, scenario, value").fetchall())
 
     assert resolved(revision) == expected
-    write_schema(schema(dims={**dims, "region": nw.String()}), store)
+    write_schema(schema(dims={**dims, "region": "str"}), store)
     after = store.revision(revision.id)
     assert resolved(after) == expected, "the cached fold reads under the wider schema"
-    labels = after.record.dims["scenario"].collect()["scenario"].to_list()
+    labels = after.record.dims["scenario"].df()["scenario"].tolist()
     assert sorted(labels) == ["high", "low"]
 
 

@@ -18,7 +18,7 @@ A record holds **entities** (labels unique record-wide, classified by **properti
 
 Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
 
-`datarecord` depends only on `duckdb`, `narwhals` and `pydantic`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
+`datarecord` depends only on `duckdb`, `pydantic` and `mathspec`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 
 ## Documentation
 
@@ -36,6 +36,8 @@ pip install datarecord[pypsa]    # with the PyPSA tool
 pip install datarecord[remote]   # with records on S3
 ```
 
+The package does not yet declare `mathspec`, which is not on PyPI: install it alongside from [GitHub](https://github.com/energy-models/mathspec), at the commit `pixi.toml` pins.
+
 ## A taste
 
 ```python
@@ -44,12 +46,12 @@ from datarecord import Workspace
 ws = Workspace()
 record = ws.at("s3://bucket/my-record/")
 
-record.properties["entity"].collect()  # each entity's stored properties
-record.attributes["p_max_pu"].collect()  # long value rows, one per value
+record.properties["entity"].df()  # each entity's stored properties
+record.attributes["p_max_pu"].df()  # long value rows, one per value
 record.flags(ctype="Generator")  # which axes each attribute uses
 ```
 
-Every frame is a `narwhals.LazyFrame` — a plan, not data. Nothing is read until you `.collect()`.
+Every value is a DuckDB relation — a plan, not data. Nothing is read until you fetch it, with `.df()`, `.pl()` or `.to_arrow_table()`.
 
 Records stack, and a `WorkingRecord` accumulates edits that become one layer when written as a child:
 

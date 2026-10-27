@@ -21,7 +21,7 @@ n.optimize()
 record_back = PyPSA.to_datarecord(n, ws.con)  # the inverse, results included
 ```
 
-`to_datarecord` plans its frames on the connection it is handed — the workspace's that writes them — so they reach the write path without a copy; `build` reads `record.con` itself.
+`to_datarecord` plans its relations on the connection it is handed — the workspace's that writes them — so they reach the write path without a copy; `build` reads `record.con` itself.
 
 `verify` catches what the record layer cannot — an entity type the framework has no registry entry for, a connection `role` it cannot place, a `partial` set that breaks its constant-versus-varying split — and returns a falsy `Requirements` when the record is usable. A stored attribute a type does not take, `p_max_pu` on a load, is left out of the build and listed in its `ignored`, without making it truthy. `build` raises `UnsupportedRecordError` rather than producing a partial model.
 
@@ -37,7 +37,7 @@ record.attributes["v_nom"]  # bus | attribute | breakpoint | value
 record.attributes["marginal_price"]  # bus | snapshot | scenario | ..., a result
 ```
 
-A property is named by its subject, so `x` is a line's reactance and `bus.x` a bus's coordinate. `entity.carrier` and `bus.carrier` are `into` `carrier`, naming its labels:
+A property is named by its subject, so `x` is a line's reactance and `bus.x` a bus's coordinate. `entity.carrier` and `bus.carrier` are `{"one_of": "carrier"}`, so their values are its labels:
 
 ```python
 w.add("carrier", ["H2"], color="#f0f")

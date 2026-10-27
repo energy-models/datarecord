@@ -49,7 +49,7 @@ A PyPSA-Eur workflow exports its network with `PyPSA.to_datarecord(n, ws.con)`, 
 
 ### The combined record
 
-`combine` computes the united schema and refuses an extension holding rows of an attribute or result the base declares, both at the call and from the mapping keys alone ([`Frames`](../record.md#frames)). Every frame is planned on `con` through `as_relation`, so a relation from another connection is [refused](../read-path.md#a-relation-from-another-connection-is-rejected) and nothing is collected.
+`combine` computes the united schema and refuses an extension holding rows of an attribute or result the base declares, both at the call and from the mapping keys alone ([`Frames`](../record.md)). Every frame is planned on `con` through `as_relation`, so a relation from another connection is [refused](../read-path.md#a-relation-from-another-connection-is-rejected) and nothing is collected.
 
 - **`dims`, `groups`**: union by key, the base's keys in its order, then the extension's new keys in its order ([axis order](../record.md#axis-order)).
 - **`properties[s]`**: joined per subject over the united keys. A base-declared column comes from the base for its keys and from the extension for keys only the extension holds; an extension-added column comes from the extension; anything else reads NULL.
@@ -120,7 +120,7 @@ Checks: reading every member of a combination over frames that raise on collect 
 ## Rejected Ideas
 
 - **An extension layer**, whether declaring its own schema additions or written under a hand-united schema. The first is the layered schema [one schema per record](../schema.md#one-schema-per-record) rejects. Both need a tree, cannot be read before written, and restate the base's properties of every shared subject.
-- **The prototype's eager widening**, which collected both sides to pyarrow and broke [lazy `Frames`](../record.md#frames).
+- **The prototype's eager widening**, which collected both sides to pyarrow and broke [lazy `Frames`](../record.md).
 - **Refusing only colliding trait names**, which lets a new trait narrow base attributes.
 - **Taking `flags` from the sides.** The extension has no category data, and the PyPSA tool's record answers `{}`.
 - **Merging two sides' rows of one attribute.** Dividing overlapping rows is a fold.

@@ -81,8 +81,8 @@ def test_a_standalone_directory_writes_and_reads_its_manifest(workspace, bucket)
     try:
         record = elsewhere.at(out)
         assert record.schema == _SCHEMA
-        rows = record.attributes["p_nom"].collect().to_native()
-        assert rows["value"].to_pylist() == [1.0]
+        rows = record.attributes["p_nom"].df()
+        assert rows["value"].tolist() == [1.0]
     finally:
         elsewhere.close()
 

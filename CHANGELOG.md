@@ -217,9 +217,59 @@ All notable changes to datarecord are documented here. The format follows
   results of `base` it does not write again; a NULL series value, input or
   result, leaves the component at its static value on export. Every record
   is re-exported.
+- **narwhals is gone** (breaking): `record.dims`, `properties`, `groups` and
+  `attributes` hand over bare `DuckDBPyRelation`s, `Frames` and `LazyFrames`
+  are `Relations` and `LazyRelations`, and `Record` moves to
+  `datarecord.record`. `set`, `add_group` and the writer take a relation or a
+  pandas, polars or arrow frame, read by DuckDB's own scanner, and refuse
+  timestamps with a time zone, casting a column only to a wider type of its
+  kind and refusing any other. A dtype is mathspec's (`float`, `int`, `bool`, `str`, `datetime`);
+  a `str` dim may list its labels, `one_of: [...]` beside its `dtype` as in
+  mathspec: its column is an `ENUM` of them, `add` refuses an unlisted label,
+  and its axis holds only the labels added. A property declares exactly one
+  of `dtype` and `one_of: <dim>`, and one that declares `one_of` takes its
+  labels from that dim, which replaces `into` on properties and groups. The
+  PyPSA tool declares the dims `ctype` and `role`, which list their labels,
+  writing every label they list, and a `timestep` dim. Every record is
+  re-exported.
 
 ### Fixed
 
+- `set` refuses a frame column the schema does not declare for the
+  attribute, naming the column and the columns it takes, where it dropped
+  the column before.
+- A later `set` replaces the rows an earlier one staged that it covers,
+  that is, at each of their coordinates it names the same label or leaves
+  NULL, labels selected by a property keyword or a group's fields included:
+  `set("p_nom", 0.9, entity=["a"])` and then `set("p_nom", 0.95)` read
+  0.95 at `a` rather than 0.9. The other order keeps both rows, and `a`
+  reads 0.9.
+- A layer holding a default and its exception, such as
+  `set("p_nom", 0.95)` and then `set("p_nom", 0.9, entity=["a"])`, reads one
+  value at each coordinate: within one layer, the more specific row wins, a row naming a
+  label of a dim being more specific than one leaving that dim NULL. A write
+  of two rows covering one coordinate where each names a dim the other leaves
+  NULL is refused, and a read of such a layer written another way fails, each
+  naming the attribute and the coordinate.
+- A layer holding two rows of one attribute naming the same labels at one
+  breakpoint is refused at write rather than read as either value, and a read
+  of such a layer written another way fails where it picks the more specific
+  row, each naming the attribute and the coordinate.
+- The writer holds a column to its declared dtype as `set` does: an
+  attribute's `value` is stored as its dtype, an integer column under a
+  `float` attribute as `DOUBLE` rather than `BIGINT`, and a column of a type
+  that does not fit its dtype - a string for a `datetime` dim or a `float`
+  property - is refused naming the attribute, property or dim and its dtype,
+  rather than parsed or cast. A column holding only NULLs passes as its
+  declared type's NULL, in `set` and `add_group` too, whatever type its
+  dataframe library gave it. The PyPSA
+  tool's static rows no longer widen an integer `snapshot` to `DOUBLE`.
+- A label of a type that does not fit its dim's dtype - a series index, mapping
+  keys or a keyword of `set`, a group property's field keyword, the labels of
+  `add` and `remove`, or a value of a property that takes its labels from a dim - is refused with
+  the dim and its dtype named, by the rule a frame's column is held to, rather
+  than failing deep in DuckDB or being parsed: `snapshot="2030-01-01"` on a
+  `datetime` dim was read as a timestamp, and is now refused.
 - The PyPSA tool round-trips a network's snapshot and investment period
   weightings: `to_datarecord` writes them as `snapshot_weighting_objective`,
   `_stores` and `_generators` over `snapshot` and

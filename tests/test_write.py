@@ -13,14 +13,14 @@ import json
 import shutil
 from pathlib import Path
 
-import narwhals as nw
+import duckdb
 import pandas as pd
 import pytest
 
 from datarecord import Workspace
 from datarecord.layered.resolve import read_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.record import EMPTY, LazyFrames
+from datarecord.record import EMPTY, LazyRelations
 from datarecord.schema import AttributeSpec, Dimension, PropertySpec, Schema
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
@@ -58,9 +58,9 @@ class _Source:
     def _frames(self, mapping, tag):
         def build(key):
             self.built.append(f"{tag}:{key}")
-            return nw.from_native(mapping[key]).lazy()
+            return mapping[key]
 
-        return LazyFrames(tuple(mapping), build)
+        return LazyRelations(tuple(mapping), build)
 
     @property
     def dims(self):
@@ -105,6 +105,7 @@ def _long(**overrides) -> pd.DataFrame:
         "snapshot": None,
         "scenario": None,
         "period": None,
+        "ctype": None,
         "attribute": "p_nom",
         "breakpoint": None,
         "value": 1.0,
@@ -207,7 +208,7 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
         assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
 
 
-def test_a_write_rejects_a_category_the_enum_does_not_declare(store):
+def test_a_write_rejects_a_category_its_dim_does_not_list(store):
     entities = pd.DataFrame({"entity": ["a"], "ctype": ["Nope"]})
     with pytest.raises(Exception, match="Nope"):
         store.root(
@@ -326,7 +327,7 @@ def _p_nom(value: float) -> _Source:
 
 
 def _read_p_nom(record) -> list[float]:
-    return record.attributes["p_nom"].collect()["value"].to_list()
+    return record.attributes["p_nom"].df()["value"].tolist()
 
 
 def test_a_record_written_again_at_one_uri_reads_as_itself(workspace, tmp_path):
@@ -566,26 +567,53 @@ def test_a_write_rejects_an_axis_without_its_key_column(store):
     _nothing_reachable(store)
 
 
-def test_a_write_rejects_an_undeclared_axis_column(store):
-    """An axis file's payload is the schema's to state, like a long frame's.
+def _set_junk(store):
+    _, staged = _rows_staged(store, [], "p_nom")
+    staged.set("p_nom", pd.DataFrame({"entity": ["a"], "value": [1.0], "junk": [1]}))
 
-    A column no declaration accounts for would be read back with no dtype and
-    no meaning, so it is refused rather than carried along.
+
+def _add_junk(store):
+    _, staged = _rows_staged(store, [], "p_nom")
+    staged.add("entity", ["c"], junk=1)
+
+
+def _add_group_junk(store):
+    _, staged = _rows_staged(store, [], "p_nom")
+    staged.add_group("connection", pd.DataFrame({"connection": [_AB], "junk": [1]}))
+
+
+def _write_junk(store):
+    frame = pd.DataFrame({"scenario": ["high"], "junk": [1]})
+    try:
+        store.root(_Source(_SCHEMA, dims={"scenario": frame}))
+    finally:
+        _nothing_reachable(store)
+
+
+@pytest.mark.parametrize(
+    ("write", "accepted"),
+    [
+        pytest.param(
+            _set_junk,
+            "['entity', 'period', 'scenario', 'snapshot', 'value']",
+            id="set",
+        ),
+        pytest.param(_add_junk, "['ctype', 'deleted', 'entity']", id="add"),
+        pytest.param(_add_group_junk, "['connection', 'deleted']", id="add_group"),
+        pytest.param(_write_junk, "['deleted', 'order_key', 'scenario']", id="write"),
+    ],
+)
+def test_an_undeclared_column_is_refused(store, write, accepted):
+    """A column no declaration accounts for has no dtype and no meaning, so it is refused, not dropped.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
     """
-    source = _Source(
-        schema(),
-        dims={"scenario": pd.DataFrame({"scenario": ["high"], "nonsense": [1.0]})},
-    )
-
-    with pytest.raises(
-        ValueError, match="does not declare as properties of 'scenario'"
-    ):
-        store.root(source)
-    _nothing_reachable(store)
+    with pytest.raises(ValueError, match=r"\['junk'\]") as raised:
+        write(store)
+    assert accepted in str(raised.value), "the error names the columns it accepts"
 
 
 def test_an_attribute_column_in_a_dims_frame_is_refused(store):
@@ -605,28 +633,475 @@ def test_an_attribute_column_in_a_dims_frame_is_refused(store):
     _nothing_reachable(store)
 
 
+_ENTITIES, _SCENARIOS, _T = ["a", "b"], ["x", "y"], pd.Timestamp("2030-01-01")
+_AB, _BB = {"entity": "a", "bus": "b0"}, {"entity": "b", "bus": "b0"}
+
+
+def _rows_staged(store, rows: list[dict], attribute: str):
+    """Return a written base, and a staging area over it holding `rows` of `attribute`.
+
+    A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
+    """
+    write_schema(_SCHEMA, store)
+    base = empty_root(store)
+    staged = WorkingRecord(base.record)
+    staged.add("ctype", ["Generator"])
+    staged.add("entity", _ENTITIES, ctype="Generator")
+    staged.add("bus", ["b0"])
+    staged.add("scenario", _SCENARIOS)
+    staged.add("snapshot", [_T])
+    staged.add_group("connection", pd.DataFrame({"connection": [_AB, _BB]}))
+    base = base.child(staged.edits)
+    staged = WorkingRecord(base.record)
+    for row in rows:
+        coords = {c: v for c, v in row.items() if c not in ("value", "connection")}
+        staged.set(attribute, row["value"], **coords, **row.get("connection", {}))
+    return base, staged
+
+
+def _rows_layer(store, rows: list[dict], via: str, attribute: str = "p_nom"):
+    """Return a revision whose top layer holds `rows` of `attribute`, written `via` `set` or a source.
+
+    A coordinate a row leaves out is NULL there.
+    """
+    if via == "set":
+        base, staged = _rows_staged(store, rows, attribute)
+        return base.child(staged.edits)
+    nulls = dict.fromkeys(("entity", "connection", "scenario", "snapshot"))
+    frame = pd.concat(
+        [_long(**{**nulls, "attribute": attribute, **row}) for row in rows],
+        ignore_index=True,
+    )
+    return store.root(
+        _Source(
+            _SCHEMA,
+            attributes={attribute: frame},
+            connections={"connection": pd.DataFrame({"connection": [_AB, _BB]})},
+            dims={
+                "entity": pd.DataFrame({"entity": _ENTITIES}),
+                "bus": pd.DataFrame({"bus": ["b0"]}),
+                "scenario": pd.DataFrame({"scenario": _SCENARIOS}),
+                "snapshot": pd.DataFrame({"snapshot": [_T]}),
+            },
+            properties={
+                "entity": pd.DataFrame(
+                    {"entity": _ENTITIES, "ctype": ["Generator"] * 2}
+                )
+            },
+        )
+    )
+
+
+def _read(revision, attribute: str = "p_nom") -> list:
+    """Return `attribute` as sorted `((first coordinate, scenario), value)` pairs."""
+    df = revision.record.attributes[attribute].df()
+    first = df["connection" if attribute == "efficiency" else "entity"]
+    keys = zip(
+        (v["entity"] if isinstance(v, dict) else v for v in first),
+        df["scenario"],
+        strict=True,
+    )
+    return sorted(zip(keys, df["value"], strict=True))
+
+
+@pytest.mark.parametrize("via", ["set", "write_layer"])
+@pytest.mark.parametrize(
+    ("attribute", "rows", "read"),
+    [
+        (
+            "p_nom",
+            [{"value": 2.0}, {"entity": "a", "value": 1.0}],
+            {("a", "x"): 1.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"scenario": "x", "value": 2.0},
+                {"entity": "a", "scenario": "x", "value": 1.0},
+            ],
+            {("a", "x"): 1.0, ("b", "x"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"value": 3.0},
+                {"entity": "a", "value": 2.0},
+                {"entity": "a", "scenario": "x", "value": 1.0},
+            ],
+            {("a", "x"): 1.0, ("a", "y"): 2.0, ("b", "x"): 3.0, ("b", "y"): 3.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"scenario": "y", "snapshot": _T, "value": 2.0},
+            ],
+            {("a", "x"): 1.0, ("a", "y"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            "efficiency",
+            [{"value": 0.5}, {"connection": _AB, "value": 0.9}],
+            {("a", "x"): 0.9, ("a", "y"): 0.9, ("b", "x"): 0.5, ("b", "y"): 0.5},
+        ),
+    ],
+    ids=[
+        "broadcast-and-specific",
+        "two-dims-over-one",
+        "three-levels",
+        "neither-but-disjoint",
+        "connection",
+    ],
+)
+def test_a_layer_reads_its_more_specific_row(store, via, attribute, rows, read):
+    """Within one layer, a row naming a label beats one broadcasting over its dim.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    got = _read(_rows_layer(store, rows, via, attribute), attribute)
+    assert got == sorted(read.items()), (
+        "one value per coordinate, the most specific row's"
+    )
+
+
+_ALL_TWO = {("a", "x"): 2.0, ("a", "y"): 2.0, ("b", "x"): 2.0, ("b", "y"): 2.0}
+
+
+@pytest.mark.parametrize(
+    ("attribute", "rows", "read"),
+    [
+        ("p_nom", [{"entity": "a", "value": 1.0}, {"value": 2.0}], _ALL_TWO),
+        (
+            "p_nom",
+            [{"entity": "a", "value": 1.0}, {"entity": "a", "value": 2.0}],
+            {("a", "x"): 2.0, ("a", "y"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"entity": "a", "value": 2.0},
+            ],
+            {("a", "x"): 2.0, ("a", "y"): 2.0},
+        ),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"ctype": "Generator", "value": 2.0},
+            ],
+            _ALL_TWO,
+        ),
+        ("efficiency", [{"connection": _AB, "value": 1.0}, {"value": 2.0}], _ALL_TWO),
+        (
+            "p_nom",
+            [
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"scenario": "y", "value": 2.0},
+            ],
+            {("a", "x"): 1.0, ("a", "y"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            "efficiency",
+            [{"connection": _AB, "value": 1.0}, {"connection": _BB, "value": 2.0}],
+            {("a", "x"): 1.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
+        ),
+    ],
+    ids=[
+        "broadcast-after-specific",
+        "same-coordinates",
+        "broadcast-over-one-dim",
+        "category-keyword",
+        "group",
+        "not-covering",
+        "other-tuple",
+    ],
+)
+def test_a_later_set_replaces_what_it_covers(store, attribute, rows, read):
+    """A `set` drops the earlier staged rows its own rows cover, and keeps the rest.
+
+    Notes
+    -----
+    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    """
+    got = _read(_rows_layer(store, rows, "set", attribute), attribute)
+    assert got == sorted(read.items()), "the later set wins where it covers"
+
+
+@pytest.mark.parametrize("via", ["set", "write_layer"])
+@pytest.mark.parametrize(
+    ("override", "read"),
+    [
+        (
+            {"entity": "a", "scenario": "x"},
+            {("a", "x"): 5.0, ("a", "y"): 1.0, ("b", "x"): 2.0, ("b", "y"): 2.0},
+        ),
+        (
+            {"scenario": "x"},
+            {("a", "x"): 5.0, ("a", "y"): 1.0, ("b", "x"): 5.0, ("b", "y"): 2.0},
+        ),
+    ],
+    ids=["one-key", "a-broadcast-key"],
+)
+def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override, read):
+    """The lower layer still picks its more specific row where it keeps the key.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
+    lower = _rows_layer(store, rows, via)
+    staged = WorkingRecord(lower.record)
+    staged.set("p_nom", 5.0, **override)
+    assert _read(lower.child(staged.edits)) == sorted(read.items())
+
+
+@pytest.mark.parametrize("via", ["set", "write_layer"])
+@pytest.mark.parametrize(
+    ("rows", "coordinate"),
+    [
+        (
+            [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.0}],
+            "entity=a, scenario=x",
+        ),
+        (
+            [{"entity": "a", "value": 1.0}, {"snapshot": _T, "value": 2.0}],
+            "entity=a, snapshot=2030-01-01 00:00:00",
+        ),
+        (
+            [
+                {"value": 3.0},
+                {"entity": "b", "value": 1.0},
+                {"scenario": "y", "value": 2.0},
+            ],
+            "entity=b, scenario=y",
+        ),
+    ],
+    ids=["entity-scenario", "entity-snapshot", "beside-a-default"],
+)
+def test_a_layer_with_two_rows_neither_more_specific_is_refused(
+    store, via, rows, coordinate
+):
+    """Each row names a dim the other leaves NULL, so no rule picks one where both meet.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    with pytest.raises(ValueError, match=rf"p_nom\.parquet.*{coordinate}"):
+        _rows_layer(store, rows, via)
+
+
+def test_a_staged_pair_neither_more_specific_fails_the_read(store):
+    """A layer not written by `write_layer` is held to the rule when it is read.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    rows = [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.0}]
+    _, staged = _rows_staged(store, rows, "p_nom")
+    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*scenario=x"):
+        staged.attributes["p_nom"].df()
+
+
+@pytest.mark.parametrize(
+    ("rows", "coordinate"),
+    [
+        ([{"value": 1.0}, {"value": 2.0}], "every coordinate"),
+        ([{"entity": "a", "value": 1.0}, {"entity": "a", "value": 2.0}], "entity=a"),
+        (
+            [
+                {"value": 3.0},
+                {"entity": "a", "scenario": "x", "value": 1.0},
+                {"entity": "a", "scenario": "x", "value": 2.0},
+            ],
+            "entity=a, scenario=x",
+        ),
+        (
+            [
+                {"entity": "a", "breakpoint": 0.5, "value": 1.0},
+                {"entity": "a", "breakpoint": 0.5, "value": 2.0},
+            ],
+            "entity=a, breakpoint=0.5",
+        ),
+    ],
+    ids=["broadcast", "one-label", "beside-a-default", "one-breakpoint"],
+)
+def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(store, rows, coordinate):
+    """Two rows naming the same labels are equally specific, so no rule picks one.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    with pytest.raises(
+        ValueError, match=rf"p_nom\.parquet holds 2 rows at {coordinate} "
+    ):
+        _rows_layer(store, rows, "write_layer")
+
+
+def test_a_curve_is_no_pair_of_rows(store):
+    """The rows of one curve differ in `breakpoint`, so each is its own row."""
+    rows: list[dict] = [{"entity": "a", "breakpoint": b, "value": b} for b in (0, 1)]
+    df = _rows_layer(store, rows, "write_layer").record.attributes["p_nom"].df()
+    assert sorted(df["breakpoint"]) == [0, 0, 1, 1], "each point in each scenario"
+
+
+def test_a_stored_pair_naming_the_same_dims_fails_the_read(store, tmp_path):
+    """A layer not written by `write_layer` is held to the rule when it is read.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    """
+    rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
+    revision = _rows_layer(store, rows, "write_layer")
+    (file,) = tmp_path.rglob("attributes/p_nom.parquet")
+    twin = duckdb.read_parquet(str(file)).filter("entity = 'a'")
+    duckdb.read_parquet(str(file)).union(twin).to_parquet(str(file) + ".twin")
+    Path(str(file) + ".twin").replace(file)
+    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*same dims"):
+        revision.record.attributes["p_nom"].df()
+
+
+_TYPED = Schema(
+    dimensions={
+        "entity": Dimension(dtype="str"),
+        "snapshot": Dimension(dtype="datetime"),
+    },
+    properties={
+        "entity": {"x": PropertySpec(dtype="float"), "tag": PropertySpec(dtype="str")}
+    },
+    attributes={
+        "p_nom": AttributeSpec(dtype="float", dims=frozenset({"entity"})),
+        "units": AttributeSpec(dtype="int", dims=frozenset({"entity"})),
+    },
+    partial=frozenset({"entity"}),
+)
+
+
+def _typed(file: str, column: str, values: list) -> _Source:
+    """A `_TYPED` source writing `values` as `column` of `file`, one label each."""
+    kind, key = file.removesuffix(".parquet").split("/")
+    labels = [f"e{i}" for i in range(len(values))]
+    if kind == "attributes":
+        frame = pd.DataFrame(
+            {"entity": labels, "attribute": key, "breakpoint": None, column: values}
+        )
+        return _Source(_TYPED, attributes={key: frame})
+    if key == "entity":
+        frame = pd.DataFrame({"entity": labels, column: values})
+        return _Source(
+            _TYPED, dims={"entity": frame[["entity"]]}, properties={"entity": frame}
+        )
+    return _Source(_TYPED, dims={key: pd.DataFrame({column: values})})
+
+
+@pytest.mark.parametrize(
+    ("file", "column", "values", "stored"),
+    [
+        ("attributes/p_nom.parquet", "value", [1, 2], "DOUBLE"),
+        ("attributes/units.parquet", "value", pd.array([1], dtype="int32"), "BIGINT"),
+        ("dims/entity.parquet", "x", [1, 2], "DOUBLE"),
+        ("dims/entity.parquet", "tag", [None], "VARCHAR"),
+        (
+            "dims/snapshot.parquet",
+            "snapshot",
+            pd.to_datetime(["2030-01-01"]),
+            "TIMESTAMP",
+        ),
+    ],
+    ids=["attribute", "attribute-int", "property", "property-null", "axis"],
+)
+def test_a_write_stores_the_declared_type_widening_a_column(
+    store, file, column, values, stored
+):
+    """A column of a narrower type of its kind is cast to the declared one.
+
+    Notes
+    -----
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
+    revision = store.root(_typed(file, column, values))
+    path = Path(store.layer_dir(revision.id), file)
+    on_disk = store.workspace.con.read_parquet(str(path)).project(column)
+    assert str(on_disk.types[0]) == stored, f"{column!r} of {file} as declared"
+
+
+@pytest.mark.parametrize(
+    ("file", "column", "values", "match"),
+    [
+        (
+            "attributes/p_nom.parquet",
+            "value",
+            ["high"],
+            "does not fit 'p_nom' of dtype float \\(DOUBLE\\)",
+        ),
+        (
+            "attributes/units.parquet",
+            "value",
+            [1.5],
+            "does not fit 'units' of dtype int \\(BIGINT\\)",
+        ),
+        (
+            "dims/entity.parquet",
+            "x",
+            ["high"],
+            "does not fit 'entity.x' of dtype float \\(DOUBLE\\)",
+        ),
+        (
+            "dims/snapshot.parquet",
+            "snapshot",
+            ["2030-01-01"],
+            "does not fit 'snapshot' of dtype datetime \\(TIMESTAMP\\)",
+        ),
+    ],
+    ids=["attribute", "attribute-int", "property", "axis"],
+)
+def test_a_write_refuses_a_column_that_does_not_fit_its_dtype(
+    store, file, column, values, match
+):
+    """A column of another kind is refused, naming what declares it and its dtype.
+
+    A string is not parsed into a `datetime` label, nor a float truncated to
+    an `int`.
+
+    Notes
+    -----
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    """
+    with pytest.raises(
+        ValueError, match=f"{file}: column '{column}' has type .*{match}"
+    ):
+        store.root(_typed(file, column, values))
+    _nothing_reachable(store)
+
+
 def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
     """Entities and scenarios, `p_nom` over `p_nom`, `ctype` if `categorized`."""
     return Schema(
         dimensions={
-            "entity": Dimension(dtype=nw.String()),
-            "scenario": Dimension(dtype=nw.String()),
+            "entity": Dimension(dtype="str"),
+            "scenario": Dimension(dtype="str"),
+            "ctype": Dimension(one_of=["Gen", "Load"]),
         },
         properties=(
-            {"entity": {"ctype": PropertySpec(dtype=nw.Enum(["Gen", "Load"]))}}
-            if categorized
-            else {}
+            {"entity": {"ctype": PropertySpec(one_of="ctype")}} if categorized else {}
         ),
-        attributes={"p_nom": AttributeSpec(dtype=nw.Float64(), dims=p_nom)},
+        attributes={"p_nom": AttributeSpec(dtype="float", dims=p_nom)},
         partial=frozenset({"entity", "scenario"}),
     )
 
 
 def _plant_layer(store, schema: Schema, **columns):
-    """A root holding entities `g1` and `g2` with their `p_nom`, under `schema`."""
+    """A root holding `ctype` `Gen` and entities `g1` and `g2` with their `p_nom`, under `schema`."""
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
+    staged.add("ctype", ["Gen"])
     staged.add("entity", ["g1", "g2"], **columns)
     staged.set("p_nom", {"g1": 1.0, "g2": 2.0})
     return root.child(staged.edits)
@@ -670,7 +1145,7 @@ def test_widening_a_single_dim_attribute_reads_old_rows_in_every_scenario(store)
     staged.add("scenario", ["low", "high"])
     child = store.revision(layer.id).child(staged.edits)
 
-    rows = child.record.attributes["p_nom"].collect().to_pandas()
+    rows = child.record.attributes["p_nom"].df()
     got = dict(zip(zip(rows["entity"], rows["scenario"]), rows["value"]))
     assert got == {
         ("g1", "low"): 1.0,
@@ -707,7 +1182,6 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
 
     (plain_files, plain_axis), (typed_files, typed_axis) = layouts[False], layouts[True]
     assert plain_files == typed_files, "the same files"
-    assert not any(f.startswith("dims/ctype") for f in typed_files), "no per-label file"
     assert set(typed_axis.columns) - set(plain_axis.columns) == {"ctype"}
     assert set(plain_axis.columns) <= set(typed_axis.columns), (
         "differing by exactly one column"
@@ -720,16 +1194,16 @@ def test_categories_add_one_column_to_the_entity_axis_and_nothing_else(tmp_path)
 
 _AWKWARD = Schema(
     dimensions={
-        "entity": Dimension(dtype=nw.String()),
-        "select": Dimension(dtype=nw.String()),
-        "Horizon": Dimension(dtype=nw.String()),
+        "entity": Dimension(dtype="str"),
+        "select": Dimension(dtype="str"),
+        "Horizon": Dimension(dtype="str"),
     },
     attributes={
         "Order Size": AttributeSpec(
-            dtype=nw.Float64(), dims={"entity", "select", "Horizon"}
+            dtype="float", dims={"entity", "select", "Horizon"}
         ),
     },
-    properties={"select": {"Group": PropertySpec(dtype=nw.Float64())}},
+    properties={"select": {"Group": PropertySpec(dtype="float")}},
     partial={"select", "Horizon"},
 )
 
@@ -788,7 +1262,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     workspace.write(child.record, out)
     again = workspace.at(out)
     assert again.schema == _AWKWARD.model_copy(update={"id": again.schema.id})
-    flat = again.attributes["Order Size"].collect().to_pandas()
+    flat = again.attributes["Order Size"].df()
     assert dict(zip(zip(flat["select"], flat["Horizon"]), flat["value"])) == got, (
         "a flattened standalone copy reads the same"
     )

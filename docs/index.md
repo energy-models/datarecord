@@ -12,12 +12,14 @@ A record holds **entities** (named members of a type), **groups** of them — co
 
 Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
 
-`datarecord` depends only on `duckdb`, `narwhals` and `pydantic`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
+`datarecord` depends only on `duckdb`, `pydantic` and `mathspec`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
 
 ```bash
 pip install datarecord           # core
 pip install datarecord[pypsa]    # with the PyPSA tool
 ```
+
+The package does not yet declare `mathspec`, which is not on PyPI: install it alongside from [GitHub](https://github.com/energy-models/mathspec), at the commit `pixi.toml` pins.
 
 ```python
 from datarecord import Workspace
@@ -25,8 +27,8 @@ from datarecord import Workspace
 ws = Workspace()
 record = ws.at("s3://bucket/my-record/")
 
-record.properties["entity"].collect()  # one row per entity, its properties
-record.attributes["p_max_pu"].collect()  # long value rows
+record.properties["entity"].df()  # one row per entity, its properties
+record.attributes["p_max_pu"].df()  # long value rows
 record.flags(ctype="Generator")  # which axes each attribute uses
 ```
 

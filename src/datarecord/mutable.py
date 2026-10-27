@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import operator
 import re
+import sys
 from collections.abc import Container, Mapping, Sequence
 from dataclasses import dataclass
 from functools import reduce
@@ -25,25 +26,27 @@ from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
 
 import duckdb
-import narwhals as nw
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression
+from duckdb import DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
+from duckdb.sqltypes import DuckDBPyType
 
 from datarecord.duck import (
-    DuckTypes,
     as_relation,
+    empty_relation,
+    enum_labels,
     fn,
+    is_frame,
     null_safe,
     struct_of,
+    takes,
     union_all_by_name,
 )
 from datarecord.layered.categories import matching
 from datarecord.layered.fold import Fold
-from datarecord.layered.record import Record
 from datarecord.layered.resolve import Resolver
-from datarecord.record import Frames, LazyFrames, RecordLike
+from datarecord.record import LazyRelations, Record, RecordLike, Relations
 from datarecord.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
@@ -51,35 +54,6 @@ if TYPE_CHECKING:
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/working-record/#set) ----------------------------------------------
-
-
-def _incoming(frame: Any, con: DuckDBPyConnection) -> nw.LazyFrame:
-    """A caller's frame as a lazy frame on `con`, whatever backend it arrived on.
-
-    Every edit converts at this one point, so the steps behind it join and union
-    in narwhals without minding where the frame came from.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-    """
-    return nw.from_native(as_relation(nw.from_native(frame).lazy(), con)).lazy()
-
-
-def _is_frame(value: Any) -> bool:
-    """Whether `value` supplies its own keys rather than being a value.
-
-    Notes
-    -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-    """
-    if isinstance(value, nw.DataFrame | nw.LazyFrame):
-        return True
-    try:
-        nw.from_native(value)
-    except TypeError:
-        return False
-    return True
 
 
 def _series_index(value: Any) -> Sequence[Any] | None:
@@ -368,7 +342,7 @@ class WorkingRecord(Record):
             columns = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
         else:
             columns = _group_columns(self.schema, kind)
-        return DuckTypes(self.con).empty_relation(**columns)
+        return empty_relation(self.con, **columns)
 
     def _empty_long(self, attribute: str) -> DuckDBPyRelation:
         """A row-less relation shaped like one attribute's long file.
@@ -382,17 +356,12 @@ class WorkingRecord(Record):
         - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
         - [the shape of an edit](https://energy-models.github.io/datarecord/design/working-record/#the-shape-of-an-edit)
         """
-        duck_types = DuckTypes(self.con)
-        types = {
-            "attribute": nw.String(),
-            "breakpoint": nw.Float64(),
-            "value": self.schema.attributes[attribute].dtype,
-        }
+        value = self.schema.value_type(attribute)
         shaped = {
-            c: types.get(c) or self._column_type(c)
+            c: value if c == "value" else self._column_type(c)
             for c in self.schema.long_columns_for(attribute)
         }
-        return duck_types.empty_relation(**shaped)
+        return empty_relation(self.con, **cast("dict[str, DuckDBPyType]", shaped))
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
         name = self._staged.get((kind, attribute))
@@ -406,7 +375,7 @@ class WorkingRecord(Record):
         """
         return tuple(a for (k, a), _ in self._staged.items() if k == _ATTRIBUTES and a)
 
-    def _column_type(self, column: str, subject: str | None = None) -> nw.dtypes.DType:
+    def _column_type(self, column: str, subject: str | None = None) -> DuckDBPyType:
         return _column_type(self.schema, column, subject)
 
     def _staged_coordinates(self, attribute: str) -> tuple[str, ...]:
@@ -492,7 +461,7 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         return open_[0]
 
-    def _coordinate_type(self, attribute: str, coordinate: str) -> nw.dtypes.DType:
+    def _coordinate_type(self, attribute: str, coordinate: str) -> DuckDBPyType:
         """The declared type of one flat coordinate of `attribute` - a group field's dim's."""
         dim = _flat_coordinates(self.schema, attribute).get(coordinate, coordinate)
         return self._column_type(dim)
@@ -536,7 +505,7 @@ class WorkingRecord(Record):
             if keys is None:
                 keys, values = cast("list[Any]", labels), values * len(labels or ())
             value = dict(zip(keys, values, strict=True))
-        elif _is_frame(value) or _is_labels(value):
+        elif is_frame(value) or _is_labels(value):
             msg = (
                 f"`set({f'{dim}.{name}'!r}, <sequence>)` has no labels to align to; "
                 f"{name!r} is a property of {dim!r}, so pass a mapping from "
@@ -674,6 +643,9 @@ class WorkingRecord(Record):
         for c, given in coords.items():
             if c in coordinates:
                 labels = list(given) if _is_labels(given) else [given]
+                self._require_typed(
+                    coordinates[c], labels, f"`set({attribute!r}, ...)`"
+                )
                 self._require_labels(coordinates[c], labels)
 
     def _require_labels(self, dim: str, labels: Sequence[Any]) -> None:
@@ -707,7 +679,9 @@ class WorkingRecord(Record):
         such as `bus=` or a corridor's `from=` - since which exist is declared
         rather than fixed. A keyword holds one label, fixing that coordinate, or
         a list of labels the value is staged at each of. A coordinate no keyword
-        names is NULL, which by the broadcast rule is every label of it.
+        names is NULL, which by the broadcast rule is every label of it. The
+        call replaces every row of `attribute` staged earlier that its own
+        rows cover.
 
         `value` takes five forms:
 
@@ -740,13 +714,16 @@ class WorkingRecord(Record):
         KeyError
             On an undeclared attribute or keyword, a `partial` dim's
             label the record does not resolve, a property's label no layer
-            wrote, or a value of a property `into` a dim naming no label of it.
+            wrote, or a value of a property that takes its labels from a dim and is no
+            label of it.
         ValueError
             On a keyword the attribute does not vary over, a sequence with no single list keyword to align to,
-            keys whose coordinate is ambiguous, a value an `Enum` property does
-            not list, or a property keyword whose dim the attribute does not
-            reach through exactly one coordinate, or that is given beside that
-            coordinate's own keyword.
+            keys whose coordinate is ambiguous, a label its dim does not
+            list, a property keyword whose dim the attribute does not reach
+            through exactly one coordinate, or that is given beside that
+            coordinate's own keyword, a frame column the schema does not
+            declare for `attribute`, or a frame column or label whose type
+            does not fit its dtype, timestamps with a time zone among them.
 
         Notes
         -----
@@ -761,21 +738,34 @@ class WorkingRecord(Record):
         coords = self._select(attribute, coords)
         listed = {c: list(v) for c, v in coords.items() if _is_labels(v)}
 
-        if _is_frame(value) and not keyed:
+        if is_frame(value) and not keyed:
             if listed:
                 msg = (
                     f"`set({attribute!r}, <frame>)` supplies its own keys, so "
                     f"keywords {sorted(listed)} may give one label each, not a list"
                 )
                 raise ValueError(msg)
-            lazy = _incoming(value, self.con)
+            call = f"`set({attribute!r}, <frame>)`"
+            rel = as_relation(value, self.con)
             self.schema.check_group_columns(
-                self.schema.groups_of(attribute),
-                lazy,
-                carrier=f"`set({attribute!r}, <frame>)`",
+                self.schema.groups_of(attribute), rel, carrier=call
             )
-            self._validate_frame(lazy, attribute, coords)
-            self._stage_long(attribute, lazy, coords)
+            self._validate_frame(rel, attribute, coords)
+            table = self._ensure(_ATTRIBUTES, attribute)
+            known = [
+                *self._staged_coordinates(attribute),
+                *_flat_coordinates(self.schema, attribute),
+                "value",
+            ]
+            extra = sorted(set(rel.columns) - set(known))
+            if extra:
+                msg = (
+                    f"{call} was given columns {extra} the schema does not "
+                    f"declare for {attribute!r}; it takes {sorted(set(known))}"
+                )
+                raise ValueError(msg)
+            rel = self.schema.require_takes(rel, call, attribute=attribute)
+            self._insert_long(rel, table, attribute, set(rel.columns), coords)
             return
 
         self._validate_input(attribute, coords)
@@ -783,10 +773,11 @@ class WorkingRecord(Record):
         if keyed:
             key = self._key_coordinate(attribute, value, coords)
             keys, values = normalise_value(value)
-            self._require_labels(
-                _flat_coordinates(self.schema, attribute)[key],
-                cast("list[Any]", keys),
+            dim = _flat_coordinates(self.schema, attribute)[key]
+            self._require_typed(
+                dim, cast("list[Any]", keys), f"`set({attribute!r}, ...)`"
             )
+            self._require_labels(dim, cast("list[Any]", keys))
             column: dict[str, Sequence[Any]] = {key: cast("list[Any]", keys)}
         elif _is_labels(value):
             if len(listed) != 1:
@@ -841,16 +832,19 @@ class WorkingRecord(Record):
         ------
         KeyError
             On a label the record does not resolve, or a value of a property
-            `into` a dim naming no label of it.
+            that takes its labels from a dim and is no label of it.
         ValueError
-            On a value an `Enum` property does not list, and as `_axis_values`
-            does.
+            On a label its dim does not list or whose type does not fit
+            its dtype, and as `_axis_values` does.
         """
+        call = f"`set({f'{dim}.{name}'!r}, ...)`"
         values = self._axis_values(dim, name, value, coords)
         keyed = isinstance(values, Mapping)
+        if keyed:
+            self._require_typed(dim, list(values), call)
         data = {name: list(values.values()) if keyed else [values]}
-        self.schema.require_listed(dim, data, f"`set({f'{dim}.{name}'!r}, ...)`")
-        self._require_live(dim, data)
+        self.schema.require_listed(dim, data, call)
+        self._require_live(dim, data, call)
         if keyed:
             self._require_existing(dim, list(values))
         self._stage_axis(dim, name, values)
@@ -864,10 +858,11 @@ class WorkingRecord(Record):
         ------
         KeyError
             Where keywords are given and select no tuple, or on a value of a
-            property `into` a dim naming no label of it.
+            property that takes its labels from a dim and is no label of it.
         ValueError
             On a keyword naming no field of `group`, a value that is not a
-            scalar, or one an `Enum` property does not list.
+            scalar, or a label its dim does not list or whose type does
+            not fit its dtype.
         """
         call = f"set({f'{group}.{name}'!r}, ...)"
         key = self.schema.group_key(group)
@@ -879,30 +874,33 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
         # Not left to the cast: DuckDB would store a dict or list as its text.
-        if isinstance(value, Mapping) or _is_labels(value) or _is_frame(value):
+        if isinstance(value, Mapping) or _is_labels(value) or is_frame(value):
             msg = (
                 f"`{call}` takes one value for the tuples its keywords select, "
                 f"{name!r} being a property of the group {group!r}"
             )
             raise ValueError(msg)
         self.schema.require_listed(group, {name: [value]}, f"`{call}`")
-        self._require_live(group, {name: [value]})
+        self._require_live(group, {name: [value]}, f"`{call}`")
         tuples = self.resolver.dims.groups.get(group)
         if tuples is None:
             msg = f"`{call}` finds no tuple of {group!r}; `add_group` them first"
             raise KeyError(msg)
-        selected = nw.from_native(tuples).lazy()
         for field, given in coords.items():
             labels = list(given) if _is_labels(given) else [given]
-            selected = selected.filter(nw.col(group).struct.field(field).is_in(labels))
-        rel = cast("DuckDBPyRelation", selected.select(group).to_native())
+            self._require_typed(
+                self.schema.groups[group].over[field], labels, f"`{call}`"
+            )
+            tuples = tuples.filter(
+                fn.struct_extract(col(group), lit(field)).isin(*map(lit, labels))
+            )
+        rel = tuples.project(col(group))
         if coords and rel.limit(1).fetchone() is None:
             scope = ", ".join(f"{c}={v!r}" for c, v in coords.items())
             msg = f"`{call}` selects no tuple of {group!r} at {scope}"
             raise KeyError(msg)
-        duck_types = DuckTypes(rel)
         dtype = self._column_type(name, group)
-        edit = rel.project(col(group), duck_types.lit(value, dtype).alias(name))
+        edit = rel.project(col(group), lit(value).cast(dtype).alias(name))
         self._patch_axis(
             group, name, self._ensure(group), edit, self._base.dims.groups.get(group)
         )
@@ -924,15 +922,14 @@ class WorkingRecord(Record):
         axis = self.resolver.axis(dim)
         found = (
             set()
-            if axis is None
+            if axis is None or not wanted
             else {
-                str(row[0])
-                for row in nw.from_native(axis)
-                .lazy()
-                .filter(nw.col(dim).cast(nw.String()).is_in(wanted))
-                .select(dim)
-                .collect()
-                .iter_rows()
+                str(label)
+                for (label,) in axis.filter(
+                    col(dim).cast(sqltypes.VARCHAR).isin(*map(lit, wanted))
+                )
+                .project(col(dim))
+                .fetchall()
             }
         )
         unknown = [n for n in wanted if n not in found]
@@ -940,28 +937,34 @@ class WorkingRecord(Record):
             msg = f"no {dim!r} label {unknown}; `add` them first - {why}"
             raise KeyError(msg)
 
-    def _require_live(self, subject: str, data: Mapping[str, Sequence[Any]]) -> None:
-        """Reject a value of a property of `subject` `into` a dim naming no label of it, as staged.
+    def _require_live(
+        self, subject: str, data: Mapping[str, Sequence[Any]], call: str
+    ) -> None:
+        """Refuse a value of a property of `subject` that is no label of the dim it takes its labels from.
 
-        NULL names none and passes.
+        The labels are those of the record as staged. NULL is no label and
+        passes.
 
         Raises
         ------
         KeyError
             Naming the unknown labels.
+        ValueError
+            On a value whose type does not fit the dtype of the dim.
 
         Notes
         -----
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
-        into = self.schema.into_properties()
+        named = self.schema.one_of_properties()
         for name, values in data.items():
-            dim = into.get((subject, name))
+            dim = named.get((subject, name))
             if dim is not None:
+                self._require_typed(dim, values, call)
                 self._require_existing(
                     dim,
                     values,
-                    why=f"`{subject}.{name}` is `into` {dim!r}, so names its labels",
+                    why=f"each value of `{subject}.{name}` must be a label of {dim!r}",
                 )
 
     def _select(self, name: str, coords: Mapping[str, Any]) -> dict[str, Any]:
@@ -979,7 +982,7 @@ class WorkingRecord(Record):
             Where the keyword is a property of several dims `name` reaches,
             `name` reaches the dim through no coordinate or several, the
             coordinate is also given as a keyword, a keyword is dotted, or a
-            value is not one of an `Enum` property's categories.
+            value is a label its dim does not list.
 
         Notes
         -----
@@ -1041,7 +1044,7 @@ class WorkingRecord(Record):
         return [r[0] for r in matching(axis, wanted).project(col(dim)).fetchall()]
 
     def _validate_frame(
-        self, lazy: nw.LazyFrame, attribute: str, coords: Mapping[str, Any]
+        self, rel: DuckDBPyRelation, attribute: str, coords: Mapping[str, Any]
     ) -> None:
         """A long input frame's keywords, and the labels its coordinates carry.
 
@@ -1054,17 +1057,17 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
         """
         self._validate_input(attribute, coords)
-        columns = lazy.collect_schema().names()
+        columns = rel.columns
         partial = self.schema.partial or frozenset()
         for c, dim in _flat_coordinates(self.schema, attribute).items():
             if dim not in partial or c in coords:
                 continue
             field = (
-                nw.col(c)
+                col(c)
                 if c in columns
                 else next(
                     (
-                        nw.col(g).struct.field(c)
+                        fn.struct_extract(col(g), lit(c))
                         for g in self.schema.groups_of(attribute)
                         if g in columns and c in self.schema.group_key(g)
                     ),
@@ -1073,8 +1076,36 @@ class WorkingRecord(Record):
             )
             if field is None:
                 continue
-            labels = lazy.select(field.alias("n")).unique().collect()["n"].to_list()
+            labels = [n for (n,) in rel.project(field).distinct().fetchall()]
             self._require_labels(dim, labels)
+
+    def _require_typed(self, dim: str, labels: Sequence[Any], call: str) -> None:
+        """Refuse a label whose type does not fit the dtype of `dim` (`takes`).
+
+        A label has the type DuckDB binds it as, so a string is refused for a
+        `datetime` dim rather than parsed by the cast. One label per Python
+        type is bound, so a list mixing types is checked once per type.
+
+        Raises
+        ------
+        ValueError
+            Naming `call`, the label, its type, `dim` and its dtype.
+
+        Notes
+        -----
+        - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+        """
+        _, declared, shown = cast(
+            "tuple[str, DuckDBPyType, str]", self.schema.declared(dim)
+        )
+        for label in {type(n): n for n in labels if n is not None}.values():
+            given = self._values_relation({dim: [label]}, {dim: None}).types[0]
+            if not takes(declared, given):
+                msg = (
+                    f"{call}: label {label!r} has type {given}, which does not "
+                    f"fit {dim!r} of dtype {shown}"
+                )
+                raise ValueError(msg)
 
     def _insert(
         self,
@@ -1082,6 +1113,7 @@ class WorkingRecord(Record):
         table: str,
         supplied: Mapping[str, Expression],
         key: Sequence[str] | None = None,
+        broadcast: Container[str] = (),
     ) -> None:
         """Project `rel` into `table`'s column order and insert it.
 
@@ -1094,8 +1126,7 @@ class WorkingRecord(Record):
 
         `key` given, the rows `rel` names by it are deleted first, so the table
         holds one row per key and *is* the file it becomes - no fold on the way
-        out. The match is `null_safe` so a broadcast coordinate's NULL replaces
-        the same NULL rather than sitting beside it (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        out (`_delete_covered`).
         `rel` must not read `table`, or the delete changes what the insert then
         reads: a caller deriving from the staged rows snapshots them first
         (`_insert_snapshot`), and the one path that patches columns in place
@@ -1106,12 +1137,12 @@ class WorkingRecord(Record):
         - [edits](https://energy-models.github.io/datarecord/design/working-record/#edits)
         """
         staging = self.con.table(table)
-        carried = {c.lower() for c in rel.columns}
+        carried = set(rel.columns)
 
         def column(name: str, dtype: str) -> Expression:
             if name in supplied:
                 return supplied[name].alias(name)
-            if name.lower() in carried:
+            if name in carried:
                 return col(name)
             return lit(None).cast(dtype).alias(name)
 
@@ -1122,17 +1153,16 @@ class WorkingRecord(Record):
             )
         )
         if key is not None:
-            # `null_safe`, not `IN`/`=`: those never match a broadcast row's NULL.
-            on = null_safe(table, "p", key)
-            self.con.execute(f"DELETE FROM {table} USING projected p WHERE {on}")
+            self._delete_covered(projected, table, key, broadcast)
         try:
             projected.insert_into(table)
         except duckdb.ConversionException as exc:
-            # An `Enum` dim or property reaches DuckDB as one, so this is what rejects a
-            # label its vocabulary does not hold - as a conversion to `UINT8`,
-            # the enum's storage type, naming neither the dim nor what it
-            # declares. The source column is in the message, which is what makes
-            # it restatable.
+            # The column of a dim listing its labels reaches DuckDB as an
+            # `ENUM`, so this is what rejects a label it does not list - as a
+            # conversion to `UINT8`,
+            # the enum's storage type, naming neither the dim nor its labels.
+            # The source column is in the message, which is what makes it
+            # restatable.
             match = re.search(r"casting from source column (\w+)", str(exc))
             if match is None:
                 raise
@@ -1146,11 +1176,12 @@ class WorkingRecord(Record):
                 None,
             )
             dtype = self.schema.column_type(source, subject)
-            if not isinstance(dtype, nw.Enum):
+            listed = None if dtype is None else enum_labels(dtype)
+            if listed is None:
                 raise
             msg = (
-                f"{source!r} declares no such label; its dtype is an Enum over "
-                f"{sorted(dtype.categories)}, which pins the vocabulary"
+                f"{source!r} names a label its dim does not list; "
+                f"that dim lists {list(listed)}"
             )
             raise ValueError(msg) from exc
 
@@ -1180,29 +1211,70 @@ class WorkingRecord(Record):
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
-        duck_types = DuckTypes(rel)
 
         def coordinate(d: str) -> Expression:
             if d in present:
                 return col(d)
             if d in self.schema.groups_of(attribute):
-                return _packed(self.schema, d, present, dims, duck_types).alias(d)
-            return duck_types.lit(dims.get(d), self._column_type(d)).alias(d)
+                return _packed(self.schema, d, present, dims).alias(d)
+            return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
         shaped = rel.project(
             *(coordinate(d) for d in self._staged_coordinates(attribute)),
             lit(attribute).alias("attribute"),
-            duck_types.null(nw.Float64()).alias("breakpoint"),
+            lit(None).cast(sqltypes.DOUBLE).alias("breakpoint"),
             col("value"),
         )
-        self._insert(shaped, table, {}, key=self._long_key(attribute))
+        self._insert(
+            shaped,
+            table,
+            {},
+            key=self._long_key(attribute),
+            broadcast=self._staged_coordinates(attribute),
+        )
         self._complete_owned_whole(attribute, table)
+
+    def _delete_covered(
+        self,
+        rel: DuckDBPyRelation,
+        table: str,
+        key: Sequence[str],
+        broadcast: Container[str],
+    ) -> None:
+        """Delete every row of `table` that a row of `rel` covers.
+
+        A row covers another where each `key` column is equal, NULL-safe so a
+        broadcast NULL replaces the same NULL rather than sitting beside it, or
+        is a `broadcast` column the covering row leaves NULL, every label by the
+        broadcast rule. `rel` is split by which `broadcast` columns it leaves
+        NULL, and each part deletes on an equi-join over the columns it names: a
+        match on "NULL or equal" cannot hash and would compare every pair.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        """
+        open_ = [c for c in key if c in broadcast]
+        flags = ", ".join(f"{col(c)} IS NULL" for c in open_)
+        patterns = (
+            self.con.sql(f"SELECT DISTINCT {flags} FROM rel").fetchall()
+            if open_
+            else [()]
+        )
+        for pattern in patterns:
+            nulls = {c for c, null in zip(open_, pattern, strict=True) if null}
+            part = " AND ".join(
+                f"({col('p', c)} IS NULL) = {c in nulls}" for c in open_
+            )
+            on = null_safe(table, "p", [c for c in key if c not in nulls])
+            where = f"{part} AND {on}" if part else str(on)
+            self.con.execute(f"DELETE FROM {table} USING rel p WHERE {where}")
 
     def _long_key(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one long table is keyed on - what an edit replaces.
 
         The fold partitions on these too (`_collapsed_attribute` before this change),
-        so replacing them per edit removes exactly what it would have discarded.
+        so replacing them per edit removes at least what it would have discarded.
 
         Notes
         -----
@@ -1276,48 +1348,27 @@ class WorkingRecord(Record):
     def _values_relation(
         self,
         columns: Mapping[str, Sequence[Any]],
-        schema: Mapping[str, nw.dtypes.DType | None],
+        schema: Mapping[str, DuckDBPyType | None],
     ) -> DuckDBPyRelation:
         """A relation over `columns`, each an equal-length sequence of scalars.
 
-        Column-wise, so nothing here is per-row: a caller's product of entities
-        and labels never becomes Python objects.
+        Column-wise, so nothing here is per-row: each column is one list
+        parameter, unnested beside the others.
 
         A `None` in `schema` is inferred, as `set` leaves the `value` column.
-        An `Enum` is built as its `String` and cast by the insert -
-        narwhals cannot construct an arrow enum - which is also what rejects a
-        label the dtype does not declare.
+        An `ENUM` is built as text and cast by the insert, which is what
+        rejects a label it does not list with the column named (`_insert`).
         """
-        buildable = {
-            name: (nw.String() if isinstance(dtype, nw.Enum) else dtype)
-            for name, dtype in schema.items()
+        params = [[_scalar(v) for v in values] for values in columns.values()]
+        built = {
+            name: sqltypes.VARCHAR if t is not None and t.id == "enum" else t
+            for name, t in ((name, schema[name]) for name in columns)
         }
-        return as_relation(
-            nw.DataFrame.from_dict(
-                dict(columns), schema=buildable, backend="pyarrow"
-            ).lazy(),
-            self.con,
+        unnested = ", ".join(
+            f"unnest(${i}){'' if t is None else f'::{t}'} AS {col(name)}"
+            for i, (name, t) in enumerate(built.items(), start=1)
         )
-
-    def _stage_long(
-        self, attribute: str, lazy: nw.LazyFrame, dims: dict[str, Any]
-    ) -> None:
-        """Stage a long frame that supplies its own keys.
-
-        Its keys are whatever coordinates it carries; `dims` supplies any the
-        frame leaves out, so a caller may scope a whole frame
-        to one connection without repeating it per row.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
-        """
-        table = self._ensure(_ATTRIBUTES, attribute)
-        rel = as_relation(lazy, self.con)
-        self._insert_long(
-            rel, table, attribute, set(lazy.collect_schema().names()), dims
-        )
+        return self.con.sql(f"SELECT {unnested}", params=params)
 
     def add(self, dim: str, labels: Sequence[Any], **columns: Any) -> None:
         """Stage labels of `dim`, each as one whole row of its axis file.
@@ -1335,12 +1386,13 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            If the schema declares no `dim`, or on a value of a property `into`
-            a dim naming no label of it.
+            If the schema declares no `dim`, or on a value of a property
+            that takes its labels from a dim and is no label of it.
         ValueError
             On an attribute, a column the axis file has no place for, a
-            sequence of the wrong length, or a value an `Enum` property does
-            not list.
+            sequence of the wrong length, a label its dim does not list,
+            `dim`'s own included, or a label whose type does not fit the dtype
+            of `dim`.
 
         Notes
         -----
@@ -1352,8 +1404,9 @@ class WorkingRecord(Record):
             raise KeyError(msg)
         call = f"add({dim!r}, ...)"
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
-        self._reject_undeclared(call, table, [*columns])
+        self._reject_undeclared(f"`{call}`", table, [*columns])
         names = list(labels)
+        self._require_typed(dim, names, f"`{call}`")
         data: dict[str, list[Any]] = {dim: names}
         for c, given in columns.items():
             data[c] = list(given) if _is_labels(given) else [given] * len(names)
@@ -1363,7 +1416,7 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
         self.schema.require_listed(dim, data, f"`{call}`")
-        self._require_live(dim, data)
+        self._require_live(dim, data, f"`{call}`")
         rel = self._values_relation(data, {c: self._column_type(c, dim) for c in data})
         self._insert(
             rel,
@@ -1386,8 +1439,9 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            While a property `into` `dim` stores one of `labels`, the record
-            as staged read.
+            On a label whose type does not fit the dtype of `dim`, or while a
+            property that takes its labels from `dim` stores one of `labels` in the record
+            as staged.
 
         Notes
         -----
@@ -1396,6 +1450,7 @@ class WorkingRecord(Record):
         """
         if not labels:
             return
+        self._require_typed(dim, labels, f"`remove({dim!r}, ...)`")
         self._require_unnamed(dim, labels)
         rel = self._values_relation({dim: list(labels)}, {dim: self._column_type(dim)})
         self._insert(
@@ -1424,7 +1479,7 @@ class WorkingRecord(Record):
             )
 
     def _require_unnamed(self, dim: str, labels: Sequence[Any]) -> None:
-        """Refuse removing `labels` of `dim` while a property `into` it stores one.
+        """Refuse removing `labels` of `dim` while a property that takes its labels from `dim` stores one of them.
 
         A tuple naming a label goes with it, but a property's row is its
         subject's, which outlives the label; clearing it is the caller's edit.
@@ -1439,7 +1494,7 @@ class WorkingRecord(Record):
         - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
         """
         problems = []
-        naming = [k for k, d in self.schema.into_properties().items() if d == dim]
+        naming = [k for k, d in self.schema.one_of_properties().items() if d == dim]
         for subject, name in naming:
             rows = (
                 self.resolver.dims.groups.get(subject)
@@ -1502,8 +1557,7 @@ class WorkingRecord(Record):
         - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
         """
         known = list(self.con.table(table).columns)
-        allowed = {c.lower() for c in known}
-        extra = sorted(c for c in columns if c.lower() not in allowed)
+        extra = sorted(c for c in columns if c not in known)
         if not extra:
             return
         attributes = [c for c in extra if c in self.schema.attributes]
@@ -1514,7 +1568,7 @@ class WorkingRecord(Record):
             else ""
         )
         msg = (
-            f"`{call}` was given columns {extra} the schema does not declare "
+            f"{call} was given columns {extra} the schema does not declare "
             f"there; it holds {sorted(known)}. A column there is a property, so "
             f"declare it on its subject before writing it (https://energy-models.github.io/datarecord/design/schema/#versioning){hint}"
         )
@@ -1523,34 +1577,32 @@ class WorkingRecord(Record):
     def add_group(self, group: str, frame: Any) -> None:
         """Stage rows of one declared group from a frame keyed by its struct column.
 
-        The frame carries the group as one struct column named for it, its
-        `into` label and the group's properties as plain columns - the shape of
-        `groups/<group>.parquet`. The one path every group is added
-        through, a record's `connection` group included.
+        The frame carries the group as one struct column named for it and
+        the group's properties as plain columns - the shape of
+        `groups/<group>.parquet`. The one path every group is added through, a
+        record's `connection` group included.
 
         Raises
         ------
         ValueError
-            On a missing group or `into` column, an attribute column, and as
-            `Schema.check_group_columns` does.
+            On a missing group column, an attribute column, a column whose type
+            does not fit its dtype, and as `Schema.check_group_columns` does.
 
         Notes
         -----
         - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
         """
         call = f"`add_group({group!r}, ...)`"
-        lazy = _incoming(frame, self.con)
-        columns = lazy.collect_schema()
-        self.schema.check_group_columns([group], lazy, carrier=call)
-        into = self.schema.groups[group].into
-        for required in (group, *([into] if into else [])):
-            if required not in columns:
-                msg = f"{call} needs a {required!r} column"
-                raise ValueError(msg)
+        rel = as_relation(frame, self.con)
+        self.schema.check_group_columns([group], rel, carrier=call)
+        if group not in rel.columns:
+            msg = f"{call} needs a {group!r} column"
+            raise ValueError(msg)
         table = self._ensure(group)
-        self._reject_undeclared(call, table, list(columns))
+        self._reject_undeclared(call, table, rel.columns)
+        rel = self.schema.require_takes(rel, call, subject=group)
         self._insert(
-            as_relation(lazy, self.con),
+            rel,
             table,
             {"deleted": lit(False)},  # noqa: FBT003
             key=(group,),
@@ -1559,8 +1611,7 @@ class WorkingRecord(Record):
     def remove_group(self, group: str, keys: Sequence[tuple[Any, ...]]) -> None:
         """Stage a tombstone per tuple, each in `Schema.group_key` order.
 
-        Each tuple is packed into the group's struct column. An `into` label is
-        no part of a key: the tuple is removed, whatever label it carried.
+        Each tuple is packed into the group's struct column.
 
         Notes
         -----
@@ -1568,11 +1619,11 @@ class WorkingRecord(Record):
         """
         key = self.schema.group_key(group)
         over = self.schema.groups[group].over
-        types = {c: self.schema.dimensions[d].dtype for c, d in over.items()}
+        types = {c: self._column_type(d) for c, d in over.items()}
         flat = self._values_relation(
             {c: [k[i] for k in keys] for i, c in enumerate(key)}, types
         )
-        packed = _packed(self.schema, group, key, {}, DuckTypes(flat))
+        packed = _packed(self.schema, group, key, {})
         self._insert(
             flat.project(packed.alias(group)),
             self._ensure(group),
@@ -1656,8 +1707,7 @@ class WorkingRecord(Record):
         """One group's staged rows - a table scan, one per tuple.
 
         Restating a tuple replaced its row (`_replace` on the group's column), so the
-        table already holds one per key; a different `into` label is that edit,
-        not a second row.
+        table already holds one per key.
 
         Notes
         -----
@@ -1723,19 +1773,18 @@ class WorkingRecord(Record):
         )
         return union_all_by_name([staged, untouched], self.con)
 
-    def _staged_groups(self) -> Frames:
-        """The staged group rows, keyed by group - one frame each.
+    def _staged_groups(self) -> Relations:
+        """Return the staged rows of each group, one relation per group.
 
-        A `Frames` for `StagedSource.groups()`'s key set, not a builder of the
-        rows themselves - `StagedSource.group` reads those directly off
-        `_collapsed_group`.
+        `StagedSource.groups()` reads only its keys; `StagedSource.group` reads
+        the rows directly from `_collapsed_group`.
         """
         staged = {
             g: rel
             for g in self.schema.groups
             if (rel := self._collapsed_group(g)) is not None
         }
-        return LazyFrames(tuple(staged), lambda group: nw.from_native(staged[group]))
+        return LazyRelations(tuple(staged), staged.__getitem__)
 
     @property
     def edits(self) -> StagedSource:
@@ -1767,8 +1816,8 @@ def _base_resolver(base: RecordLike) -> Resolver:
     Raises
     ------
     TypeError
-        For anything else. A framework object hands over narwhals frames and has
-        no layer layout behind it, so synthesising one would be rebuilding the
+        For anything else. A framework object hands over relations and has no
+        layer layout behind it, so synthesising one would be rebuilding the
         format from a protocol that deliberately lacks it.
     """
     if not isinstance(base, Record):
@@ -1783,7 +1832,7 @@ def _base_resolver(base: RecordLike) -> Resolver:
 
 def _column_type(
     schema: Schema, column: str, subject: str | None = None
-) -> nw.dtypes.DType:
+) -> DuckDBPyType:
     """A staged column's declared type, for a typed NULL or literal.
 
     Every column a staging table has is a declared dim, a structural one or a
@@ -1806,20 +1855,18 @@ def _column_type(
     return dtype
 
 
-def _group_columns(schema: Schema, group: str) -> dict[str, nw.dtypes.DType]:
-    """One group's staged columns: its struct column, `into`, its tombstone and its properties.
+def _group_columns(schema: Schema, group: str) -> dict[str, DuckDBPyType]:
+    """Return the staged columns of `group`: its struct column, its tombstone and its properties.
 
     Notes
     -----
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    into = schema.groups[group].into
     return {
         group: schema.group_type(group),
-        **({into: schema.dimensions[into].dtype} if into else {}),
-        "deleted": nw.Boolean(),
-        **{p: spec.dtype for p, spec in schema.properties.get(group, {}).items()},
+        "deleted": sqltypes.BOOLEAN,
+        **{p: _column_type(schema, p, group) for p in schema.properties.get(group, {})},
     }
 
 
@@ -1850,7 +1897,6 @@ def _packed(
     group: str,
     present: Container[str],
     dims: Mapping[str, Any],
-    duck_types: DuckTypes,
 ) -> Expression:
     """`group`'s struct column, packed from flat coordinates.
 
@@ -1871,7 +1917,7 @@ def _packed(
     over = schema.groups[group].over
     missing = [c for c in over if c not in present and c not in dims]
     if len(missing) == len(over):
-        return duck_types.null(schema.group_type(group))
+        return lit(None).cast(schema.group_type(group))
     if missing:
         msg = (
             f"{group!r} is keyed by {list(over)}, and {missing} was not given; "
@@ -1880,15 +1926,13 @@ def _packed(
         raise ValueError(msg)
     return struct_of(
         {
-            c: col(c)
-            if c in present
-            else duck_types.lit(dims[c], schema.dimensions[d].dtype)
+            c: col(c) if c in present else lit(dims[c]).cast(_column_type(schema, d))
             for c, d in over.items()
         }
-    ).cast(duck_types(schema.group_type(group)))
+    ).cast(schema.group_type(group))
 
 
-def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
+def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
     """One axis's staged columns - the shape of `dims/{dim}.parquet`: its key, its tombstone, its properties.
 
     Notes
@@ -1897,9 +1941,21 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, nw.dtypes.DType]:
     """
     return {
         dim: _column_type(schema, dim),
-        "deleted": nw.Boolean(),
-        **{p: spec.dtype for p, spec in schema.properties.get(dim, {}).items()},
+        "deleted": sqltypes.BOOLEAN,
+        **{p: _column_type(schema, p, dim) for p in schema.properties.get(dim, {})},
     }
+
+
+def _scalar(value: Any) -> Any:
+    """Return `value` as DuckDB binds a parameter, turning a numpy scalar into a Python one.
+
+    numpy is only looked up among the imported modules, since a numpy scalar
+    cannot exist without it.
+    """
+    numpy = sys.modules.get("numpy")
+    if numpy is not None and isinstance(value, numpy.generic):
+        return value.item()
+    return value
 
 
 _ATTRIBUTES = "attributes"

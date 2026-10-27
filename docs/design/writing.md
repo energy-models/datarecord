@@ -21,7 +21,7 @@ Keys are looked up one at a time and each file written before the next is built,
 Locally, frames are staged into a sibling directory and renamed on success, so a frame the fold could not resolve leaves no layer rather than half of one.
 
 Every column the schema declares a type for is cast to it on the way out, so a record's files carry the schema's types and a reader can trust them.
-Without that a source may hand over an all-NULL column its dataframe library typed as float, and every reader would re-cast defensively instead.
+The column is held to its dtype as [`set`](working-record.md#set) holds a frame's: a wider type of its kind is cast, a column of only NULLs passes whatever type its dataframe library guessed, and any other is refused naming the attribute, property or dim and its dtype.
 
 Validation is structural: a long frame carries [its attribute's own coordinates](format.md#the-long-schema), and an entity frame carries every dim it is keyed by.
 Which entity types are valid belongs to [the schema's vocabulary](schema.md), which the record layer does not interpret.
@@ -35,7 +35,7 @@ A result is exempt from both checks: its shape is a framework's business, and a 
 The input is a [`LayerData`](record.md#layerdata): "the rows of one thing, enumerated and read" — the same interface a [`LayerSource`](read-path.md#owner-map) answers for its own layer and a `Resolver` answers for a whole fold, so the writer cannot tell which it was handed and does not need to.
 A staged layer's own rows and a resolved record are both a `LayerData`, which is what lets a [`WorkingRecord`](working-record.md#edits) hand over either.
 
-A framework object exposing narwhals frames — [`Record`](record.md) rather than `LayerData` — is not itself one: the writer wraps it in a thin adapter that reads its `Frames` mappings as the enumerate-and-read pairs `LayerData` declares, so a tool stays narwhals-facing and the layered write path stays raw-relation throughout.
+A framework object exposing a [`RecordLike`](record.md)'s relations rather than a `LayerData` is not itself one: the writer wraps it in a thin adapter that reads its `Relations` mappings as the enumerate-and-read pairs `LayerData` declares, so the layered write path stays one code path. The adapter takes each value as [`set`](working-record.md#set) does — a relation on the writer's connection, or a pandas, polars or arrow frame DuckDB scans.
 
 ## A revision exists only by its file
 

@@ -13,7 +13,6 @@ from pathlib import Path
 from typing import Any
 
 import duckdb
-import narwhals as nw
 import pandas as pd
 
 from datarecord.files import Files, Version
@@ -127,13 +126,12 @@ def write_group(layer: str, group: str, rows: list[dict]) -> None:
     df.to_parquet(target / f"{group}.parquet", index=False)
 
 
-def unpacked(frame: Any, group: str = "connection") -> pd.DataFrame:
-    """A group-keyed frame or relation as pandas, its struct column spread flat.
+def unpacked(rel: Any, group: str = "connection") -> pd.DataFrame:
+    """A group-keyed relation as pandas, its struct column spread flat.
 
     A numpy-backed pandas frame has no struct dtype, so the unnest happens on
     the DuckDB side.
     """
-    rel = frame.to_native() if isinstance(frame, nw.LazyFrame) else frame
     return rel.project(f"unnest({group}), * EXCLUDE ({group})").df()
 
 
@@ -324,10 +322,11 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
 
 def empty_root(store: Store) -> Revision:
-    """A new root revision with no layer, for a test to hand-write one into.
+    """A new root revision, for a test to hand-write its layer into.
 
     No public API makes an empty revision; this is the store's private
-    revision-file write.
+    revision-file write. Its layer holds nothing, the axis of a dim that lists its labels
+    included: a label a property names is one a test adds.
 
     Write every file of a layer before its first read: a read freezes the
     layer for its workspace, as a layer is write-once.
@@ -412,9 +411,7 @@ class RivalWrite:
         return found
 
 
-def _default_attributes(
-    dims: dict[str, nw.dtypes.DType], groups: dict[str, dict[str, str]]
-):
+def _default_attributes(dims: dict[str, Any], groups: dict[str, dict[str, str]]):
     """The attributes tests write, declared over whichever dims are in play.
 
     Writing an attribute the schema does not declare is rejected, since its
@@ -434,20 +431,16 @@ def _default_attributes(
     # A dim the connection's column already carries cannot address it again.
     per_connection = set(dims) - set(groups.get(connection, ()))
     declared = {
-        "p_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
-        "e_nom": AttributeSpec(dtype=nw.Float64(), dims=varying),
-        "p_max_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
-        "p_min_pu": AttributeSpec(dtype=nw.Float64(), dims=varying),
-        "marginal_cost": AttributeSpec(
-            dtype=nw.Float64(), dims=varying, breakpoints=True
-        ),
-        "efficiency": AttributeSpec(
-            dtype=nw.Float64(), dims={connection, *per_connection}
-        ),
+        "p_nom": AttributeSpec(dtype="float", dims=varying),
+        "e_nom": AttributeSpec(dtype="float", dims=varying),
+        "p_max_pu": AttributeSpec(dtype="float", dims=varying),
+        "p_min_pu": AttributeSpec(dtype="float", dims=varying),
+        "marginal_cost": AttributeSpec(dtype="float", dims=varying, breakpoints=True),
+        "efficiency": AttributeSpec(dtype="float", dims={connection, *per_connection}),
     }
     if "scenario" in dims:
         declared["weight"] = AttributeSpec(
-            dtype=nw.Float64(),
+            dtype="float",
             dims={"scenario"},
             description="How much this scenario counts in the expectation.",
         )
@@ -458,10 +451,10 @@ def schema(
     *,
     partial: set[str] = {"scenario", "connection"},
     attributes: dict[str, dict[str, AttributeSpec]] | None = None,
-    dims: dict[str, nw.dtypes.DType] = {
-        "snapshot": nw.Datetime(),
-        "period": nw.Int64(),
-        "scenario": nw.String(),
+    dims: dict[str, Any] = {
+        "snapshot": "datetime",
+        "period": "int",
+        "scenario": "str",
     },
     groups: dict[str, dict[str, str]] = {
         "connection": {"entity": "entity", "bus": "bus"}
@@ -470,9 +463,11 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `ctype` property (categories `TYPES`), a `connection` group over
+    `ctype` property, which takes its labels from the dim `ctype` listing `TYPES`, a
+    `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
-    different layering granularity, `dims` to declare another axis, `groups` to
+    different layering granularity, `dims` to declare another axis by its
+    dtype or as a `Dimension`, `groups` to
     declare a different sparse relation.
 
     A group's coordinates are declared dims. `entity` is always `partial`, so
@@ -501,14 +496,20 @@ def schema(
     # coordinates that are not called `bus`.
     coordinates = {c for over in groups.values() for c in over}
     declared = {
-        "entity": nw.String(),
-        **{c: nw.String() for c in coordinates},
+        "entity": "str",
+        **{c: "str" for c in coordinates},
         **dims,
     }
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()},
-        dimensions={d: Dimension(dtype=t) for d, t in declared.items()},
-        properties={"entity": {"ctype": PropertySpec(dtype=nw.Enum(TYPES))}},
+        dimensions={
+            **{
+                d: t if isinstance(t, Dimension) else Dimension(dtype=t)
+                for d, t in declared.items()
+            },
+            "ctype": Dimension(one_of=TYPES),
+        },
+        properties={"entity": {"ctype": PropertySpec(one_of="ctype")}},
         attributes=flat,
         # The default names `connection`, which a caller's own `groups` may drop.
         partial=frozenset(
