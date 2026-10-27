@@ -30,7 +30,6 @@ from datarecord.schema import (
     Group,
     PropertySpec,
     Schema,
-    Trait,
 )
 from tests.fixtures import (
     empty_child,
@@ -170,9 +169,17 @@ def test_a_malformed_group_is_refused(groups, match):
         pytest.param({}, {}, "declares its `dtype`, or the dim", id="neither"),
         pytest.param(
             {"into": "state"},
-            {"traits": {"t": Trait(on={"bus.state": {"lower"}})}},
+            {
+                "attributes": {
+                    "v": AttributeSpec(
+                        dtype=nw.Float64(),
+                        dims={"bus"},
+                        default_by={"bus.state": {"lower": 1.0}},
+                    )
+                }
+            },
             "whose labels are data, not categories",
-            id="a-trait-on-it",
+            id="a-default-by-on-it",
         ),
     ],
 )

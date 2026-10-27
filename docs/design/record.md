@@ -81,7 +81,7 @@ The rest is data, and comes in two shapes.
 
 ```text
 dims["entity"]                     entity                              key columns only
-properties["entity"]               entity | component | carrier | ... stored values
+properties["entity"]               entity | ctype | carrier | ... stored values
 groups["connection"]               connection STRUCT(entity, bus) | role | ...
 ```
 
@@ -119,9 +119,9 @@ A [property](schema.md#properties) is one value per label of its subject — a d
 
 **`properties[subject]`** is the subject's key with every property declared for it, as stored: a record-wide view, NULL wherever no layer wrote a value. It is keyed by each subject declaring properties, and its columns are the properties' plain names — the frame already names the subject.
 
-An `Enum` property of a dim in [`partial`](schema.md#partial-the-granularity-of-an-override) [categorizes](schema.md#categories-an-enum-property-of-a-partial-dim) that dim. One category's labels are `properties[dim]` filtered on it; which properties they carry is `Schema.properties_for`, and a property's [default](schema.md#default_by-a-default-per-category) — `default_by` per category, else `default` — is `Schema.default_for`. A framework's static frame, PyPSA's `n.generators`, is that frame, defaulted, joined with the entity-only rows of its attributes. A per-category read applying the defaults itself is deferred until a caller needs it.
+An `Enum` property of a dim in [`partial`](schema.md#partial-the-granularity-of-an-override) [categorizes](schema.md#categories-an-enum-property-of-a-partial-dim) that dim. One category's labels are `properties[dim]` filtered on it, carrying every property of the dim, and a property's [default](schema.md#default_by-a-default-per-category) — `default_by` per category, else `default` — is `Schema.default_for`. A framework's static frame, PyPSA's `n.generators`, is that frame, defaulted, joined with the entity-only rows of its attributes. A per-category read applying the defaults itself is deferred until a caller needs it.
 
-Which properties and attributes a label carries is decided by its categories at read time, against the [traits](schema.md#traits). A label whose category changes keeps what it held for attributes it no longer carries — `attributes` shows what was written — but those values fall outside every per-category read and every broadcast.
+A category selects labels; it never decides which attributes or properties a label carries, which is every one [it addresses](schema.md#an-attribute-reaches-every-label-it-addresses). A label whose category changes keeps what it held, and a per-category read judges it by its current categories.
 
 ## Connections
 
@@ -146,7 +146,7 @@ A NULL dim means "all values of that dim", not that the attribute lacks the axis
 
 **Every declared dim broadcasts**, `entity` included, and **the dims a group draws on** too: a connection's `bus` is a field of the `connection` column, not the dim `bus`, so a per-bus `marginal_price` with `bus = NULL` holds one value for every bus.
 
-**On a categorized dim, "every" is narrowed by the schema.** A NULL reaches only the labels whose categories carry the attribute, judged at read time: `set("p_max_pu", 0.9)` is one row with `entity = NULL`, reaching every generator — one added in a later layer included — and never a load. A label with a NULL category carries only what no trait narrows.
+**On a categorized dim, "every" is every label**, whatever its categories: `set("p_max_pu", 0.9)` is one row with `entity = NULL`, reaching every entity — one added in a later layer included — loads too, which a tool not taking the value [leaves out](tools.md#a-value-its-type-does-not-take). A value for some categories is written per label, `set("p_max_pu", 0.9, ctype="Generator")`.
 
 **A [group](schema.md#groups)'s column broadcasts too**, its axis the resolved group: a NULL `connection` means every connection, expanded against `groups/connection.parquet` as a NULL `timestep` is against `dims/timestep.parquet`.
 A group value is therefore a whole tuple or NULL. A struct with some fields NULL, `{entity: dc, bus: NULL}`, names a tuple no group row matches, so it is refused wherever a row comes in rather than stored.
@@ -192,8 +192,8 @@ class Flags:
 `flags()` answers for the whole record in one query, keyed by attribute.
 Only attributes with rows are present, so `set(record.flags())` also answers which attributes the record has at all.
 
-**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim by their plain names, `component="Generator"` rather than the [`subject.name`](schema.md#properties) a schema addresses one by, each one category or a list ([categories](#properties-and-categories)).
-Only rows reaching a matching label count — on the dim's own column, or through a group's single field over it — and only attributes those labels carry are present.
+**`flags(**categories)`** answers for one category: the keywords are categorizing properties of one dim by their plain names, `ctype="Generator"` rather than the [`subject.name`](schema.md#properties) a schema addresses one by, each one category or a list ([categories](#properties-and-categories)).
+Only rows reaching a matching label count — on the dim's own column, or through a group's single field over it — so an attribute is present where such a row exists, and nothing else decides.
 Keywords categorizing several dims, or a group reaching the dim through two fields, are refused: there is no one label a row would count towards.
 
 The sets name dims, so a consumer asks about a **named** axis: `"timestep" in flags["p_max_pu"].varies`.

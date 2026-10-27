@@ -25,7 +25,6 @@ from datarecord.schema import (
     Group,
     PropertySpec,
     Schema,
-    Trait,
 )
 from datarecord.store import Store
 
@@ -42,9 +41,9 @@ TYPES = (
     "Transformer",
     "Widget",
 )
-"""The `component` labels `schema()` declares - every one a test writes."""
+"""The `ctype` labels `schema()` declares - every one a test writes."""
 
-# No `component`: an attribute row is keyed by `name`, unique across every type
+# No `ctype`: an attribute row is keyed by `name`, unique across every type
 # (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
@@ -192,17 +191,17 @@ def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
 def write_component(layer: str, ctype: str, rows: list[dict]) -> None:
     """Append rows of category `ctype` to `dims/entity.parquet`.
 
-    The label is the `component` property column; tombstones ride along as
+    The label is the `ctype` property column; tombstones ride along as
     `deleted`. Appended rather than replaced: several labels land in one entity
     axis, and a layer may write them one call at a time.
     """
     df = pd.DataFrame(rows)
-    df["component"] = ctype
+    df["ctype"] = ctype
     if "deleted" not in df:
         df["deleted"] = False
     df["deleted"] = df["deleted"].fillna(False).astype(bool)
 
-    lead = ["entity", "component", "deleted"]
+    lead = ["entity", "ctype", "deleted"]
     entities = df[lead + [c for c in df.columns if c not in lead]]
     target = Path(layer, "dims")
     target.mkdir(parents=True, exist_ok=True)
@@ -471,7 +470,7 @@ def schema(
     """A schema shaped like the PyPSA records most tests build on.
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `component` property (categories `TYPES`), a `connection` group over
+    `ctype` property (categories `TYPES`), a `connection` group over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis, `groups` to
     declare a different sparse relation.
@@ -487,20 +486,14 @@ def schema(
     - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
     """
     # Callers declare per type, which is how a modelling framework thinks; the
-    # schema stores one spec per attribute, record-wide, and a trait per type
-    # narrows it back. Flattening here keeps the tests readable and is exactly
-    # what a tool does on the way in.
+    # schema stores one spec per attribute, record-wide. Flattening here keeps
+    # the tests readable and is exactly what a tool does on the way in.
     flat: dict[str, AttributeSpec] = {}
-    traits: dict[str, Trait] = {}
-    for ctype, attrs in (attributes or {}).items():
+    for attrs in (attributes or {}).values():
         for attr, spec in attrs.items():
             flat.setdefault(attr, spec)
-        traits[ctype] = Trait(
-            attributes=frozenset(attrs), on={"entity.component": frozenset({ctype})}
-        )
     # Declared whether or not a caller named them: a test writing `p_max_pu`
-    # needs it declared, and one passing `attributes=` is narrowing what a type
-    # *carries* rather than shortening the record's vocabulary.
+    # needs it declared.
     for attr, spec in _default_attributes(dims, groups).items():
         flat.setdefault(attr, spec)
     # A group's coordinates are dims like any other, so they are declared here
@@ -515,9 +508,8 @@ def schema(
     return Schema(
         groups={g: Group(over=over) for g, over in groups.items()},
         dimensions={d: Dimension(dtype=t) for d, t in declared.items()},
-        properties={"entity": {"component": PropertySpec(dtype=nw.Enum(TYPES))}},
+        properties={"entity": {"ctype": PropertySpec(dtype=nw.Enum(TYPES))}},
         attributes=flat,
-        traits=traits,
         # The default names `connection`, which a caller's own `groups` may drop.
         partial=frozenset(
             p for p in {"entity", *partial} if p in declared or p in groups

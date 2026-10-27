@@ -14,20 +14,13 @@ import pytest
 
 from datarecord.layered.resolve import write_schema
 from datarecord.mutable import WorkingRecord
-from datarecord.schema import (
-    AttributeSpec,
-    Dimension,
-    Group,
-    PropertySpec,
-    Schema,
-    Trait,
-)
+from datarecord.schema import AttributeSpec, Dimension, Group, PropertySpec, Schema
 from tests.fixtures import empty_root
 
 
 @pytest.fixture
 def schema():
-    """`control` and `p_max_pu` are a generator's only; `sign` defaults by type.
+    """`sign` defaults by type.
 
     `x` is an attribute and a property of `bus`, `bus` a dim and a property of
     `entity`.
@@ -40,12 +33,12 @@ def schema():
         },
         properties={
             "entity": {
-                "component": PropertySpec(dtype=nw.Enum(["Generator", "Load"])),
+                "ctype": PropertySpec(dtype=nw.Enum(["Generator", "Load"])),
                 "carrier": PropertySpec(dtype=nw.String(), default=""),
                 "sign": PropertySpec(
                     dtype=nw.Float64(),
                     default=1.0,
-                    default_by={"entity.component": {"Load": -1.0}},
+                    default_by={"entity.ctype": {"Load": -1.0}},
                 ),
                 "control": PropertySpec(dtype=nw.String(), default="PQ"),
                 "bus": PropertySpec(dtype=nw.String()),
@@ -60,24 +53,18 @@ def schema():
             "x": AttributeSpec(dtype=nw.Float64(), dims={"entity"}),
         },
         groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
-        traits={
-            "generator": Trait(
-                attributes=frozenset({"p_max_pu", "entity.control"}),
-                on={"entity.component": frozenset({"Generator"})},
-            ),
-        },
         partial=frozenset({"entity", "connection"}),
     )
 
 
 @pytest.fixture
 def revision(store, schema):
-    """A generator and a load, each connected to one bus, `p_max_pu` and `p_set` set."""
+    """A generator and a load, each connected to one bus; the generator's `p_max_pu` and the load's `p_set` set."""
     write_schema(schema, store)
     root = empty_root(store)
     staged = WorkingRecord(root.record)
-    staged.add("entity", ["g1"], component="Generator", carrier="wind")
-    staged.add("entity", ["l1"], component="Load")
+    staged.add("entity", ["g1"], ctype="Generator", carrier="wind")
+    staged.add("entity", ["l1"], ctype="Load")
     staged.add("bus", ["b0"])
     staged.add_group(
         "connection",
@@ -92,7 +79,7 @@ def revision(store, schema):
             backend="pandas",
         ),
     )
-    staged.set("p_max_pu", 0.9)
+    staged.set("p_max_pu", 0.9, ctype="Generator")
     staged.set("p_set", 1.0, entity="l1")
     staged.set("efficiency", 0.5, entity="l1", bus="b0")
     return root.child(staged.edits)
@@ -128,19 +115,19 @@ def test_flags_refuse_a_plain_property(record):
         record.flags(carrier="wind")
 
 
-def test_flags_per_category_hold_what_the_category_carries(record):
+def test_flags_per_category_hold_the_rows_reaching_its_labels(record):
     assert set(record.flags()) == {"p_max_pu", "p_set", "efficiency"}
-    assert set(record.flags(component="Load")) == {"p_set", "efficiency"}, (
-        "p_max_pu is a Generator's only; efficiency reaches l1 through connection"
+    assert set(record.flags(ctype="Load")) == {"p_set", "efficiency"}, (
+        "p_max_pu was set on generators; efficiency reaches l1 through connection"
     )
-    assert set(record.flags(component="Generator")) == {"p_max_pu"}, (
+    assert set(record.flags(ctype="Generator")) == {"p_max_pu"}, (
         "p_set has no row on a generator"
     )
 
 
 def test_a_scalar_property_reaches_labels_added_in_the_same_record(record):
     staged = WorkingRecord(record)
-    staged.add("entity", ["g2"], component="Generator")
+    staged.add("entity", ["g2"], ctype="Generator")
     staged.set("entity.carrier", "solar")
     carriers = {e: r["carrier"] for e, r in _rows(staged.properties["entity"]).items()}
     assert carriers == {"g1": "solar", "l1": "solar", "g2": "solar"}, (
@@ -150,7 +137,7 @@ def test_a_scalar_property_reaches_labels_added_in_the_same_record(record):
 
 def test_set_writes_a_property_on_the_labels_a_category_selects(record):
     staged = WorkingRecord(record)
-    staged.set("entity.carrier", "solar", component="Generator")
+    staged.set("entity.carrier", "solar", ctype="Generator")
     rows = _rows(staged.properties["entity"])
     assert rows["g1"]["carrier"] == "solar"
     assert rows["l1"]["carrier"] is None, "the load is not selected"
@@ -171,13 +158,13 @@ def test_a_property_keyword_matches_a_label_by_its_stored_value(record):
 @pytest.mark.parametrize("committed", [False, True], ids=["staged", "committed"])
 def test_set_of_a_category_re_categorizes_labels_and_flags(revision, committed):
     staged = WorkingRecord(revision.record)
-    staged.set("entity.component", "Load", entity="g1")
+    staged.set("entity.ctype", "Load", entity="g1")
     record = revision.child(staged.edits).record if committed else staged
-    types = {e: r["component"] for e, r in _rows(record.properties["entity"]).items()}
+    types = {e: r["ctype"] for e, r in _rows(record.properties["entity"]).items()}
     assert types == {"g1": "Load", "l1": "Load"}, "g1 is a load now"
-    assert set(record.flags(component="Generator")) == set(), "no generator is left"
-    assert set(record.flags(component="Load")) == {"p_set", "efficiency"}, (
-        "the broadcast p_max_pu reaches no load, g1 included"
+    assert set(record.flags(ctype="Generator")) == set(), "no generator is left"
+    assert set(record.flags(ctype="Load")) == {"p_max_pu", "p_set", "efficiency"}, (
+        "g1 keeps the p_max_pu row set on it as a generator"
     )
 
 

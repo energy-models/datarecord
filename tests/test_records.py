@@ -116,10 +116,10 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     """
     entity_axis = nw.from_native(
         store.workspace.con.sql(
-            "SELECT 'wind' AS entity, 'Generator' AS component, FALSE AS deleted"
+            "SELECT 'wind' AS entity, 'Generator' AS ctype, FALSE AS deleted"
         )
     )
-    # `p_nom`'s own coordinates and no others: no `component` in a long
+    # `p_nom`'s own coordinates and no others: no `ctype` in a long
     # row, and no `bus`, which is the connection group's coordinate rather than
     # a column every attribute carries.
     long = nw.from_native(
@@ -330,7 +330,7 @@ def test_node_record_orders_members(store):
     write_component(store.layer_dir(child.id), "Generator", [{"entity": "New Solar"}])
 
     axis = Record(child.resolver).properties["entity"].collect().to_native().to_pandas()
-    names = list(axis[axis["component"] == "Generator"]["entity"])
+    names = list(axis[axis["ctype"] == "Generator"]["entity"])
     assert names == ["wind", "gas", "coal", "New Solar"], (
         "first-introduced order: the root's members, then the child's addition"
     )

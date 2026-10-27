@@ -26,7 +26,6 @@ from datarecord.schema import (
     Group,
     PropertySpec,
     Schema,
-    Trait,
 )
 from datarecord.store import Store, Workspace
 
@@ -43,7 +42,6 @@ __all__ = [
     "Revision",
     "Schema",
     "Store",
-    "Trait",
     "WorkingRecord",
     "Workspace",
 ]

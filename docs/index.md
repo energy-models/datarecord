@@ -27,7 +27,7 @@ record = ws.at("s3://bucket/my-record/")
 
 record.properties["entity"].collect()  # one row per entity, its properties
 record.attributes["p_max_pu"].collect()  # long value rows
-record.flags(component="Generator")  # which axes each attribute uses
+record.flags(ctype="Generator")  # which axes each attribute uses
 ```
 
 ## Where to go

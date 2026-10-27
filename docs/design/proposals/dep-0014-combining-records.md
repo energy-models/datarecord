@@ -64,7 +64,7 @@ A PyPSA-Eur workflow exports its network with `PyPSA.to_datarecord(n, ws.con)`, 
 
 ## Rationale
 
-**The rule protects the base, not only its names.** A new trait claiming `p_nom` for generators collides with nothing yet takes it from every other entity, because [a trait narrows](../schema.md#traits). Identity on shared entries plus new traits claiming only new names is what makes the invariant hold, so a tool reads a combined record's base names as it reads its own record.
+**The rule protects the base, not only its names.** A new trait claiming `p_nom` for generators collides with nothing yet takes it from every other entity, because [a trait narrows](dep-0016-remove-traits.md). Identity on shared entries plus new traits claiming only new names is what makes the invariant hold, so a tool reads a combined record's base names as it reads its own record.
 
 **Subjects split by key, attributes by name.** An axis or group row is keyed by one label, so the two sides meet on it. Attribute rows overlap through [broadcast](../record.md#the-broadcast-rule), and dividing them between sources is [the fold](../read-path.md#owner-map), which is a layer's job. For the same reason, an extension's value for a base-declared column on a base-held key is not read: changing a base value is a layer's job.
 

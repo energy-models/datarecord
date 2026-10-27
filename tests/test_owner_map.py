@@ -335,7 +335,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
             },
             properties={
                 "entity": {
-                    "component": {
+                    "ctype": {
                         "dtype": {"Enum": ["Generator"]},
                     }
                 }
@@ -350,7 +350,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     names, snapshots = ["wind", "solar"], 200
     base = empty_root(store)
     staged = WorkingRecord(base.record)
-    staged.add("entity", names, component="Generator")
+    staged.add("entity", names, ctype="Generator")
     staged.set(
         "p_max_pu",
         pd.DataFrame(
@@ -390,7 +390,7 @@ def test_the_fold_broadcasts_by_hash_join(store):
             },
             properties={
                 "entity": {
-                    "component": {
+                    "ctype": {
                         "dtype": {"Enum": ["Generator"]},
                     }
                 }
@@ -405,7 +405,7 @@ def test_the_fold_broadcasts_by_hash_join(store):
     )
     base = empty_root(store)
     staged = WorkingRecord(base.record)
-    staged.add("entity", ["wind"], component="Generator")
+    staged.add("entity", ["wind"], ctype="Generator")
     staged.add("snapshot", [0, 1])
     staged.set("weight", {0: 1.0, 1: 1.0})
     staged.set(

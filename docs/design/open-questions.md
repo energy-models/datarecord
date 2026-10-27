@@ -18,8 +18,8 @@ SPDX-License-Identifier: CC-BY-4.0
   A counter-example would be an attribute whose series a consumer _can_ accept in pieces while others cannot — none known, and permitting it would make the fold's key vary per attribute, which the fixed inputs key assumes it does not.
 
 - **Whether a broadcast survives materialisation.** A materialised ancestor's owner map stores a NULL row already expanded to the labels that existed then, and seeds a child's fold without re-expanding.
-  So `set("p_max_pu", 0.9)` reaches a generator added — or re-categorized — in a child only while the ancestor is unmaterialised; plain NULLs behave the same.
-  One level down, a `WorkingRecord` folds its committed prefix once, so a label staged or re-categorized there is not reached by a parent's NULL even while the parent is unmaterialised.
+  So `set("p_max_pu", 0.9)` reaches an entity added in a child only while the ancestor is unmaterialised.
+  One level down, a `WorkingRecord` folds its committed prefix once, so a label staged there is not reached by a parent's NULL even while the parent is unmaterialised.
 
 - **Whether staged results should be invalidated by a later input edit.** Results attached through [`set(..., kind="outputs")`](working-record.md#results-through-kindoutputs) were computed from the inputs pending at that moment, so editing an input afterwards leaves them describing a record that no longer exists.
   Dropping them on the next input edit was considered and rejected: it silently discards work the caller may have wanted, and a record that guesses which of the two the caller meant to keep is worse than one that keeps both and says so.
@@ -34,13 +34,11 @@ SPDX-License-Identifier: CC-BY-4.0
   Creating a view binds its schema, so registering N attributes costs N footer reads; and catalog reopen cost is linear in view count, which argues for one catalog per record rather than one shared.
 
 - **What else a `Record` should answer about its labels without handing over a frame.** [`flags`](record.md#flags) sets the shape — cheap derived metadata a consumer plans against without opening a file — but answers only per attribute.
-  `entity -> component` is now a column of the resolved axis, [names being unique record-wide](format.md#entity-is-unique-across-types), so it is one frame rather than one per type; "which categories have live labels" and "how many labels a category has" are still frames to collect.
+  `entity -> ctype` is now a column of the resolved axis, [names being unique record-wide](format.md#entity-is-unique-across-types), so it is one frame rather than one per type; "which categories have live labels" and "how many labels a category has" are still frames to collect.
   What is open is the granularity: those are the same kind of question, and a protocol growing one method per question is worse than the frames it replaces.
   Whatever is chosen, it has to be answerable off the fold, which is where a record's membership already lives.
 
-- **What a NULL group struct reaches when two of its fields are categorized.** A NULL `connection` reaches the tuples whose `entity` field names a label [carrying the attribute](read-path.md#owner-map). A group with two fields over categorized dims — a `contract` between two entities — has no single label to ask, and its NULL reaches every tuple; requiring both, or either, would each be a reading the schema does not state.
-
-- **Whether a property [`into`](schema.md#properties) a `partial` dim may categorize it.** `entity.carrier` names labels of `carrier`, and a trait keyed on it would make a vocabulary that is data: a category a layer adds and removes rather than an `Enum` the schema declares.
+- **Whether a property [`into`](schema.md#properties) a `partial` dim may categorize it.** `entity.carrier` names labels of `carrier`, and a `default_by` keyed on it would make a vocabulary that is data: a category a layer adds and removes rather than an `Enum` the schema declares.
 
 - **Whether a default must name a live label.** `bus.carrier` defaults to `AC` in PyPSA's schema, and a default is [never stored](schema.md#default_by-a-default-per-category), so nothing checks that `AC` is a label of `carrier`.
 
@@ -58,9 +56,17 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Settled
 
-- **Whether [`flags`](record.md#flags) needs a record-level counterpart** — it is one. `flags()` answers per record, every attribute included, and `flags(**categories)` per category, restricted to what those categories carry ([properties](proposals/dep-0012-properties.md#entity-is-an-ordinary-dim)). An attribute over an axis alone or a group outside `partial` is reachable through the first.
+- **Whether [`flags`](record.md#flags) needs a record-level counterpart** — it is one. `flags()` answers per record, every attribute included, and `flags(**categories)` per category, restricted to the rows reaching its labels ([flags](record.md#flags)). An attribute over an axis alone or a group outside `partial` is reachable through the first.
 
-- **What a NULL group struct reaches across entity types** — the tuples whose field over the categorized dim names a label carrying the attribute, as a NULL on the dim itself reaches its carrying labels ([the owner map](read-path.md#owner-map)). A constant link `efficiency` no longer lands on generators' connections.
+- **What a NULL group struct reaches across entity types** — every tuple, as a NULL on the dim itself reaches every label ([the schema](schema.md#an-attribute-reaches-every-label-it-addresses)). A constant `efficiency` lands on generators' connections too; one for links alone is `set("efficiency", 0.7, ctype="Link")`.
+
+- **What `build` does with a value its type does not take** — leaves it out and reports it in `Requirements.ignored`, as an unknown type is reported, without raising ([tools](tools.md#a-value-its-type-does-not-take)).
+
+- **Whether a category still needs `partial`** — it does: `default_by` per label needs a dim owned per label ([categories](schema.md#categories-an-enum-property-of-a-partial-dim)).
+
+- **Whether an attribute reaching every label grows the owner map** — only by what a broadcast is asked to reach. An exported PyPSA network stores no broadcast, so `ac_dc_meshed`'s map is unchanged; `set("p_max_pu", 0.9)` on it grows the map by one row per label it now reaches, loads and lines included, where it reached the types carrying it before — 14 more rows on `ac_dc_meshed`. A value meant for generators is `set(..., ctype="Generator")` ([the schema](schema.md#an-attribute-reaches-every-label-it-addresses)).
+
+- **What switches a bundle of attributes per entity, as `committable` does a unit-commitment one** — the consumer, reading the `committable` attribute; the schema declares no switch ([the schema](schema.md#an-attribute-reaches-every-label-it-addresses)).
 
 - **What a connection value staged without its `bus` should mean** — nothing; the call is [rejected](working-record.md#set).
   `{entity: dc, bus: NULL}` is [no group value](record.md#the-broadcast-rule), a group value being a whole tuple or NULL, so it is refused wherever a row comes in.

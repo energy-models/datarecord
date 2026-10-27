@@ -156,7 +156,7 @@ Step 1 declares and validates `default_by` and answers it through `Schema.defaul
 
 ### Traits are scoped by a category
 
-`Trait.on` keeps its shape — `on: {entity_type: [Generator, Link]}` — and names a categorizing property where it named an entity-type axis; one property per trait, as built. [A trait narrows; it does not grant](../schema.md#traits) holds unchanged, whichever property each trait keys on: an attribute no trait claims is carried by every label, and a claimed one by every label some claiming trait matches. A trait on `entity_type: [Generator]` and one on `carrier: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity. Every trait in the PyPSA tool reads as before.
+`Trait.on` keeps its shape — `on: {entity_type: [Generator, Link]}` — and names a categorizing property where it named an entity-type axis; one property per trait, as built. [A trait narrows; it does not grant](dep-0016-remove-traits.md) holds unchanged, whichever property each trait keys on: an attribute no trait claims is carried by every label, and a claimed one by every label some claiming trait matches. A trait on `entity_type: [Generator]` and one on `carrier: [wind]`, both claiming `p_max_pu`, give it to every generator and every wind entity. Every trait in the PyPSA tool reads as before.
 
 A switch is addressed by exactly the dim its trait's property categorizes, and a trait with a switch must have an `on`.
 
