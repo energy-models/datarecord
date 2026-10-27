@@ -109,7 +109,7 @@ def write_layer(
         If a long frame is missing a long-schema column, or the schema
         declares a key dim no frame carries - either would make the fold
         misresolve the layer.
-        If a group tuple or a property that refers to a dim names
+        If a multi-dim's tuple or a property that refers to a dim names
         a label dead after the layer, in a subject the layer restates or whose
         rows name a label the layer removes.
         If a column's type does not fit its dtype, naming the attribute,
@@ -117,15 +117,15 @@ def write_layer(
         If two rows of one attribute cover one coordinate and both name the
         same dims, or each names a dim the other leaves NULL, naming the
         attribute and the coordinate.
-        If an axis or group file holds one label twice, naming it, or orders
+        If an axis file holds one label twice, naming it, or orders
         its parent's labels otherwise than the parent, naming the first label
         out of place.
-        If a group tuple names a label that the layer's final axis of that
-        dim does not hold, naming the group, the field and up to three such
+        If a multi-dim's tuple names a label that the layer's final axis of
+        that dim does not hold, naming the multi-dim, the coordinate and up to
+        three such labels.
+        If an attribute row names a label or a tuple that the layer's final
+        axis of that dim does not hold, naming the dim and up to three such
         labels.
-        If an attribute row names a label that the layer's final axis of
-        that dim does not hold, or a tuple that the layer's final group does
-        not hold, naming the dim or group and up to three such labels.
 
     Notes
     -----
@@ -147,8 +147,11 @@ def write_layer(
         Path(staging).mkdir(parents=True)
     try:
         kinds = [
-            ("dims", data.axes(), data.axis),
-            ("groups", data.groups(), data.group),
+            (
+                "dims",
+                sorted(data.axes(), key=schema.multi_dims.__contains__),
+                data.axis,
+            ),
             ("attributes", data.attributes(), data.attribute),
         ]
         resolved: dict[str, DuckDBPyRelation | None] = {}
@@ -176,7 +179,7 @@ def write_layer(
                         written, schema, coordinates, final, file, staged=False
                     )
                     continue
-                if kind == "groups":
+                if key in schema.multi_dims:
                     refuse_unheld(
                         written, schema, [key], final, file, staged=False, subject=key
                     )
@@ -185,7 +188,7 @@ def write_layer(
                 before = resolve_one(schema, parents, workspace.con, key)
                 if before is not None:
                     _refuse_reordered(written, before, key, file)
-        if data.groups() or data.axes():
+        if data.axes():
             layer = DirectorySource(staging, schema, workspace, uuid4())
             _require_living_references(parents, layer, workspace.con, schema)
         # A standalone directory *is* one record, so its schema is in it, and
@@ -234,7 +237,7 @@ def _write_frame(
     unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
-    subject = key if kind in ("dims", "groups") else None
+    subject = key if kind == "dims" else None
     attribute = key if kind == "attributes" else None
     rel = schema.require_takes(rel, file, subject, attribute)
     cast_declared(schema, rel, subject, attribute).to_parquet(uri)
@@ -348,13 +351,13 @@ def _require_living_references(
 ) -> None:
     """Reject a layer leaving a reference to a dead label in a subject it touches.
 
-    A reference is a group tuple's field over a dim, or a property that
-    refers to a dim. A property's subject the layer restates is
+    A reference is a multi-dim tuple's coordinate over a dim, or a property
+    that refers to a dim. A property's subject the layer restates is
     checked whole, in its final state, against every dead label; any other
     reference only for the labels the layer removes, its parent's axis minus
-    its restatement. A restated group's tuples `refuse_unheld`
-    already holds to the final axes. Removing a label restates every group
-    naming it without its tuples, which `WorkingRecord.remove` writes, and a
+    its restatement. A restated multi-dim's tuples `refuse_unheld`
+    already holds to the final axes. Removing a label restates every
+    multi-dim naming it without its tuples, which `WorkingRecord.remove` writes, and a
     property holding it must be cleared first; a layer written otherwise
     carries both itself. A property an ancestor left dangling thus fails the
     next layer restating its subject, which can drop or repair it.
@@ -368,12 +371,12 @@ def _require_living_references(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    touched = layer.axes() | layer.groups()
+    touched = layer.axes()
     references = [
         *(
-            (g, f, fn.struct_extract(col("t", g), lit(f)), d, False)
-            for g in schema.group_columns
-            for f, d in schema.groups[g].over.items()
+            (m, f, fn.struct_extract(col("t", m), lit(f)), d, False)
+            for m in schema.multi_dims
+            for f, d in schema.over(m).items()
         ),
         *(
             (s, p, col("t", p), d, s in touched)
@@ -405,8 +408,8 @@ def _require_living_references(
     problems = []
     for subject, column, label, dim, restated in references:
         dead = coords.dead.get(dim)
-        resolved = (coords.groups | coords.axes).get(subject)
-        stored = subject if subject in schema.groups else column
+        resolved = coords.axes.get(subject)
+        stored = subject if subject in schema.multi_dims else column
         if dead is None or resolved is None or stored not in resolved.columns:
             continue
         labels = dead if restated else killed.get(dim)
@@ -425,7 +428,7 @@ def _require_living_references(
     if problems:
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
-            f"it and leaves no property holding it, so restate those groups "
+            f"it and leaves no property holding it, so restate those multi-dims "
             f"without the tuples and clear those properties (https://energy-models.github.io/datarecord/design/layers/removal/)"
         )
         raise ValueError(msg)
@@ -449,7 +452,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
     Notes
     -----
     - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
@@ -485,8 +488,8 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)"
             )
             raise ValueError(msg)
-        schema.check_group_columns(
-            schema.groups_of(key), rel, carrier=f"attributes/{key}.parquet"
+        schema.check_multi_dim_columns(
+            schema.multi_dims_of(key), rel, carrier=f"attributes/{key}.parquet"
         )
         return
 
@@ -500,20 +503,8 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         refuse_foreign_columns(
             columns, {key, "order_key"}, schema, key, f"dims/{key}.parquet"
         )
-        return
-
-    if kind != "groups" or key not in schema.groups:
-        return
-    if key not in columns:
-        msg = (
-            f"groups/{key}.parquet is missing {[key]}; a group file is keyed "
-            f"by one struct column named for the group (https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)"
-        )
-        raise ValueError(msg)
-    refuse_foreign_columns(
-        columns, {key, "order_key"}, schema, key, f"groups/{key}.parquet"
-    )
-    schema.check_group_columns([key], rel, carrier=f"groups/{key}.parquet")
+        if key in schema.multi_dims:
+            schema.check_multi_dim_columns([key], rel, carrier=f"dims/{key}.parquet")
 
 
 class _RecordLikeAsLayerData:
@@ -549,17 +540,13 @@ class _RecordLikeAsLayerData:
 
         A `RecordLike`'s mappings may be properties that re-enumerate the whole
         source on each access, which per key would be quadratic in the keys, so
-        `_properties`, `_groups` and `_attributes` are kept the same way.
+        `_properties` and `_attributes` are kept the same way.
         """
         return self._source.dims
 
     @cached_property
     def _properties(self) -> Relations:
         return self._source.properties
-
-    @cached_property
-    def _groups(self) -> Relations:
-        return self._source.groups
 
     @cached_property
     def _attributes(self) -> Relations:
@@ -603,12 +590,6 @@ class _RecordLikeAsLayerData:
             )
         )
         return joined.query("j", "SELECT * EXCLUDE (_row) FROM j ORDER BY _row")
-
-    def groups(self) -> set[str]:
-        return set(self._groups)
-
-    def group(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(self._groups, name)
 
     def attributes(self) -> set[str]:
         return set(self._attributes)

@@ -6,17 +6,18 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 2: groups — one construct for classification and sparsity
 
-| DEP     | 2                                                      |
-| ------- | ------------------------------------------------------ |
-| Title   | groups — one construct for classification and sparsity |
-| Author  | Jonas Hörsch                                           |
-| Status  | Implemented 2026-09-01                                 |
-| Created | 2026-08-27                                             |
-| Version | v0.1.0a1                                               |
+| DEP           | 2                                                                      |
+| ------------- | ---------------------------------------------------------------------- |
+| Title         | groups — one construct for classification and sparsity                 |
+| Author        | Jonas Hörsch                                                           |
+| Status        | Superseded 2026-10-26 (implemented 2026-09-01)                         |
+| Created       | 2026-08-27                                                             |
+| Version       | v0.1.0a1                                                               |
+| Superseded-By | [DEP 23](dep-0023-multi-dims.md) (its groups, which become multi-dims) |
 
-Landed in [the schema](../model/groups.md) and [the record format](../storage/format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
+Landed in [the schema](../model/multi-dims.md) and [the record format](../storage/format.md#where-a-value-lives); this page is kept as the argument for the change rather than as the current description.
 
-Supersedes the split between [groups](../model/groups.md) and [`on`](dep-0001-dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dep-0001-dims-groups-traits.md) landed.
+Supersedes the split between [groups](../model/multi-dims.md) and [`on`](dep-0001-dims-groups-traits.md#mappings) that [dims, mappings, groups and traits](dep-0001-dims-groups-traits.md) landed.
 Those two are one mechanism with one field's difference, and the field is worth having where the two models are not.
 
 ## What starts it
@@ -85,7 +86,7 @@ Not a name the group invents.
 That is what keeps the axis file, and the axis file is the whole of what a functional group has over a bare tuple set: `dims/country.parquet` gives `country` its [order](../model/dims.md#axis-order) and somewhere for a per-country CO2 budget to live.
 A group whose `into` named nothing would be a tuple set with a labelled column — expressible, and it loses the axis, which is [the argument the superseded page makes](dep-0001-dims-groups-traits.md#mappings) and which survives this refactor unchanged.
 
-**A group may share its name with a dim**, and the [existing prohibition](../model/groups.md) on the two colliding is dropped rather than narrowed.
+**A group may share its name with a dim**, and the [existing prohibition](../model/multi-dims.md) on the two colliding is dropped rather than narrowed.
 
 For a group with `into` the sharing is the natural spelling: the dim is the axis of labels, the group is the relation between it and `over`, and they are reached by different syntax — [`dims: [country]`](#addressing-dims-x) finds the dim, [`by=country`](#aggregation) finds the group. Keeping the prohibition would cost a name (`country_map`) invented only to satisfy it.
 
@@ -143,7 +144,7 @@ attributes:
     dims: [contract] # seller | buyer
 ```
 
-The declaration is [already possible](../model/groups.md) and this proposal does not introduce it — `over`'s dict form is what lets two coordinates draw on one dim, and [addressing](#addressing-dims-x) expands `contract` to `seller | buyer` as it always did.
+The declaration is [already possible](../model/multi-dims.md) and this proposal does not introduce it — `over`'s dict form is what lets two coordinates draw on one dim, and [addressing](#addressing-dims-x) expands `contract` to `seller | buyer` as it always did.
 What changes is that the shape stops being second-class:
 
 - **It has a file of its own.** `groups/contract.parquet`, keyed `(seller, buyer)`. The [`<Type>` split](#where-the-rows-live) had no type to split on here — a contract is not a component and has no `entity_type` — so it never described this case at all, which is what shows the split was wrong rather than merely awkward.

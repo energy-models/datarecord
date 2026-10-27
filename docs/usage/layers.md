@@ -94,4 +94,4 @@ Locally, the writer stages the layer into a sibling path and renames it on succe
 The writer casts every column the schema declares a type for, so a record's files carry the schema's types and a reader can trust them.
 Each attribute file must carry exactly [its attribute's own coordinates](../design/storage/format.md#the-long-schema).
 An attribute the schema does not declare is refused, and so is a column the attribute is not addressed by.
-Each row must name labels and tuples that the layer's final axes and groups hold.
+Each row must name labels and tuples that the layer's final axes hold, a multi-dim's tuples included.

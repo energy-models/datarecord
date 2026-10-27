@@ -38,7 +38,7 @@ nav:
       - Overview: design/index.md
       - The data model:
           - Dims and labels: design/model/dims.md
-          - Groups: design/model/groups.md
+          - Multi-dims: design/model/multi-dims.md
           - Properties and categories: design/model/properties.md
           - Attributes and the broadcast rule: design/model/attributes.md
           - The schema: design/model/schema.md
@@ -83,6 +83,7 @@ nav:
           - "DEP 20: A layer restates an axis whole": design/proposals/dep-0020-a-layer-restates-an-axis-whole.md
           - "DEP 21: The owner map holds keys as written": design/proposals/dep-0021-the-owner-map-holds-keys-as-written.md
           - "DEP 22: A layer restates membership whole": design/proposals/dep-0022-a-layer-restates-membership-whole.md
+          - "DEP 23: Multi-dims replace groups": design/proposals/dep-0023-multi-dims.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
@@ -159,6 +160,7 @@ plugins:
         design/format.md: design/storage/format.md
         design/module-layout.md: design/package.md
         usage/writing.md: usage/layers.md
+        design/model/groups.md: design/model/multi-dims.md
   - mkdocstrings:
       handlers:
         python:

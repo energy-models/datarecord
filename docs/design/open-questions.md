@@ -50,9 +50,17 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 
 `entity.carrier` refers to `carrier`, and a `default_by` keyed on it would make a vocabulary that is data: a category that a layer adds and removes. Today a category is a label of [a dim with `one_of`](model/properties.md#categories).
 
-### Whether a group in `partial` may have categories
+### Whether a multi-dim in `partial` may have categories
 
-A `default_by` on `connection.role` would give each role of a connection its own default. The schema refuses it, since only [a dim in `partial`](model/properties.md#categories) has categories. Groups are likely to merge into dims, which would settle this, so it is on hold until then.
+A `default_by` on `connection.role` would give each role of a connection its own default. The schema refuses it: [a multi-dim](model/multi-dims.md#one-struct-column) is never categorized, even in `partial` and by a property referring to a dim with `one_of`. Whether [the categories rule](model/properties.md#categories) extends to a multi-dim is open.
+
+### Whether a multi-dim may be `over` another multi-dim
+
+Each coordinate of [a multi-dim](model/multi-dims.md) draws on a dim that is no multi-dim, and the schema refuses one that does. Nothing needs a tuple of tuples yet; the refusal stands until something does.
+
+### Whether a functional mapping over two coordinates justifies a dim
+
+A zone per plant and period is [a multi-dim](model/multi-dims.md#one-struct-column) `plant_period` with the property `zone`. The multi-dim exists only to carry `zone`, and its tuples must be added before the property can be set.
 
 ### How the published package depends on mathspec
 
@@ -98,9 +106,9 @@ It does. The owner map holds keys as written and the fold reads no axis, so a NU
 
 ### Whether `flags` needs a record-level counterpart
 
-It is one. `flags()` answers per record, every attribute included, and `flags(**categories)` per category, restricted to the rows reaching its labels ([flags](use/reading.md#flags)). An attribute over an axis alone or a group outside `partial` is reachable through the first.
+It is one. `flags()` answers per record, every attribute included, and `flags(**categories)` per category, restricted to the rows reaching its labels ([flags](use/reading.md#flags)). An attribute over an axis alone or a multi-dim outside `partial` is reachable through the first.
 
-### What a NULL group struct reaches
+### What a NULL multi-dim struct reaches
 
 Every tuple, as a NULL on the dim itself reaches every label ([the broadcast rule](model/attributes.md#the-broadcast-rule)). A constant `efficiency` lands on generators' connections too. One for links alone is `set("efficiency", 0.7, ctype="Link")`.
 
@@ -111,5 +119,5 @@ It leaves the value out and reports it in `Requirements.ignored`, as an unknown 
 ### What a connection value staged without its `bus` should mean
 
 Nothing. The call is [rejected](use/editing.md#set).
-`{entity: dc, bus: NULL}` is [no group value](model/attributes.md#the-broadcast-rule), a group value being a whole tuple or NULL, so it is refused wherever a row comes in.
-The alternative, "every connection of this entity", would broadcast over part of a tuple. A group column broadcasts only whole, and a NULL struct means every tuple.
+`{entity: dc, bus: NULL}` is [no multi-dim value](model/attributes.md#the-broadcast-rule), a multi-dim value being a whole tuple or NULL, so it is refused wherever a row comes in.
+The alternative, "every connection of this entity", would broadcast over part of a tuple. A multi-dim's column broadcasts only whole, and a NULL struct means every tuple.

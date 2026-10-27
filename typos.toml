@@ -5,3 +5,7 @@
 [default.extend-words]
 # PyPSA's own attribute name: fixed operation & maintenance cost.
 fom = "fom"
+
+[default]
+# Heading anchors: mkdocs slugs drop apostrophes, e.g. "property's" -> "propertys".
+extend-ignore-re = ["\\]\\([^)\\s]*#[a-z0-9-]+\\)"]

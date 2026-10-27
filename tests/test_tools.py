@@ -275,12 +275,7 @@ def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision
 
 def _add_generator(w, name: str) -> None:
     w.add("entity", [name], ctype="Generator")
-    w.add_group(
-        "connection",
-        pd.DataFrame(
-            [{"connection": {"entity": name, "bus": "b"}, "role": "attached"}]
-        ),
-    )
+    w.add("connection", [{"entity": name, "bus": "b"}], role="attached")
 
 
 @pytest.mark.parametrize(
@@ -474,7 +469,7 @@ def _with_schema(revision, **kwargs) -> None:
     # their address - an attribute over a dim the schema no longer declares is
     # rejected at construction, and the point here is the redeclared dims, not a
     # stale attribute reference to a gone one.
-    addressable = set(now.dimensions) | set(was.groups)
+    addressable = set(now.dimensions)
     attributes = {
         name: pruned
         for name, spec in was.attributes.items()
@@ -483,7 +478,6 @@ def _with_schema(revision, **kwargs) -> None:
     now = now.model_copy(
         update={
             "attributes": attributes,
-            "groups": was.groups,
             "properties": was.properties,
             "meta": was.meta,
         }
@@ -527,7 +521,7 @@ def test_verify_reports_a_missing_required_attribute(exported, ac_dc):
     write_component(revision, "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
-    path = Path(store.layer_dir(revision.id), "groups", "connection.parquet")
+    path = Path(store.layer_dir(revision.id), "dims", "connection.parquet")
     rows = pd.read_parquet(path)
     generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
     entities = rows["connection"].map(lambda c: c["entity"])
@@ -885,7 +879,7 @@ def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
     n = solved
 
     p = _flat(PyPSA.to_datarecord(n, single_revision.record.con).attributes["p"])
-    connections = unpacked(single_revision.record.groups["connection"])
+    connections = unpacked(single_revision.record.dims["connection"])
     per_connection = p.groupby(["entity", "bus"]).size()
     assert set(per_connection.index) == set(
         zip(connections["entity"], connections["bus"])
@@ -1279,14 +1273,10 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
     staged = WorkingRecord(root.record)
     staged.add("entity", ["l1"], ctype="Load")
     staged.add("entity", ["su1"], ctype="StorageUnit")
-    staged.add_group(
+    staged.add(
         "connection",
-        pd.DataFrame(
-            [
-                {"connection": {"entity": e, "bus": "b"}, "role": "attached"}
-                for e in ("l1", "su1")
-            ]
-        ),
+        [{"entity": e, "bus": "b"} for e in ("l1", "su1")],
+        role="attached",
     )
     child = root.child(staged.edits)
 
@@ -1323,7 +1313,7 @@ def test_delays_are_rows_keyed_by_their_connections(workspace, store):
     assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & members, (
         "no positional names on the members"
     )
-    assert set(record.groups["connection"].columns) == {"connection", "role"}, (
+    assert set(record.properties["connection"].columns) == {"connection", "role"}, (
         "a connection row carries its key and its property"
     )
     rows = unpacked(record.attributes["delay"])

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The declarations a schema is made of: dims, groups, properties and attributes.
+"""The declarations a schema is made of: dims, properties and attributes.
 
 Notes
 -----
@@ -39,10 +39,21 @@ class Dimension(_Declared):
     patch granularity (`Schema.partial`), nor order - an axis is ordered by its
     file's row order, undeclared.
 
+    A dim declaring `over` is a multi-dim: its labels are tuples of other dims'
+    labels, carried in a row as one struct column named for it, a field per
+    coordinate (`Schema.multi_dim_type`). Coordinates rather than dims because
+    two of them may draw on one dim: a corridor between two buses is
+    `(from, to)`.
+
     Attributes
     ----------
+    over
+        Coordinate name -> the dim it draws its labels from, or None for a dim
+        that is no multi-dim. A list is sugar for the dict with identical keys
+        and values. Declared without `dtype` and `one_of`.
     dtype
-        The axis labels' type, a mathspec `DimensionDtype`.
+        The axis labels' type, a mathspec `DimensionDtype`; `"str"` where
+        undeclared, None on a multi-dim.
     one_of
         The labels the dim allows, in order, or None for any. A dim with
         `one_of` has an `ENUM` of them as its column, and `add` refuses a
@@ -57,21 +68,48 @@ class Dimension(_Declared):
     -----
     - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
     - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     - [unit and description](https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description)
     - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
     """
 
-    dtype: DimensionDtype = "str"
+    over: dict[str, str] | None = Field(
+        default=None, exclude_if=lambda over: over is None
+    )
+    dtype: DimensionDtype | None = Field(
+        default=None, exclude_if=lambda dtype: dtype is None
+    )
     one_of: tuple[str, ...] | None = Field(
         default=None, min_length=1, exclude_if=lambda one_of: one_of is None
     )
     unit: str | None = None
     description: str | None = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def _over_alone(cls, data: Any) -> Any:
+        if isinstance(data, dict) and data.get("over") is not None:
+            typed = sorted({"dtype", "one_of"} & data.keys())
+            if typed:
+                msg = (
+                    f"a dim declaring `over` is a multi-dim, whose labels are "
+                    f"tuples of its coordinates' labels, and takes no {typed}"
+                )
+                raise ValueError(msg)
+        return data
+
+    @field_validator("over", mode="before")
+    @classmethod
+    def _parse_over(cls, value: Any) -> Any:
+        """Expand the list form to the dict it is sugar for."""
+        if isinstance(value, (list, tuple)):
+            return {c: c for c in value}
+        return value
+
     @field_validator("one_of", mode="before")
     @classmethod
     def _strict_labels(cls, value: Any, info: ValidationInfo) -> Any:
-        dtype = info.data.get("dtype", "str")
+        dtype = info.data.get("dtype") or "str"
         if value is not None and dtype != "str":
             msg = (
                 f"a dim of dtype {dtype!r} takes no `one_of`; "
@@ -84,6 +122,12 @@ class Dimension(_Declared):
                 msg = f"`one_of` lists {repeated} more than once; list each label once"
                 raise ValueError(msg)
         return value
+
+    @model_validator(mode="after")
+    def _default_dtype(self) -> Dimension:
+        if self.over is None and self.dtype is None:
+            self.dtype = "str"
+        return self
 
 
 class _ValueSpec(_Declared):
@@ -159,8 +203,8 @@ class AttributeSpec(_ValueSpec):
     dtype
         The value column's type, a mathspec `ParameterDtype`.
     dims
-        Dims and groups this attribute may vary over; a subset of those
-        declared. Whatever they are, its values are long rows of
+        Dims this attribute may vary over; a subset
+        of those declared. Whatever they are, its values are long rows of
         `attributes/<attr>.parquet`.
     default
         The value a coordinate no row covers takes.
@@ -181,7 +225,7 @@ class AttributeSpec(_ValueSpec):
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
@@ -195,16 +239,16 @@ class AttributeSpec(_ValueSpec):
 
 
 class PropertySpec(_ValueSpec):
-    """One value per label of a dim, or per tuple of a group, describing it.
+    """One value per label of a dim, describing it.
 
     A property is keyed by its subject (`Schema.properties`) and stored as a
-    column of `dims/{dim}.parquet`, or of `groups/{group}.parquet` for a group.
+    column of `dims/{dim}.parquet`.
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
     A property declares exactly one of `dtype` and `one_of`. A property of a
     dim in `partial` that refers to a dim with `one_of`
-    categorizes its subject (`Schema.categorizing`). A property of a group
-    never does.
+    categorizes its subject (`Schema.categorizing`). A property of a
+    multi-dim never does.
 
     Attributes
     ----------
@@ -248,53 +292,3 @@ class PropertySpec(_ValueSpec):
             )
             raise ValueError(msg)
         return self
-
-
-class Group(_Declared):
-    """Which tuples over several dims exist: a sparse subset of a dim product.
-
-    Not a dim. A dim declares an axis of labels and NULL in its column means
-    "every value of it"; a group declares *which combinations are there*, which
-    no axis can say because the product is sparse - an entity attaches to two
-    buses out of a thousand.
-
-    An attribute names the group in its `dims` and its rows carry the group as
-    one struct column of the group's name, a field per key coordinate
-    (`Schema.group_type`). Coordinates rather than dims because two of them may
-    draw on the same axis: a corridor between two entities is `(from, to)`,
-    which a set of dims could not spell.
-
-    Attributes
-    ----------
-    over
-        Coordinate name -> the dim it draws its labels from. A list is sugar for
-        the dict with identical keys and values; the dict form is what lets two
-        coordinates draw on one dim, as `corridor`'s `{from: bus, to: bus}` does.
-    description
-        What the group is, in prose. Never interpreted.
-
-    Notes
-    -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-    """
-
-    over: dict[str, str]
-    description: str | None = None
-
-    @field_validator("over", mode="before")
-    @classmethod
-    def _parse_over(cls, value: Any) -> Any:
-        """Expand the list form to the dict it is sugar for."""
-        if isinstance(value, (list, tuple)):
-            return {c: c for c in value}
-        return value
-
-    @property
-    def key(self) -> tuple[str, ...]:
-        """The coordinates a row is unique over: `over`'s, in declaration order.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        """
-        return tuple(self.over)

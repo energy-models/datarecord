@@ -15,7 +15,7 @@ from duckdb import DuckDBPyRelation
 
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.schema import Schema
-from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from tests.fixtures import empty_root, write_schema
 
 
@@ -32,6 +32,7 @@ def schema():
             "bus": Dimension(dtype="str"),
             "snapshot": Dimension(dtype="int"),
             "ctype": Dimension(one_of=["Generator", "Link", "Load"]),
+            "connection": Dimension(over={"entity": "entity", "bus": "bus"}),
         },
         properties={
             "entity": {
@@ -54,7 +55,6 @@ def schema():
             "efficiency": AttributeSpec(dtype="float", dims={"connection"}),
             "x": AttributeSpec(dtype="float", dims={"entity"}),
         },
-        groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
         partial=frozenset({"entity", "connection"}),
     )
 
@@ -69,17 +69,9 @@ def revision(store, schema):
     staged.add("entity", ["g1"], ctype="Generator", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load")
     staged.add("bus", ["b0"])
-    staged.add_group(
+    staged.add(
         "connection",
-        pd.DataFrame(
-            {
-                "connection": [
-                    {"entity": "g1", "bus": "b0"},
-                    {"entity": "l1", "bus": "b0"},
-                ],
-                "role": ["bus", "bus"],
-            }
-        ),
+        pd.DataFrame({"entity": ["g1", "l1"], "bus": ["b0", "b0"], "role": "bus"}),
     )
     staged.set("p_max_pu", 0.9, ctype="Generator")
     staged.set("p_set", 1.0, entity="l1")
@@ -107,7 +99,7 @@ def test_properties_hold_stored_values_without_defaults(record):
     assert rows["g1"]["carrier"] == "wind"
     assert rows["l1"]["sign"] is None, "a stored-only read applies no default_by"
     assert "role" in record.properties["connection"].columns, (
-        "a group's property is read off the group"
+        "a multi-dim's property is read off its axis"
     )
     assert "role" not in record.properties["entity"].columns
 

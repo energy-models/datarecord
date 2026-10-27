@@ -6,12 +6,12 @@
 
 `bus.state` `one_of: state` says every bus is in at most one state: a
 column of the bus axis whose values are labels of `state`, which keeps an axis
-file for its order and for its properties. A group's property refers to a dim the same way.
+file for its order and for its properties.
 
 Notes
 -----
 - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-- [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+- [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
 """
 
 from typing import Any
@@ -24,13 +24,13 @@ from pydantic import ValidationError
 
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.schema import Schema
-from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from datarecord.store.store import Revision
 from tests.fixtures import (
     empty_child,
     empty_root,
     write_axis,
-    write_group,
+    write_multi_dim,
     write_schema,
 )
 from tests.test_write import _Source
@@ -44,8 +44,8 @@ def _schema(**overrides) -> Schema:
             "state": Dimension(dtype="str"),
             "country": Dimension(dtype="str"),
             "scenario": Dimension(dtype="str"),
+            "bus_state": Dimension(over=["bus", "state"]),
         },
-        "groups": {"bus_state": Group(over=["bus", "state"])},
         "properties": {
             "bus": {"state": PropertySpec(one_of="state")},
             "state": {"country": PropertySpec(one_of="country")},
@@ -87,17 +87,22 @@ def test_a_property_takes_its_dims_type_and_categorizes_if_the_dim_lists_labels(
     assert Schema.model_validate_json(s.model_dump_json()) == s, "the dtype round-trips"
 
 
-def test_a_group_in_dims_is_one_struct_column():
-    """A group in `dims` is carried as itself, a struct over its coordinates."""
+def test_a_multi_dim_in_dims_is_one_struct_column():
+    """A multi-dim in `dims` is carried as itself, a struct over its coordinates."""
     s = _schema(
-        groups={**_schema().groups, "connection": Group(over=["bus", "state"])},
+        dimensions={
+            **_schema().dimensions,
+            "connection": Dimension(over=["bus", "state"]),
+        },
         attributes={"capacity": AttributeSpec(dtype="float", dims={"connection"})},
     )
-    assert s.coordinates_of("capacity") == ("connection",), "the group, not expanded"
+    assert s.coordinates_of("capacity") == ("connection",), (
+        "the multi-dim, not expanded"
+    )
     assert s.column_type("connection") == duckdb.struct_type(
         {"bus": sqltypes.VARCHAR, "state": sqltypes.VARCHAR}
     )
-    assert s.groups_of("capacity") == ("connection",)
+    assert s.multi_dims_of("capacity") == ("connection",)
 
 
 def test_the_over_list_form_is_sugar_for_the_dict():
@@ -105,15 +110,16 @@ def test_the_over_list_form_is_sugar_for_the_dict():
 
     A corridor draws two coordinates from one dim.
     """
-    assert Group(over=["bus"]).over == {"bus": "bus"}
-    assert Group(over={"from": "bus", "to": "bus"}).key == ("from", "to")
+    assert Dimension(over=["bus"]).over == {"bus": "bus"}
     s = _schema(
-        groups={
-            **_schema().groups,
-            "corridor": Group(over={"from": "bus", "to": "bus"}),
+        dimensions={
+            **_schema().dimensions,
+            "corridor": Dimension(over={"from": "bus", "to": "bus"}),
         }
     )
-    assert s.group_key("corridor") == ("from", "to"), "every coordinate"
+    assert list(s.over("corridor")) == ["from", "to"], "every coordinate"
+    assert s.dimensions["corridor"].dtype is None, "a multi-dim has no dtype"
+    assert "dtype" not in s.model_dump()["dimensions"]["corridor"]
 
 
 # -- what the declaration rejects -------------------------------------------
@@ -145,27 +151,6 @@ def test_a_misplaced_one_of_fails_to_load(manifest, match):
     manifest = {**manifest, "dimensions": dimensions | manifest.get("dimensions", {})}
     with pytest.raises(ValidationError, match=match):
         Schema.model_validate(manifest)
-
-
-@pytest.mark.parametrize(
-    ("groups", "match"),
-    [
-        pytest.param(
-            {"country": Group(over=["bus", "state"])},
-            "group 'country' shares its name",
-            id="shares-a-dims-name",
-        ),
-        pytest.param(
-            {"bus_state": Group(over=["nope"])},
-            "over undeclared dims",
-            id="over-undeclared-dim",
-        ),
-    ],
-)
-def test_a_malformed_group_is_refused(groups, match):
-    """A group is a column named for it, over declared dims."""
-    with pytest.raises(ValidationError, match=match):
-        _schema(groups=groups, properties={})
 
 
 @pytest.mark.parametrize(
@@ -234,7 +219,7 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
 
 
 def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
-    """A group may draw on a dim `partial` does not list; removal still cascades.
+    """A multi-dim may draw on a dim `partial` does not list; removal still cascades.
 
     Notes
     -----
@@ -244,7 +229,7 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
     write_schema(_schema(), store)
     write_axis(revision, "bus", [{"bus": "north"}, {"bus": "south"}])
     write_axis(revision, "state", [{"state": "lower"}, {"state": "upper"}])
-    write_group(
+    write_multi_dim(
         revision,
         "bus_state",
         [
@@ -264,11 +249,11 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
 
 
 def _tuples(record) -> list[dict]:
-    return record.groups["bus_state"].df()["bus_state"].tolist()
+    return record.dims["bus_state"].df()["bus_state"].tolist()
 
 
 def test_member_order_survives_a_restate_through_a_materialised_parent(store):
-    """A group's member order is the deepest restatement's row order, across a
+    """A multi-dim's member order is the deepest restatement's row order, across a
     materialised parent: a key added at the root stays first, and a
     grandchild's addition comes after the materialised copy's members.
 
@@ -279,14 +264,14 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     write_schema(schema, store)
 
     root = empty_root(store)
-    write_group(
+    write_multi_dim(
         root,
         "bus_state",
         [{"bus_state": {"bus": "north", "state": "lower"}}],
     )
 
     child = empty_child(root)
-    write_group(
+    write_multi_dim(
         child,
         "bus_state",
         [{"bus_state": {"bus": "south", "state": "upper"}}],
@@ -294,13 +279,13 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     child.materialise()
 
     grandchild = empty_child(child)
-    write_group(
+    write_multi_dim(
         grandchild,
         "bus_state",
         [{"bus_state": {"bus": "east", "state": "lower"}}],
     )
 
-    rows = grandchild.record.groups["bus_state"].to_arrow_table().to_pydict()
+    rows = grandchild.record.dims["bus_state"].to_arrow_table().to_pydict()
     assert [r["bus"] for r in rows["bus_state"]] == ["north", "south", "east"], (
         "member order, seed first"
     )
@@ -475,7 +460,7 @@ def classified(store) -> Revision:
         "bus",
         [{"bus": "north", "state": "lower"}, {"bus": "south", "state": "upper"}],
     )
-    write_group(
+    write_multi_dim(
         revision,
         "bus_state",
         [{"bus_state": {"bus": "north", "state": "lower"}, "country": "DE"}],
@@ -487,25 +472,29 @@ EDITS = [
     pytest.param(lambda w, v: w.set("bus.state", v, bus="north"), id="set-scalar"),
     pytest.param(lambda w, v: w.set("bus.state", {"north": v}), id="set-mapping"),
     pytest.param(lambda w, v: w.add("bus", ["east"], state=v), id="add"),
-    pytest.param(lambda w, v: w.set("bus_state.country", v), id="set-on-a-group"),
+    pytest.param(lambda w, v: w.set("bus_state.country", v), id="set-on-a-multi-dim"),
     pytest.param(
-        lambda w, v: w.add_group(
+        lambda w, v: w.add(
+            "bus_state", [{"bus": "south", "state": "upper"}], country=v
+        ),
+        id="add-a-tuple",
+    ),
+    pytest.param(
+        lambda w, v: w.add(
             "bus_state",
             w.con.sql(
-                "SELECT {'bus': 'south', 'state': 'upper'}"
-                "::STRUCT(bus VARCHAR, state VARCHAR) AS bus_state, "
-                "?::VARCHAR AS country",
+                "SELECT 'south' AS bus, 'upper' AS state, ?::VARCHAR AS country",
                 params=[v],
             ),
         ),
-        id="add-group",
+        id="add-a-frame",
     ),
 ]
 
 
 @pytest.mark.parametrize("edit", EDITS)
 def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
-    """`set`, `add` and `add_group` refuse a value naming no label of the dim, as staged.
+    """`set` and `add` refuse a value naming no label of the dim, as staged.
 
     Notes
     -----
@@ -529,19 +518,15 @@ def test_a_property_naming_a_dim_takes_null_or_a_label_added_first(
     classified.child(staged.edits)
 
 
-def test_add_group_refuses_a_label_the_dim_does_not_list(store):
+def test_add_refuses_a_tuple_property_label_the_dim_does_not_list(store):
     """A label outside the list cannot be added, so the message does not say to."""
     revision = empty_root(store)
     dimensions = {**_schema().dimensions, "country": Dimension(one_of=["DE", "NO"])}
     write_schema(_schema(dimensions=dimensions), store)
     write_axis(revision, "country", [{"country": "DE"}])
     staged = WorkingRecord(revision.record)
-    rel = staged.con.sql(
-        "SELECT {'bus': 'a', 'state': 'b'}::STRUCT(bus VARCHAR, state VARCHAR) "
-        "AS bus_state, 'coal'::VARCHAR AS country"
-    )
     with pytest.raises(KeyError, match="has `one_of`, so use one of its labels"):
-        staged.add_group("bus_state", rel)
+        staged.add("bus_state", [{"bus": "a", "state": "b"}], country="coal")
 
 
 def test_remove_is_refused_while_a_property_names_the_label(classified):

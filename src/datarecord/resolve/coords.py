@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The folded axes, groups and dead labels of a record's layers.
+"""The folded axes and dead labels of a record's layers.
 
 Notes
 -----
@@ -33,9 +33,9 @@ def _fold_axis(
     key: str,
     file: str,
 ) -> DuckDBPyRelation | None:
-    """Return the deepest of `files`, else `seed`: one node's resolved axis or group.
+    """Return the deepest of `files`, else `seed`: one node's resolved axis.
 
-    The one fold for every axis, a dim's or a group's: a layer that changes
+    The one fold for every axis: a layer that changes
     one restates it whole, so the deepest restatement is the answer, in its
     own row order. `files` is root first. A frozen file holding `key` twice is
     refused; a staging area's table is keyed, so it holds no key twice.
@@ -57,7 +57,7 @@ def refuse_twice(
     rel: DuckDBPyRelation,
     keys: Sequence[str],
     file: str,
-    why: str = "an axis or group file holds each of its labels once "
+    why: str = "an axis file holds each of its labels once "
     "(https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)",
 ) -> None:
     """Refuse `file`, read as `rel`, holding two rows that agree on every one of `keys`.
@@ -100,21 +100,21 @@ def refuse_unheld(
     staged: bool,
     subject: str | None = None,
 ) -> None:
-    """Refuse a label or tuple in `rows` that the axis or group holding it lacks.
+    """Refuse a label or tuple in `rows` that the axis holding it lacks.
 
-    A dim's column of `columns` names labels of that dim, a group's column
-    tuples of that group and, through each field, labels of the field's dim,
-    and the column of a property of `subject` that refers to a dim names labels of
-    that dim. Any other column is not checked. `subject`'s own column holds
-    the labels or tuples being added, so of it only a group's fields are
-    checked.
+    A dim's column of `columns` names labels of that dim, a multi-dim's column
+    tuples of that multi-dim and, through each coordinate, labels of the dim it
+    draws on, and the column of a property of `subject` that refers to a dim
+    names labels of that dim. Any other column is not checked. `subject`'s own
+    column holds the labels or tuples being added, so of it only a multi-dim's
+    coordinates are checked.
     Labels are checked before tuples, so a tuple naming an unheld label is
     refused for that label. NULL is no label and passes.
 
     Parameters
     ----------
     held
-        Returns the axis or group of a name, `None` where there is none:
+        Returns the axis of a name, `None` where there is none:
         as staged where `staged`, else the layer's final one.
     where
         What names the labels, to start the message with.
@@ -122,7 +122,7 @@ def refuse_unheld(
     Raises
     ------
     KeyError
-        Where `staged`, naming the dim or group and up to three such labels
+        Where `staged`, naming the dim and up to three such labels
         or tuples.
     ValueError
         Where not `staged`, naming the same.
@@ -139,10 +139,10 @@ def refuse_unheld(
     for c in columns:
         if c in taken:
             labels[f"{subject}.{c}"] = (col(c), taken[c])
-        elif c in schema.groups:
+        elif c in schema.multi_dims:
             fields |= {
                 f"{c}.{f}": (fn.struct_extract(col(c), lit(f)), d)
-                for f, d in schema.groups[c].over.items()
+                for f, d in schema.over(c).items()
             }
             if c != subject:
                 tuples[c] = (col(c), c)
@@ -154,22 +154,20 @@ def refuse_unheld(
         return
     key, found = unheld
     name = named[key][1]
-    group = name in schema.groups
+    multi = name in schema.multi_dims
     shown = (
-        f"{name!r} tuples [{', '.join(found)}]" if group else f"{name!r} labels {found}"
+        f"{name!r} tuples [{', '.join(found)}]" if multi else f"{name!r} labels {found}"
     )
     via = "" if key == name else f" in {key!r}"
     if staged:
-        holder = f"the staged {'group' if group else 'axis'}"
-        if group:
-            remedy = "`add_group` them first"
-        elif schema.dimensions[name].one_of is not None:
+        holder = "the staged axis"
+        if schema.dimensions[name].one_of is not None:
             remedy = "that dim has `one_of`, so use one of its labels"
         else:
             remedy = "`add` them first"
         link = "use/editing/#validation"
     else:
-        holder = f"the layer's {'groups' if group else 'dims'}/{name}.parquet"
+        holder = f"the layer's dims/{name}.parquet"
         remedy = "add them there or drop those rows"
         link = "use/writing/"
     msg = (
@@ -186,7 +184,7 @@ def _first_unheld(
     """Return the first name in `named` whose labels in `rows` its relation lacks, with up to three of them.
 
     `named` maps a name to the expression over `rows` giving a label or a
-    tuple, the axis or group relation that holds them, and that relation's
+    tuple, the axis relation that holds them, and that relation's
     key column. A `None` relation holds nothing. NULL is no label and
     passes. The labels come back as text, in sorted order. `rows` is
     anti-joined against every relation in one query.
@@ -276,7 +274,7 @@ def resolve_coords(
     con: DuckDBPyConnection,
     split: tuple[Fold | Coords | None, list[LayerSource]] | None = None,
 ) -> Coords:
-    """Resolve every dim and group `schema` declares, and the dead labels.
+    """Resolve every dim `schema` declares and the dead labels.
 
     Parameters
     ----------
@@ -297,7 +295,7 @@ def resolve_coords(
     Raises
     ------
     ValueError
-        If the deepest file of an axis or group holds one label twice.
+        If the deepest file of an axis holds one label twice.
 
     Notes
     -----
@@ -306,23 +304,21 @@ def resolve_coords(
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     base, above = split or _base_and_above(sources, con, schema)
-    listed = [source.axes() | source.groups() for source in above]
+    listed = [source.axes() for source in above]
     keep = mortal(schema)
     axes: dict[str, DuckDBPyRelation] = {}
-    groups: dict[str, DuckDBPyRelation] = {}
     dead: dict[str, DuckDBPyRelation] = {}
-    for name in (*schema.dims, *schema.groups):
-        kind, resolved = ("groups", groups) if name in schema.groups else ("dims", axes)
+    for name in schema.dimensions:
         files = [
             (s, rel)
             for s, held in zip(above, listed, strict=True)
-            if name in held and (rel := restatement(s, name, schema)) is not None
+            if name in held and (rel := s.axis(name)) is not None
         ]
-        seed = None if base is None else (base.groups | base.axes).get(name)
-        rel = _fold_axis(seed, files, name, f"{kind}/{name}.parquet")
+        seed = None if base is None else base.axes.get(name)
+        rel = _fold_axis(seed, files, name, f"dims/{name}.parquet")
         if rel is None:
             continue
-        resolved[name] = rel
+        axes[name] = rel
         if name not in keep:
             continue
         before = None if base is None else base.dead.get(name)
@@ -331,20 +327,13 @@ def resolve_coords(
             before = _dead_keys(held, rel, name)
         if before is not None:
             dead[name] = before
-    return Coords(schema=schema, axes=axes, groups=groups, dead=dead)
-
-
-def restatement(
-    source: LayerSource, name: str, schema: Schema
-) -> DuckDBPyRelation | None:
-    """Return `source`'s file of the axis or group `name`, `None` where it has none."""
-    return source.group(name) if name in schema.groups else source.axis(name)
+    return Coords(schema=schema, axes=axes, dead=dead)
 
 
 def resolve_one(
     schema: Schema, sources: Sequence[LayerSource], con: DuckDBPyConnection, name: str
 ) -> DuckDBPyRelation | None:
-    """Return the resolved axis or group `name` over `sources`, `None` where none has it.
+    """Return the resolved axis `name` over `sources`, `None` where none has it.
 
     The deepest file for it, or the resolved one of the deepest materialised
     source above that file.
@@ -355,12 +344,12 @@ def resolve_one(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     for source in reversed(sources):
-        rel = restatement(source, name, schema)
+        rel = source.axis(name)
         if rel is not None:
             return rel
         fold = source.materialised(con, schema)
         if fold is not None:
-            return (fold.groups | fold.axes).get(name)
+            return fold.axes.get(name)
     return None
 
 
@@ -368,7 +357,7 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     """The coordinates a fold keeps the dead labels of.
 
     One the owner map does not key, whose values naming a dead label only the
-    read can drop (`_living`), and a dim a group's tuples range over or a
+    read can drop (`_living`), and a dim a multi-dim's tuples range over or a
     property refers to, which the writer checks them against
     (`write._require_living_references`). A keyed coordinate's values the fold
     drops itself (`fold_attributes`).
@@ -378,13 +367,11 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     drawn = {
-        *(d for g in schema.group_columns for d in schema.groups[g].over.values()),
+        *(d for m in schema.multi_dims for d in schema.over(m).values()),
         *schema.one_of_properties().values(),
     }
     unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
-    return tuple(
-        c for c in (*schema.dims, *schema.group_columns) if c in drawn | unkeyed
-    )
+    return tuple(c for c in schema.broadcast_dims if c in drawn | unkeyed)
 
 
 @dataclass(frozen=True)
@@ -400,14 +387,11 @@ class Coords:
         The record's schema.
     axes : dict of str to DuckDBPyRelation
         Each declared dim's folded axis relation, full row rather than the key
-        column alone - its properties ride along. A dim with no rows
-        anywhere is absent rather than present-and-empty.
-    groups : dict of str to DuckDBPyRelation
-        Each declared group's folded relation, keyed by its struct column,
-        carrying its static columns, in member order - a group folds like an
-        axis, no owner map. Absent where no layer wrote a row.
+        column alone - its properties ride along; a multi-dim's is keyed by
+        its struct column. A dim with no rows anywhere is absent rather than
+        present-and-empty.
     dead : dict of str to DuckDBPyRelation
-        Each `mortal` coordinate's dead labels, keyed as its axis or group.
+        Each `mortal` coordinate's dead labels, keyed as its axis.
 
     Notes
     -----
@@ -418,5 +402,4 @@ class Coords:
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
-    groups: dict[str, DuckDBPyRelation] = field(default_factory=dict)
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)

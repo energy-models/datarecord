@@ -22,7 +22,7 @@ from datarecord.mutable import WorkingRecord, normalise_value
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
-from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from datarecord.store.manifest import read_schema
 from tests.fixtures import (
     broadcast,
@@ -119,8 +119,6 @@ def test_a_working_record_overrides_no_read_member():
         "set",
         "add",
         "remove",
-        "add_group",
-        "remove_group",
         "rollback",
         "edits",
     }
@@ -323,12 +321,12 @@ _ENTITY = "does not fit 'entity' of dtype str"
         pytest.param(
             lambda s: s.set("connection.role", "input", bus=5),
             "does not fit 'bus' of dtype str",
-            id="group-keyword",
+            id="multi-dim-keyword",
         ),
         pytest.param(
             lambda s: s.set("connection.role", "input", entity=[1]),
             _ENTITY,
-            id="group-keyword-list",
+            id="multi-dim-keyword-list",
         ),
         pytest.param(
             lambda s: s.add("snapshot", ["2030-01-01"]),
@@ -564,17 +562,13 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     root = _small(store)
     first = WorkingRecord(root.record)
     first.add("bus", ["Manchester", "Oslo"])
-    first.add_group(
+    first.add(
         "connection",
-        pd.DataFrame(
-            {
-                "connection": [
-                    {"entity": "Manchester Wind", "bus": "Manchester"},
-                    {"entity": "Norway Wind", "bus": "Norway"},
-                    {"entity": "Norway Wind", "bus": "Oslo"},
-                ]
-            }
-        ),
+        [
+            {"entity": "Manchester Wind", "bus": "Manchester"},
+            {"entity": "Norway Wind", "bus": "Norway"},
+            {"entity": "Norway Wind", "bus": "Oslo"},
+        ],
     )
     first.remove("entity", ["Norway"])
     snapshots = [pd.Timestamp("2030-01-01"), pd.Timestamp("2030-01-02")]
@@ -583,7 +577,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     first.remove("snapshot", snapshots[1:])
     one = root.child(first.edits)
     second = WorkingRecord(one.record)
-    second.remove_group("connection", [("Norway Wind", "Norway")])
+    second.remove("connection", [{"entity": "Norway Wind", "bus": "Norway"}])
     base = one.child(second.edits)
     if materialised:
         {"root": root, "base": base}[materialised].materialise()
@@ -592,17 +586,10 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     w.remove("entity", ["Manchester Wind"])
     w.add("entity", ["Solar"], ctype=GEN)
     w.add("entity", ["Norway"], ctype="Bus")
-    w.remove_group("connection", [("Norway Wind", "Oslo")])
-    w.add_group(
+    w.remove("connection", [{"entity": "Norway Wind", "bus": "Oslo"}])
+    w.add(
         "connection",
-        pd.DataFrame(
-            {
-                "connection": [
-                    {"entity": "Solar", "bus": "Oslo"},
-                    {"entity": "Norway Wind", "bus": "Norway"},
-                ]
-            }
-        ),
+        pd.DataFrame({"entity": ["Solar", "Norway Wind"], "bus": ["Oslo", "Norway"]}),
     )
     w.set("p_nom", 5.0, entity=["Solar"])
     child = base.child(w.edits)
@@ -610,7 +597,6 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     def read(record):
         return (
             {d: record.dims[d].fetchall() for d in record.dims},
-            {g: record.groups[g].fetchall() for g in record.groups},
             {s: record.properties[s].fetchall() for s in record.properties},
             {
                 a: sorted(record.attributes[a].fetchall(), key=str)
@@ -623,7 +609,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
         ("Solar",),
         ("Norway",),
     ], "a staged removal goes, and a label added back comes where it is added again"
-    assert [c for (c,) in w.groups["connection"].fetchall()] == [
+    assert [c for (c,) in w.dims["connection"].fetchall()] == [
         {"entity": "Solar", "bus": "Oslo"},
         {"entity": "Norway Wind", "bus": "Norway"},
     ], "a tuple added back comes where it is added again"
@@ -1031,28 +1017,31 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
-# -- connect and disconnect (https://energy-models.github.io/datarecord/design/use/editing/#add-remove, https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group) --------------------------------------
+# -- connect and disconnect (https://energy-models.github.io/datarecord/design/use/editing/#add-remove, https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim) --------------------------------------
 
 
-def test_remove_group_stages_the_group_without_the_tuple(staged, root):
-    """Per `(entity, bus)`, the group's own key.
+@pytest.mark.parametrize("form", [list, pd.DataFrame], ids=["list", "frame"])
+def test_remove_stages_a_multi_dim_without_the_tuple(staged, root, form):
+    """Per `(entity, bus)`, the multi-dim's own key.
 
     Notes
     -----
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
-    staged.remove_group("connection", [("Norwich Converter", "Norwich")])
-    before = unpacked(staged.groups["connection"])
+    staged.remove(
+        "connection", form([{"entity": "Norwich Converter", "bus": "Norwich"}])
+    )
+    before = unpacked(staged.dims["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = root.child(staged.edits)
-    rows = unpacked(child.record.groups["connection"])
+    rows = unpacked(child.record.dims["connection"])
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     # The component's other port survives: deletion is per connection, not per
-    # component (https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group).
+    # component (https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim).
     assert "Norwich DC" in left
 
 
@@ -1068,7 +1057,7 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
 
@@ -1083,13 +1072,13 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     assert _efficiency(child.record)["Manchester"] == 0.5
 
 
-def test_no_group_field_given_broadcasts_over_every_tuple(staged):
+def test_no_coordinate_given_broadcasts_over_every_tuple(staged):
     """A wholly NULL struct is every tuple, by the broadcast rule.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     staged.set("efficiency", 0.7)
 
@@ -1100,7 +1089,7 @@ def test_no_group_field_given_broadcasts_over_every_tuple(staged):
     )
 
 
-def test_a_frame_carries_a_group_as_its_struct(staged):
+def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
     """A packed struct passes through, one key replacing the last.
 
     Notes
@@ -1225,12 +1214,12 @@ def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
     ],
     ids=["flat", "both", "partial-struct", "not-a-struct", "partly-null"],
 )
-def test_a_frame_carrying_a_group_but_as_its_struct_is_rejected(staged, select):
+def test_a_frame_carrying_a_multi_dim_but_as_its_struct_is_rejected(staged, select):
     """Flat coordinates, beside the struct or not, or a wrong struct, are refused.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     with pytest.raises(ValueError, match="'connection'"):
         staged.set("efficiency", staged.con.sql(f"SELECT {select}"))
@@ -1278,91 +1267,198 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
 
 
 def _connections(record):
-    return unpacked(record.groups["connection"])
+    return unpacked(record.dims["connection"])
+
+
+_TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
 
 
 @pytest.mark.parametrize(
-    ("frame", "match"),
+    ("tuples", "columns", "match"),
     [
         (
-            pd.DataFrame([{"entity": "Manchester Wind", "bus": "Norway"}]),
-            "pass 'connection' as one struct column",
+            pd.DataFrame([{"connection": {"entity": "Manchester Wind"}}]),
+            {},
+            r"as a struct of its coordinates \['entity', 'bus'\]",
         ),
-        (pd.DataFrame([{"role": "attached"}]), "needs a 'connection' column"),
+        (
+            pd.DataFrame([{"connection": _TUPLE, "entity": "Manchester Wind"}]),
+            {},
+            r"carrying both the column 'connection' and its coordinates \['entity'\]",
+        ),
         (
             pd.DataFrame([{"connection": {"entity": 1, "bus": "Norway"}}]),
-            "'connection' has type STRUCT",
+            {},
+            "has type INTEGER, which does not fit 'entity'",
         ),
+        (
+            pd.DataFrame([{"entity": "Manchester Wind"}]),
+            {},
+            r"carries no column \['bus'\]",
+        ),
+        (
+            pd.DataFrame([{"entity": 1, "bus": "Norway"}]),
+            {},
+            "has type BIGINT, which does not fit 'entity'",
+        ),
+        (
+            [{"entity": 1, "bus": "Norway"}],
+            {},
+            "has type INTEGER, which does not fit 'entity'",
+        ),
+        (
+            [{"entity": "Manchester Wind", "bus": "Norway"}, {"entity": 1, "bus": "x"}],
+            {},
+            "has type INTEGER, which does not fit 'entity'",
+        ),
+        (
+            pd.DataFrame({"entity": [None], "bus": ["Norway"]}),
+            {},
+            "with a coordinate NULL",
+        ),
+        ([{"entity": "Manchester Wind"}], {}, "maps each of its coordinates"),
+        ([_TUPLE], {"p_nom": [1.0, 2.0]}, "has 2 'p_nom' values for 1 tuples"),
     ],
-    ids=["flat-coordinates", "no-struct-column", "mistyped-field"],
+    ids=[
+        "struct-missing-field",
+        "struct-and-coordinates",
+        "mistyped-struct-field",
+        "missing-coordinate",
+        "mistyped-coordinate",
+        "mistyped-coordinate-list",
+        "mixed-type-coordinate-list",
+        "null-coordinate",
+        "partial-mapping",
+        "misaligned-keyword",
+    ],
 )
-def test_add_group_needs_the_struct_column(staged, frame, match):
+def test_add_needs_a_label_per_coordinate(staged, tuples, columns, match):
+    """A tuple is whole: a label of each coordinate, typed as the dim it draws on.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    """
     with pytest.raises(ValueError, match=match):
-        staged.add_group("connection", frame)
+        staged.add("connection", tuples, **columns)
 
 
-@pytest.mark.parametrize(
-    "frame",
-    [
-        pytest.param(
-            pa.RecordBatchReader.from_batches(
-                pa.schema([("connection", pa.string())]), []
-            ),
-            id="single-use-reader",
-        ),
-        pytest.param([{"connection": {"entity": "Manchester Wind"}}], id="rows"),
-    ],
+def _as_struct(pairs):
+    return pd.DataFrame({"connection": [{"entity": e, "bus": b} for e, b in pairs]})
+
+
+def _as_flat(pairs):
+    return pd.DataFrame(pairs, columns=["entity", "bus"])
+
+
+def _as_mappings(pairs):
+    return [{"entity": e, "bus": b} for e, b in pairs]
+
+
+_TUPLE_SHAPES = pytest.mark.parametrize(
+    "shape", [_as_struct, _as_flat, _as_mappings], ids=["struct", "flat", "mappings"]
 )
-def test_add_group_refuses_what_is_no_frame_duckdb_rescans(staged, frame):
+
+
+@_TUPLE_SHAPES
+def test_add_and_remove_take_tuples_in_any_shape(store, shape):
+    """The struct column `dims` reads, a column per coordinate, or a list of mappings.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    """
+    staged = WorkingRecord(_with_roles(store).record)
+    staged.add("entity", ["l2"])
+    staged.add("connection", shape([("l2", "b0")]), role="mid")
+    staged.remove("connection", shape([("l1", "b0")]))
+    assert _roles(staged) == {("l1", "b1"): "out", ("l2", "b0"): "mid"}
+
+
+def test_add_takes_back_what_dims_reads(store):
+    """`dims["connection"]` is a frame `add` takes as it stands.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    """
+    root = _with_roles(store)
+    staged = WorkingRecord(root.record)
+    staged.remove("entity", ["l1"])
+    assert _roles(staged) == {}
+    staged.add("entity", ["l1"])
+    staged.add("connection", root.record.dims["connection"], role="back")
+    assert _roles(staged) == {("l1", "b0"): "back", ("l1", "b1"): "back"}
+
+
+def test_add_refuses_what_is_no_frame_duckdb_rescans(staged):
     """A reader is consumed by its first scan, and an edit scans a frame more than once.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
+    reader = pa.RecordBatchReader.from_batches(pa.schema([("entity", pa.string())]), [])
     with pytest.raises(TypeError, match="is no frame"):
-        staged.add_group("connection", frame)
+        staged.add("connection", reader)
 
 
-def test_every_declared_group_reads_its_staged_rows(store):
-    """A second group is not silently dropped: the reads are keyed by group.
+@pytest.mark.parametrize("method", ["add", "remove"])
+def test_a_plain_dim_refuses_a_frame(staged, method):
+    """A frame gives a multi-dim's tuples; read as labels it would be its column names."""
+    with pytest.raises(TypeError, match="a frame gives the tuples of a multi-dim"):
+        getattr(staged, method)("entity", pd.DataFrame({"entity": ["Norway Gas"]}))
 
-    `connection` is the group every fixture has, so a read path naming it rather
-    than iterating the declared ones would pass everywhere except here - a
-    record declaring a `corridor` would read nothing while holding rows to
+
+def test_set_addresses_a_multi_dim_by_its_coordinates(staged):
+    with pytest.raises(KeyError, match=r"\['connection'\] are multi-dims.*`add`"):
+        staged.set("efficiency", 0.5, connection=_TUPLE)
+
+
+def test_set_refuses_a_coordinate(staged):
+    """A coordinate is the key, which `remove` and `add` change.
+
+    Notes
+    -----
+    - [coordinates](https://energy-models.github.io/datarecord/design/model/multi-dims/#coordinates)
+    """
+    with pytest.raises(ValueError, match="names a coordinate of the multi-dim"):
+        staged.set("connection.bus", "Norway", entity="Manchester Wind")
+
+
+def test_every_declared_multi_dim_reads_its_staged_rows(store):
+    """A second multi-dim is not silently dropped: the reads are keyed by dim.
+
+    `connection` is the multi-dim every fixture has, so a read path naming it
+    rather than iterating the declared ones would pass everywhere except here -
+    a record declaring a `corridor` would read nothing while holding rows to
     commit.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     revision = _small(
         store,
-        groups={
+        multi_dims={
             "connection": {"entity": "entity", "bus": "bus"},
             "corridor": {"from": "entity", "to": "entity"},
         },
     )
     staged = WorkingRecord(revision.record)
 
-    staged.add_group(
-        "connection",
-        pd.DataFrame([{"connection": {"entity": "Manchester Wind", "bus": "Norway"}}]),
-    )
-    staged.add_group(
-        "corridor",
-        pd.DataFrame([{"corridor": {"from": "Manchester Wind", "to": "Norway"}}]),
-    )
+    staged.add("connection", [{"entity": "Manchester Wind", "bus": "Norway"}])
+    staged.add("corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}]))
 
-    connections = unpacked(staged.groups["connection"])
+    connections = unpacked(staged.dims["connection"])
     assert "Norway" in set(
         connections[connections["entity"] == "Manchester Wind"]["bus"]
     )
 
-    corridors = unpacked(staged.groups["corridor"], "corridor")
+    corridors = unpacked(staged.dims["corridor"], "corridor")
     assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
         ("Manchester Wind", "Norway")
-    ], "the second group reads its own rows, not the first's"
+    ], "the second multi-dim reads its own rows, not the first's"
 
 
 def _with_roles(store):
@@ -1372,8 +1468,8 @@ def _with_roles(store):
             dimensions={
                 "entity": Dimension(dtype="str"),
                 "bus": Dimension(dtype="str"),
+                "connection": Dimension(over={"entity": "entity", "bus": "bus"}),
             },
-            groups={"connection": Group(over={"entity": "entity", "bus": "bus"})},
             properties={"connection": {"role": PropertySpec(dtype="str")}},
             attributes={
                 "efficiency": AttributeSpec(dtype="float", dims={"connection"})
@@ -1386,33 +1482,29 @@ def _with_roles(store):
     staged = WorkingRecord(root.record)
     staged.add("entity", ["l1"])
     staged.add("bus", ["b0", "b1"])
-    staged.add_group(
+    staged.add(
         "connection",
-        pd.DataFrame(
-            [
-                {"connection": {"entity": "l1", "bus": "b0"}, "role": "in"},
-                {"connection": {"entity": "l1", "bus": "b1"}, "role": "out"},
-            ]
-        ),
+        [{"entity": "l1", "bus": "b0"}, {"entity": "l1", "bus": "b1"}],
+        role=["in", "out"],
     )
     return root.child(staged.edits)
 
 
 def _roles(record):
-    """`(entity, bus) -> role` off the record's resolved `connection` group."""
-    rows = unpacked(record.groups["connection"])
+    """`(entity, bus) -> role` off the record's resolved `connection` multi-dim."""
+    rows = unpacked(record.properties["connection"])
     return dict(zip(zip(rows["entity"], rows["bus"]), rows["role"]))
 
 
-def test_a_group_property_is_a_column_of_the_group_file(store):
-    """And `set` with the group's fields as keywords patches the tuples they select.
+def test_a_multi_dim_property_is_a_column_of_its_axis_file(store):
+    """And `set` with the multi-dim's coordinates as keywords patches the tuples they select.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
     root = _with_roles(store)
-    on_disk = pd.read_parquet(f"{store.layer_dir(root.id)}groups/connection.parquet")
+    on_disk = pd.read_parquet(f"{store.layer_dir(root.id)}dims/connection.parquet")
     assert "role" in on_disk.columns
 
     staged = WorkingRecord(root.record)
@@ -1421,44 +1513,52 @@ def test_a_group_property_is_a_column_of_the_group_file(store):
 
     child = root.child(staged.edits)
     assert _roles(child.record) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
-    patch = pd.read_parquet(f"{store.layer_dir(child.id)}groups/connection.parquet")
+    patch = pd.read_parquet(f"{store.layer_dir(child.id)}dims/connection.parquet")
     assert patch["role"].tolist() == ["in", "both"], (
-        "the layer restates the group whole"
+        "the layer restates the multi-dim whole"
     )
 
 
-def test_a_group_property_with_no_field_reaches_every_tuple(store):
+def test_a_multi_dim_property_with_no_coordinate_reaches_every_tuple(store):
     staged = WorkingRecord(_with_roles(store).record)
     staged.set("connection.role", "any")
     assert set(_roles(staged).values()) == {"any"}
 
 
-def test_a_group_property_refuses_what_is_no_field(store):
+def test_a_multi_dim_property_refuses_what_is_no_coordinate(store):
     staged = WorkingRecord(_with_roles(store).record)
-    with pytest.raises(ValueError, match="whose tuples its fields"):
+    with pytest.raises(ValueError, match="whose tuples its coordinates"):
         staged.set("connection.role", "x", snapshot="2020")
     with pytest.raises(KeyError, match="selects no tuple"):
         staged.set("connection.role", "x", entity="l1", bus="nowhere")
 
 
-def test_add_and_add_group_refuse_an_attribute(store):
-    """An axis or group row carries properties and keys; an attribute is long rows of `attributes/`."""
+def test_add_refuses_an_attribute(store):
+    """An axis row carries properties and keys; an attribute is long rows of `attributes/`."""
     staged = WorkingRecord(_with_roles(store).record)
     with pytest.raises(ValueError, match=r"attributes \['efficiency'\].*`set"):
         staged.add("entity", ["l2"], efficiency=0.5)
-    frame = pd.DataFrame(
-        [{"connection": {"entity": "l1", "bus": "b0"}, "efficiency": 0.9}]
-    )
+    frame = pd.DataFrame([{"entity": "l1", "bus": "b0", "efficiency": 0.9}])
     with pytest.raises(ValueError, match="stage them with `set"):
-        staged.add_group("connection", frame)
+        staged.add("connection", frame)
 
 
-def test_add_group_refuses_a_case_variant_of_a_property(store):
+def test_add_refuses_a_case_variant_of_a_property(store):
     """DuckDB matches a column by name whatever its case, so only the declared spelling is taken."""
     staged = WorkingRecord(_with_roles(store).record)
-    frame = pd.DataFrame([{"connection": {"entity": "l1", "bus": "b0"}, "Role": 1}])
+    frame = pd.DataFrame([{"entity": "l1", "bus": "b0", "Role": 1}])
     with pytest.raises(ValueError, match=r"columns \['Role'\] the schema does not"):
-        staged.add_group("connection", frame)
+        staged.add("connection", frame)
+
+
+def test_add_takes_a_frame_beside_a_scalar_property(store):
+    """A frame carries its own rows, so a keyword beside it is one value for all."""
+    staged = WorkingRecord(_with_roles(store).record)
+    frame = pd.DataFrame({"entity": ["l1"], "bus": ["b0"]})
+    staged.add("connection", frame, role="mid")
+    assert _roles(staged) == {("l1", "b0"): "mid", ("l1", "b1"): "out"}
+    with pytest.raises(ValueError, match="may each be a scalar"):
+        staged.add("connection", frame, role=["a"])
 
 
 # -- rollback (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------------------------------------

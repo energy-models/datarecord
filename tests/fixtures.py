@@ -19,7 +19,7 @@ import duckdb
 import pandas as pd
 
 from datarecord.schema.schema import Schema
-from datarecord.schema.specs import AttributeSpec, Dimension, Group, PropertySpec
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from datarecord.store.files import Files, Version
 from datarecord.store.store import Revision, Store
 
@@ -75,7 +75,7 @@ def write_attribute(
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
     df = pd.DataFrame(rows)
     if connection is None:
@@ -110,7 +110,7 @@ def _hashable(value: Any) -> Any:
 def _as_written(revision: Revision, kind: str, name: str) -> pd.DataFrame:
     """The layer's file of `name` so far, else its parent's resolved one, else nothing.
 
-    A layer restates an axis or group whole, so a first write in a child starts
+    A layer restates an axis whole, so a first write in a child starts
     from what its parent resolves, properties and order included.
     """
     path = Path(revision.store.layer_dir(revision.id), kind, f"{name}.parquet")
@@ -119,9 +119,7 @@ def _as_written(revision: Revision, kind: str, name: str) -> pd.DataFrame:
     if revision.parent is None:
         return pd.DataFrame()
     record = revision.store.revision(revision.parent).record
-    if kind == "groups":
-        rel = record.groups.get(name)
-    elif name in record.schema.properties:
+    if name in record.schema.properties:
         rel = record.properties.get(name)
     else:
         rel = record.dims.get(name)
@@ -168,23 +166,23 @@ def restate(
     frame.to_parquet(target / f"{name}.parquet", index=False)
 
 
-def write_group(revision: Revision, group: str, rows: list[dict]) -> None:
-    """Restate `groups/<group>.parquet` with `rows`, each keyed by the struct column, a dict.
+def write_multi_dim(revision: Revision, multi: str, rows: list[dict]) -> None:
+    """Restate `dims/<multi>.parquet` with `rows`, each keyed by the struct column, a dict.
 
     Notes
     -----
     - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
-    restate(revision, "groups", group, rows)
+    restate(revision, "dims", multi, rows)
 
 
-def unpacked(rel: Any, group: str = "connection") -> pd.DataFrame:
-    """A group-keyed relation as pandas, its struct column spread flat.
+def unpacked(rel: Any, multi: str = "connection") -> pd.DataFrame:
+    """A relation keyed by a multi-dim as pandas, its struct column spread flat.
 
     A numpy-backed pandas frame has no struct dtype, so the unnest happens on
     the DuckDB side.
     """
-    return rel.project(f"unnest({group}), * EXCLUDE ({group})").df()
+    return rel.project(f"unnest({multi}), * EXCLUDE ({multi})").df()
 
 
 def _connection(row: dict) -> dict:
@@ -194,27 +192,27 @@ def _connection(row: dict) -> dict:
 
 
 def write_connections(revision: Revision, rows: list[dict]) -> None:
-    """Restate `groups/connection.parquet` with `rows`, each needing `entity` and `bus`.
+    """Restate `dims/connection.parquet` with `rows`, each needing `entity` and `bus`.
 
     No component type - one file holds every type's rows.
 
     Notes
     -----
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
-    restate(revision, "groups", "connection", [_connection(r) for r in rows])
+    restate(revision, "dims", "connection", [_connection(r) for r in rows])
 
 
 def drop_connections(revision: Revision, pairs: list[tuple[str, str]]) -> None:
-    """Restate `groups/connection.parquet` without the `(entity, bus)` pairs.
+    """Restate `dims/connection.parquet` without the `(entity, bus)` pairs.
 
     Notes
     -----
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
     gone = [{"entity": e, "bus": b} for e, b in pairs]
-    restate(revision, "groups", "connection", [], drop=gone)
+    restate(revision, "dims", "connection", [], drop=gone)
 
 
 def write_component(revision: Revision, ctype: str, rows: list[dict]) -> None:
@@ -410,7 +408,7 @@ class RivalWrite:
         return found
 
 
-def _default_attributes(dims: dict[str, Any], groups: dict[str, dict[str, str]]):
+def _default_attributes(dims: dict[str, Any], multi_dims: dict[str, dict[str, str]]):
     """The attributes tests write, declared over whichever dims are in play.
 
     Writing an attribute the schema does not declare is rejected, since its
@@ -419,16 +417,16 @@ def _default_attributes(dims: dict[str, Any], groups: dict[str, dict[str, str]])
 
     Addressed over every declared dim rather than a narrower set, which is the
     widest shape and so the one that accepts any row a test writes.
-    `efficiency` is the exception, being over the `connection` group where one
+    `efficiency` is the exception, being over the `connection` multi-dim where one
     is declared: that is what puts a `connection` struct column on its file.
 
     `weight` is the other, addressed by `scenario` alone - long rows of
     `attributes/weight.parquet` like any attribute, whatever its `dims`.
     """
     varying = {"entity", *dims}
-    connection = "connection" if "connection" in groups else "entity"
+    connection = "connection" if "connection" in multi_dims else "entity"
     # A dim named like a coordinate of the connection would clash with its keyword.
-    per_connection = set(dims) - set(groups.get(connection, ()))
+    per_connection = set(dims) - set(multi_dims.get(connection, ()))
     declared = {
         "p_nom": AttributeSpec(dtype="float", dims=varying),
         "e_nom": AttributeSpec(dtype="float", dims=varying),
@@ -455,7 +453,7 @@ def schema(
         "period": "int",
         "scenario": "str",
     },
-    groups: dict[str, dict[str, str]] = {
+    multi_dims: dict[str, dict[str, str]] = {
         "connection": {"entity": "entity", "bus": "bus"}
     },
 ) -> Schema:
@@ -463,13 +461,13 @@ def schema(
 
     Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
     `ctype` property, which refers to the dim `ctype` listing `TYPES`, a
-    `connection` group over
+    `connection` multi-dim over
     `(entity, bus)`, and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis by its
-    dtype or as a `Dimension`, `groups` to
+    dtype or as a `Dimension`, `multi_dims` to
     declare a different sparse relation.
 
-    A group's coordinates are declared dims. `entity` is always `partial`, so
+    A multi-dim's coordinates are declared dims. `entity` is always `partial`, so
     a layer patches one component's value without restating the rest, and
     `connection` is by default, as the PyPSA tool declares it, so the same
     holds per connection.
@@ -477,7 +475,7 @@ def schema(
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     # Callers declare per type, which is how a modelling framework thinks; the
     # schema stores one spec per attribute, record-wide. Flattening here keeps
@@ -488,31 +486,30 @@ def schema(
             flat.setdefault(attr, spec)
     # Declared whether or not a caller named them: a test writing `p_max_pu`
     # needs it declared.
-    for attr, spec in _default_attributes(dims, groups).items():
+    for attr, spec in _default_attributes(dims, multi_dims).items():
         flat.setdefault(attr, spec)
-    # A group's coordinates are dims like any other, so they are declared here
-    # rather than assumed - which is what lets a caller pass a group over
-    # coordinates that are not called `bus`.
-    coordinates = {c for over in groups.values() for c in over}
+    # Coordinates are declared here rather than assumed, which lets a caller
+    # pass a multi-dim over coordinates that are not called `bus`.
+    coordinates = {c for over in multi_dims.values() for c in over}
     declared = {
         "entity": "str",
         **{c: "str" for c in coordinates},
         **dims,
     }
     return Schema(
-        groups={g: Group(over=over) for g, over in groups.items()},
         dimensions={
             **{
                 d: t if isinstance(t, Dimension) else Dimension(dtype=t)
                 for d, t in declared.items()
             },
             "ctype": Dimension(one_of=TYPES),
+            **{m: Dimension(over=over) for m, over in multi_dims.items()},
         },
         properties={"entity": {"ctype": PropertySpec(one_of="ctype")}},
         attributes=flat,
-        # The default names `connection`, which a caller's own `groups` may drop.
+        # The default names `connection`, which a caller's own `multi_dims` may drop.
         partial=frozenset(
-            p for p in {"entity", *partial} if p in declared or p in groups
+            p for p in {"entity", *partial} if p in declared or p in multi_dims
         ),
     )
 
@@ -532,7 +529,7 @@ def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
     """`attribute`'s value per full coordinate over `dims`, by the broadcast rule.
 
     A row reaches every label of a dim it leaves NULL, or every tuple of a
-    group, which reads as the tuple of its fields. At each coordinate the row
+    multi-dim, which reads as the tuple of its fields. At each coordinate the row
     naming the union of the dims every row reaching it names wins; a coordinate
     where no single row names that union fails the test.
     """
@@ -541,7 +538,7 @@ def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
         return tuple(value.values()) if isinstance(value, dict) else value
 
     def axis(d: str) -> duckdb.DuckDBPyRelation:
-        return record.groups[d] if d in record.schema.groups else record.dims[d]
+        return record.dims[d]
 
     labels = {d: [label(c) for (c,) in axis(d).project(d).fetchall()] for d in dims}
     reaching: dict[tuple, list[tuple[frozenset, Any]]] = defaultdict(list)

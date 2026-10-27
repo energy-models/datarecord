@@ -29,7 +29,7 @@ from tests.fixtures import (
     schema,
     write_attribute,
     write_component,
-    write_group,
+    write_multi_dim,
     write_schema,
 )
 
@@ -39,14 +39,14 @@ def parent(store):
     """A materialised root: two generators with a three-snapshot `p_max_pu`.
 
     `Norway Wind` also carries an `efficiency` on its connection, so a
-    group-keyed attribute folds through the base too.
+    attribute keyed by a multi-dim folds through the base too.
     """
     revision = empty_root(store)
     layer = store.layer_dir(revision.id)
     write_schema(schema(), store)
     names = ["Manchester Wind", "Norway Wind"]
     write_component(revision, "Generator", [{"entity": n} for n in names])
-    write_group(
+    write_multi_dim(
         revision, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
     )
     write_attribute(
@@ -162,7 +162,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     build one node cache the truncated way (base = the materialised parent) and
     one the long way (every layer as its own `ParquetLayer`, no truncation), and
     assert they agree on the owner map, the entity axis, every attribute
-    relation, and the group frames.
+    relation, and the multi-dim axes.
     """
     child = empty_child(parent)
     write_attribute(
@@ -279,7 +279,6 @@ def test_a_schema_narrowing_is_refused(store, parent):
 
         schema = narrowed
         dims = EMPTY
-        groups: dict = {}
         attributes = EMPTY
 
         def flags(self):

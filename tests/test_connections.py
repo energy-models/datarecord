@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+- [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
 """
 
 from contextlib import nullcontext
@@ -32,7 +32,7 @@ from tests.fixtures import (
     write_axis,
     write_component,
     write_connections,
-    write_group,
+    write_multi_dim,
     write_schema,
 )
 
@@ -40,12 +40,12 @@ PROCESS = "Process"
 
 
 def _connections(revision):
-    """The resolved `connection` group, which these tests need a row of.
+    """The resolved `connection` multi-dim, which these tests need a row of.
 
-    No type: one `groups/connection.parquet` holds every type's rows, and these
+    No type: one `dims/connection.parquet` holds every type's rows, and these
     tests declare a single one.
     """
-    return revision.record.groups["connection"]
+    return revision.record.dims["connection"]
 
 
 def _root(store) -> Revision:
@@ -160,11 +160,10 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
 
 
 def test_component_level_attribute_is_unaffected(store):
-    """A component attribute carries no `bus` column at all, and resolves as ever.
+    """A component attribute carries no `bus` column.
 
-    `bus` is the `connection` group's coordinate, so it is on the files of the
-    attributes addressed by that group and on no others - where before every
-    long file carried it, all-NULL, whether or not the attribute could use it.
+    `bus` is the `connection` multi-dim's coordinate, so it is on the files of the
+    attributes addressed by that multi-dim and on no others.
 
     Notes
     -----
@@ -187,7 +186,9 @@ def test_component_level_attribute_is_unaffected(store):
 
     df = relation(child, "p_nom").df()
     assert list(df["value"]) == [250.0]
-    assert "bus" not in df.columns, "`p_nom` is not addressed by the connection group"
+    assert "bus" not in df.columns, (
+        "`p_nom` is not addressed by the connection multi-dim"
+    )
 
 
 def test_per_connection_attribute_varies_by_snapshot(store):
@@ -195,7 +196,7 @@ def test_per_connection_attribute_varies_by_snapshot(store):
 
     Notes
     -----
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
     write_schema(schema(), store)
     revision = empty_root(store)
@@ -257,7 +258,7 @@ def test_restating_without_a_connection_removes_it(store):
 
 
 def test_a_removed_component_reaches_its_connections_through_their_removal(store):
-    """The fold infers nothing from the entity: the group's own restatement clears them.
+    """The fold infers nothing from the entity: the multi-dim's own restatement clears them.
 
     Notes
     -----
@@ -272,21 +273,21 @@ def test_a_removed_component_reaches_its_connections_through_their_removal(store
         both,
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
-    frame = both.record.groups["connection"]
+    frame = both.record.dims["connection"]
     assert frame.count("*").fetchone() == (0,), "every connection row is removed"
     assert "efficiency" not in both.record.attributes, "and their values go with them"
 
 
-def test_a_dim_a_group_draws_on_still_broadcasts(store):
-    """A NULL `bus` on a per-bus attribute is every bus, beside a `connection` group.
+def test_a_dim_a_multi_dim_draws_on_still_broadcasts(store):
+    """A NULL `bus` on a per-bus attribute is every bus, beside a `connection` multi-dim.
 
-    The group carries its `bus` inside its own struct column, so the dim keeps
+    The multi-dim carries its `bus` inside its own struct column, so the dim keeps
     its axis to expand against.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     price = AttributeSpec(dtype="float", dims={"bus", "snapshot"})
     write_schema(
@@ -316,7 +317,7 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
 
 
 def test_a_null_connection_broadcasts_to_every_connection(store):
-    """A NULL struct is every tuple of the group, as a NULL dim is every label.
+    """A NULL struct is every tuple of the multi-dim, as a NULL dim is every label.
 
     Notes
     -----
@@ -335,7 +336,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
     assert _efficiencies(child) == {"h2_north": 0.5, "iron_ore": 0.5, "dri": 0.5}
 
 
-def test_a_group_outside_partial_is_owned_whole(store):
+def test_a_multi_dim_outside_partial_is_owned_whole(store):
     """Not `partial`, a layer touching one connection owns them all.
 
     A removed tuple's values still go, though no owner key names it.
@@ -359,12 +360,9 @@ def test_a_group_outside_partial_is_owned_whole(store):
     assert _efficiencies(gone) == {"h2_north": 2.1, "dri": 1.0}
 
 
-def _connection_frame(staged, entity, bus):
-    """A one-tuple `connection` frame for `add_group`."""
-    return staged.con.sql(
-        f"SELECT {{'entity': '{entity}', 'bus': '{bus}'}}"
-        "::STRUCT(entity VARCHAR, bus VARCHAR) AS connection"
-    )
+def _connection(entity, bus):
+    """One `connection` tuple, as `add` takes it."""
+    return [{"entity": entity, "bus": bus}]
 
 
 def _efficiency_rows(record) -> dict[tuple[str, str], float]:
@@ -384,14 +382,14 @@ def test_remove_drops_the_tuples_naming_the_entity(store):
     base = _root(store)
     other = WorkingRecord(base.record)
     other.add("entity", ["blast_furnace"], ctype=PROCESS)
-    other.add_group("connection", _connection_frame(other, "blast_furnace", "iron_ore"))
+    other.add("connection", _connection("blast_furnace", "iron_ore"))
     other.set("efficiency", 3.0, entity=["blast_furnace"], bus="iron_ore")
     root = base.child(other.edits)
 
     staged = WorkingRecord(root.record)
     staged.set("efficiency", 0.5, entity=["steel_dri"], bus="dri")
     staged.remove("entity", ["steel_dri"])
-    assert set(unpacked(staged.groups["connection"])["entity"]) == {"blast_furnace"}, (
+    assert set(unpacked(staged.dims["connection"])["entity"]) == {"blast_furnace"}, (
         "every tuple naming it goes, and no other"
     )
     assert _efficiency_rows(staged) == {("blast_furnace", "iron_ore"): 3.0}, (
@@ -399,13 +397,11 @@ def test_remove_drops_the_tuples_naming_the_entity(store):
     )
 
     child = root.child(staged.edits)
-    assert set(unpacked(child.record.groups["connection"])["entity"]) == {
-        "blast_furnace"
-    }
+    assert set(unpacked(child.record.dims["connection"])["entity"]) == {"blast_furnace"}
     assert _efficiency_rows(child.record) == {("blast_furnace", "iron_ore"): 3.0}
 
 
-def test_add_group_refuses_a_tuple_naming_a_removed_entity(store):
+def test_add_refuses_a_tuple_naming_a_removed_entity(store):
     """Below a materialised node too: its cached axis lacks the label.
 
     Notes
@@ -419,11 +415,10 @@ def test_add_group_refuses_a_tuple_naming_a_removed_entity(store):
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
-    frame = _connection_frame(revived, "steel_dri", "dri")
     with pytest.raises(
         KeyError, match=r"names 'entity' labels \['steel_dri'\] in 'connection.entity'"
     ):
-        revived.add_group("connection", frame)
+        revived.add("connection", _connection("steel_dri", "dri"))
 
 
 def _add_furnace(staged):
@@ -432,15 +427,15 @@ def _add_furnace(staged):
 
 def _connect_furnace(staged):
     _add_furnace(staged)
-    staged.add_group("connection", _connection_frame(staged, "blast_furnace", "dri"))
+    staged.add("connection", _connection("blast_furnace", "dri"))
 
 
 def _disconnect_steel(staged):
-    pairs = [("steel_dri", b) for b in ("h2_north", "iron_ore", "dri")]
-    staged.remove_group("connection", pairs)
+    pairs = [{"entity": "steel_dri", "bus": b} for b in ("h2_north", "iron_ore", "dri")]
+    staged.remove("connection", pairs)
 
 
-_DANGLING = r"groups/connection.parquet names 'entity' labels \['steel_dri'\]"
+_DANGLING = r"dims/connection.parquet names 'entity' labels \['steel_dri'\]"
 
 
 @pytest.mark.parametrize(
@@ -456,7 +451,7 @@ _DANGLING = r"groups/connection.parquet names 'entity' labels \['steel_dri'\]"
 def test_a_tuple_an_ancestor_left_dangling_fails_the_next_restatement(
     store, edit, outcome
 ):
-    """A layer restating a group is checked whole, so it drops or repairs what an ancestor left.
+    """A layer restating a multi-dim is checked whole, so it drops or repairs what an ancestor left.
 
     Notes
     -----
@@ -524,11 +519,11 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
 
     revived = WorkingRecord(removed.record)
     revived.add("entity", ["steel_dri"], ctype=PROCESS)
-    revived.add_group("connection", _connection_frame(revived, "steel_dri", "dri"))
+    revived.add("connection", _connection("steel_dri", "dri"))
     assert _efficiencies(removed.child(revived.edits)) == {"dri": 1.0}
 
 
-# -- a group drawing twice on `entity` --------------------------------------
+# -- a multi-dim drawing twice on `entity` ----------------------------------
 
 SELLER, BUYER = "Generator", "Load"
 
@@ -544,7 +539,7 @@ def _contract_root(store) -> Revision:
         schema(
             attributes={SELLER: {"price": price}},
             partial={"scenario", "contract"},
-            groups={
+            multi_dims={
                 "connection": {"entity": "entity", "bus": "bus"},
                 "contract": {"from": "entity", "to": "entity"},
             },
@@ -555,7 +550,7 @@ def _contract_root(store) -> Revision:
     layer = store.layer_dir(revision.id)
     write_component(revision, SELLER, [{"entity": "plant"}])
     write_component(revision, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
-    write_group(
+    write_multi_dim(
         revision,
         "contract",
         [
@@ -580,7 +575,7 @@ def _prices(record) -> dict[str, float]:
     return {c["to"]: v for c, v in zip(df["contract"], df["value"], strict=True)}
 
 
-def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
+def test_remove_reaches_a_multi_dims_second_entity_before_and_after_commit(store):
     """Removing the buyer removes its contract, as removing the seller would.
 
     Staging drops the parent's and its own rows for the `to` entity, as the fold.
@@ -601,11 +596,11 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
 
     child = root.child(staged.edits)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
-    contracts = child.record.groups["contract"]
+    contracts = child.record.dims["contract"]
     assert len(contracts) == 1, "its tuple went with it"
 
 
-def test_set_addresses_a_groups_fields_by_keyword(store):
+def test_set_addresses_a_multi_dims_coordinates_by_keyword(store):
     """Each party is its own keyword, one label or a list; `entity=` is neither.
 
     Notes

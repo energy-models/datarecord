@@ -38,7 +38,6 @@ from datarecord.schema.dtypes import DUCK_TYPES, enum_type, takes
 from datarecord.schema.specs import (
     AttributeSpec,
     Dimension,
-    Group,
     PropertySpec,
     _Declared,
     _ValueSpec,
@@ -107,7 +106,7 @@ Notes
 
 
 def _misnamed(name: str) -> str | None:
-    """Why `name` cannot be a declared dim, group, coordinate or attribute, if so.
+    """Why `name` cannot be a declared dim, coordinate or attribute, if so.
 
     `duckdb.ColumnExpression` is how every declared name becomes a column
     reference, and it reads `a.b` as column `b` of table `a` and cannot spell a
@@ -142,7 +141,7 @@ def flag_type(dims: tuple[str, ...]) -> DuckDBPyType:
 
 def _typed_as(spec: Dimension | AttributeSpec | PropertySpec) -> str:
     """Show how `spec` declares its type: its dtype, or the fields its manifest writes."""
-    declared = spec.model_dump(include={"dtype", "one_of"})
+    declared = spec.model_dump(include={"dtype", "one_of", "over"})
     return (
         str(declared["dtype"]) if declared.keys() == {"dtype"} else json.dumps(declared)
     )
@@ -162,13 +161,12 @@ class Schema(_Declared):
         version it was not written for should refuse rather than guess.
     dimensions
         Every declared axis, keyed by dim name.
-    groups
-        Group name -> which tuples over several dims exist.
     properties
-        Subject dim or group -> property name -> spec: the columns of
-        `dims/{dim}.parquet` or `groups/{group}.parquet` that describe its
-        labels. A name is unique within its subject only, addressed as
-        `subject.name`. A property of a dim in `partial` that refers to a dim with `one_of` categorizes its subject.
+        Subject dim -> property name -> spec: the columns of
+        `dims/{dim}.parquet` that describe its labels. A name is unique
+        within its subject only, addressed as `subject.name`. A property of a
+        dim in `partial` that refers to a dim with `one_of` categorizes its
+        subject, unless the subject is a multi-dim.
     attributes
         Attribute -> spec, record-wide. One attribute is one spec and
         one `attributes/<attr>.parquet` with one dtype.
@@ -193,7 +191,6 @@ class Schema(_Declared):
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
     properties: dict[str, dict[str, PropertySpec]] = Field(default_factory=dict)
-    groups: dict[str, Group] = Field(default_factory=dict)
     partial: frozenset[str] | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
@@ -204,7 +201,7 @@ class Schema(_Declared):
         Notes
         -----
         - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         - [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
         """
         self._check_names()
@@ -220,50 +217,45 @@ class Schema(_Declared):
             )
             raise ValueError(msg)
 
-        for group, group_spec in self.groups.items():
-            unknown = sorted(set(group_spec.over.values()) - declared)
+        for multi in self.multi_dims:
+            drawn = set(self.over(multi).values())
+            unknown = sorted(drawn - declared)
             if unknown:
-                msg = f"group {group!r} is over undeclared dims {unknown}"
+                msg = f"multi-dim {multi!r} is over undeclared dims {unknown}"
                 raise ValueError(msg)
-            if group in declared:
-                renamed = "_".join((*group_spec.over, group))
+            nested = sorted(drawn & set(self.multi_dims))
+            if nested:
                 msg = (
-                    f"group {group!r} shares its name with the dim {group!r}; a "
-                    f"group is carried as a column named for it, so the two would "
-                    f"be one column. Rename the group, e.g. {renamed!r} "
-                    f"(https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)"
+                    f"multi-dim {multi!r} is over the multi-dims {nested}; each "
+                    f"coordinate draws on a dim that is no multi-dim "
+                    f"(https://energy-models.github.io/datarecord/design/model/multi-dims/)"
                 )
                 raise ValueError(msg)
 
         self._check_properties()
 
-        addressable = declared | set(self.groups)
         for attr, attr_spec in self.attributes.items():
-            unknown = sorted(attr_spec.dims - addressable)
+            unknown = sorted(attr_spec.dims - declared)
             if unknown:
-                msg = (
-                    f"attribute {attr!r} is addressed by undeclared "
-                    f"dims or groups {unknown}"
-                )
+                msg = f"attribute {attr!r} is addressed by undeclared dims {unknown}"
                 raise ValueError(msg)
-            for group, group_spec in self.groups.items():
-                if group in self.groups_of(attr):
-                    twice = sorted(set(group_spec.key) & attr_spec.dims)
-                    if twice:
-                        msg = (
-                            f"attribute {attr!r} is addressed by the group "
-                            f"{group!r} and by {twice}, which share a name with "
-                            f"the group's coordinates, so a keyword such as "
-                            f"{twice[0]}= would address both. Name the group's "
-                            f"coordinate differently, e.g. over={{..., 'port': "
-                            f"{twice[0]!r}}} (https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)"
-                        )
-                        raise ValueError(msg)
+            for multi in self.multi_dims_of(attr):
+                twice = sorted(set(self.over(multi)) & attr_spec.dims)
+                if twice:
+                    msg = (
+                        f"attribute {attr!r} is addressed by the multi-dim "
+                        f"{multi!r} and by {twice}, which share a name with "
+                        f"the multi-dim's coordinates, so a keyword such as "
+                        f"{twice[0]}= would address both. Name the multi-dim's "
+                        f"coordinate differently, e.g. over={{..., 'port': "
+                        f"{twice[0]!r}}} (https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)"
+                    )
+                    raise ValueError(msg)
 
         if self.partial is not None:
-            unknown = sorted(self.partial - declared - set(self.groups))
+            unknown = sorted(self.partial - declared)
             if unknown:
-                msg = f"`partial` names undeclared dims or groups {unknown}"
+                msg = f"`partial` names undeclared dims {unknown}"
                 raise ValueError(msg)
         return self
 
@@ -278,11 +270,14 @@ class Schema(_Declared):
             If `name` is not `subject.name` of a categorizing property.
         """
         subject, _, prop = name.partition(".")
-        if prop not in self.properties.get(subject, {}):
+        coordinate = prop in self.over(subject) if subject in self.dimensions else False
+        if prop not in self.properties.get(subject, {}) and not coordinate:
             reason = "is no property, named `subject.name`"
-        elif subject in self.groups:
+        elif subject in self.multi_dims:
+            kind = "a coordinate" if coordinate else "a property"
             reason = (
-                f"is a property of the group {subject!r}; a group is never categorized"
+                f"is {kind} of the multi-dim {subject!r}; a multi-dim is never "
+                f"categorized"
             )
         elif (one_of := self.properties[subject][prop].one_of) is None:
             reason = "refers to no dim"
@@ -297,11 +292,11 @@ class Schema(_Declared):
 
     def _check_properties(self) -> None:
         """Refuse a property of an undeclared subject, one that refers to an undeclared dim, and a malformed `default_by`."""
-        unknown = sorted(set(self.properties) - set(self.dimensions) - set(self.groups))
+        unknown = sorted(set(self.properties) - set(self.dimensions))
         if unknown:
             msg = (
-                f"properties are declared on undeclared dims or groups {unknown}; "
-                f"a property is a column of its subject's axis or group file"
+                f"properties are declared on undeclared dims {unknown}; "
+                f"a property is a column of its subject's axis file"
             )
             raise ValueError(msg)
         for (subject, name), dim in self.one_of_properties().items():
@@ -310,6 +305,13 @@ class Schema(_Declared):
                     f"property {subject}.{name} refers to {dim!r}, "
                     f"an undeclared dim "
                     f"(https://energy-models.github.io/datarecord/design/model/properties/#properties)"
+                )
+                raise ValueError(msg)
+            if dim in self.multi_dims:
+                msg = (
+                    f"property {subject}.{name} refers to the multi-dim {dim!r}; "
+                    f"a property refers to a dim that is no multi-dim "
+                    f"(https://energy-models.github.io/datarecord/design/model/properties/#referring-to-a-dim)"
                 )
                 raise ValueError(msg)
         for subject, by_name in self.properties.items():
@@ -369,20 +371,20 @@ class Schema(_Declared):
         }
 
     def _reached_by(self, subject: str) -> frozenset[str]:
-        """The dims a property of `subject` reaches: the dim, or those its group draws on."""
-        if subject in self.groups:
-            return frozenset(self.groups[subject].over.values())
+        """The dims a property of `subject` reaches: the dim, or those its coordinates draw on."""
+        if subject in self.multi_dims:
+            return frozenset(self.over(subject).values())
         return frozenset({subject})
 
     def _check_names(self) -> None:
         """Refuse every declared name that cannot be a column of its own.
 
-        A group's name is a column too, its struct column, and so is a
-        property's, in its subject's file only. Two spellings of one name
-        differing only in case are refused record-wide, DuckDB resolving both
-        to one column; one spelling declared twice is left to the rules that
-        govern it - except a property named like a column of its subject's file
-        or a coordinate of its group.
+        A multi-dim's coordinate is a column too, a field of its struct column,
+        and so is a property's, in its subject's file only. Two spellings of one
+        name differing only in case are refused record-wide, DuckDB resolving
+        both to one column; one spelling declared twice is left to the rules
+        that govern it - except a property named like a column of its subject's
+        file or a coordinate of its multi-dim.
 
         Notes
         -----
@@ -391,11 +393,10 @@ class Schema(_Declared):
         """
         declared = [
             *(("dim", d) for d in self.dimensions),
-            *(("group", g) for g in self.groups),
             *(
-                (f"coordinate of group {g!r}", c)
-                for g, spec in self.groups.items()
-                for c in spec.over
+                (f"coordinate of multi-dim {m!r}", c)
+                for m in self.multi_dims
+                for c in self.over(m)
             ),
             *(("attribute", a) for a in self.attributes),
             *(
@@ -418,12 +419,12 @@ class Schema(_Declared):
                     f"properties"
                 )
                 raise ValueError(msg)
-            group = self.groups.get(subject)
-            shared = sorted(set(specs) & set(group.over if group else ()))
+            coordinates = self.over(subject) if subject in self.dimensions else {}
+            shared = sorted(set(specs) & set(coordinates))
             if shared:
                 msg = (
-                    f"properties {shared} of group {subject!r} share their names "
-                    f"with its coordinates, which name a tuple's fields - "
+                    f"properties {shared} of multi-dim {subject!r} share their "
+                    f"names with its coordinates, which name a tuple's fields - "
                     f"rename the properties"
                 )
                 raise ValueError(msg)
@@ -446,7 +447,7 @@ class Schema(_Declared):
     def _key_of(self, subject: str) -> set[str]:
         """Return the key column of the file of `subject`, a name no property of it may take.
 
-        That is the dim's own column, or the group's struct column.
+        That is the dim's own column, a multi-dim's struct column.
         """
         return {subject}
 
@@ -454,21 +455,45 @@ class Schema(_Declared):
 
     @property
     def dims(self) -> tuple[str, ...]:
-        """Every declared dim, in declaration order - the long schema's dim columns.
+        """Every declared dim but the multi-dims, in declaration order.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
-        return tuple(self.dimensions)
+        return tuple(d for d, spec in self.dimensions.items() if spec.over is None)
+
+    @property
+    def multi_dims(self) -> tuple[str, ...]:
+        """Every declared multi-dim, in declaration order, each carried in a row as one struct column named for it.
+
+        Notes
+        -----
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        """
+        return tuple(d for d, spec in self.dimensions.items() if spec.over is not None)
+
+    def over(self, dim: str) -> dict[str, str]:
+        """The coordinates of `dim`, each to the dim it draws on, in field order; empty for a dim that is no multi-dim.
+
+        Raises
+        ------
+        KeyError
+            If the schema declares no `dim`.
+
+        Notes
+        -----
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        """
+        return self.dimensions[dim].over or {}
 
     @property
     def broadcast_dims(self) -> tuple[str, ...]:
-        """The coordinates a NULL broadcasts over: every declared dim and every group column.
+        """The coordinates a NULL broadcasts over: every declared dim, the multi-dims last.
 
         A NULL here means "every value of this dim", which the fold expands
         against the axis; a NULL struct means every tuple of the resolved
-        group.
+        multi-dim.
 
         What the `varies`/`broadcast` structs have a field per, and what
         `expand_dims` joins.
@@ -476,16 +501,15 @@ class Schema(_Declared):
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
-        return (*self.dims, *self.group_columns)
+        return (*self.dims, *self.multi_dims)
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
-        """The coordinate columns one attribute's rows carry, groups first.
+        """The coordinate columns one attribute's rows carry, multi-dims first.
 
-        A group in `dims` is carried as one struct column named for it
-        (`group_type`), so `dims={"connection", "snapshot"}` gives
-        `("connection", "snapshot")`.
+        A multi-dim in `dims` is carried as one struct column named for it, so
+        `dims={"connection", "snapshot"}` gives `("connection", "snapshot")`.
 
         Per attribute rather than schema-wide: one file per attribute means one
         column set per attribute, and an all-NULL column of a dim the attribute
@@ -493,65 +517,50 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        - [addressing](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [addressing](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
         - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
             return ()
-        return (*self.groups_of(attribute), *(d for d in self.dims if d in spec.dims))
-
-    @property
-    def group_columns(self) -> tuple[str, ...]:
-        """Every group, each carried in a row as one struct column named for it.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        """
-        return tuple(self.groups)
-
-    def group_type(self, group: str) -> DuckDBPyType:
-        """The struct a row carries `group` as: a field per key coordinate.
-
-        Each field typed as the dim the coordinate draws on.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        """
-        spec = self.groups[group]
-        return duckdb.struct_type(
-            {c: self.duck_type(self.dimensions[spec.over[c]]) for c in spec.key}
+        return (
+            *self.multi_dims_of(attribute),
+            *(d for d in self.dims if d in spec.dims),
         )
 
     def duck_type(self, spec: Dimension | AttributeSpec | PropertySpec) -> DuckDBPyType:
         """Return the DuckDB type of a declared dim, attribute or property.
 
-        A dim with `one_of` has the `ENUM` of them. A property that
+        A dim with `one_of` has the `ENUM` of them, a multi-dim the struct of
+        a field per coordinate, typed as the dim it draws on. A property that
         refers to a dim has the type of that dim.
 
         Notes
         -----
         - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
         if isinstance(spec, PropertySpec) and spec.one_of is not None:
             return self.duck_type(self.dimensions[spec.one_of])
+        if isinstance(spec, Dimension) and spec.over is not None:
+            return duckdb.struct_type(
+                {c: self.duck_type(self.dimensions[d]) for c, d in spec.over.items()}
+            )
         if isinstance(spec, Dimension) and spec.one_of is not None:
             return enum_type(spec.one_of)
         return DUCK_TYPES[cast("str", spec.dtype)]
 
-    def check_group_columns(
+    def check_multi_dim_columns(
         self,
-        groups: Iterable[str],
+        multi_dims: Iterable[str],
         rel: DuckDBPyRelation,
         *,
         carrier: str,
     ) -> None:
-        """Reject each of `groups` carried other than as one struct column of exactly its key, whole or NULL.
+        """Reject each of `multi_dims` carried other than as one struct column of exactly its coordinates, whole or NULL.
 
-        A carrier without a group's column passes.
+        A carrier without a multi-dim's column passes.
 
         Parameters
         ----------
@@ -561,20 +570,20 @@ class Schema(_Declared):
         Raises
         ------
         ValueError
-            On a key coordinate as a column of its own, a group column not a
-            struct of exactly the key, naming the struct to pass instead, or a
-            struct with some fields NULL and not all.
+            On a coordinate as a column of its own, a multi-dim column not a
+            struct of exactly the coordinates, naming the struct to pass
+            instead, or a struct with some fields NULL and not all.
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
         types = dict(zip(rel.columns, rel.types, strict=True))
-        for group in groups:
-            key = self.group_key(group)
+        for multi in multi_dims:
+            key = list(self.over(multi))
             flat = [c for c in key if c in types]
-            dtype = types.get(group)
+            dtype = types.get(multi)
             fields = (
                 key
                 if dtype is None
@@ -583,22 +592,22 @@ class Schema(_Declared):
                 else None
             )
             if flat or fields is None or set(fields) != set(key):
-                carried = f"{flat} flat" if flat else f"{group!r} as {dtype}"
+                carried = f"{flat} flat" if flat else f"{multi!r} as {dtype}"
                 msg = (
-                    f"{carrier} carries {carried}; pass {group!r} as one struct "
-                    f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/model/groups/)"
+                    f"{carrier} carries {carried}; pass {multi!r} as one struct "
+                    f"column with a field per coordinate, {key} (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
                 )
                 raise ValueError(msg)
             if dtype is None:
                 continue
             some = " OR ".join(
-                f"{fn.struct_extract(col(group), lit(c))} IS NULL" for c in key
+                f"{fn.struct_extract(col(multi), lit(c))} IS NULL" for c in key
             )
-            partly = sql(f"{col(group)} IS NOT NULL AND ({some})")
+            partly = sql(f"{col(multi)} IS NOT NULL AND ({some})")
             if rel.filter(partly).limit(1).fetchone() is not None:
                 msg = (
-                    f"{carrier} carries a {group!r} with some fields NULL; a "
-                    f"group value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+                    f"{carrier} carries a {multi!r} with some fields NULL; a "
+                    f"multi-dim value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
                 )
                 raise ValueError(msg)
 
@@ -625,13 +634,14 @@ class Schema(_Declared):
     def categorizing(self, dim: str) -> tuple[str, ...]:
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
 
-        A categorizing property is a property of `dim` that refers to a dim with `one_of`. Only a dim in `partial` has any.
+        A categorizing property is a property of `dim` that refers to a dim with
+        `one_of`. Only a dim in `partial` that is no multi-dim has any.
 
         Notes
         -----
         - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
-        if dim not in self.dimensions or dim not in (self.partial or set()):
+        if dim not in self.dims or dim not in (self.partial or set()):
             return ()
         return tuple(
             name
@@ -727,7 +737,7 @@ class Schema(_Declared):
         Raises
         ------
         KeyError
-            As `resolve` does.
+            As `resolve` does, and on a coordinate, which has no default.
 
         Notes
         -----
@@ -736,6 +746,9 @@ class Schema(_Declared):
         """
         resolved = self.resolve(name)
         spec = resolved[1] if isinstance(resolved, tuple) else resolved
+        if isinstance(spec, Dimension):
+            msg = f"{name!r} is a coordinate, part of its multi-dim's key, and has no default"
+            raise KeyError(msg)
         for key, by in spec.default_by.items():
             category = categories.get(key.partition(".")[2])
             if category in by:
@@ -745,8 +758,8 @@ class Schema(_Declared):
     def addresses(self, attribute: str, dim: str) -> bool:
         """Whether `attribute` reaches a label of `dim` at all.
 
-        True where its `dims` name `dim`, or a group one of whose coordinates
-        draws on `dim`.
+        True where its `dims` name `dim`, or a multi-dim one of whose
+        coordinates draws on `dim`.
 
         Notes
         -----
@@ -754,18 +767,21 @@ class Schema(_Declared):
         """
         spec = self.attributes.get(attribute)
         return (spec is not None and dim in spec.dims) or any(
-            dim in self.groups[g].over.values() for g in self.groups_of(attribute)
+            dim in self.over(m).values() for m in self.multi_dims_of(attribute)
         )
 
-    def resolve(self, name: str) -> AttributeSpec | tuple[str, PropertySpec]:
-        """What `name` addresses: an attribute, or a property as `subject.name`.
+    def resolve(
+        self, name: str
+    ) -> AttributeSpec | tuple[str, PropertySpec] | tuple[str, Dimension]:
+        """What `name` addresses: an attribute, or a property or coordinate as `subject.name`.
 
         Read off the name alone: a plain name is never a property.
 
         Returns
         -------
-        AttributeSpec or tuple of str and PropertySpec
-            The attribute's spec, or a property's subject and spec.
+        AttributeSpec or tuple of str and PropertySpec or Dimension
+            The attribute's spec, a property's subject and spec, or a
+            coordinate's multi-dim and the dim the coordinate draws on.
 
         Raises
         ------
@@ -776,14 +792,18 @@ class Schema(_Declared):
         Notes
         -----
         - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [coordinates](https://energy-models.github.io/datarecord/design/model/multi-dims/#coordinates)
         """
         subject, dot, prop = name.partition(".")
         if dot:
             spec = self.properties.get(subject, {}).get(prop)
-            if spec is None:
+            if spec is not None:
+                return subject, spec
+            drawn = self.over(subject).get(prop) if subject in self.dimensions else None
+            if drawn is None:
                 msg = f"the schema declares no property {name!r}"
                 raise KeyError(msg)
-            return subject, spec
+            return subject, self.dimensions[drawn]
         attribute = self.attributes.get(name)
         if attribute is not None:
             return attribute
@@ -794,18 +814,18 @@ class Schema(_Declared):
         msg = f"the schema declares no attribute {name!r}{hint}"
         raise KeyError(msg)
 
-    def field_over(self, group: str, dim: str) -> str | None:
-        """The one field of `group` over `dim`, if any.
+    def coordinate_over(self, multi: str, dim: str) -> str | None:
+        """The one coordinate of the multi-dim `multi` drawing on `dim`, if any.
 
         Raises
         ------
         ValueError
-            If several fields of `group` are over `dim`.
+            If several coordinates of `multi` draw on `dim`.
         """
-        fields = [f for f, d in self.groups[group].over.items() if d == dim]
+        fields = [f for f, d in self.over(multi).items() if d == dim]
         if len(fields) > 1:
             msg = (
-                f"group {group!r} is over {dim!r} through {fields}, so no one "
+                f"multi-dim {multi!r} is over {dim!r} through {fields}, so no one "
                 f"label of it decides what a tuple carries"
             )
             raise ValueError(msg)
@@ -815,8 +835,8 @@ class Schema(_Declared):
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
-        attribute may vary over, `partial_dims` the fold key (group columns
-        plus the `partial` dims), and ownership is their intersection. A
+        attribute may vary over, `partial_dims` the fold key (the `partial`
+        dims), and ownership is their intersection. A
         dim in `dims` but not the fold key - a non-`partial` value axis like
         `timestep` - is owned whole, so a patch to one of its values restates the
         attribute's entire extent along it (`_owned_whole`).
@@ -835,7 +855,7 @@ class Schema(_Declared):
     def partial_dims(self) -> tuple[str, ...]:
         """The fold key's coordinates, in declaration order.
 
-        The dims and groups a layer may patch per value (`partial`). The fold's
+        The dims a layer may patch per value (`partial`). The fold's
         key is one fixed tuple over all attributes, so it carries every axis *any* layer may patch by value or
         by row, not only those some currently declared attribute varies over. An
         attribute not owned per one of them writes NULL there, the "NULL means
@@ -866,14 +886,14 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
-        return (*self.group_columns, *self.dims, *LONG_TAIL)
+        return (*self.multi_dims, *self.dims, *LONG_TAIL)
 
     @property
     def owner_map_key(self) -> tuple[str, ...]:
         """Owner-map key columns, compared NULL-safely when folding.
 
         `partial_dims`, plus `attribute`: a layer may patch one value along a
-        `partial` dim or group without restating every other's.
+        `partial` dim without restating every other's.
 
         A coordinate an attribute's own file does not carry reads as NULL,
         which is what makes the key one fixed tuple over attributes whose
@@ -881,38 +901,23 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+        - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
         - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
         - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         return (*self.partial_dims, "attribute")
 
-    def groups_of(self, attribute: str) -> tuple[str, ...]:
-        """Which declared groups address `attribute`, in declaration order.
-
-        An attribute is a connection attribute because its `dims` name the
-        `connection` group - not because a separate field says so. That is
-        what lets a second group exist without a second field.
+    def multi_dims_of(self, attribute: str) -> tuple[str, ...]:
+        """Which declared multi-dims address `attribute`, in declaration order.
 
         Notes
         -----
-        - [addressing](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+        - [addressing](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
             return ()
-        return tuple(g for g in self.groups if g in spec.dims)
-
-    def group_key(self, group: str) -> tuple[str, ...]:
-        """One group's key coordinates - its struct column's fields - or `()` if undeclared.
-
-        Notes
-        -----
-        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-        """
-        spec = self.groups.get(group)
-        return () if spec is None else spec.key
+        return tuple(m for m in self.multi_dims if m in spec.dims)
 
     @property
     def owner_map_columns(self) -> tuple[str, ...]:
@@ -931,9 +936,9 @@ class Schema(_Declared):
     ) -> DuckDBPyType | None:
         """Return the declared DuckDB type of `column`, or None if the schema declares none.
 
-        Covers the structural columns the format fixes, the declared dims and
-        groups, the properties of `subject` - columns of its axis or group
-        file, read first - and the owner map's two flag structs, whose fields
+        Covers the structural columns the format fixes, the declared dims,
+        the properties of `subject` - columns of its
+        axis file, read first - and the owner map's two flag structs, whose fields
         follow the schema's dims.
 
         No dim is structural: each is declared, and typed from that
@@ -955,11 +960,9 @@ class Schema(_Declared):
         return None if found is None else found[1]
 
     def _structural_type(self, column: str) -> DuckDBPyType | None:
-        """Return the type the format fixes for `column`: a group struct or a flag struct."""
+        """Return the type the format fixes for `column`: a structural column or a flag struct."""
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
-        if column in self.groups:
-            return self.group_type(column)
         if column in ("varies", "broadcast"):
             return flag_type(self.broadcast_dims) if self.broadcast_dims else None
         return None
@@ -972,7 +975,7 @@ class Schema(_Declared):
         Parameters
         ----------
         subject
-            The dim or group whose file holds the column. A column named like
+            The dim whose file holds the column. A column named like
             one of its properties is that property, named `subject.name`.
         attribute
             The attribute whose long rows hold the column. Its `value` column

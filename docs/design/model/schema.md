@@ -6,13 +6,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # The schema
 
-A record has one schema, written as `manifest.json` beside its layers. It declares the record's dims, groups, properties and attributes, maps each dtype to one DuckDB type, and limits which names may become columns.
+A record has one schema, written as `manifest.json` beside its layers. It declares the record's dims, properties and attributes, maps each dtype to one DuckDB type, and limits which names may become columns.
 
 ```python
 class Dimension(BaseModel):
     """One axis attribute data may vary over."""
 
-    dtype: DimensionDtype = "str"  # float, int, str or datetime
+    over: dict[str, str] | None = None  # a multi-dim: coordinate -> dim
+    dtype: DimensionDtype | None = "str"  # float, int, str or datetime
     one_of: tuple[str, ...] | None = None  # the labels a str dim allows
     unit: str | None = None  # what the labels measure, if anything
     description: str | None = None  # what the axis is, in prose
@@ -22,7 +23,7 @@ class AttributeSpec(BaseModel):
     """What shape one attribute's data may take."""
 
     dtype: ParameterDtype  # float, int, bool or str
-    dims: frozenset[str] = frozenset()  # what addresses it: dims and groups
+    dims: frozenset[str] = frozenset()  # what addresses it: dims, multi-dims among them
     default: Any | None = None
     default_by: dict[str, dict[str, Any]] = {}  # subject.name -> category -> default
     breakpoints: bool = False  # may carry a piecewise-linear curve
@@ -41,28 +42,20 @@ class PropertySpec(BaseModel):
     description: str | None = None
 
 
-class Group(BaseModel):
-    """Which tuples over several dims exist: a sparse subset of a dim product."""
-
-    over: dict[str, str]  # coordinate name -> the dim it draws labels from
-    description: str | None = None
-
-
 class Schema(BaseModel):
     id: UUID | None = None  # a standalone record's layer id
     version: int = 1  # bumped by any change to the declarations
 
-    dimensions: dict[str, Dimension] = {}
+    dimensions: dict[str, Dimension] = {}  # every dim, multi-dims among them
     attributes: dict[str, AttributeSpec] = {}  # one attribute, one spec
     properties: dict[str, dict[str, PropertySpec]] = {}  # subject -> name -> spec
-    groups: dict[str, Group] = {}
 
     partial: frozenset[str] | None = None  # dims a layer may patch value by value
 
     meta: dict[str, Any] = {}  # stored, never interpreted
 ```
 
-[Dims](dims.md), [groups](groups.md), [properties](properties.md) and [attributes](attributes.md) each have their own page. `partial` is the one part specific to layering, and so the one optional part. It is `None` for a record with no layers, since nothing overrides anything there ([`partial`](../layers/tree.md#partial-the-granularity-of-an-override)).
+[Dims](dims.md), [multi-dims](multi-dims.md), [properties](properties.md) and [attributes](attributes.md) each have their own page. `partial` is the one part specific to layering, and so the one optional part. It is `None` for a record with no layers, since nothing overrides anything there ([`partial`](../layers/tree.md#partial-the-granularity-of-an-override)).
 
 `meta` holds a framework's own top-level data, such as network attributes, a coordinate reference system or free-form metadata. The package stores it and never interprets it, since none of it describes the dimensioned data.
 
@@ -82,22 +75,24 @@ A dtype is mathspec's: `DimensionDtype` and `ParameterDtype` from `mathspec.prog
 
 A [dim with `one_of`](dims.md#a-dim-with-one_of) is a `str` dim whose column is an `ENUM` of its labels.
 
-A property declares exactly one of `dtype` and `one_of`. A property with `one_of: <dim>` refers to that dim, whether its subject is a dim or a group, and takes the dim's type: an `ENUM` for a dim with `one_of`, `TIMESTAMP` for a `datetime` dim ([referring to a dim](properties.md#referring-to-a-dim)). The schema refuses at load a property that declares both or neither, and a list of labels in place of the dim.
+A property declares exactly one of `dtype` and `one_of`. A property with `one_of: <dim>` refers to that dim, whether its subject is a multi-dim or not, and takes the dim's type: an `ENUM` for a dim with `one_of`, `TIMESTAMP` for a `datetime` dim ([referring to a dim](properties.md#referring-to-a-dim)). The schema refuses at load a property that declares both or neither, a list of labels in place of the dim, and a multi-dim as the dim.
+
+A [multi-dim](multi-dims.md) declares `over` and neither `dtype` nor `one_of`; the schema refuses it beside either, and a coordinate drawing on an undeclared dim or on another multi-dim.
 
 An attribute declares no `one_of`, as a mathspec parameter has none. No property is `datetime`. A property that holds a time refers to a `datetime` dim, such as `snapshot`.
 
-Struct columns are derived from the declarations. A group's column is a `STRUCT` with a field per coordinate, each typed as its dim, and an owner flag is a `STRUCT` of `BOOLEAN`. The fixed columns are `attribute VARCHAR`, `breakpoint DOUBLE` and `breakpoints BOOLEAN`.
+Struct columns are derived from the declarations. A multi-dim's column is a `STRUCT` with a field per coordinate, each typed as its dim, and an owner flag is a `STRUCT` of `BOOLEAN`. The fixed columns are `attribute VARCHAR`, `breakpoint DOUBLE` and `breakpoints BOOLEAN`.
 
-The manifest writes a dtype as its string, `"dtype": "float"`. A dim with `one_of` carries `"one_of": [...]` beside it. A property that refers to a dim carries `"one_of": "<dim>"` in place of `dtype`.
+The manifest writes a dtype as its string, `"dtype": "float"`. A dim with `one_of` carries `"one_of": [...]` beside it. A multi-dim carries `"over": {...}` and no `dtype`. A property that refers to a dim carries `"one_of": "<dim>"` in place of `dtype`.
 
 ## Names
 
-A declared dim, group, group coordinate, attribute or property name becomes a column, beside the columns datarecord writes itself. `Schema` refuses at load a name that cannot stand there, and the error names it and the reason:
+A declared dim, multi-dim coordinate, attribute or property name becomes a column, beside the columns datarecord writes itself. `Schema` refuses at load a name that cannot stand there, and the error names it and the reason:
 
 - A name that contains `"` or `.`. A name reaches DuckDB as a column reference, which reads `a.b` as column `b` of table `a` and cannot spell a `"` at all. A space, mixed case, a keyword or a leading digit is fine, since DuckDB quotes those.
 - A column the format writes, compared ignoring case as DuckDB resolves a column name. These are `attribute`, `breakpoint` and `value` on [every long row](../storage/format.md#the-long-schema), `varies`, `broadcast`, `breakpoints` and `layer_uuid` in [the owner map](../layers/resolution.md#owner-map), and `order_key` on a resolved frame. A collision would be silent: a dim named `value` would give the long file two columns of one name.
 - A name with a leading `_`. Every scratch column that a fold adds and drops starts with `_`, so that set can grow and this list stays the same.
-- Two spellings that differ only in case. DuckDB resolves `Country` and `country` to one column, so one would read the other's values. One spelling declared twice, as when a group's coordinate is named after the dim it draws on, is a single column and is fine.
+- Two spellings that differ only in case. DuckDB resolves `Country` and `country` to one column, so one would read the other's values. One spelling declared twice, as when a multi-dim's coordinate is named after the dim it draws on, is a single column and is fine.
 
 Labels are data, and none of these rules constrain them. Beyond these columns, no name is special: `entity` or `bus` is a name like any other. The properties page says [where a name may appear twice](properties.md#names).
 
@@ -108,7 +103,7 @@ A record has one schema. A directory record's schema is `manifest.json` in the d
 ```text
 record-root/
 ├── manifest.json               # the schema, one for the whole tree
-└── layers/<uuid>/              # a layer: dims/, groups/, attributes/
+└── layers/<uuid>/              # a layer: dims/, attributes/
     └── resolved/               # caches (owner map, resolved dims)
 ```
 
@@ -124,8 +119,8 @@ One schema outlives many layers, so a change to it meets data written under the 
 
 A compatible change keeps old layers readable. `version` bumps and nothing else happens:
 
-- adding an attribute, a property or a group, since none changes the key of [the owner map](../layers/resolution.md#owner-map), which only `partial` widens. Until a layer writes a new group, it has no tuples.
-- adding a dim that no existing attribute varies over
+- adding an attribute or a property, since neither changes the key of [the owner map](../layers/resolution.md#owner-map), which only `partial` widens
+- adding a dim that no existing attribute varies over, a multi-dim among them; until a layer writes a new multi-dim, it has no tuples
 - widening an `AttributeSpec.dims`, since an unset dim is NULL and NULL means every label ([the broadcast rule](attributes.md#the-broadcast-rule))
 - adding to `partial`, which makes ownership finer while an existing layer's rows stay owned at the coarser granularity they were written with; a [materialised](../layers/resolution.md#materialised-node-caches) owner map keyed before the change is no cache, and the read folds from the layers again
 - changing a [`unit` or `description`](#unit-and-description), which decides how no row decodes

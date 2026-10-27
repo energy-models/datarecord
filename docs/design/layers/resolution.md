@@ -8,7 +8,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 The owner map records each layer's attribute keys as the layer wrote them, with removals applied.
 Where a deeper layer's row crosses a parent row, the map adds one overlap row, owned by the deeper layer.
-For axes and groups, the deepest file for each one is the answer.
+For axes, a multi-dim's tuples included, the deepest file for each one is the answer.
 Reading an attribute joins the owning layers' files to the map with one hash join and returns the owned rows as written.
 The read then drops rows that name a removed label outside the key.
 A consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule).
@@ -20,17 +20,17 @@ A revision can materialise its owner map and resolved axes under `resolved/`, an
 The owner map is one relation over every attribute.
 An attribute's winning key and its winning value live in different files, since its ownership spans every layer's `attributes/<attr>.parquet`.
 The map names the owning layer per key, and a read then goes to that layer's file for the value.
-Every axis and group is a single keyed file that a layer restates whole, so it needs no map and resolves to a [resolved relation](#one-fold-for-every-axis).
+Every axis is a single keyed file that a layer restates whole, so it needs no map and resolves to a [resolved relation](#one-fold-for-every-axis).
 
 The map's columns, keys first:
 
 ```text
 # owner map
-<partial dims>          -- the fold key: exactly the partial dims and groups, NULL as written
-  <owned_per coordinates> -- e.g. entity, scenario; a partial group as one STRUCT: connection STRUCT(entity, bus)
+<partial dims>          -- the fold key: exactly the partial dims, multi-dims included, NULL as written
+  <owned_per coordinates> -- e.g. entity, scenario; a partial multi-dim as one STRUCT: connection STRUCT(entity, bus)
 attribute
 layer_uuid              -- the owning layer
-varies      STRUCT(<coordinate>: BOOLEAN, ...)   -- a field per dim and group
+varies      STRUCT(<coordinate>: BOOLEAN, ...)   -- a field per dim, multi-dims included
 broadcast   STRUCT(<coordinate>: BOOLEAN, ...)
 breakpoints BOOLEAN
 ```
@@ -40,10 +40,10 @@ It holds no depth either: the fold settles ownership across layers, so a read ne
 
 The key derives from the schema: it is [`partial_dims`](tree.md#partial-the-granularity-of-an-override) plus `attribute`.
 A coordinate that an attribute's own file lacks reads as NULL, so the key is one fixed tuple across attributes whose columns differ.
-A group is one column, so the map itself shows which columns name a group's tuple.
-A group outside `partial` is in no key, as a dim outside it is in none.
-A layer that touches one connection's value restates the attribute's whole extent along that group.
-An attribute over such a group and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
+A [multi-dim](../model/multi-dims.md) is one column, so the map itself shows which columns name a multi-dim's tuple.
+A multi-dim outside `partial` is in no key, as any dim outside it is in none.
+A layer that touches one connection's value restates the attribute's whole extent along that multi-dim.
+An attribute over such a multi-dim and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
 The map holds one row per layer and per distinct key the layer wrote, a NULL key column left NULL, and the overlap rows of [crossing rows](#crossing-rows).
 The fold builds it along the path from the root: the parent's map minus removals and the rows the layer covers, union the layer's own keys and its overlap rows.
@@ -51,19 +51,19 @@ A revision whose caches are [materialised](#materialised-node-caches) persists t
 A read then needs the ancestry only back to the nearest materialised revision, which is what lets a deep tree scale.
 
 The fold applies removals to every key column.
-`fold_attributes` drops the parent rows that name a label of a partial dim, or a tuple of a partial group, which the layer's restatement omits and the previous restatement held ([removing labels](removal.md)).
-A group's removed tuples are one NULL-safe anti-join on its struct column, the group file's own key, which is the shape a dim's removal takes too.
+`fold_attributes` drops the parent rows that name a label of a partial dim, or a tuple of a partial multi-dim, which the layer's restatement omits and the previous restatement held ([removing labels](removal.md)).
+A multi-dim's removed tuples are one NULL-safe anti-join on its struct column, its file's own key, which is the shape every dim's removal takes.
 A layer's removals apply to its parents' keys.
 Its own rows pass through.
-A dim's anti-join matches its top-level column only.
-A label inside a struct is reached through its tuple, since [removing a label](removal.md) restates each group without the tuples naming it in the same layer.
+A plain dim's anti-join matches its top-level column only.
+A label inside a struct is reached through its tuple, since [removing a label](removal.md) restates each multi-dim without the tuples naming it in the same layer.
 A row that leaves a key column NULL is not addressed by it, and the NULL-safe anti-join keeps it.
 Only a row that names a removed label or tuple is dropped.
 
 ### Crossing rows
 
 A row names a `partial` dim where its key holds a label, and any other dim where it varies along it, so a series over `snapshot` names `snapshot`.
-Only the dims the attribute uses count: its `dims` and the dims of its groups.
+Only the dims the attribute uses count: its `dims` and the coordinates' dims of its multi-dims.
 Two rows cover a common key where, on each `partial` coordinate, they hold the same label or one of them holds NULL.
 They cross where they cover a common key and neither names every dim the other names.
 
@@ -120,7 +120,7 @@ A depth per row would let the read settle ownership instead, but every read woul
 
 ### What a row reaches
 
-A NULL on a `partial` coordinate reaches every label of that coordinate's axis, or every tuple of its group, as resolved at the node read.
+A NULL on a `partial` coordinate reaches every label of that coordinate's axis, or every tuple of its multi-dim, as resolved at the node read.
 The fold reads no axis and splits no row, so a label added below a materialised node is reached, as is a label staged in a `WorkingRecord` and the first label of an axis that was empty when the broadcast was written.
 Adding the scenario `mid` below the child above reads `(gas, mid)` as 50.
 
@@ -153,8 +153,8 @@ An overlap row carries the flags of the layer's row it comes from.
 `flags()` aggregates the map's rows per attribute, `bool_or` over each field of `varies` and `broadcast` and over `breakpoints`.
 It describes the rows the map keeps, so a broadcast that deeper rows shadow at every label still counts.
 
-Each struct has a field per coordinate: every declared dim and every group.
-A dim that a group draws on has its own field, so a `marginal_price` constant over buses reports `bus` as broadcast.
+Each struct has a field per coordinate: every declared dim, multi-dims included.
+A dim that a multi-dim draws on has its own field, so a `marginal_price` constant over buses reports `bus` as broadcast.
 
 The flags are two structs because [which dims exist is declared](../model/dims.md).
 A column per dim would make the map's column set depend on the schema.
@@ -172,11 +172,11 @@ The dim namespace lives entirely inside `varies` and `broadcast`, so a dim named
 
 ## One fold for every axis
 
-A dim's axis and a group are one construct: a keyed relation that a layer restates whole.
-A dim's key is the column named for it, and a group's key is its one struct column.
-They resolve by one path.
-A revision's resolved relation for an axis or group is the deepest file for it on the path from the root.
-Each row carries its properties, such as `ctype` on the entity axis and `role` on a group, and no `layer_uuid`.
+Every dim's axis is one construct: a keyed relation that a layer restates whole.
+A plain dim's key is the column named for it, and a multi-dim's key is its one struct column.
+Every axis resolves by one path.
+A revision's resolved relation for an axis is the deepest file for it on the path from the root.
+Each row carries its properties, such as `ctype` on the entity axis and `role` on `connection`, and no `layer_uuid`.
 The fold refuses a file that holds a key twice, or that carries a column other than its key and its subject's declared properties.
 
 The resolved relation comes in member order, which is the deepest file's row order.
@@ -189,7 +189,7 @@ A new label may sit anywhere among its parent's.
 A [`WorkingRecord`](../use/editing.md#staging) appends one, so a layer it writes renumbers no existing port.
 The order holds across a materialised parent, whose resolved file is a copy of the deepest layer file at or below it, read in its own row order.
 
-Every property is a column of its subject's file, so the resolved axis or group holds everything a per-category read needs.
+Every property is a column of its subject's file, so the resolved axis holds everything a per-category read needs.
 One category's labels are `properties[dim]` filtered on its categorizing columns.
 
 Over the unmaterialised tail of an ancestry, the fold runs live and caches its results in the workspace's database as [shared tables](../storage/concurrency.md#a-cursor-per-thread).
@@ -222,9 +222,9 @@ JOIN ( -- the map keyed as its owning layer stored each key
 ```
 
 The query projects the attribute's own coordinates ([the long schema](../storage/format.md#the-long-schema)).
-That is `connection` for an attribute over that group, `entity` for a per-entity one, and none of them for a record-level weighting.
+That is `connection` for an attribute over that multi-dim, `entity` for a per-entity one, and none of them for a record-level weighting.
 The join conditions follow from the key columns the attribute's file carries, so the schema derives the query's shape.
-A coordinate outside the key, here `timestep` or a group outside `partial`, is in no join condition and passes straight through.
+A coordinate outside the key, here `timestep` or a multi-dim outside `partial`, is in no join condition and passes straight through.
 
 The map already names the winning layer per key, so resolution reads only the owning layers' files.
 A read runs no `MAX` or group-by of its own.
@@ -256,9 +256,9 @@ An attribute whose layers each name one set of dims, the common case, skips the 
 A staged layer has not met [the write's refusal](../use/writing.md#shape) of two rows neither more specific.
 So the read of a [`WorkingRecord`](../use/editing.md#reading-with-pending-edits) fails where two staged rows cross and no staged row names both, naming the attribute and the coordinate.
 
-A `partial` group column such as `connection` joins NULL-aware exactly as `scenario` does, and a NULL there [reaches](../model/attributes.md#the-broadcast-rule) every tuple of the resolved group.
+A `partial` multi-dim column such as `connection` joins NULL-aware exactly as `scenario` does, and a NULL there [reaches](../model/attributes.md#the-broadcast-rule) every tuple of the resolved multi-dim.
 DuckDB hash-joins `IS NOT DISTINCT FROM` on a `STRUCT` key directly.
-A dim the group draws on, such as `bus` beside it on a per-bus attribute, is a coordinate of its own and joins NULL-aware where it is `partial`.
+A dim the multi-dim draws on, such as `bus` beside it on a per-bus attribute, is a coordinate of its own and joins NULL-aware where it is `partial`.
 
 The query projects `breakpoint` and does not join on it, since it is no part of the key.
 A curve is owned whole ([wide and long rows](../model/attributes.md#wide-and-long-rows)), so every breakpoint of a key comes from the winning layer.
@@ -269,23 +269,23 @@ Its relation is empty, and the consumer applies [the schema's `default`](../mode
 
 ### A label outside the key
 
-The fold prunes removed labels from [every key coordinate](#owner-map), so a row whose label of a partial dim or tuple of a partial group was removed is already gone from the map.
-A dim or group outside `partial` is in no key, so the fold cannot see its labels.
+The fold prunes removed labels from [every key coordinate](#owner-map), so a row whose label of a partial dim or tuple of a partial multi-dim was removed is already gone from the map.
+A dim outside `partial`, multi or not, is in no key, so the fold cannot see its labels.
 With `connection` owned whole, a connection attribute's map row is `(attribute)` alone and owns every tuple's value.
 
 The read drops those rows instead.
 It anti-joins each such coordinate against its dead labels: the labels that some layer [removed](removal.md) and the final axis lacks.
-A group's dead labels are its dead tuples, so a removed tuple's values go whichever way the group is keyed.
-The fold computes dead labels for each coordinate outside the owner-map key, and for each dim that a group's field ranges over or a property refers to.
+A multi-dim's dead labels are its dead tuples, so a removed tuple's values go whichever way the multi-dim is keyed.
+The fold computes dead labels for each coordinate outside the owner-map key, and for each dim that a multi-dim's coordinate draws on or a property refers to.
 They are the base's dead set, the base's resolved axis and every restatement above the base, minus the final axis.
-The fold keeps them beside the resolved axes and groups.
+The fold keeps them beside the resolved axes.
 A [materialised revision](#materialised-node-caches) caches them, since its resolved relations hold only live labels and a read above it would otherwise miss a label removed below.
 The set is usually empty, and the join against it cheap.
 
 ## One record over one fold
 
 There is one `Record`, and it is the fold itself.
-Its mappings hand over the folded axes and groups, and each attribute as the [owner map](#owner-map) resolves it.
+Its mappings hand over the folded axes, multi-dims included, and each attribute as the [owner map](#owner-map) resolves it.
 `Workspace.at(uri)` folds over a single [`DirectorySource`](../storage/format.md).
 Over one source the fold is a scan of it: every key is owned by the one layer, and the anti-join has nothing to evict.
 
@@ -302,7 +302,7 @@ A directory copied out of any tree, with no revision file, reads identically.
 
 ## Materialised node caches
 
-A revision's owner map and resolved axes and groups may be materialised under `layers/<id>/resolved/`.
+A revision's owner map and resolved axes may be materialised under `layers/<id>/resolved/`.
 The schema is not, since there is [one for the whole record](../model/schema.md#one-schema-per-record) and nothing per revision to resolve.
 
 Where a materialised map exists, a read stops there.
@@ -312,9 +312,9 @@ The same rule decides where resolved axes come from: a revision's own `resolved/
 The presence of the cache answers this, and no recorded state is involved.
 A map whose key columns are not those the schema's [`partial`](tree.md#partial-the-granularity-of-an-override) gives is no cache: one persisted before a dim joined `partial` holds NULL there for a row varying along it, so the read folds from the layers as if nothing were materialised.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
-`resolved/dims/` and `resolved/groups/` hold copies of the deepest layer file for each axis and group at or below the revision, so a read of an axis stops there too.
+`resolved/dims/` holds copies of the deepest layer file for each axis, a multi-dim's included, at or below the revision, so a read of an axis stops there too.
 
-Beside them, `resolved/dead/<coord>.parquet` holds the [dead labels](#a-label-outside-the-key) of each coordinate outside the owner-map key, and of each dim that a group's field ranges over or a property refers to.
+Beside them, `resolved/dead/<coord>.parquet` holds the [dead labels](#a-label-outside-the-key) of each coordinate outside the owner-map key, and of each dim that a multi-dim's coordinate draws on or a property refers to.
 It is written only where there are any.
 A read above the revision seeds its dead labels from these files, since the copied axis files hold only live labels.
 `resolved/dead/` and `owner_map.parquet` are folds, since no layer file holds either.

@@ -11,7 +11,7 @@ These pages show how to use the package, organised by task. [Design](../design/i
 | page                              | what it covers                                         |
 | --------------------------------- | ------------------------------------------------------ |
 | [Reading a record](reading.md)    | the `RecordLike` protocol, `properties`, `flags`       |
-| [Declaring a schema](schema.md)   | dims, groups, properties and attributes                |
+| [Declaring a schema](schema.md)   | dims, multi-dims, properties and attributes            |
 | [Editing](editing.md)             | `WorkingRecord`: `set`, `add`, `edits`                 |
 | [Branching and layers](layers.md) | revisions, branching, materialising, writing a layer   |
 | [Storage](storage.md)             | workspaces, stores, files local and remote, processes  |

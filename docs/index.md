@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # datarecord
 
-A record holds labeled data with a declared schema. Its labels sit on axes called dims. Groups list which tuples of labels exist, properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does.
+A record holds labeled data with a declared schema. Its labels sit on axes called dims. A multi-dim is a dim whose labels are tuples of other dims' labels, listing which combinations exist. Properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does.
 
 A record can be one parquet directory or a tree of layers, and a reader reads both through one interface. A layer adds a partial record on top of its parent, so a scenario variant stores only the rows it changes. Any parquet reader can open a record's directory.
 

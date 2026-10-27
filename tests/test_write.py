@@ -41,9 +41,10 @@ from tests.fixtures import (
 class _Source:
     """A minimal `Record` over ready-made frames, counting each build.
 
-    Without `connections`, each group holds the tuples the attributes name,
-    and without `dims`, each dim's axis holds the labels the attributes and
-    groups name, so a write meets no label or tuple it lacks.
+    Without `connections`, each multi-dim holds the tuples the attributes
+    name, and without `dims`, each dim's axis holds the labels the attributes
+    and multi-dims name, so a write meets no label or tuple it lacks.
+    `connections` are the multi-dims' frames, handed over among `dims`.
     """
 
     def __init__(
@@ -57,13 +58,14 @@ class _Source:
         self._schema = schema
         self.built: list[str] = []
         self._attributes = attributes or {}
-        self._connections = (
-            _named_groups(schema, self._attributes)
+        connections = (
+            _named_multi_dims(schema, self._attributes)
             if connections is None
             else connections
         )
-        named = {**self._attributes, **self._connections}
-        self._dims = _named_axes(schema, named) if dims is None else dims
+        named = {**self._attributes, **connections}
+        axes = _named_axes(schema, named) if dims is None else dims
+        self._dims = {**axes, **connections}
         self._properties = properties or {}
 
     @property
@@ -86,11 +88,6 @@ class _Source:
         return self._frames(self._properties, "properties")
 
     @property
-    def groups(self):
-        """Keyed by group, one frame each."""
-        return self._frames(self._connections, "groups")
-
-    @property
     def attributes(self):
         return self._frames(self._attributes, "attributes")
 
@@ -98,12 +95,12 @@ class _Source:
         return {}
 
 
-def _named_groups(schema, attributes) -> dict[str, pd.DataFrame]:
-    """Return each group's tuples that the `attributes` frames name, as its file."""
+def _named_multi_dims(schema, attributes) -> dict[str, pd.DataFrame]:
+    """Return each multi-dim's tuples that the `attributes` frames name, as its file."""
     named: dict[str, dict] = {}
     for frame in attributes.values():
         for column in frame.columns:
-            if column in schema.groups:
+            if column in schema.multi_dims:
                 tuples = named.setdefault(column, {})
                 tuples.update((tuple(t.items()), t) for t in frame[column].dropna())
     return {g: pd.DataFrame({g: list(t.values())}) for g, t in named.items()}
@@ -114,8 +111,8 @@ def _named_axes(schema, frames) -> dict[str, pd.DataFrame]:
     named: dict[str, list] = {}
     for frame in frames.values():
         for column in frame.columns:
-            if column in schema.groups:
-                for field, dim in schema.groups[column].over.items():
+            if column in schema.multi_dims:
+                for field, dim in schema.over(column).items():
                     tuples = frame[column].dropna()
                     named.setdefault(dim, []).extend(t.get(field) for t in tuples)
             elif column in schema.dimensions:
@@ -244,7 +241,7 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
     store.workspace.write(staged, out)
 
     written = sorted(Path(out).rglob("*.parquet"))
-    assert {"dims/entity.parquet", "groups/connection.parquet"} <= {
+    assert {"dims/entity.parquet", "dims/connection.parquet"} <= {
         path.relative_to(out).as_posix() for path in written
     }, "the frames the fold orders must be among those written"
     for path in written:
@@ -477,10 +474,10 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
         "attribute",
         "breakpoint",
         "value",
-    }, "a component attribute carries `entity`, not the connection group's `bus`"
+    }, "a component attribute carries `entity`, not the connection multi-dim's `bus`"
 
     efficiency = columns("efficiency")
-    assert "connection" in efficiency, "a connection attribute carries the group"
+    assert "connection" in efficiency, "a connection attribute carries the multi-dim"
     assert "bus" not in efficiency, "as one struct column, not its coordinates"
     assert columns("weight") & {"entity", "period"} == set(), (
         "and no dim it is not addressed by"
@@ -528,15 +525,15 @@ def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
         store.root(source)
 
 
-def test_a_write_rejects_a_group_column_that_is_not_its_key(store):
-    """A group's column is a struct of exactly its key coordinates.
+def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
+    """A multi-dim's column is a struct of exactly its coordinates.
 
     DuckDB casts a struct by field name, so a missing field would be written as
     NULL rather than refused, re-keying every row.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
     row |= {"snapshot": None, "scenario": None, "period": None}
@@ -547,8 +544,8 @@ def test_a_write_rejects_a_group_column_that_is_not_its_key(store):
         store.root(source)
 
 
-def test_a_group_column_round_trips_as_a_struct(store):
-    """What a source hands over as the group's struct reads back as one."""
+def test_a_multi_dim_column_round_trips_as_a_struct(store):
+    """What a source hands over as the multi-dim's struct reads back as one."""
     row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
     row |= {"snapshot": None, "scenario": None, "period": None}
     connection = {"entity": "steel_dri", "bus": "h2_north"}
@@ -569,26 +566,26 @@ def test_a_write_rejects_a_missing_long_column(store):
     _nothing_reachable(store)
 
 
-def test_a_write_rejects_a_flat_group_frame(store):
-    """A group file is keyed by the struct column named for it, not its coordinates.
+def test_a_write_rejects_a_flat_multi_dim_frame(store):
+    """A multi-dim's axis file is keyed by the struct column named for it, not its coordinates.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     flat = pd.DataFrame({"entity": ["steel_dri"], "bus": ["h2"]})
     source = _Source(_SCHEMA, connections={"connection": flat})
 
-    with pytest.raises(ValueError, match=r"missing \['connection'\]"):
+    with pytest.raises(ValueError, match="missing its key column 'connection'"):
         store.root(source)
 
 
-def test_a_write_rejects_a_group_struct_not_of_its_key(store):
+def test_a_write_rejects_a_multi_dim_struct_not_of_its_key(store):
     """A struct missing a key field would re-key every row once cast.
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     partial = pd.DataFrame({"connection": [{"entity": "steel_dri"}]})
     source = _Source(_SCHEMA, connections={"connection": partial})
@@ -623,9 +620,9 @@ def _add_junk(store):
     staged.add("entity", ["c"], junk=1)
 
 
-def _add_group_junk(store):
+def _add_tuple_junk(store):
     _, staged = _rows_staged(store, [], "p_nom")
-    staged.add_group("connection", pd.DataFrame({"connection": [_AB], "junk": [1]}))
+    staged.add("connection", [_AB], junk=1)
 
 
 def _write_junk(store):
@@ -652,7 +649,7 @@ def _read_junk(store):
             id="set",
         ),
         pytest.param(_add_junk, "['ctype', 'entity']", id="add"),
-        pytest.param(_add_group_junk, "['connection']", id="add_group"),
+        pytest.param(_add_tuple_junk, "['bus', 'entity']", id="add-a-tuple"),
         pytest.param(_write_junk, "['order_key', 'scenario']", id="write"),
         pytest.param(_read_junk, "['scenario']", id="read"),
     ],
@@ -796,7 +793,7 @@ def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
     staged.add("bus", _BUSES)
     staged.add("scenario", _SCENARIOS)
     staged.add("snapshot", [_T])
-    staged.add_group("connection", pd.DataFrame({"connection": list(tuples)}))
+    staged.add("connection", list(tuples))
     base = base.child(staged.edits)
     staged = WorkingRecord(base.record)
     for row in rows:
@@ -956,7 +953,7 @@ _ALL_TWO = {("a", "x"): 2.0, ("a", "y"): 2.0, ("b", "x"): 2.0, ("b", "y"): 2.0}
         "same-coordinates",
         "broadcast-over-one-dim",
         "category-keyword",
-        "group",
+        "multi-dim",
         "not-covering",
         "other-tuple",
     ],
@@ -1016,7 +1013,7 @@ _A1 = {"entity": "a", "bus": "b1"}
 
 
 @pytest.mark.parametrize("via", ["set", "write_layer", "child"])
-def test_a_value_at_a_tuple_its_group_lacks_is_refused(store, via):
+def test_a_value_at_a_tuple_its_multi_dim_lacks_is_refused(store, via):
     """`a` and `b1` are labels of their axes, but no `connection` tuple pairs them.
 
     Notes
@@ -1048,11 +1045,11 @@ def test_set_at_a_tuple_naming_an_unknown_label_names_the_label(store):
 
 @pytest.mark.parametrize("via", ["set", "write_layer", "child"])
 def test_a_tuple_naming_a_label_no_axis_holds_is_refused(store, via):
-    """`add_group` judges the axis as staged, the writer the layer's final axis, its parent's where it writes none.
+    """`add` judges the axis as staged, the writer the layer's final axis, its parent's where it writes none.
 
     Notes
     -----
-    - [add_group](https://energy-models.github.io/datarecord/design/use/editing/#add_group-remove_group)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
     """
     tuples = [_AB, _BB, {"entity": "a", "bus": "zz"}]
@@ -1586,11 +1583,11 @@ def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
     source = PyPSA.to_datarecord(ac_dc, store.workspace.con)
     assert "entity" in source.dims
-    assert "connection" in source.groups
+    assert "connection" in source.dims
     assert "p_max_pu" in source.attributes
     assert "v_nom" in source.attributes, "a static attribute is long rows too"
     assert "carrier" not in source.attributes, "a property is no attribute"
-    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group).
+    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes
 
@@ -1600,13 +1597,13 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store, ac_dc)
 
     Notes
     -----
-    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     revision = export_network(ac_dc, store)
     rows = unpacked(
         store.workspace.con.read_parquet(
-            store.layer_dir(revision.id) + "groups/connection.parquet"
+            store.layer_dir(revision.id) + "dims/connection.parquet"
         )
     )
     back = PyPSA.build(revision.record)

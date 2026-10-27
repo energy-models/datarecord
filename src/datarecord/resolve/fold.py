@@ -2,10 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""A node's resolved view: the folded axes, groups and owner map, and the reads.
+"""A node's resolved view: the folded axes and owner map, and the reads.
 
 A `Fold` is what `materialise` wrote and what a live resolution computes: the
-folded axes, groups and the owner map, each
+folded axes and the owner map, each
 folded over the node's whole ancestry. `Record._fold` takes the deepest
 materialised source's `Fold` as its base and folds the layers below it on top,
 so a `Fold` read from disk is the prior incarnation of one computed live - the
@@ -118,8 +118,6 @@ class Fold:
         The record's one schema, which says which broadcast dims the flags carry.
     axes
         Each resolved dim's axis relation, keyed by dim.
-    groups
-        Each resolved group's relation, keyed by group.
     owner_map
         The resolved owner map: `(owner_map_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per key as its layer wrote it,
@@ -130,7 +128,6 @@ class Fold:
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
-    groups: dict[str, DuckDBPyRelation]
     owner_map: DuckDBPyRelation
     dead: dict[str, DuckDBPyRelation]
 
@@ -193,12 +190,12 @@ class Fold:
         return flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
-        """The owner-map rows reaching one of `labels`, on `dim` or a group's field over it.
+        """The owner-map rows reaching one of `labels`, on `dim` or a multi-dim's coordinate over it.
 
         A row names a label, or leaves the coordinate NULL for an attribute
         over it, which reaches every label the coordinate holds: such a row
-        counts where `labels` holds a label of `dim`, or the group a tuple
-        whose field names one. One semi-join per path, unioned rather than
+        counts where `labels` holds a label of `dim`, or the multi-dim a tuple
+        whose coordinate names one. One semi-join per path, unioned rather than
         OR-ed into one condition, which would be a nested loop; a row matched
         twice changes no flag.
         """
@@ -206,7 +203,9 @@ class Fold:
         named = labels.set_alias("l")
         paths: list[tuple[str, str | None]] = [(dim, None)]
         paths += [
-            (g, f) for g in self.schema.groups if (f := self.schema.field_over(g, dim))
+            (m, f)
+            for m in self.schema.multi_dims
+            if (f := self.schema.coordinate_over(m, dim))
         ]
         reached = []
         for column, field in paths:
@@ -216,7 +215,7 @@ class Fold:
             reached.append(om.join(named, on, how="semi"))
             if field is None:
                 hit = labels
-            elif (held := self.groups.get(column)) is not None:
+            elif (held := self.axes.get(column)) is not None:
                 on = _path("g", column, field) == col("l", dim)
                 hit = held.set_alias("g").join(named, on, how="semi")
             else:
@@ -266,7 +265,7 @@ class Fold:
     ) -> Fold | None:
         """This node's `Fold`, or `None` if it is not materialised under `schema`.
 
-        The owner map is the presence marker: the map, dims and groups
+        The owner map is the presence marker: the map and the dims
         are written together (`cache.materialise`), so if the map is absent
         or stale (`read_owner_map`) the node reads as having no cache at all.
         """
@@ -277,7 +276,6 @@ class Fold:
         return cls(
             schema=schema,
             axes=_read_dir(f"{base}dims/", con),
-            groups=_read_dir(f"{base}groups/", con),
             owner_map=owner_map,
             dead=_read_dir(f"{base}dead/", con),
         )

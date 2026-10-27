@@ -12,10 +12,10 @@ A consumer codes against the read-only `RecordLike` protocol.
 A plain directory, a hundred-layer tree, a record with pending edits and a framework's own object all satisfy it, and a consumer cannot tell which it holds ([design](../design/use/reading.md)).
 
 ```python
-record.schema  # what may exist: the axes, the groups, the properties, the attributes
+record.schema  # what may exist: the axes, the properties, the attributes
 record.dims["entity"]  # axis labels, keyed by dim
-record.groups["connection"]  # group rows, keyed by group, one relation each
-record.properties["entity"]  # stored property values, keyed by dim or group
+record.dims["connection"]  # a multi-dim's tuples, as one struct column
+record.properties["entity"]  # stored property values, keyed by dim
 record.attributes["p_max_pu"]  # long relations, results included, keyed by attribute
 record.flags(ctype="Generator")  # which axes each attribute actually uses
 ```
@@ -39,7 +39,14 @@ record.dims["snapshot"]  # snapshot
 record.properties["snapshot"]  # snapshot | period | timestep
 ```
 
-`properties[subject]` is a dim's or a group's key with every property declared for it, as stored.
+A multi-dim's labels are its tuples, so `dims["connection"]` is the one struct column `connection STRUCT(entity, bus)`, in its own order ([design](../design/model/multi-dims.md#one-struct-column)):
+
+```python
+record.dims["connection"]  # connection
+record.properties["connection"]  # connection | role
+```
+
+`properties[subject]` is a dim's key with every property declared for it, as stored.
 A NULL there is a value no layer wrote.
 
 A categorizing property is a property of a `partial` dim that refers to a dim with `one_of`.
@@ -49,7 +56,7 @@ It names the property by its subject and the categories by their plain names, as
 
 ## Wide and long
 
-`dims`, `groups` and `properties` are wide, with one row per label or tuple.
+`dims` and `properties` are wide, with one row per label or tuple.
 `attributes` are long, with one row per value:
 
 ```text
@@ -63,7 +70,7 @@ The coordinates are the attribute's own ([design](../design/storage/format.md#th
 A NULL in a coordinate column means every label of that dim ([design](../design/model/attributes.md#the-broadcast-rule)).
 A constant `p_max_pu` is one row with `timestep = NULL`, and a varying one is a row per timestep.
 One `p_max_pu` row with `entity = NULL` reaches every entity, loads included.
-A group column broadcasts the same way: a NULL `connection` means every connection.
+A multi-dim's struct column broadcasts the same way: a NULL `connection` means every connection.
 `breakpoint` carries the abscissa of a piecewise-linear value.
 
 `attributes` shows stored rows only, in no promised order.
@@ -150,7 +157,6 @@ The layout is the whole format ([design](../design/storage/format.md)):
 ```text
 record/
 ├── manifest.json            # the schema, and the record's id
-├── dims/<dim>.parquet       # one axis per declared dim: labels and their properties
-├── groups/<group>.parquet   # which tuples of the group exist, and their properties
+├── dims/<dim>.parquet       # one axis per declared dim, multi-dims included: labels and their properties
 └── attributes/<attr>.parquet  # one attribute per file, whatever its dims, results included
 ```

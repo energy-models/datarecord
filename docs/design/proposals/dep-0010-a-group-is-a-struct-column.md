@@ -6,25 +6,25 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 10: a group is one struct column
 
-| DEP           | 10                                                                                                     |
-| ------------- | ------------------------------------------------------------------------------------------------------ |
-| Title         | a group is one struct column                                                                           |
-| Author        | Jonas Hörsch                                                                                           |
-| Status        | Implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13                            |
-| Created       | 2026-10-12                                                                                             |
-| Version       | Unreleased                                                                                             |
-| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its group tombstones anti-joining the owner map) |
+| DEP           | 10                                                                                                                                                                             |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Title         | a group is one struct column                                                                                                                                                   |
+| Author        | Jonas Hörsch                                                                                                                                                                   |
+| Status        | Superseded 2026-10-26 (implemented 2026-10-12, [amendment](#amendment-a-group-is-a-dim) 2026-10-13)                                                                            |
+| Created       | 2026-10-12                                                                                                                                                                     |
+| Version       | Unreleased                                                                                                                                                                     |
+| Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its group tombstones anti-joining the owner map), [DEP 23](dep-0023-multi-dims.md) (its groups, which become multi-dims) |
 
-Landed in the [steps below](#landing) on [the schema](../model/groups.md), [the record](../model/attributes.md#the-broadcast-rule), [the format](../storage/format.md#the-long-schema), [the read path](../layers/resolution.md#owner-map), [the working record](../use/editing.md#set) and [consuming a record](../tools/pypsa.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+Landed in the [steps below](#landing) on [the schema](../model/multi-dims.md), [the record](../model/attributes.md#the-broadcast-rule), [the format](../storage/format.md#the-long-schema), [the read path](../layers/resolution.md#owner-map), [the working record](../use/editing.md#set) and [consuming a record](../tools/pypsa.md#results-on-connections); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 [What the implementation found](#what-the-implementation-found) records where it departs from or adds to the argument below.
 
-An attribute over a [group](../model/groups.md) carries the group as **one column, named for the group, of a `STRUCT` dtype over the group's key** — `connection STRUCT(entity, bus)` — rather than the group's coordinates spread out as columns of their own.
+An attribute over a [group](../model/multi-dims.md) carries the group as **one column, named for the group, of a `STRUCT` dtype over the group's key** — `connection STRUCT(entity, bus)` — rather than the group's coordinates spread out as columns of their own.
 
 That gives back broadcasting to every dim a group draws on, and makes the [owner map](../layers/resolution.md#owner-map) key one column per membership, so a group shows up there as itself.
 
 ## What starts it
 
-[Addressing](../model/groups.md#attributes-over-a-group) expands a group in `dims` to its coordinates, so `inputs/efficiency.parquet` is `entity | bus | timestep | …` and the fold key is the flat union of every group's coordinate names ([`partial_dims`](../layers/tree.md#partial-the-granularity-of-an-override)).
+[Addressing](../model/multi-dims.md#attributes-over-a-multi-dim) expands a group in `dims` to its coordinates, so `inputs/efficiency.parquet` is `entity | bus | timestep | …` and the fold key is the flat union of every group's coordinate names ([`partial_dims`](../layers/tree.md#partial-the-granularity-of-an-override)).
 A column in the fold key is either broadcast or membership, never both, and a group coordinate [never broadcasts](../model/attributes.md#the-broadcast-rule).
 So `Schema.broadcast_dims` drops every coordinate any group is keyed by, **schema-wide**:
 
@@ -52,7 +52,7 @@ inputs/flow.parquet         corridor STRUCT("from", "to")  | timestep | attribut
 inputs/marginal_price       bus | timestep | attribute | breakpoint | value
 ```
 
-`coordinates_of("efficiency")` is `("connection", "timestep")`: [addressing](../model/groups.md#attributes-over-a-group) still resolves a name in `dims` to the dim of that name first and to the group otherwise, but a group resolves to itself rather than expanding.
+`coordinates_of("efficiency")` is `("connection", "timestep")`: [addressing](../model/multi-dims.md#attributes-over-a-multi-dim) still resolves a name in `dims` to the dim of that name first and to the group otherwise, but a group resolves to itself rather than expanding.
 
 **The membership keys are `entity` and one column per group**, and every declared dim but `entity` and the type axis broadcasts.
 `broadcast_dims` loses its `sparse` exclusion; `bus` broadcasts like `scenario`.
@@ -128,7 +128,7 @@ It is the same "keyed twice over" rule [`into`](../model/schema.md) already stat
 2. The fold and the read path: owner-map key and the group tombstone anti-join on the struct column; the resolve join on it.
 3. Staging: pack coordinate keywords and flat frame columns into the struct.
 4. The PyPSA tool packs on `to_datarecord` and unpacks on `build`.
-5. [Schema](../model/groups.md), [record](../model/attributes.md#the-broadcast-rule), [format](../storage/format.md#the-long-schema) and [read-path](../layers/resolution.md#owner-map) pages rewritten; this page marked landed.
+5. [Schema](../model/multi-dims.md), [record](../model/attributes.md#the-broadcast-rule), [format](../storage/format.md#the-long-schema) and [read-path](../layers/resolution.md#owner-map) pages rewritten; this page marked landed.
 
 ## What the implementation found
 
@@ -146,7 +146,7 @@ It is the same "keyed twice over" rule [`into`](../model/schema.md) already stat
 
 Status: **Implemented** · Drafted 2026-10-13 · Implemented 2026-10-13
 
-As for the proposal above, the [schema](../model/groups.md), [record](../model/attributes.md#the-broadcast-rule), [read-path](../layers/resolution.md#owner-map) and [working-record](../use/editing.md#set) pages are authoritative; [what the implementation found](#what-the-amendment-found) records where it departs.
+As for the proposal above, the [schema](../model/multi-dims.md), [record](../model/attributes.md#the-broadcast-rule), [read-path](../layers/resolution.md#owner-map) and [working-record](../use/editing.md#set) pages are authoritative; [what the implementation found](#what-the-amendment-found) records where it departs.
 
 Once a group is one column, the reasons it stayed a membership key, apart from the dims, are gone.
 **A group is a dim whose axis is the resolved group**: `groups/<group>.parquet`, keyed by the column named for the group, as `dims/<dim>.parquet` is.
@@ -215,7 +215,7 @@ The gain is one rule where there were two: everything said of a dim — broadcas
 2. The fold: `expand_dims` over a group's relation; a partial group's tombstone; the flags gain a field per group.
 3. The whole-or-NULL check in staging and the writer; `set` stages a NULL struct where no coordinate is given.
 4. The PyPSA tool declares `connection` partial.
-5. [Schema](../model/groups.md), [record](../model/attributes.md#the-broadcast-rule), [read-path](../layers/resolution.md#owner-map) and [working-record](../use/editing.md#set) pages; the open question widened.
+5. [Schema](../model/multi-dims.md), [record](../model/attributes.md#the-broadcast-rule), [read-path](../layers/resolution.md#owner-map) and [working-record](../use/editing.md#set) pages; the open question widened.
 
 ### What the amendment found
 

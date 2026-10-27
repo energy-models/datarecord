@@ -16,9 +16,9 @@ datarecord/
 ├── duck.py            # relation helpers
 ├── protocols.py       # RecordLike, LayerData, Relations, LazyRelations, EMPTY, Flags
 ├── schema/
-│   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec, Group
+│   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec
 │   ├── dtypes.py      # DUCK_TYPES, enum_type, enum_labels, takes
-│   ├── specs.py       # Dimension, AttributeSpec, PropertySpec, Group
+│   ├── specs.py       # Dimension, AttributeSpec, PropertySpec
 │   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED
 │   └── categories.py  # selecting a categorized dim's labels, and their defaults
 ├── resolve/
