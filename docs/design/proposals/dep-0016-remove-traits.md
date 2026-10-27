@@ -76,7 +76,7 @@ per-type vocabulary in the tool that needs it
 
 ## Rationale
 
-**The narrowing is the tool's knowledge.** PyPSA's registry already says which attributes a `Load` takes. Copying that into the schema makes the record enforce a framework vocabulary. The [module layout](../module-layout.md) keeps framework knowledge out of core.
+**The narrowing is the tool's knowledge.** PyPSA's registry already says which attributes a `Load` takes. Copying that into the schema makes the record enforce a framework vocabulary. The [module layout](../package.md) keeps framework knowledge out of core.
 
 **A broadcast over every label is the general rule.** Every uncategorized dim already broadcasts that way. A categorized dim was the one exception, and the fold, flags and validation each carried a branch for it.
 
@@ -121,7 +121,7 @@ schema.default_for("p_min_pu", ctype="StorageUnit")  # -1, as before
 6. `mutable.py`: the category check in `set` validation goes.
 7. `tools/pypsa.py`: as [above](#the-pypsa-tool); `BY_CTYPE` stays for `default_by`.
 8. Tests: trait tests in `test_schema.py`, `test_categories.py`, `test_mutable.py`, `test_overlay.py`, `test_properties.py`, `test_functional_groups.py` are deleted; `fixtures.py` declares no traits.
-9. Pages: [schema](../schema.md) loses "Traits" and "`switch`"; categories, properties and `default_by` drop trait mentions. [record](../record.md), [read path](../read-path.md), [working record](../working-record.md), [open questions](../open-questions.md), usage [schema](../../usage/schema.md), `CHANGELOG.md`.
+9. Pages: [schema](../model/schema.md) loses "Traits" and "`switch`"; categories, properties and `default_by` drop trait mentions. [record](../use/reading.md), [read path](../layers/resolution.md), [working record](../use/editing.md), [open questions](../open-questions.md), usage [schema](../../usage/schema.md), `CHANGELOG.md`.
 10. On implementation, DEP 1 and DEP 3 take `Superseded-By` this DEP.
 
 Checks: no `trait` in `src/`; a manifest with `traits` is refused naming the replacement; a PyPSA network round-trips.

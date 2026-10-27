@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [the store](https://energy-models.github.io/datarecord/design/layers/#the-store)
-- [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+- [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+- [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
 """
 
 import pickle
@@ -87,7 +87,7 @@ def test_the_tree_lives_beside_the_layers(store, tree):
 
     Notes
     -----
-    - [the tree beside the layers](https://energy-models.github.io/datarecord/design/layers/#the-tree-beside-the-layers)
+    - [the tree beside the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-tree-beside-the-layers)
     """
     root, child = tree
     fresh = Workspace()
@@ -118,7 +118,7 @@ def test_a_stale_version_is_refused(store):
 
     Notes
     -----
-    - [files, local and remote](https://energy-models.github.io/datarecord/design/layers/#files-local-and-remote)
+    - [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
     """
     uri = f"{store.uri}/note.txt"
     read = store.files.write_text(uri, "first", expect=None)
@@ -139,7 +139,7 @@ def test_a_widening_that_lost_the_race_is_checked_again(
 
     Notes
     -----
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
     """
     write_schema(_SCHEMA, store)
     rival = widened(_SCHEMA, "rival")
@@ -182,7 +182,7 @@ def test_a_writer_that_always_loses_gives_up(workspace, store, monkeypatch):
 
     Notes
     -----
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/writing/#the-manifests-compare-and-swap)
+    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
     """
     files = _AlwaysLoses(workspace._local, store.manifest_uri)
     monkeypatch.setattr(workspace, "_local", files)
@@ -205,7 +205,7 @@ def test_a_revision_crosses_a_process_boundary(workspace, tree):
 
     Notes
     -----
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/layers/#crossing-a-process-boundary)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
     """
     root, child = tree
     names = list(child.record.attributes)
@@ -231,7 +231,7 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
     _, child = tree
     record = child.record
@@ -322,9 +322,9 @@ def test_a_fold_reads_under_a_widened_schema(store, materialised):
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [Flags](https://energy-models.github.io/datarecord/design/record/#flags)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
     after = _folded_then_widened(store, materialised=materialised)
     rows = after.record.attributes["p_max_pu"].df()
@@ -345,8 +345,8 @@ def test_a_staged_tail_folds_onto_a_fold_table_from_before_a_widening(store):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     """
     after = _folded_then_widened(store, partial={"period"})
     w = WorkingRecord(after.record)
@@ -378,8 +378,8 @@ def test_a_dim_listing_labels_resolves_from_fold_tables_after_a_widening(store):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     dims = {**_NARROW, "scenario": Dimension(one_of=["low", "high"])}
     write_schema(schema(dims=dims), store)
@@ -417,7 +417,7 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     from datarecord.store import cache
 
@@ -441,7 +441,7 @@ def test_a_relation_from_another_connection_is_rejected(tree):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
     root, _ = tree
     foreign = duckdb.connect()

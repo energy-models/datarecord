@@ -64,7 +64,7 @@ Open a GitHub issue to report a bug or request a feature:
   weekly job sweeps any that outlive it. Both live in
   `.github/workflows/docs.yml`.
 - No tool import may leak into core `datarecord`
-  ([module layout](https://energy-models.github.io/datarecord/design/module-layout/)):
+  ([module layout](https://energy-models.github.io/datarecord/design/package/)):
   everything framework-specific lives under `datarecord/tools/` behind an
   optional extra.
 

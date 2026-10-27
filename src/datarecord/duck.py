@@ -13,9 +13,9 @@ no tool recognises still reads and it is a tool's `verify` that reports them.
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/schema/)
+- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-- [module layout](https://energy-models.github.io/datarecord/design/module-layout/)
+- [module layout](https://energy-models.github.io/datarecord/design/package/)
 """
 
 import os
@@ -138,8 +138,8 @@ def union_all_by_name(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/read-path/#resolving-a-relation)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     """
     u = rels[0]
     for rel in rels[1:]:  # noqa: F841 - bound by name in the SQL below
@@ -215,8 +215,8 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
-    - [the write API](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     # `FROM frame` is a replacement scan, binding the local `frame` by name.
     if isinstance(frame, DuckDBPyRelation):

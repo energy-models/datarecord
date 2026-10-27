@@ -27,9 +27,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 When a working record is written as a whole, the writer has to fold its staged edits once for the duration of the write. `_pinned` does this by making a shallow copy of the `Record` and setting a `PinnedResolver` on the copy through `object.__setattr__`, since `Record` is a frozen dataclass, and `release` later reaches that `PinnedResolver` through two `isinstance` checks. Several members exist without a reader: nothing calls `Resolver.axes()` or `Resolver.groups()`, `group_frame` only calls `group`, and the writer never reads `LayerData.frozen`.
 
-On a record with staged edits, every read of the axes, groups or dead labels folds them again from the deepest node cache on disk and opens the parquet files of every layer above it. [Reading with pending edits](../working-record.md#reading-with-pending-edits) says that the fold is materialised up to the staged layer and that only the staged step is folded per read, and the owner map already works that way.
+On a record with staged edits, every read of the axes, groups or dead labels folds them again from the deepest node cache on disk and opens the parquet files of every layer above it. [Reading with pending edits](../use/editing.md#reading-with-pending-edits) says that the fold is materialised up to the staged layer and that only the staged step is folded per read, and the owner map already works that way.
 
-`store.py` imports `layered/revision.py` lazily inside three methods, because `revision.py` imports `store.py` at the top. The page on [the module layout](../module-layout.md) no longer matches the tree: it lists no `fold.py` and says that `files.py` holds manifests. `schema.py` (1,554 lines) and `layered/resolve.py` (1,499 lines) each hold several parts that can stand on their own.
+`store.py` imports `layered/revision.py` lazily inside three methods, because `revision.py` imports `store.py` at the top. The page on [the module layout](../package.md) no longer matches the tree: it lists no `fold.py` and says that `files.py` holds manifests. `schema.py` (1,554 lines) and `layered/resolve.py` (1,499 lines) each hold several parts that can stand on their own.
 
 ## Specification
 
@@ -46,7 +46,7 @@ On a record with staged edits, every read of the axes, groups or dead labels fol
 
 A `Record` is read through one API, the `RecordLike` members (`schema`, `dims`, `properties`, `groups`, `attributes`, `flags`), and its public surface adds only its four fields, `con` and `frozen`. The `Resolver` methods that read the same rows a second way, returning `None` where a mapping raises `KeyError`, are deleted: `axis`, `group`, `group_frame`, `attribute`, the enumerators `axes()`, `groups()` and `attributes()`, `with_source` and `inputs`. What stays private is the fold the mappings answer from: `_fold` holds the owner map, `_coords` holds the folded axes, groups and dead labels (the `Coords` that `Resolver.dims` returns today), and `_source_for` and `_relation` resolve one attribute. `_relation` raises `KeyError` for an attribute that no layer owns, where `attribute` returned an empty relation; only a key set read before `rollback()` and used after it reaches that case. `Record` keeps its cache of key sets, which now checks `self.frozen`.
 
-On a record with staged edits, `_coords` folds only the layers after the frozen prefix onto that prefix's coord tables. `_frozen_coords` already holds the prefix's folded axes, groups and dead labels as shared DuckDB tables (`_coord_table`), and `resolve_coords` already takes a folded seed when it starts from a node cache on disk. It now takes those tables as its seed, as `_fold_map` takes `_frozen_table` for the owner map, so a fold on a working record reads tables already in the database, opens no file, and does what [reading with pending edits](../working-record.md#reading-with-pending-edits) describes. The key set of `groups` comes from one such fold, not from one fold per declared group.
+On a record with staged edits, `_coords` folds only the layers after the frozen prefix onto that prefix's coord tables. `_frozen_coords` already holds the prefix's folded axes, groups and dead labels as shared DuckDB tables (`_coord_table`), and `resolve_coords` already takes a folded seed when it starts from a node cache on disk. It now takes those tables as its seed, as `_fold_map` takes `_frozen_table` for the owner map, so a fold on a working record reads tables already in the database, opens no file, and does what [reading with pending edits](../use/editing.md#reading-with-pending-edits) describes. The key set of `groups` comes from one such fold, not from one fold per declared group.
 
 A label or group tuple that one layer removes and a later layer adds again is now introduced where it is added again, not where it was first introduced. The prefix's coord tables and the cache of a materialised node keep a tombstoned key at most as a dead label, which has no place in member order, so a fold seeded from either cannot put a re-added key where it was first introduced, as the old rule required. Under the new rule, `fold_axis` counts only the rows of a key that are deeper than its deepest tombstone, so the seeded fold, the fold over every layer and a fold over a materialised node agree.
 
@@ -66,7 +66,7 @@ The base axis rows that `WorkingRecord` unions into a layer owning the dim whole
 
 `PinnedRecord` subclasses `Record` and replaces `PinnedResolver`: it folds the unfrozen tail once and keeps the owner map in a table until `release()` drops it. It creates that table on the first access to `_fold`, so a write that fails before `write_layer` enters its `try` leaves no table behind. `layer_data` builds a `PinnedRecord` from the four fields of any `Record` that is not frozen, and `write_layer` calls `release()` on it after the write. `WorkingRecord` calls `Record.__init__` with the fields of its base and with `[*base.sources, StagedSource(...)]` as its sources, and keeps the base `Record` as `_base`.
 
-`Revision` caches its `Record` instead of a `Resolver`, and `materialise` clears that cache. `Revision.resolver` is deleted, and `Workspace.at` and `Store.layer` construct a `Record` directly. A `Record` looks up `workspace.con` on each call, so one `Record` can be read from several threads, as one `Resolver` can today ([a cursor per thread](../read-path.md#a-cursor-per-thread)). A `PinnedRecord` keeps its relations on the cursor of the thread that built it, as `PinnedResolver` does.
+`Revision` caches its `Record` instead of a `Resolver`, and `materialise` clears that cache. `Revision.resolver` is deleted, and `Workspace.at` and `Store.layer` construct a `Record` directly. A `Record` looks up `workspace.con` on each call, so one `Record` can be read from several threads, as one `Resolver` can today ([a cursor per thread](../storage/concurrency.md#a-cursor-per-thread)). A `PinnedRecord` keeps its relations on the cursor of the thread that built it, as `PinnedResolver` does.
 
 [DEP 5](dep-0005-one-record-over-a-node-cache.md) made `Record` "the interface over one" `NodeCache`, which later became `Resolver`; with this DEP `Record` is the fold itself. [DEP 8](dep-0008-one-interface-source-and-fold.md) made "a `Resolver` that is `LayerData`"; with this DEP the writer reads no fold as `LayerData`, and `Record` does not answer `LayerData`.
 
@@ -129,7 +129,7 @@ The modules in `resolve/` keep taking a `Workspace` rather than a connection, be
 
 Every caller of `Resolver` already holds the `Record` or the `Revision` beside it, so the second class adds an object to pass around without separating any concern: the fold and the `RecordLike` members that answer from it are one thing.
 
-The protocols get their own module because they can no longer sit beside their implementation, where [the module layout](../module-layout.md) puts them today. `Record` now lives in `resolve/`, and a module holding both `Flags` and `Record` would import `resolve/fold.py`, which imports `Flags` back from it.
+The protocols get their own module because they can no longer sit beside their implementation, where [the module layout](../package.md) puts them today. `Record` now lives in `resolve/`, and a module holding both `Flags` and `Record` would import `resolve/fold.py`, which imports `Flags` back from it.
 
 The path helpers stay on `Store` rather than move to a separate `Layout` object. The lower layers need the `Workspace` anyway, so a `Layout` would turn every `store` argument into two arguments to save five one-line methods.
 
@@ -185,13 +185,13 @@ Record(layer_id, sources, ws, schema)
 2. Move the modules into the tree above, break the store–revision cycle, and apply the renames. Point the `:::` paths in `docs/api/` at the new modules, rename the "Layered" API page to "Store" in `mkdocs.yml`, and update the paths that `AGENTS.md` cites (`record.py` and `layered/resolve.py`). One commit.
 3. Add to `CHANGELOG.md` under `[Unreleased]`: `Revision.resolver` is removed, `Record` is constructed from `revision_id`, `sources`, `workspace` and `schema` instead of from a `Resolver`, and the tool requirement `"input_key"` is now `"owner_map_key"`.
 4. On landing, update these pages:
-   - [module layout](../module-layout.md): the tree, the dependency rule, and where the protocols live.
-   - [record](../record.md#layerdata): a `LayerSource` answers `LayerData`, and a `Record` reaches the writer through the adapter. The enumerators return `set[str]`.
-   - [writing](../writing.md): the same correction to the writer's input.
-   - [read path](../read-path.md): "one record over one fold" and "a cursor per thread" name `Record`, not `Resolver`. "The inputs key" and the `inputs` map become the owner-map key and the owner map, and `fold_inputs` becomes `fold_attributes`.
-   - [layers](../layers.md): "the inputs key" becomes the owner-map key, and `fold_inputs` becomes `fold_attributes`. A `Record` takes its workspace from its fields, not from a `Resolver`.
-   - [schema](../schema.md): the dtype map is `schema/dtypes.py`, and "the inputs key" becomes the owner-map key.
-   - [format](../format.md): "the inputs key" becomes the owner-map key.
+   - [module layout](../package.md): the tree, the dependency rule, and where the protocols live.
+   - [record](../use/writing.md#layerdata): a `LayerSource` answers `LayerData`, and a `Record` reaches the writer through the adapter. The enumerators return `set[str]`.
+   - [writing](../use/writing.md): the same correction to the writer's input.
+   - [read path](../layers/resolution.md): "one record over one fold" and "a cursor per thread" name `Record`, not `Resolver`. "The inputs key" and the `inputs` map become the owner-map key and the owner map, and `fold_inputs` becomes `fold_attributes`.
+   - [layers](../layers/tree.md): "the inputs key" becomes the owner-map key, and `fold_inputs` becomes `fold_attributes`. A `Record` takes its workspace from its fields, not from a `Resolver`.
+   - [schema](../model/schema.md): the dtype map is `schema/dtypes.py`, and "the inputs key" becomes the owner-map key.
+   - [format](../storage/format.md): "the inputs key" becomes the owner-map key.
 5. On implementation, DEP 5 and DEP 8 take `Superseded-By` this DEP, for the parts named under `Replaces`.
 
 Checks: no module under `src/datarecord` imports `layered`, and no runtime import breaks the dependency rule. `Resolver` and `input_key` appear nowhere in `src/`, `tests/` or `docs/design/`, except in DEPs. Folding the staged layer onto the frozen prefix's coord tables gives the same axes, groups and dead labels as folding over every layer, member order and tombstones included.
@@ -204,7 +204,7 @@ Moving `Record` next to `Resolver` without merging the two keeps the forwarding 
 
 Sharing one `_coords` between the key set and the values of each mapping in Python would halve the folds per read of a working record, but each fold would still open every layer's files; seeding the fold from the tables in DuckDB removes the file reads themselves.
 
-A `format/` subpackage would be named after [the format](../format.md), which is the layer directory, yet `write_layer` and `_FileLayer`, the code that writes and reads that directory, would not be in it. An `edit/` subpackage would hold only `mutable.py`.
+A `format/` subpackage would be named after [the format](../storage/format.md), which is the layer directory, yet `write_layer` and `_FileLayer`, the code that writes and reads that directory, would not be in it. An `edit/` subpackage would hold only `mutable.py`.
 
 `Revision` cannot import `Store` only under `TYPE_CHECKING`, because pydantic needs the type of the `store` field at runtime.
 

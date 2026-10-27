@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-- [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
+- [owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+- [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
 """
 
 import pytest

@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-- [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+- [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+- [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ def _fold_axis(
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
     """
     if not files:
         return seed
@@ -59,7 +59,7 @@ def refuse_twice(
     keys: Sequence[str],
     file: str,
     why: str = "an axis or group file holds each of its labels once "
-    "(https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)",
+    "(https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)",
 ) -> None:
     """Refuse `file`, read as `rel`, holding two rows that agree on every one of `keys`.
 
@@ -72,7 +72,7 @@ def refuse_twice(
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
     key = ", ".join(str(col(k)) for k in keys)
     twin = (
@@ -105,7 +105,7 @@ def refuse_unheld(
 
     A dim's column of `columns` names labels of that dim, a group's column
     tuples of that group and, through each field, labels of the field's dim,
-    and a property of `subject` that takes its labels from a dim labels of
+    and the column of a property of `subject` that refers to a dim names labels of
     that dim. Any other column is not checked. `subject`'s own column holds
     the labels or tuples being added, so of it only a group's fields are
     checked.
@@ -130,8 +130,8 @@ def refuse_unheld(
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
+    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
     """
     taken = {n: d for (s, n), d in schema.one_of_properties().items() if s == subject}
     labels: dict[str, tuple[Expression, str]] = {}
@@ -165,14 +165,14 @@ def refuse_unheld(
         if group:
             remedy = "`add_group` them first"
         elif schema.dimensions[name].one_of is not None:
-            remedy = "that dim lists its labels, so use one of them"
+            remedy = "that dim has `one_of`, so use one of its labels"
         else:
             remedy = "`add` them first"
-        link = "working-record/#validation"
+        link = "use/editing/#validation"
     else:
         holder = f"the layer's {'groups' if group else 'dims'}/{name}.parquet"
         remedy = "add them there or drop those rows"
-        link = "writing/"
+        link = "use/writing/"
     msg = (
         f"{where} names {shown}{via}, which {holder} does not hold; {remedy} "
         f"(https://energy-models.github.io/datarecord/design/{link})"
@@ -234,7 +234,7 @@ def _dead_keys(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     labels = [rel.project(col(key)) for rel in held]
     union = reduce(DuckDBPyRelation.union, labels).distinct().set_alias("h")
@@ -302,9 +302,9 @@ def resolve_coords(
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     base, above = split or _base_and_above(sources, con, schema)
     listed = [source.axes() | source.groups() for source in above]
@@ -352,8 +352,8 @@ def resolve_one(
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     for source in reversed(sources):
         rel = restatement(source, name, schema)
@@ -370,13 +370,13 @@ def mortal(schema: Schema) -> tuple[str, ...]:
 
     One the owner map does not key, whose values naming a dead label only the
     read can drop (`_living`), and a dim a group's tuples range over or a
-    property takes its labels from, which the writer checks them against
+    property refers to, which the writer checks them against
     (`write._require_living_references`). A keyed coordinate's values the fold
     drops itself (`fold_attributes`).
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     drawn = {
         *(d for g in schema.group_columns for d in schema.groups[g].over.values()),
@@ -412,9 +412,9 @@ class Coords:
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
     """
 
     schema: Schema
@@ -462,9 +462,9 @@ class Coords:
 
         Notes
         -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         alias = rel.alias
         exprs = {}

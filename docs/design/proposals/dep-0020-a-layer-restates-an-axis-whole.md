@@ -26,13 +26,13 @@ A layer that changes an axis or a group writes its file whole, in order, and the
 
 That order is load-bearing, since `_ordered_connections` in `tools/pypsa.py` numbers a component's ports by connection order. [DEP 19](dep-0019-one-record-and-a-package-layout.md) had to reshape the order rule so that a cache holding a removed label only as a dead label agrees with a full fold. Every new seed or cache has to be checked against that rule again.
 
-The per-label fold also hides a writer's mistakes. `_axis_layer` in `mutable.py` writes a non-`partial` axis with its staged rows first. A child adding `z` and then the existing label `x` thus stores `['z', 'x', 'y']`, which the fold re-ranks to `['x', 'y', 'z']`. A file holding label `a` twice reads as one `a`, with the properties of either row. On an axis, `partial` also says how much of it a layer writes ([partial](../schema.md#partial-the-granularity-of-an-override)), a second meaning beside attribute ownership.
+The per-label fold also hides a writer's mistakes. `_axis_layer` in `mutable.py` writes a non-`partial` axis with its staged rows first. A child adding `z` and then the existing label `x` thus stores `['z', 'x', 'y']`, which the fold re-ranks to `['x', 'y', 'z']`. A file holding label `a` twice reads as one `a`, with the properties of either row. On an axis, `partial` also says how much of it a layer writes ([partial](../layers/tree.md#partial-the-granularity-of-an-override)), a second meaning beside attribute ownership.
 
 ## Specification
 
 ### An axis is its deepest file
 
-A layer that adds or removes a label of a dim, or changes a property of one, writes `dims/<dim>.parquet` whole: every label the axis has at that node, with its properties, in order. A layer that changes a group's tuples or their properties writes `groups/<group>.parquet` whole the same way. A node's resolved axis or group is the deepest file for it on the path from the root, in that file's row order. `attributes/<attr>.parquet` still holds only the keys a layer sets, owned per key along the `partial` coordinates ([the owner map](../read-path.md#owner-map)).
+A layer that adds or removes a label of a dim, or changes a property of one, writes `dims/<dim>.parquet` whole: every label the axis has at that node, with its properties, in order. A layer that changes a group's tuples or their properties writes `groups/<group>.parquet` whole the same way. A node's resolved axis or group is the deepest file for it on the path from the root, in that file's row order. `attributes/<attr>.parquet` still holds only the keys a layer sets, owned per key along the `partial` coordinates ([the owner map](../layers/resolution.md#owner-map)).
 
 A materialised node no longer caches a fold of its axes and groups. Its `resolved/dims/` and `resolved/groups/` hold copies of the deepest layer file at or below the node, so a read still stops there. `resolved/dead/` and `owner_map.parquet` stay folds, since no layer file holds either.
 
@@ -40,11 +40,11 @@ A materialised node no longer caches a fold of its axes and groups. Its `resolve
 
 A label is removed at a layer whose restatement of its axis omits it while the previous restatement holds it. The previous restatement is the deepest file for the axis below that layer, or else a materialised base's resolved axis or the frozen prefix's shared table. A first restatement removes nothing.
 
-For a `partial` dim or group, which the owner map keys, `fold_attributes` drops the parent rows naming a removed label. A `mortal` coordinate (`resolve/coords.py`) is one outside the owner-map key, or one a group's field ranges over or a property takes its labels from. Its dead labels ([a label outside the key](../read-path.md#a-label-outside-the-key)) are the labels some layer removed that the final axis lacks. The fold computes them as the base's dead set, the base's resolved axis and every restatement above the base, minus the final axis. `_require_living_references` takes the labels a layer kills from the same diff, its parent's axis minus its restatement.
+For a `partial` dim or group, which the owner map keys, `fold_attributes` drops the parent rows naming a removed label. A `mortal` coordinate (`resolve/coords.py`) is one outside the owner-map key, or one a group's field ranges over or a property takes its labels from. Its dead labels ([a label outside the key](../layers/resolution.md#a-label-outside-the-key)) are the labels some layer removed that the final axis lacks. The fold computes them as the base's dead set, the base's resolved axis and every restatement above the base, minus the final axis. `_require_living_references` takes the labels a layer kills from the same diff, its parent's axis minus its restatement.
 
 In every case probed on a prototype, the rule gives today's answers. A keyed label's values from below its removal stay gone after it is added again, and an unkeyed coordinate's come back, as [DEP 11](dep-0011-deletion-cascades-through-tombstones.md) accepted. A label removed and added again in one staging area keeps its parent's values, and a broadcast reaches a label added after a restatement.
 
-`WorkingRecord.remove` restates the axis without the label, and each group with a field over its dim without the tuples naming it ([add / remove](../working-record.md#add-remove)).
+`WorkingRecord.remove` restates the axis without the label, and each group with a field over its dim without the tuples naming it ([add / remove](../use/editing.md#add-remove)).
 
 An attribute's value names only labels its dims' axes hold and tuples its groups hold. `WorkingRecord.set` refuses a label that the dim's axis, as staged, does not hold, for every dim, `partial` or not, naming the dim and up to three missing labels. It refuses a tuple that the group, as staged, does not hold the same way, naming the group. A group's tuple names only labels its fields' axes hold, and `add_group` refuses one naming a label that the axis, as staged, does not hold, naming the group, the field and up to three such labels. A staged value then names a label the staged axis lacks only where `remove` dropped the label after the `set`, in the same staging area. Such a label is in no restatement, so the fold marks it dead nowhere, and the staged attribute rows naming it are dropped as the staging area is read, which is the removal taking effect.
 
@@ -72,7 +72,7 @@ Each of these checks, staged and at write, is one DuckDB query that anti-joins t
 
 ### The reference check
 
-`_require_living_references` checks each subject a layer restates or whose rows name a label the layer removes, whole and in its final state, against the final dead labels. A reference an ancestor left dangling therefore fails the next write touching its subject, and that write can drop or repair the row, since it restates the subject whole. The promise of [deletion](../layers.md#deletion) that a reference an ancestor left dangling "fails no later write" goes, with its counterpart in that function's docstring.
+`_require_living_references` checks each subject a layer restates or whose rows name a label the layer removes, whole and in its final state, against the final dead labels. A reference an ancestor left dangling therefore fails the next write touching its subject, and that write can drop or repair the row, since it restates the subject whole. The promise of [deletion](../layers/removal.md) that a reference an ancestor left dangling "fails no later write" goes, with its counterpart in that function's docstring.
 
 ### SubNetworks are a dim
 
@@ -147,7 +147,7 @@ Paths are under `src/datarecord/`.
 4. In `tools/pypsa.py`, `_connection_rows`, `_NetworkSource.dims`, `_carriers`, `_entity_frame` and `_tagged` stop writing `deleted`. `_AXIS_TYPES` and `_PROPERTIES` gain `sub_network`, whose `carrier` `_registry` declares explicitly, since it takes no property from an output. `_ResultsSource` writes the `sub_network` axis, `_restated` filters stale rows on `sub_network` instead of `entity`, and the suffix helpers go.
 5. In `tests/fixtures.py`, `write_component`, `tombstone`, `write_connections`, `tombstone_connection`, `write_axis`, `write_scenarios` and `write_periods` restate from the layer's parent, and `write_connections` stops writing the undeclared `role` and `scenario`. By a prototype's failures adjusted for this design, at least 18 tests change. Ten write a patch child through those fixtures, and two assert patch-shaped files. `test_sub_networks_are_suffixed_off_the_lines` and `test_a_re_solve_leaves_no_stale_sub_network` read `sub_network`, and four tests write or assert a `deleted` column. New tests pin the refusals, the order check, and one order across a materialised parent.
 6. `CHANGELOG.md` under `[Unreleased]`: a layer restates a changed axis or group whole, a `deleted` column is refused, and SubNetworks are labels of `sub_network`.
-7. On landing, update the design pages [read path](../read-path.md), [layers](../layers.md), [record](../record.md), [format](../format.md), [schema](../schema.md), [working record](../working-record.md), [tools](../tools.md) and [writing](../writing.md), wherever they describe tombstones, per-label folding, first-introduced order or SubNetwork entities, and the usage pages on editing, tools and the schema.
+7. On landing, update the design pages [read path](../layers/resolution.md), [layers](../layers/tree.md), [record](../use/reading.md), [format](../storage/format.md), [schema](../model/schema.md), [working record](../use/editing.md), [tools](../tools/index.md) and [writing](../use/writing.md), wherever they describe tombstones, per-label folding, first-introduced order or SubNetwork entities, and the usage pages on editing, tools and the schema.
 8. On implementation, DEP 1, 4, 10, 11, 17 and 19 take `Superseded-By` this DEP, for the parts named under `Replaces`.
 
 Checks: a label removed and re-added reads in one order materialised or not, staged or committed, with `connection` in `partial` and out. No file `write_layer` writes under `dims/` or `groups/` has a `deleted` column.
@@ -170,7 +170,7 @@ Pruning the owner map against each layer's restatement drops a broadcast's rows 
 
 Dropping the dead cache and keeping the rows whose label is in the final axis makes series reads 4.4 times slower, 78 ms against 18 ms on 43.8M `p_max_pu` rows.
 
-Recording in `resolved/` which layer holds each axis and group, instead of copying the file, would save about 0.73 MB per materialised node. A read at that node would then open an ancestor's layer file, where [materialised node caches](../layers.md#materialised-node-caches) has it stop at the node.
+Recording in `resolved/` which layer holds each axis and group, instead of copying the file, would save about 0.73 MB per materialised node. A read at that node would then open an ancestor's layer file, where [materialised node caches](../layers/resolution.md#materialised-node-caches) has it stop at the node.
 
 ## Open Issues
 

@@ -14,8 +14,8 @@ by the tool that cannot build it, not rejected here.
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/schema/)
-- [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+- [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
 """
 
 from __future__ import annotations
@@ -44,9 +44,9 @@ from datarecord.schema.specs import (
     _ValueSpec,
 )
 
-# Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/format/#the-long-schema). Not the
+# Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema). Not the
 # dims or properties: each is declared and typed from that declaration, which is
-# what lets the `ENUM` of a dim that lists its labels pin them. These are the ones no schema
+# what lets the `ENUM` of a dim with `one_of` pin them. These are the ones no schema
 # names - `breakpoint` is NULL for an ordinary scalar, so one column set serves
 # every row.
 STRUCTURAL_TYPES = {
@@ -58,14 +58,14 @@ STRUCTURAL_TYPES = {
 
 # Every long row's trailing columns, whatever coordinates precede them: the
 # attribute named, the abscissa of a piecewise-linear value, and the value
-# (https://energy-models.github.io/datarecord/design/format/#the-long-schema).
+# (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema).
 LONG_TAIL = ("attribute", "breakpoint", "value")
 
 
 # The owner map's flag columns: two structs with a field per declared dim, so
 # the map's column set does not depend on the schema and adding a dim stays the
 # compatible change versioning calls it. `breakpoints` is outside both, being no dim
-# (https://energy-models.github.io/datarecord/design/read-path/#owner-map, https://energy-models.github.io/datarecord/design/record/#flags).
+# (https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map, https://energy-models.github.io/datarecord/design/use/reading/#flags).
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
@@ -74,7 +74,7 @@ LAYER_COLUMN = "layer_uuid"
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
 """
 
 
@@ -87,7 +87,7 @@ where the fold always re-derives it from file order.
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
 """
 
 
@@ -102,7 +102,7 @@ declared name's first character instead.
 
 Notes
 -----
-- [names](https://energy-models.github.io/datarecord/design/schema/#names)
+- [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
 """
 
 
@@ -134,8 +134,8 @@ def flag_type(dims: tuple[str, ...]) -> DuckDBPyType:
 
     Notes
     -----
-    - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     return duckdb.struct_type(dict.fromkeys(dims, sqltypes.BOOLEAN))
 
@@ -162,17 +162,16 @@ class Schema(_Declared):
         version it was not written for should refuse rather than guess.
     dimensions
         Every declared axis, keyed by dim name.
-    attributes
-        Attribute -> spec, flat and record-wide. One attribute is one spec and
-        one `attributes/<attr>.parquet`, so a dtype cannot differ per type.
+    groups
+        Group name -> which tuples over several dims exist.
     properties
         Subject dim or group -> property name -> spec: the columns of
         `dims/{dim}.parquet` or `groups/{group}.parquet` that describe its
         labels. A name is unique within its subject only, addressed as
-        `subject.name`. A property of a dim in `partial` that takes its
-        labels from a dim listing its labels categorizes its subject.
-    groups
-        Group name -> which tuples over several dims exist.
+        `subject.name`. A property of a dim in `partial` that refers to a dim with `one_of` categorizes its subject.
+    attributes
+        Attribute -> spec, record-wide. One attribute is one spec and
+        one `attributes/<attr>.parquet` with one dtype.
     partial
         Which dims a layer may patch value by value. `None` for a record
         with no layers, since nothing overrides anything. A dim outside it is
@@ -184,9 +183,9 @@ class Schema(_Declared):
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
 
     id: UUID | None = Field(default=None, exclude_if=lambda id: id is None)
@@ -204,20 +203,20 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        - [names](https://energy-models.github.io/datarecord/design/schema/#names)
+        - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
         """
         self._check_names()
         declared = set(self.dimensions)
 
-        # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions). Rejected here
+        # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/model/dims/). Rejected here
         # so the owner map never needs a struct with no fields, which DuckDB has
         # no type for. A wholly empty `Schema()` stays legal: "no manifest yet".
         if self.attributes and not declared:
             msg = (
                 "a schema declaring attributes must declare at least one dim; "
-                "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/design/schema/#dimensions)"
+                "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/design/model/dims/)"
             )
             raise ValueError(msg)
 
@@ -232,7 +231,7 @@ class Schema(_Declared):
                     f"group {group!r} shares its name with the dim {group!r}; a "
                     f"group is carried as a column named for it, so the two would "
                     f"be one column. Rename the group, e.g. {renamed!r} "
-                    f"(https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)"
+                    f"(https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)"
                 )
                 raise ValueError(msg)
 
@@ -253,9 +252,11 @@ class Schema(_Declared):
                     if twice:
                         msg = (
                             f"attribute {attr!r} is addressed by the group "
-                            f"{group!r} and by {twice}, which the group's "
-                            f"column already carries; naming both keys a row "
-                            f"twice over (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                            f"{group!r} and by {twice}, which share a name with "
+                            f"the group's coordinates, so a keyword such as "
+                            f"{twice[0]}= would address both. Name the group's "
+                            f"coordinate differently, e.g. over={{..., 'port': "
+                            f"{twice[0]!r}}} (https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)"
                         )
                         raise ValueError(msg)
 
@@ -284,12 +285,9 @@ class Schema(_Declared):
                 f"is a property of the group {subject!r}; a group is never categorized"
             )
         elif (one_of := self.properties[subject][prop].one_of) is None:
-            reason = "takes its labels from no dim"
+            reason = "refers to no dim"
         elif self.dimensions[one_of].one_of is None:
-            reason = (
-                f"takes its labels from {one_of!r}, which lists no labels, so "
-                f"they are data, not categories"
-            )
+            reason = f"refers to {one_of!r}, but {one_of!r} is not a one_of dim"
         elif subject not in (self.partial or set()):
             reason = f"is a property of {subject!r}, which `partial` does not list"
         else:
@@ -298,7 +296,7 @@ class Schema(_Declared):
         raise ValueError(msg)
 
     def _check_properties(self) -> None:
-        """Refuse a property of an undeclared subject, one that takes its labels from an undeclared dim, and a malformed `default_by`."""
+        """Refuse a property of an undeclared subject, one that refers to an undeclared dim, and a malformed `default_by`."""
         unknown = sorted(set(self.properties) - set(self.dimensions) - set(self.groups))
         if unknown:
             msg = (
@@ -309,9 +307,9 @@ class Schema(_Declared):
         for (subject, name), dim in self.one_of_properties().items():
             if dim not in self.dimensions:
                 msg = (
-                    f"property {subject}.{name} takes its labels from {dim!r}, "
+                    f"property {subject}.{name} refers to {dim!r}, "
                     f"an undeclared dim "
-                    f"(https://energy-models.github.io/datarecord/design/schema/#properties)"
+                    f"(https://energy-models.github.io/datarecord/design/model/properties/#properties)"
                 )
                 raise ValueError(msg)
         for subject, by_name in self.properties.items():
@@ -357,11 +355,11 @@ class Schema(_Declared):
                     raise ValueError(msg)
 
     def one_of_properties(self) -> dict[tuple[str, str], str]:
-        """Map each property that takes its labels from a dim, as `(subject, name)`, to that dim.
+        """Map each property that refers to a dim, as `(subject, name)`, to that dim.
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
         """
         return {
             (subject, name): spec.one_of
@@ -388,8 +386,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [names](https://energy-models.github.io/datarecord/design/schema/#names)
-        - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+        - [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
+        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
         """
         declared = [
             *(("dim", d) for d in self.dimensions),
@@ -441,7 +439,7 @@ class Schema(_Declared):
                 f"a schema may not declare these names: {'; '.join(problems)}. "
                 f"Rename each: a declared name becomes a column beside those "
                 f"datarecord writes itself, {sorted(RESERVED)} and any starting "
-                f"with `_` (https://energy-models.github.io/datarecord/design/schema/#names)"
+                f"with `_` (https://energy-models.github.io/datarecord/design/model/schema/#names)"
             )
             raise ValueError(msg)
 
@@ -452,7 +450,7 @@ class Schema(_Declared):
         """
         return {subject}
 
-    # -- derived key sets (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) --------------------------------------
+    # -- derived key sets (https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override) --------------------------------------
 
     @property
     def dims(self) -> tuple[str, ...]:
@@ -460,7 +458,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
         return tuple(self.dimensions)
 
@@ -477,8 +475,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
         """
         return (*self.dims, *self.group_columns)
 
@@ -495,9 +493,9 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [addressing](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
@@ -510,7 +508,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
         """
         return tuple(self.groups)
 
@@ -521,7 +519,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
         """
         spec = self.groups[group]
         return duckdb.struct_type(
@@ -531,12 +529,12 @@ class Schema(_Declared):
     def duck_type(self, spec: Dimension | AttributeSpec | PropertySpec) -> DuckDBPyType:
         """Return the DuckDB type of a declared dim, attribute or property.
 
-        A dim that lists its labels has the `ENUM` of them. A property that
-        takes its labels from a dim has the type of that dim.
+        A dim with `one_of` has the `ENUM` of them. A property that
+        refers to a dim has the type of that dim.
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
         """
         if isinstance(spec, PropertySpec) and spec.one_of is not None:
             return self.duck_type(self.dimensions[spec.one_of])
@@ -569,8 +567,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
         types = dict(zip(rel.columns, rel.types, strict=True))
         for group in groups:
@@ -588,7 +586,7 @@ class Schema(_Declared):
                 carried = f"{flat} flat" if flat else f"{group!r} as {dtype}"
                 msg = (
                     f"{carrier} carries {carried}; pass {group!r} as one struct "
-                    f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/schema/#groups)"
+                    f"column with a field per key coordinate, {list(key)} (https://energy-models.github.io/datarecord/design/model/groups/)"
                 )
                 raise ValueError(msg)
             if dtype is None:
@@ -600,7 +598,7 @@ class Schema(_Declared):
             if rel.filter(partly).limit(1).fetchone() is not None:
                 msg = (
                     f"{carrier} carries a {group!r} with some fields NULL; a "
-                    f"group value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)"
+                    f"group value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
                 )
                 raise ValueError(msg)
 
@@ -617,7 +615,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
         if attribute not in self.attributes:
             msg = f"the schema declares no attribute {attribute!r}"
@@ -627,12 +625,11 @@ class Schema(_Declared):
     def categorizing(self, dim: str) -> tuple[str, ...]:
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
 
-        A categorizing property is a property of `dim` that takes its labels
-        from a dim listing its labels. Only a dim in `partial` has any.
+        A categorizing property is a property of `dim` that refers to a dim with `one_of`. Only a dim in `partial` has any.
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
+        - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
         if dim not in self.dimensions or dim not in (self.partial or set()):
             return ()
@@ -646,15 +643,14 @@ class Schema(_Declared):
     def _categories(self, dim: str, name: str) -> tuple[str, ...]:
         """Return the categories property `name` of `dim` can hold.
 
-        These are the labels listed by the dim the property takes its labels
-        from; there are none if that dim lists none.
+        These are the `one_of` labels of the dim the property refers to; there are none if that dim has no `one_of`.
         """
         return self._listed(self.properties[dim][name]) or ()
 
     def _listed(self, spec: Dimension | PropertySpec) -> tuple[str, ...] | None:
-        """Return the labels a dim lists, or None if it lists none.
+        """Return the `one_of` labels of a dim, or None if it has none.
 
-        `spec` is the dim, or a property that takes its labels from the dim.
+        `spec` is the dim, or a property that refers to the dim.
         """
         if isinstance(spec, PropertySpec):
             if spec.one_of is None:
@@ -672,7 +668,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
+        - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
         allowed = self.categorizing(subject)
         unknown = sorted(set(keys) - set(allowed))
@@ -689,19 +685,19 @@ class Schema(_Declared):
         """Refuse a label its dim does not list.
 
         `data` maps column names to values. A name is checked where it is
-        `subject` and `subject` lists its labels, or where it is a property of
-        `subject` that takes its labels from a dim listing them. Other names
+        `subject` and `subject` has `one_of`, or where it is a property of
+        `subject` that refers to a dim with `one_of`. Other names
         and NULL values are skipped.
 
         Raises
         ------
         ValueError
-            Naming `what`, the column, the unlisted labels and the labels the
-            dim lists.
+            Naming `what`, the column, the unknown labels and the dim's
+            `one_of` labels.
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
         """
         specs = self.properties.get(subject, {})
         for name, values in data.items():
@@ -716,8 +712,8 @@ class Schema(_Declared):
             unknown = sorted({str(v) for v in values if v is not None} - {*listed})
             if unknown:
                 msg = (
-                    f"{what} gives {name!r} labels {unknown}, which its dim "
-                    f"does not list; that dim lists {list(listed)}"
+                    f"{what} gives {name!r} labels {unknown}, which its dim's "
+                    f"`one_of` does not hold; `one_of` is {list(listed)}"
                 )
                 raise ValueError(msg)
 
@@ -735,8 +731,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
-        - [default_by](https://energy-models.github.io/datarecord/design/schema/#default_by-a-default-per-category)
+        - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
+        - [default_by](https://energy-models.github.io/datarecord/design/model/properties/#default_by-a-default-per-category)
         """
         resolved = self.resolve(name)
         spec = resolved[1] if isinstance(resolved, tuple) else resolved
@@ -754,7 +750,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
+        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
         """
         spec = self.attributes.get(attribute)
         return (spec is not None and dim in spec.dims) or any(
@@ -779,7 +775,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
         """
         subject, dot, prop = name.partition(".")
         if dot:
@@ -827,8 +823,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
+        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
@@ -848,14 +844,14 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         partial = self.partial or frozenset()
         return tuple(d for d in self.broadcast_dims if d in partial)
 
-    # -- key and column sets (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/read-path/#owner-map) -----------------------------------
+    # -- key and column sets (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema, https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map) -----------------------------------
 
     @property
     def long_columns(self) -> tuple[str, ...]:
@@ -868,7 +864,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
         return (*self.group_columns, *self.dims, *LONG_TAIL)
 
@@ -885,9 +881,9 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-        - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         return (*self.partial_dims, "attribute")
 
@@ -900,7 +896,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [addressing](https://energy-models.github.io/datarecord/design/schema/#addressing-dims-x)
+        - [addressing](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
@@ -912,8 +908,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         spec = self.groups.get(group)
         return () if spec is None else spec.key
@@ -924,11 +920,11 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         return (*self.owner_map_key, LAYER_COLUMN, *FLAG_COLUMNS)
 
-    # -- typing (https://energy-models.github.io/datarecord/design/format/#the-long-schema, https://energy-models.github.io/datarecord/design/writing/) -------------------------------------------------
+    # -- typing (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema, https://energy-models.github.io/datarecord/design/use/writing/) -------------------------------------------------
 
     def column_type(
         self, column: str, subject: str | None = None
@@ -941,7 +937,7 @@ class Schema(_Declared):
         follow the schema's dims.
 
         No dim is structural: each is declared, and typed from that
-        declaration. So the `ENUM` of a dim that lists its labels pins them
+        declaration. So the `ENUM` of a dim with `one_of` pins them
         everywhere the column is built. An attribute is no column but a long row's value,
         typed by `value_type`.
 
@@ -952,8 +948,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
-        - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+        - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         found = self.declared(column, subject)
         return None if found is None else found[1]
@@ -991,7 +987,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
         """
         own = self.properties.get(subject or "", {})
         spec: Dimension | AttributeSpec | PropertySpec
@@ -1030,8 +1026,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
-        - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
         """
         wrong = []
         nulls: dict[str, DuckDBPyType] = {}
@@ -1062,17 +1058,17 @@ class Schema(_Declared):
     def value_type(self, attribute: str) -> DuckDBPyType | None:
         """Return the DuckDB type of the `value` column of `attribute`.
 
-        No `ctype`: one attribute is one `attributes/<attr>.parquet` with one
-        `value` column, so the dtype is the attribute's alone.
+        One attribute is one `attributes/<attr>.parquet` with one `value`
+        column, so the dtype is the attribute's alone.
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
         spec = self.attributes.get(attribute)
         return None if spec is None else DUCK_TYPES[spec.dtype]
 
-    # -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) --------------------------------------------------
+    # -- versioning (https://energy-models.github.io/datarecord/design/model/schema/#versioning) --------------------------------------------------
 
     def compatible_with(self, other: Schema) -> list[str]:
         """Why layers written under `other` would not read under `self`.
@@ -1089,8 +1085,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-        - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
         """
         problems = []
 

@@ -9,8 +9,8 @@ map's and the coords' alike.
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-- [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+- [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
 """
 
 from __future__ import annotations
@@ -76,7 +76,7 @@ def _shared(
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
     try:
         return con.table(name)
@@ -109,7 +109,7 @@ def cast_declared(
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     """
     cols = [
         col(c).cast(found[1]).alias(c)
@@ -127,7 +127,7 @@ def _empty_relation(
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     """
     return empty_relation(
         con, **{c: schema.column_type(c) or sqltypes.VARCHAR for c in columns}
@@ -147,8 +147,8 @@ def with_columns(
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     missing = [c for c in columns if c not in rel.columns]
     if not missing:
@@ -175,8 +175,8 @@ def fold_attributes(
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     schema = keys.schema
     rel = source.all_attributes()
@@ -203,7 +203,7 @@ def fold_attributes(
         # value, and `_raw_<dim>` as the row stored it. The flags describe the
         # stored form - whether a row set the dim or left it NULL - so they
         # cannot be read off the expanded value, which is never NULL once
-        # broadcast (https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule).
+        # broadcast (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
         # `dims` covers the partial ones, expanded; the rest pass through as
         # stored. Together they are every declared dim, exactly once.
         expanded = set(dims)
@@ -260,9 +260,9 @@ def _fold_map(
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     base, above = split = _base_and_above(sources, con, schema)
     keys = resolve_coords(schema, sources, con, split)
@@ -288,7 +288,7 @@ def _pruned(schema: Schema) -> tuple[str, ...]:
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     keyed = set(schema.owner_map_key)
     return (
@@ -313,8 +313,8 @@ def _fold_onto(
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     schema = keys.schema
     held = dict(held)
@@ -350,7 +350,7 @@ def frozen_prefix(sources: Sequence[LayerSource]) -> int:
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     """
     prefix = 0
     for source in sources:
@@ -379,9 +379,9 @@ def _table(
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/#a-layers-data-is-write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     schema = keys.schema
     frozen = frozen_prefix(sources)
@@ -417,9 +417,9 @@ def _frozen_table(
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
-    - [the owner map](https://energy-models.github.io/datarecord/design/read-path/#owner-map)
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     last = sources[-1] if sources else None
     rel = read
@@ -455,7 +455,7 @@ def _frozen_coords(
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
     def fold() -> DuckDBPyRelation:

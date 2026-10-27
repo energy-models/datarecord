@@ -16,13 +16,13 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version       | v0.1.0a1                                                                                |
 | Superseded-By | [DEP 19](dep-0019-one-record-and-a-package-layout.md) (its `Record` over a `NodeCache`) |
 
-The design is [the read path](../read-path.md#one-record-over-one-fold) and [the Record protocol](../record.md); this page is the argument for the change rather than the current description, and those pages are authoritative where the two disagree.
+The design is [the read path](../layers/resolution.md#one-record-over-one-fold) and [the Record protocol](../use/reading.md); this page is the argument for the change rather than the current description, and those pages are authoritative where the two disagree.
 
 Stacked on [staging as a layer](dep-0004-staging-as-a-layer.md), which made a staging area a source of one fold. This is the same observation one level up: a plain directory is a source too, so `DirectoryRecord` is a second reading of what the fold already does.
 
 ## What starts it
 
-[read-path](../read-path.md#one-record-over-one-fold) says two implementations differ in four ways. Measured on one directory — `DirectoryRecord(uri)` against a `NodeCache` over `[DirectorySource(uri)]` — **all four are the same answer**:
+[read-path](../layers/resolution.md#one-record-over-one-fold) says two implementations differ in four ways. Measured on one directory — `DirectoryRecord(uri)` against a `NodeCache` over `[DirectorySource(uri)]` — **all four are the same answer**:
 
 | what was compared                                         | result                        |
 | --------------------------------------------------------- | ----------------------------- |
@@ -75,7 +75,7 @@ The two views stay separable, which is the property worth keeping: `tools/` buil
 
 ### What happens to the protocol
 
-`Record` is a `Protocol` today because several things satisfy it. That stays true and stays load-bearing — a framework object presenting itself as a record is the case [`tools`](../tools.md) is built on, and structural typing is what lets it do so without depending on this package.
+`Record` is a `Protocol` today because several things satisfy it. That stays true and stays load-bearing — a framework object presenting itself as a record is the case [`tools`](../tools/index.md) is built on, and structural typing is what lets it do so without depending on this package.
 
 So the name has to split. **Settled: `Record` is the class, `RecordLike` the protocol.** The concrete thing gets the short name because it is what a caller constructs and holds; the protocol is read at a signature, where the longer name says what it means — "anything shaped like a record", which is exactly the set a framework object joins.
 
@@ -101,11 +101,11 @@ Two constraints this puts on the base class, neither of which is an obstacle:
 
 Two things this page did not see, both found by writing it:
 
-**The `cached_property` members were the real obstacle, not `frozen=True`.** `dims`, `entity_types`, `groups` and `attributes` each cache a **key set**, and a `set` naming a new attribute changes that set — so inheriting them unchanged would have made a staged addition invisible, the exact bug this direction exists to prevent. The fix is not to override them in `WorkingRecord`, which would have cost the inheritance property above; it is to cache them only where the fold is stable, which is [the rule `NodeCache.dims` already applied](../layers.md#a-layers-data-is-write-once) one level down. `NodeCache.stable` names it once and `Record._stable_cache` applies it, so the concept appears twice rather than as a special case — and `WorkingRecord` inherits all four.
+**The `cached_property` members were the real obstacle, not `frozen=True`.** `dims`, `entity_types`, `groups` and `attributes` each cache a **key set**, and a `set` naming a new attribute changes that set — so inheriting them unchanged would have made a staged addition invisible, the exact bug this direction exists to prevent. The fix is not to override them in `WorkingRecord`, which would have cost the inheritance property above; it is to cache them only where the fold is stable, which is [the rule `NodeCache.dims` already applied](../layers/tree.md#a-layers-data-is-write-once) one level down. `NodeCache.stable` names it once and `Record._stable_cache` applies it, so the concept appears twice rather than as a special case — and `WorkingRecord` inherits all four.
 
 **`over` takes its connection explicitly.** A `LayerSource` is only obliged to hand over rows; where it reads them is its own business, and the protocol carries no `con`. So the sketch's `over(*sources)` could not derive one, and it is `over(*sources, con=...)`.
 
-**A standalone record's own schema had to come with it.** `DirectoryRecord.schema` read the directory's `manifest.json` before falling back to the connection root's, and nothing in this page noticed. It matters for exactly one case, which is the case that motivates the manifest existing: a [standalone record](../schema.md#one-schema-per-record) is one whole record and may be read through a connection rooted anywhere. So `Record.at` reads it and `NodeCache` carries it as `declared`, and `with_source` passes it along — a `WorkingRecord` over such a base reads under its schema, an edit being a layer and a layer declaring nothing. The first attempt put an `own_schema` member on `LayerSource` and had the fold ask every source; that invents a question with one possible answer, since a fold holds at most one directory and it is always the root.
+**A standalone record's own schema had to come with it.** `DirectoryRecord.schema` read the directory's `manifest.json` before falling back to the connection root's, and nothing in this page noticed. It matters for exactly one case, which is the case that motivates the manifest existing: a [standalone record](../model/schema.md#one-schema-per-record) is one whole record and may be read through a connection rooted anywhere. So `Record.at` reads it and `NodeCache` carries it as `declared`, and `with_source` passes it along — a `WorkingRecord` over such a base reads under its schema, an edit being a layer and a layer declaring nothing. The first attempt put an `own_schema` member on `LayerSource` and had the fold ask every source; that invents a question with one possible answer, since a fold holds at most one directory and it is always the root.
 
 ## What this deletes
 

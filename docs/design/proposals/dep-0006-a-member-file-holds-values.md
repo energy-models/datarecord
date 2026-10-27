@@ -18,9 +18,9 @@ SPDX-License-Identifier: CC-BY-4.0
 > **Superseded** by [properties](dep-0012-properties.md#one-file-per-subject-on-disk):
 > the entity-type axis is now an `Enum` property of `entity`, and a record with
 > and one without categories share one entity-axis layout with no member files.
-> The authoritative account is [the entity axis](../format.md#the-entity-axis),
-> [where a value lives](../format.md#where-a-value-lives) and
-> [categories](../schema.md); this
+> The authoritative account is [the entity axis](../storage/format.md#axis-files),
+> [where a value lives](../storage/format.md#where-a-value-lives) and
+> [categories](../model/schema.md); this
 > page is kept as the argument that led to the intermediate layout. It keys on `entity_type_dim is None` (no group over
 > `entity` alone), leaving a `String`-typed **declared** axis on today's per-type
 > layout — the [open question](#what-it-opens-rather-than-settles) below was
@@ -29,23 +29,23 @@ SPDX-License-Identifier: CC-BY-4.0
 > still not settled: a materialised cache written under the old layout is a
 > rebuild, [as noted below](#the-column-leaves-the-entity-axis-too).
 
-Two claims about `dims/entity_type/<Type>.parquet`, which are one claim: that file holds a type's attribute values, and everything about a component's _existence_ belongs to the [entity axis](../format.md#the-entity-axis).
+Two claims about `dims/entity_type/<Type>.parquet`, which are one claim: that file holds a type's attribute values, and everything about a component's _existence_ belongs to the [entity axis](../storage/format.md#axis-files).
 
 Today it holds more. A record whose schema declares no entity-type axis still writes one member file per type — types that are not declared, not validated and not constrainable, yet decide which file a value is in, so a reader must know them to reach it. And every member file carries `deleted`, which the fold reads as a tombstone alongside the axis's own, so a removal is written twice to say one thing.
 
 This proposal puts those values on `dims/entity.parquet` where the schema declares no entity-type axis, and takes `deleted` off the member file in every record. What is left in a member file is `entity` and one column per attribute.
 
-The related concern — `entity_type` asserted rather than derived in the read path — is already settled: the [entity axis folds like any dim](../read-path.md#one-fold-for-every-axis) rather than through an owner map, so `entity_types()` reads the resolved axis directly and there is no map column set to make conditional. What remains is the member file itself.
+The related concern — `entity_type` asserted rather than derived in the read path — is already settled: the [entity axis folds like any dim](../layers/resolution.md#one-fold-for-every-axis) rather than through an owner map, so `entity_types()` reads the resolved axis directly and there is no map column set to make conditional. What remains is the member file itself.
 
 ## What starts it
 
-[The schema](../schema.md#properties) is explicit that the axis is optional, and that omitting it makes the labels data:
+[The schema](../model/properties.md#properties) is explicit that the axis is optional, and that omitting it makes the labels data:
 
 > The entity-type axis's enum categories, so a schema declaring it as a plain `String` has none: the labels are then data rather than declarations, and `attributes_for` accepts any of them.
 
 `tests/test_untyped.py` exercises that: a schema with two attributes over `entity` and no classifying group, components added under `thing` and `other`, and both round-trip. So far so good.
 
-The problem is where their values land. `p_nom` is `dims={"entity"}` and non-varying, and the format gives that exactly one home — [`dims/entity_type/<Type>.parquet`](../format.md#where-a-value-lives). It cannot be a column of `dims/entity.parquet`, because `attributes_on("entity")` returns `()` by explicit early return; it cannot be an `inputs/` row, because it does not vary. So a label the schema never declared becomes a filename:
+The problem is where their values land. `p_nom` is `dims={"entity"}` and non-varying, and the format gives that exactly one home — [`dims/entity_type/<Type>.parquet`](../storage/format.md#where-a-value-lives). It cannot be a column of `dims/entity.parquet`, because `attributes_on("entity")` returns `()` by explicit early return; it cannot be an `inputs/` row, because it does not vary. So a label the schema never declared becomes a filename:
 
 ```
 dims/entity.parquet             entity, entity_type, deleted
@@ -65,9 +65,9 @@ The obvious move — no declared axis, no `entity_type` column — does not clos
 | `NodeCache.entity_type_frame` | scopes to one type, then reads its file       |
 | `NodeCache.attributes_of`     | scopes the flags to one type                  |
 
-The label lives on the [resolved entity axis](../read-path.md#one-fold-for-every-axis), carried on the winning row like `weight` on `dims/scenario.parquet` — not in an owner map, since the entity axis folds like every other dim. So gating only the member file, and leaving `entity_type` on the axis filled with NULLs, leaves `entity_types()` yielding `{None}` rather than `{thing, other}`.
+The label lives on the [resolved entity axis](../layers/resolution.md#one-fold-for-every-axis), carried on the winning row like `weight` on `dims/scenario.parquet` — not in an owner map, since the entity axis folds like every other dim. So gating only the member file, and leaving `entity_type` on the axis filled with NULLs, leaves `entity_types()` yielding `{None}` rather than `{thing, other}`.
 
-Deriving the label from the filenames instead works, but costs a `LayerSource.entity_types()` listing member files and a per-layer `LIST` on the read path — which is what [the entity axis exists to avoid](../format.md#the-entity-axis). Trading a stored string for a directory listing per layer per fold is the wrong direction.
+Deriving the label from the filenames instead works, but costs a `LayerSource.entity_types()` listing member files and a per-layer `LIST` on the read path — which is what [the entity axis exists to avoid](../storage/format.md#axis-files). Trading a stored string for a directory listing per layer per fold is the wrong direction.
 
 So the label is load-bearing _given the current layout_. The layout is what this proposal changes.
 
@@ -91,11 +91,11 @@ The readers follow from the column's absence:
 - **`entity_type_frame(ctype)`** has no type to be asked for. `Record.entity_types` iterates an empty mapping, so nothing reaches it; a direct call is a caller error, and should say so rather than filter on a missing column.
 - **`attributes_of(ctype)`** scopes the flags by type, which is meaningless without types. Its semi-join to `of_type` becomes the whole axis — every component, which is what "no types" means for a per-type question.
 
-**The materialised axis is the consequence to be deliberate about.** `resolved/dims/entity.parquet` is written from the folded axis, so the cache of a record with no declared type axis stops carrying `entity_type` — and a cache written before the change has it. [Materialised node caches](../layers.md#materialised-node-caches) are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that.
+**The materialised axis is the consequence to be deliberate about.** `resolved/dims/entity.parquet` is written from the folded axis, so the cache of a record with no declared type axis stops carrying `entity_type` — and a cache written before the change has it. [Materialised node caches](../layers/resolution.md#materialised-node-caches) are derived data that can be rebuilt, so this is a rebuild rather than a migration; but a stale cache read against the new column set is the failure mode to check for, and it argues for the cache carrying a schema version or being invalidated on schema change. This proposal does not settle that.
 
 ### `deleted` belongs to the axis alone
 
-A member file carries `deleted` today, and the fold reads it from there as well as from the entity axis. That is the same duplication the axis exists to remove: [membership is the axis's](../format.md#the-entity-axis) — "a component exists because it has a row here, not because some type's file mentions it" — and a tombstone is a statement about membership.
+A member file carries `deleted` today, and the fold reads it from there as well as from the entity axis. That is the same duplication the axis exists to remove: [membership is the axis's](../storage/format.md#axis-files) — "a component exists because it has a row here, not because some type's file mentions it" — and a tombstone is a statement about membership.
 
 It shows up as a coupling in the staging area. `remove` has to write twice, once to the axis and once to the type's member table, because a removal that left no member row would read as a member the layer never mentioned. Two writes to say one thing, kept in step by hand.
 

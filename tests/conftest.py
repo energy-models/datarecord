@@ -31,7 +31,7 @@ def ac_dc():
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
     import pypsa

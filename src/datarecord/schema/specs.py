@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The declarations a schema is made of: dims, attributes, properties and groups.
+"""The declarations a schema is made of: dims, groups, properties and attributes.
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/schema/)
+- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
 """
 
 from __future__ import annotations
@@ -44,9 +44,9 @@ class Dimension(_Declared):
     dtype
         The axis labels' type, a mathspec `DimensionDtype`.
     one_of
-        The labels the dim allows, in order, or None for any. A dim that
-        lists its labels has an `ENUM` of them as its column, and `add`
-        refuses a label outside the list. Only a `str` dim lists its labels.
+        The labels the dim allows, in order, or None for any. A dim with
+        `one_of` has an `ENUM` of them as its column, and `add` refuses a
+        label outside the list. Only a `str` dim takes `one_of`.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -55,10 +55,10 @@ class Dimension(_Declared):
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
-    - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
-    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
-    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
+    - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
+    - [unit and description](https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description)
+    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
     """
 
     dtype: DimensionDtype = "str"
@@ -75,7 +75,7 @@ class Dimension(_Declared):
         if value is not None and dtype != "str":
             msg = (
                 f"a dim of dtype {dtype!r} takes no `one_of`; "
-                'only a "str" dim lists its labels'
+                'only a "str" dim takes `one_of`'
             )
             raise ValueError(msg)
         if isinstance(value, (list, tuple)):
@@ -180,13 +180,13 @@ class AttributeSpec(_ValueSpec):
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows)
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
-    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
-    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
+    - [unit and description](https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description)
+    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
     """
 
     dtype: ParameterDtype
@@ -202,7 +202,7 @@ class PropertySpec(_ValueSpec):
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
     A property declares exactly one of `dtype` and `one_of`. A property of a
-    dim in `partial` that takes its labels from a dim listing its labels
+    dim in `partial` that refers to a dim with `one_of`
     categorizes its subject (`Schema.categorizing`). A property of a group
     never does.
 
@@ -211,7 +211,7 @@ class PropertySpec(_ValueSpec):
     dtype
         The column's type, a mathspec `ParameterDtype`.
     one_of
-        The dim the property takes its labels from. Its values have that
+        The dim the property refers to. Its values have that
         dim's type, and a stored value that is not NULL must be a live label
         of the dim.
     default
@@ -228,10 +228,10 @@ class PropertySpec(_ValueSpec):
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
-    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
     """
 
     dtype: ParameterDtype | None = Field(
@@ -275,7 +275,7 @@ class Group(_Declared):
 
     Notes
     -----
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
     """
 
     over: dict[str, str]
@@ -295,6 +295,6 @@ class Group(_Declared):
 
         Notes
         -----
-        - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+        - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
         """
         return tuple(self.over)

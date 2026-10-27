@@ -176,7 +176,7 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/schema/)
+    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
     """
 ```
 

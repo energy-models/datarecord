@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/schema/)
+- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
 """
 
 import json
@@ -58,14 +58,14 @@ def _schema(**overrides) -> Schema:
 
 
 def _listing_dims(**labels: list[str]) -> dict[str, Dimension]:
-    """`_schema`'s dims with a dim per keyword that lists its labels."""
+    """`_schema`'s dims with a dim with `one_of` per keyword."""
     return {
         **_schema().dimensions,
         **{d: Dimension(one_of=ls) for d, ls in labels.items()},
     }
 
 
-# -- derived keys (https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override) -----------------------------------------------------
+# -- derived keys (https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override) -----------------------------------------------------
 
 
 def test_ownership_is_derived_not_declared():
@@ -102,7 +102,7 @@ def test_partial_dims_is_the_union_over_attributes():
     )
 
 
-# -- addressing (https://energy-models.github.io/datarecord/design/format/#where-a-value-lives) ------------------------------------
+# -- addressing (https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives) ------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -133,14 +133,14 @@ def test_the_section_decides_where_a_value_lives():
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
     """
     s = _schema()
     assert s.long_columns_for("p_nom") == ("entity", "attribute", "breakpoint", "value")
     assert s.column_type("p_nom") is None, "a single-dim attribute is no axis column"
     assert s.column_type("ctype", "entity") == DuckDBPyType("ENUM('Generator', 'Link')")
     assert s.column_type("ctype", "entity") == s.column_type("ctype"), (
-        "a property that takes its labels from a dim takes its type"
+        "a property that refers to a dim takes its type"
     )
     assert s.categorizing("entity") == ("ctype",)
     assert "ctype" not in s.partial_dims
@@ -168,7 +168,7 @@ def test_a_group_may_have_properties():
     )
     assert s.column_type("role", "connection") == DuckDBPyType("ENUM('in', 'out')")
     assert s.categorizing("connection") == (), (
-        "a group is never categorized, even by a property taking its labels from a dim that lists them"
+        "a group is never categorized, even by a property referring to a dim that lists them"
     )
 
 
@@ -177,7 +177,7 @@ def test_a_property_taking_listed_labels_categorizes_only_a_partial_dim():
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/schema/#categories-labels-a-dim-lists)
+    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
     """
     s = _schema(
         dimensions=_listing_dims(carrier_kind=["wind", "solar"], era=["old", "new"]),
@@ -192,7 +192,7 @@ def test_a_property_taking_listed_labels_categorizes_only_a_partial_dim():
         },
     )
     assert s.categorizing("entity") == ("ctype", "carrier_kind"), (
-        "every property taking its labels from a dim that lists them, in declaration order"
+        "every property referring to a dim that lists them, in declaration order"
     )
     assert s.categorizing("period") == (), "`period` is not partial"
     assert s.categorizing("scenario") == (), "no properties"
@@ -286,7 +286,7 @@ def test_resolve_reads_a_property_dotted_and_a_plain_name_as_an_attribute(
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/schema/#properties)
+    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
     """
     resolved = _shared().resolve(name)
     spec = resolved[1] if isinstance(resolved, tuple) else resolved
@@ -448,7 +448,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     **kw,
                 ),
             ),
-            "takes its labels from no dim",
+            "refers to no dim",
             id="a-string-property",
         ),
         pytest.param(
@@ -578,7 +578,7 @@ def test_a_dim_reference_must_resolve(build, match):
         build()
 
 
-# -- defaults through the manifest (https://energy-models.github.io/datarecord/design/schema/#attributespec, https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ------------------------------
+# -- defaults through the manifest (https://energy-models.github.io/datarecord/design/model/attributes/#attributespec, https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ------------------------------
 
 
 @pytest.mark.parametrize("value", [float("inf"), float("-inf"), 0.0, None, "AC"])
@@ -593,7 +593,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/schema/#attributespec)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="str")},
@@ -603,7 +603,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
 
 
-# -- versioning (https://energy-models.github.io/datarecord/design/schema/#versioning) -------------------------------------------------------
+# -- versioning (https://energy-models.github.io/datarecord/design/model/schema/#versioning) -------------------------------------------------------
 
 
 def _restating(**attributes: AttributeSpec) -> Schema:
@@ -654,7 +654,7 @@ def test_a_compatible_change(new):
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     assert new.compatible_with(_schema()) == []
 
@@ -689,13 +689,13 @@ def test_an_incompatible_change(old, new, reason):
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     reasons = new.compatible_with(old)
     assert any(reason in r for r in reasons), reasons
 
 
-# -- unit and description (https://energy-models.github.io/datarecord/design/schema/#unit-and-description) ---------------------------------------------
+# -- unit and description (https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description) ---------------------------------------------
 
 
 def test_unit_and_description_are_declared_on_both():
@@ -703,7 +703,7 @@ def test_unit_and_description_are_declared_on_both():
 
     Notes
     -----
-    - [unit and description](https://energy-models.github.io/datarecord/design/schema/#unit-and-description)
+    - [unit and description](https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description)
     """
     s = Schema(
         dimensions={
@@ -725,7 +725,7 @@ def test_unit_and_description_are_declared_on_both():
     )
 
 
-# -- serialisation (https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record) ----------------------------------------------------
+# -- serialisation (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ----------------------------------------------------
 
 
 def test_round_trips_through_json():
@@ -758,7 +758,7 @@ def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
     assert s.column_type("entity") == sqltypes.VARCHAR
     assert s.column_type("timestep") == sqltypes.TIMESTAMP
-    # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/read-path/#owner-map), so
+    # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map), so
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
@@ -778,13 +778,13 @@ def test_attributes_need_at_least_one_dim():
 
     Notes
     -----
-    - [dimensions](https://energy-models.github.io/datarecord/design/schema/#dimensions)
+    - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
     """
     with pytest.raises(ValidationError, match="at least one dim"):
         Schema(attributes={"p_nom": AttributeSpec(dtype="float")})
 
 
-# -- names (https://energy-models.github.io/datarecord/design/schema/#names) -----
+# -- names (https://energy-models.github.io/datarecord/design/model/schema/#names) -----
 
 
 def _declaring(position: str, name: str) -> Schema:
@@ -862,7 +862,7 @@ def test_a_name_duckdb_quotes_is_accepted(name, position):
     _declaring(position, name)
 
 
-# -- dtypes (https://energy-models.github.io/datarecord/design/schema/#dtypes) ---
+# -- dtypes (https://energy-models.github.io/datarecord/design/model/schema/#dtypes) ---
 
 
 @pytest.mark.parametrize(
@@ -911,11 +911,11 @@ def test_a_name_duckdb_quotes_is_accepted(name, position):
     ],
 )
 def test_a_dtype_takes_its_kinds_mathspec_forms(build, match):
-    """A dim may list its labels, a property may take its labels from a dim, an attribute does neither.
+    """A dim may list its labels, a property may refer to a dim, an attribute does neither.
 
     Notes
     -----
-    - [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
     """
     with pytest.raises(ValidationError, match=match):
         build()

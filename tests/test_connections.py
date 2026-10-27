@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+- [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
 """
 
 from contextlib import nullcontext
@@ -167,7 +167,7 @@ def test_component_level_attribute_is_unaffected(store):
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     """
     root = _root(store)
     write_attribute(
@@ -194,7 +194,7 @@ def test_per_connection_attribute_varies_by_snapshot(store):
 
     Notes
     -----
-    - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
+    - [attributes over a group](https://energy-models.github.io/datarecord/design/model/groups/#attributes-over-a-group)
     """
     write_schema(schema(), store)
     revision = empty_root(store)
@@ -233,7 +233,7 @@ def test_per_connection_attribute_varies_by_snapshot(store):
     # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
     # another's is a single broadcast row, and the union over the rows
     # reports both - which is what tells a consumer one container will not do
-    # (https://energy-models.github.io/datarecord/design/record/#flags). A per-connection attribute needs no special case for this.
+    # (https://energy-models.github.io/datarecord/design/use/reading/#flags). A per-connection attribute needs no special case for this.
     assert "snapshot" in flags.varies
     assert "snapshot" in flags.broadcast
     assert not flags.breakpoints
@@ -260,7 +260,7 @@ def test_a_removed_component_reaches_its_connections_through_their_removal(store
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     root = _root(store)
     root.materialise()
@@ -284,8 +284,8 @@ def test_a_dim_a_group_draws_on_still_broadcasts(store):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
-    - [groups](https://energy-models.github.io/datarecord/design/schema/#groups)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [groups](https://energy-models.github.io/datarecord/design/model/groups/)
     """
     price = AttributeSpec(dtype="float", dims={"bus", "snapshot"})
     write_schema(
@@ -319,7 +319,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/record/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     root = _root(store)
     child = empty_child(root)
@@ -341,7 +341,7 @@ def test_a_group_outside_partial_is_owned_whole(store):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
+    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     root = _root(store)
     write_schema(schema(partial={"scenario"}), store)
@@ -378,7 +378,7 @@ def test_remove_drops_the_tuples_naming_the_entity(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     base = _root(store)
     other = WorkingRecord(base.record)
@@ -409,7 +409,7 @@ def test_add_group_refuses_a_tuple_naming_a_removed_entity(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     root = _root(store)
     staged = WorkingRecord(root.record)
@@ -459,7 +459,7 @@ def test_a_tuple_an_ancestor_left_dangling_fails_the_next_restatement(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     root = _root(store)
     dangling = empty_child(root)
@@ -476,7 +476,7 @@ def test_set_requires_every_party_to_exist(store):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
+    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     staged = WorkingRecord(_contract_root(store).record)
     contract: dict[str, Any] = {"from": "plant", "to": "nobody"}
@@ -489,7 +489,7 @@ def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     root = _root(store)
     write_schema(schema(partial={"scenario"}), store)
@@ -512,7 +512,7 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     root = _root(store)
     write_schema(schema(partial={"scenario"}), store)
@@ -586,8 +586,8 @@ def test_remove_reaches_a_groups_second_entity_before_and_after_commit(store):
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     root = _contract_root(store)
     assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
@@ -609,7 +609,7 @@ def test_set_addresses_a_groups_fields_by_keyword(store):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/working-record/#set)
+    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
     staged = WorkingRecord(_contract_root(store).record)
     contract: dict[str, Any] = {"from": "plant", "to": "mill"}

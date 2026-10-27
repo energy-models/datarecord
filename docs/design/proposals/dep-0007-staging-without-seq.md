@@ -14,7 +14,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Created | 2026-09-02             |
 | Version | v0.1.0a1               |
 
-Landed in [staging](../working-record.md#staging) and [committing](../working-record.md#edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
+Landed in [staging](../use/editing.md#staging) and [committing](../use/editing.md#edits); this page is kept as the argument for the change rather than as the current description, and those pages are authoritative where the two disagree.
 
 Two departures from the sketch below are worth naming. An axis edit is not delete-then-insert: an axis row's columns are independently editable, so a `set` there **patches its one column in place** (`UPDATE ... FROM`, plus an `INSERT` for a label no row yet holds), which is what keeps a sibling attribute without a completion step — `_complete_axis` was drafted and then dropped for it. And `_axis_layer` stays, reduced to a scan for a `partial` axis and a union with the untouched base labels for one owned whole, rather than going entirely.
 
@@ -24,7 +24,7 @@ Every staging table carries a `_seq`, and every read folds on it. Make each edit
 
 ## What starts it
 
-[Staging](../working-record.md#staging) holds the rule this proposal finishes: **every table is shaped like the file it becomes.** No table satisfies it, because every one carries a `_seq` no file has, and three of the four need a fold to mean anything.
+[Staging](../use/editing.md#staging) holds the rule this proposal finishes: **every table is shaped like the file it becomes.** No table satisfies it, because every one carries a `_seq` no file has, and three of the four need a fold to mean anything.
 
 `_seq` serves four purposes, and they are not the same problem:
 
@@ -61,11 +61,11 @@ The base read is already there — `_stage_axis`'s scalar arm reads `self._base.
 
 That is what retires `_collapsed_axis`'s `max_by(a, _seq) FILTER (WHERE a IS NOT NULL)` — the `FILTER` stops a sibling's NULL from winning, and the `max_by` makes two `set`s commute. With rows complete, both are what the table already holds.
 
-Downstream of it, `_axis_frame`'s outer join and per-column `coalesce` go — they exist to fill an untouched label that would otherwise read as cleared — and `_axis_layer`'s semi-join for a [`partial`](../schema.md#partial-the-granularity-of-an-override) dim goes with them: with only touched labels present and rows complete, **the table's rows are the touch record.**
+Downstream of it, `_axis_frame`'s outer join and per-column `coalesce` go — they exist to fill an untouched label that would otherwise read as cleared — and `_axis_layer`'s semi-join for a [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) dim goes with them: with only touched labels present and rows complete, **the table's rows are the touch record.**
 
 ### `_CARRIED_SEQ`'s job is already done by an anti-join
 
-`_complete_owned_whole` copies base rows into a long staging table so the layer carries an extent it now [owns whole](../schema.md#partial-the-granularity-of-an-override). Those rows are fills, and a real edit on the same coordinate must beat one regardless of arrival order — which is what `_CARRIED_SEQ = 0`, below every edit's, expresses.
+`_complete_owned_whole` copies base rows into a long staging table so the layer carries an extent it now [owns whole](../layers/tree.md#partial-the-granularity-of-an-override). Those rows are fills, and a real edit on the same coordinate must beat one regardless of arrival order — which is what `_CARRIED_SEQ = 0`, below every edit's, expresses.
 
 It never fires. The method's third anti-join drops any coordinate the table already holds, and its key set is the one `_collapsed_inputs` partitions on, so a fill and an edit cannot coexist on one coordinate. Checked against the fixture's three attribute shapes — no `owned_whole` dims, one, and one with breakpoints — the anti-join's `[*scope, *present, "breakpoint"]` and the partition's `input_key ∪ dims ∪ {breakpoint}`, both intersected with the file's columns, are the same set every time.
 
@@ -75,7 +75,7 @@ So the priority class is redundant: the anti-join keeps fills out of occupied co
 
 ### The entity axis joins, and the two collapse modes go with it
 
-`dims/entity.parquet` has a single-label key and its columns are [one indivisible fact](../format.md#the-entity-axis) — a name exists, is of this type, is alive or dead. Delete-then-insert on `entity` gives `remove` then `add` under another type one row by construction, where `_collapsed_entities` folds whole-row to get the same answer today.
+`dims/entity.parquet` has a single-label key and its columns are [one indivisible fact](../storage/format.md#axis-files) — a name exists, is of this type, is alive or dead. Delete-then-insert on `entity` gives `remove` then `add` under another type one row by construction, where `_collapsed_entities` folds whole-row to get the same answer today.
 
 That retires the last place staging folds differently depending on what it is folding. `_collapsed_axis` folds per column and `_collapsed_entities` per row, and the difference is real: an axis row's columns are independently editable, a membership row's are not. Under this proposal neither folds, so the distinction stops being a branch and becomes what it always was — a fact about the data.
 

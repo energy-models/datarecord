@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+- [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
 """
 
 from collections.abc import Iterable, Mapping
@@ -26,12 +26,12 @@ DUCK_TYPES: Mapping[str, DuckDBPyType] = {
 
 Notes
 -----
-- [dtypes](https://energy-models.github.io/datarecord/design/schema/#dtypes)
+- [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
 """
 
 
 def enum_type(labels: Iterable[str]) -> DuckDBPyType:
-    """Return the `ENUM` type of `labels`, in their order: the type of a dim that lists its labels."""
+    """Return the `ENUM` type of `labels`, in their order: the type of a dim with `one_of`."""
     quoted = ", ".join("'" + label.replace("'", "''") + "'" for label in labels)
     return DuckDBPyType(f"ENUM({quoted})")
 

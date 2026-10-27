@@ -28,7 +28,7 @@ DEP 21 is on hold because the session cache moves today's cost of expanding the 
 
 A fold seeded from either does not expand again, so a broadcast also misses every label added after the seed.
 
-A node holding `q = 0.9` for every entity, with a child adding the entity `n`, reads `n` as 0.9 while the node is unmaterialised and as nothing once it is materialised. A label staged in a `WorkingRecord` over the node reads as nothing in both cases. Over 210 random six-layer records, materialising or staging changes one of today's answers in 95 to 128 records, depending on where. [Materialised node caches](../layers.md#materialised-node-caches) promises that materialising changes no answer, and [open questions](../open-questions.md) lists the first two cases.
+A node holding `q = 0.9` for every entity, with a child adding the entity `n`, reads `n` as 0.9 while the node is unmaterialised and as nothing once it is materialised. A label staged in a `WorkingRecord` over the node reads as nothing in both cases. Over 210 random six-layer records, materialising or staging changes one of today's answers in 95 to 128 records, depending on where. [Materialised node caches](../layers/resolution.md#materialised-node-caches) promises that materialising changes no answer, and [open questions](../open-questions.md) lists the first two cases.
 
 ## Specification
 
@@ -47,13 +47,13 @@ breakpoints BOOLEAN
 depth       INTEGER  -- the layer's position in the ancestry, deeper being greater
 ```
 
-A row's named mask is the set of `partial` coordinates its key names, read off which key columns are NULL, and no map persists it. A map persisted before a dim joined `partial` lacks that dim's column, which reads as NULL, so the mask derived from it stays right and adding to `partial` stays [compatible](../schema.md#versioning).
+A row's named mask is the set of `partial` coordinates its key names, read off which key columns are NULL, and no map persists it. A map persisted before a dim joined `partial` lacks that dim's column, which reads as NULL, so the mask derived from it stays right and adding to `partial` stays [compatible](../model/schema.md#versioning).
 
 A layer is folded onto its parent's map in four steps, none of which reads an axis. The parent rows naming a label or tuple that the layer removes by [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md)'s diff are dropped, and a row NULL there never is. The parent rows whose key equals one of the layer's, compared NULL-safe, are dropped. Every parent row of an attribute is dropped where the layer holds a row of that attribute leaving each `partial` coordinate NULL. The layer's rows are then added with its depth. A parent row that a deeper row covers in any other way stays in the map, and the read drops it.
 
 ### Which layer owns a label
 
-A row covers a key where, on each `partial` coordinate the attribute is over, it names the key's label or holds NULL. The deepest layer holding a covering row owns the key. Within that layer, the read keeps at each coordinate the more specific of its rows, and refuses two rows where neither is, as [the broadcast rule](../record.md#the-broadcast-rule) says today. Two layers never share a depth, so across layers the deeper row always wins and nothing is refused.
+A row covers a key where, on each `partial` coordinate the attribute is over, it names the key's label or holds NULL. The deepest layer holding a covering row owns the key. Within that layer, the read keeps at each coordinate the more specific of its rows, and refuses two rows where neither is, as [the broadcast rule](../model/attributes.md#the-broadcast-rule) says today. Two layers never share a depth, so across layers the deeper row always wins and nothing is refused.
 
 ### Reach
 
@@ -87,11 +87,11 @@ A `Workspace` creates a session directory under `TMPDIR` and removes it on `clos
 
 A `WorkingRecord` reads its staged tail on top of the prefix's file. For each `partial` dim or group the tail writes, one or two `LIMIT 1` fetches over the tail's own axis or group rows tell whether it adds or removes labels. The read drops the file's rows owning a removed label. It expands the prefix's as-written rows that are NULL on a dim over that dim's new labels alone, with each dim before it over its remaining prefix labels so that no key is reached twice, and keeps the deepest covering row as above. The tail's rows are expanded against the resolved axes and drop every prefix key they cover by one NULL-safe anti-join on the owned key. A tail that empties an axis or group takes the read without the file, which keeps a NULL row over an empty group reading once.
 
-A file never goes stale while a revision id resolves to the same layers, since [layers are write-once](../layers.md#a-layers-data-is-write-once) and materialising changes no answer.
+A file never goes stale while a revision id resolves to the same layers, since [layers are write-once](../layers/tree.md#a-layers-data-is-write-once) and materialising changes no answer.
 
 ### Files and shared tables
 
-The frozen prefix keeps its owner map as the shared table `owner_map_<rev>` ([a cursor per thread](../read-path.md#a-cursor-per-thread)), onto which a `WorkingRecord` folds its staged layer per read. A materialised node writes its owner map as `resolved/owner_map.parquet`, last, which marks the node as materialised as today.
+The frozen prefix keeps its owner map as the shared table `owner_map_<rev>` ([a cursor per thread](../storage/concurrency.md#a-cursor-per-thread)), onto which a `WorkingRecord` folds its staged layer per read. A materialised node writes its owner map as `resolved/owner_map.parquet`, last, which marks the node as materialised as today.
 
 The file and the shared table store `depth` relative to their node, which holds 0 while its ancestors hold negative depths, and a read shifts it by the node's position in its ancestry. Both are ordered by attribute, so a read of one attribute skips every other attribute's row groups, then by the rest of the key, so two maps holding one attribute's rows hold them in one order. An owner map written by an earlier release is unsupported and not detected, the project being pre-alpha.
 
@@ -183,7 +183,7 @@ Paths are under `src/datarecord/` as they were on the tree the prototypes ran on
 5. `store/cache.py`: `materialise` writes the map through `_persisted`. `store/store.py`: `Workspace` creates and removes the session directory and names a file by `session_file(revision_id, attribute)`.
 6. Tests: three asserting the per-label map assert the read instead. New tests pin a dim joining `partial` over a materialised node, a shared map outliving its ancestry, reach, re-adding, and probes P7 and X4.
 7. `CHANGELOG.md` under `[Unreleased]`: a broadcast reaches every label, a re-added label takes broadcasts again, and `flags` counts a shadowed broadcast.
-8. On landing, update [read path](../read-path.md), [layers](../layers.md), [record](../record.md), [writing](../writing.md), [schema](../schema.md), [format](../format.md), [working record](../working-record.md), [tools](../tools.md), [the index](../index.md), [module layout](../module-layout.md) and the usage page on [layers](../../usage/layers.md) where they describe the owner map, its expansion or its file. In [open questions](../open-questions.md), close the item on a broadcast surviving materialisation, and rewrite the settled item on an attribute reaching every label, since a broadcast is one map row whatever it reaches.
+8. On landing, update [read path](../layers/resolution.md), [layers](../layers/tree.md), [record](../use/reading.md), [writing](../use/writing.md), [schema](../model/schema.md), [format](../storage/format.md), [working record](../use/editing.md), [tools](../tools/index.md), [the index](../index.md), [module layout](../package.md) and the usage page on [layers](../../usage/layers.md) where they describe the owner map, its expansion or its file. In [open questions](../open-questions.md), close the item on a broadcast surviving materialisation, and rewrite the settled item on an attribute reaching every label, since a broadcast is one map row whatever it reaches.
 
 Checks: every probe reads the same materialised or not, staged or committed, and the 210 fuzzed records read the same in all five ways.
 

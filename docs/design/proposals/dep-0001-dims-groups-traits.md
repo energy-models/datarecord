@@ -15,7 +15,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version       | v0.1.0a1                                                                                                                                                             |
 | Superseded-By | [DEP 16](dep-0016-remove-traits.md) (its traits part), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its entity tombstones, and an order the fold generates) |
 
-**This page is the argument, not the design.** What shipped is described by [the schema](../schema.md) — [groups](../schema.md#groups), traits, since removed by [DEP 16](dep-0016-remove-traits.md) — together with [the record format](../format.md) and [the read path](../read-path.md), and those pages are authoritative where the two disagree.
+**This page is the argument, not the design.** What shipped is described by [the schema](../model/schema.md) — [groups](../model/groups.md), traits, since removed by [DEP 16](dep-0016-remove-traits.md) — together with [the record format](../storage/format.md) and [the read path](../layers/resolution.md), and those pages are authoritative where the two disagree.
 The `on` mapping this page landed has since been [absorbed into groups as `into`](dep-0002-groups.md), so its half of the argument describes a construct that no longer exists.
 
 It is kept because the reasoning is not reproduced there: why `keys` was deleted rather than replaced, why `bus` stopped being structural, and what the [worked example](#a-pypsa-network-in-full) exposed about vocabulary collisions.
@@ -32,10 +32,10 @@ And `set` grew no `bus=` parameter: every coordinate but `entity` goes through `
 An attribute that belongs to no component type has nowhere to live.
 
 Snapshot weightings are the case. A weighting is a number per snapshot — it varies over the time axis and over nothing else, and it is not a property of any generator, bus or line.
-Today [`Schema.attributes`](../schema.md#attributespec) is `component type -> attribute -> spec`, so there is no key such a thing could be filed under.
+Today [`Schema.attributes`](../model/attributes.md#attributespec) is `component type -> attribute -> spec`, so there is no key such a thing could be filed under.
 It is carried instead as an extra column on the axis frame, undeclared: `dims/snapshots.parquet` gains an `objective` column, and the PyPSA tool's import half recognises it by name.
 
-That works and it is invisible. The column has no `dtype`, no `default`, no `unit`, no `description`; it appears in no [`flags`](../record.md#flags); it does not resolve across layers; a reader that is not this tool cannot know it is an attribute at all.
+That works and it is invisible. The column has no `dtype`, no `default`, no `unit`, no `description`; it appears in no [`flags`](../use/reading.md#flags); it does not resolve across layers; a reader that is not this tool cannot know it is an attribute at all.
 The same holds for the scenario weightings the fold already carries alongside the `scenario` axis.
 
 The narrow fix is a place to declare axis payload columns.
@@ -67,15 +67,15 @@ dims/entity.parquet     entity | component_type | deleted
 
 Four things move there, each of which is currently derived or enforced elsewhere:
 
-**Uniqueness becomes structural.** One row per `entity` in one file, so the collision [name uniqueness](../format.md#entity-is-unique-across-types) rejects at two call sites cannot be represented.
+**Uniqueness becomes structural.** One row per `entity` in one file, so the collision [name uniqueness](../storage/format.md#a-label-is-unique-within-its-dim) rejects at two call sites cannot be represented.
 
 **`entity -> component_type` is a column read.** Today it is "the file a name's row is in", so building the components map means globbing every type's file and injecting the type per arm.
-The [owner map](../read-path.md#owner-map) already treats `component_type` as carried-not-keyed, functionally determined by the key — which is the shape of a payload column. This puts it where that shape says it belongs.
+The [owner map](../layers/resolution.md#owner-map) already treats `component_type` as carried-not-keyed, functionally determined by the key — which is the shape of a payload column. This puts it where that shape says it belongs.
 
 **Tombstones get one home.** Deleting a component is deleting its `entity` row, rather than a `deleted` flag globbed across per-type files.
 
 **Order is generated, not stored.**
-`order_key` is a column of [the owner map](../read-path.md#owner-map), never of a layer's parquet: the fold computes it as `max(parent) + row_number() OVER (ORDER BY _row)` per layer, from that file's own row order, and it persists only where a node's maps are [materialised](../layers.md#materialised-node-caches).
+`order_key` is a column of [the owner map](../layers/resolution.md#owner-map), never of a layer's parquet: the fold computes it as `max(parent) + row_number() OVER (ORDER BY _row)` per layer, from that file's own row order, and it persists only where a node's maps are [materialised](../layers/resolution.md#materialised-node-caches).
 Assigned **before** the union, because `row_number()` over what `UNION ALL` emits has no defined order to recover.
 Nothing sorts eagerly — a consumer wanting order applies `ORDER BY order_key`.
 
@@ -84,9 +84,9 @@ That is one rule for every table that folds, rather than a components-and-connec
 
 The test for the rest is **does this table gain rows across layers?**
 A [group](#groups) does, and its map keeps `order_key` for the load-bearing reason the read path records: a framework reconstructing positional ports numbers them by this order, and a reshuffle silently moves an existing connection's attributes to a different port.
-An ordinary dim does not — an axis is [not partial](../schema.md#partial-the-granularity-of-an-override), so a layer restating it restates it whole and file order survives untouched.
+An ordinary dim does not — an axis is [not partial](../layers/tree.md#partial-the-granularity-of-an-override), so a layer restating it restates it whole and file order survives untouched.
 
-What remains in `dims/components/<Type>.parquet` is then only [what varies over nothing](../format.md#where-a-value-lives) — the non-varying attribute values, partitioned by type.
+What remains in `dims/components/<Type>.parquet` is then only [what varies over nothing](../storage/format.md#where-a-value-lives) — the non-varying attribute values, partitioned by type.
 The partition is justified by the one thing that genuinely is per type: the attribute vocabulary, since every type has a different column set.
 
 An attribute with no `entity` in its `dims` needs no owner and no special case:
@@ -129,7 +129,7 @@ attributes = {
 
 ### Where a value lives
 
-[Today](../format.md#where-a-value-lives) the split is `bool(spec.dims)`: varying over nothing puts an attribute in `dims/components/<Type>.parquet` as a column, anything else in `inputs/<attr>.parquet` as long rows.
+[Today](../storage/format.md#where-a-value-lives) the split is `bool(spec.dims)`: varying over nothing puts an attribute in `dims/components/<Type>.parquet` as a column, anything else in `inputs/<attr>.parquet` as long rows.
 That test breaks the moment `entity` is a dim — `capacity` gains `dims={"entity"}`, `bool` says varying, and every non-varying attribute silently moves file.
 
 The rule that replaces it: **an attribute naming exactly one addressing coordinate and nothing else is a column on that thing's own table.**
@@ -152,7 +152,7 @@ That last one is what the [opening problem](#what-starts-it) actually was.
 Declaring them a second time on the `Group` or the `Dimension` would be two ways to say it, disagreeing eventually.
 
 `role` follows from this rather than needing an exception: it becomes `AttributeSpec(dtype="VARCHAR", dims={"connection"})`.
-[Today](../record.md#connections) it is described as describing the connection and identifying nothing, and it stays exactly that — a non-key column of the group's table — but it gains a declared type, a description, and a place in [`shape()`](#flags-is-not-enough), none of which it has now.
+[Today](../model/groups.md#attributes-over-a-group) it is described as describing the connection and identifying nothing, and it stays exactly that — a non-key column of the group's table — but it gains a declared type, a description, and a place in [`shape()`](#flags-is-not-enough), none of which it has now.
 
 ## Traits
 
@@ -192,7 +192,7 @@ component_types = {
 }
 ```
 
-`Schema.attributes_for(ctype)` — the union of subscribed traits plus own attributes — is what [`flags`](../record.md#flags) and the [`add` routing](../working-record.md) read, so everything downstream is unchanged.
+`Schema.attributes_for(ctype)` — the union of subscribed traits plus own attributes — is what [`flags`](../use/reading.md#flags) and the [`add` routing](../use/editing.md) read, so everything downstream is unchanged.
 
 Two reasons this is a trait rather than a bare subscription list:
 
@@ -232,7 +232,7 @@ The fixed prefix becomes `entity | attribute | breakpoint | value`, and every co
 `entity` is the one dim the format still knows by name, and not merely because it is an axis: it is **the axis the component types partition**. `dims/entity.parquet` carries `component_type`, which decides an attribute vocabulary, and `dims/components/<Type>.parquet` is keyed by it. Nothing else in the schema does that.
 
 **A group in `dims` expands to its coordinates.** `dims={"connection", "snapshot"}` means the attribute's effective columns are `entity | bus | snapshot`, the group contributing both of its own.
-So the fold's key does not vary per attribute: [`input_dims`](../schema.md#partial-the-granularity-of-an-override) stays one fixed tuple over every attribute, now the union of plain dims and group _coordinate_ names rather than dim names alone.
+So the fold's key does not vary per attribute: [`input_dims`](../layers/tree.md#partial-the-granularity-of-an-override) stays one fixed tuple over every attribute, now the union of plain dims and group _coordinate_ names rather than dim names alone.
 An attribute not addressed by a coordinate writes NULL there, exactly as one not varying over a dim does today.
 
 Coordinate names rather than dim names is what makes `corridor` work: `from` and `to` both draw on `entity`, so a key built from dims would collapse them into one column.
@@ -243,12 +243,12 @@ Coordinate names rather than dim names is what makes `corridor` work: `from` and
 That is the rule today's `bus` gets by being excluded from expansion, stated as a rule rather than an exception: a NULL `bus` on a connection attribute means "every connection of this entity", which is the group's rows, not the whole bus axis.
 
 This closes [whether `within` should subsume `bus`](../open-questions.md) as _no — groups do it_.
-The blocker recorded there is that `bus` inverts the NULL rule. That premise does not survive: expansion is already governed by whether a dim is in the fold's key set, and [`input_dims`](../schema.md#partial-the-granularity-of-an-override) is already `dims ∩ partial` — a filter over declared dims, not every declared dim. A non-partial dim like `timestep` is never expanded either, and an attribute whose `dims` omit `scenario` writes a NULL there that means "inapplicable", not "all scenarios".
+The blocker recorded there is that `bus` inverts the NULL rule. That premise does not survive: expansion is already governed by whether a dim is in the fold's key set, and [`input_dims`](../layers/tree.md#partial-the-granularity-of-an-override) is already `dims ∩ partial` — a filter over declared dims, not every declared dim. A non-partial dim like `timestep` is never expanded either, and an attribute whose `dims` omit `scenario` writes a NULL there that means "inapplicable", not "all scenarios".
 So the behaviour that "makes a dim a dim" is not uniform today, and `bus` is not an exception to it.
 
 ## The protocol
 
-[`Record`](../record.md) names `connections` as a member of its own, keyed by component type.
+[`Record`](../use/reading.md) names `connections` as a member of its own, keyed by component type.
 Once connections are one group among several that is wrong twice — a second group has nowhere to go, and `connections` privileges one instance of a general mechanism.
 
 ```python
@@ -299,9 +299,9 @@ class Shape:
 **It is cheap because the owner map already computes it.**
 The `varies`/`broadcast` structs are built in the same `aggregate` as ownership, from a `_raw_<dim>` column carried alongside each expanded dim, so a struct field per coordinate costs nothing beyond the group-by that is already running.
 `types` is the same aggregation over the components map's `component_type`, which that map already carries as a column.
-So `shape()` for a `LayeredRecord` is a projection of the folded map — no attribute file is opened, which is the property [`flags`](../record.md#flags) was introduced for and the reason to put this beside it rather than inside it.
+So `shape()` for a `LayeredRecord` is a projection of the folded map — no attribute file is opened, which is the property [`flags`](../use/reading.md#flags) was introduced for and the reason to put this beside it rather than inside it.
 
-A `DirectoryRecord` pays a `GROUP BY` scan over `inputs/`, as it already does for `flags` — [the same asymmetry](../read-path.md#one-record-over-one-fold), not a new one.
+A `DirectoryRecord` pays a `GROUP BY` scan over `inputs/`, as it already does for `flags` — [the same asymmetry](../layers/resolution.md#one-record-over-one-fold), not a new one.
 
 **Open:** whether `flags(ctype)` survives at all, or becomes `shape()` filtered by `types`.
 The two would then differ only in scoping, and one method answering both is smaller — but `flags` is per type _by construction_ (its union stops at the type boundary deliberately), and a filtered `shape()` would have to reproduce that. Not settled here.
@@ -330,7 +330,7 @@ dims/state.parquet      state   | country | ...         the same, plus the mappi
 dims/bus.parquet        bus     | state   | v_nom | ...
 ```
 
-A mapping has its **own axis file** rather than being only a column. That is what gives it order ([axis order](../record.md#axis-order) is a file's row order) and a place for per-country data — a CO2 budget is a property of the country, and with no file it would have nowhere to go.
+A mapping has its **own axis file** rather than being only a column. That is what gives it order ([axis order](../model/dims.md#axis-order) is a file's row order) and a place for per-country data — a CO2 budget is a property of the country, and with no file it would have nowhere to go.
 Those columns are declared like any other: `co2_budget` is an attribute with `dims={"country"}`, which [the file-split rule](#where-a-value-lives) puts on `dims/country.parquet`.
 
 Being a `Dimension` subclass, a mapping **is a dim**: `Schema.dims` includes both, one namespace, name collisions across the two declaration sections are an error. An attribute may be addressed by it, and then carries a literal `country` column.
@@ -354,7 +354,7 @@ Nesting versus classification. `within` cannot express `country`, and a mapping 
 
 ## `keys` goes
 
-`Dimension.keys` declared that an entity exists _per value_ of a dim — a generator present in scenario `high` and absent from `low` — which put the dim in the entity table's key and scoped its tombstones. It is [now deleted](../schema.md#existence-does-not-vary-along-a-dim); what follows is why.
+`Dimension.keys` declared that an entity exists _per value_ of a dim — a generator present in scenario `high` and absent from `low` — which put the dim in the entity table's key and scoped its tombstones. It is [now deleted](../model/dims.md); what follows is why.
 
 It cannot survive this proposal, and not merely because it is hard to grasp.
 `KeyKind` is the closed set `{"component", "connection"}`, and `Schema._keyed(kind)` derives `component_dims` and `connection_dims` by asking every dim which of those two tables it keys.
@@ -518,7 +518,7 @@ Nested under a component type those are three unrelated attributes; flat, they a
 
 The example renames them to `capacity`, which is what lets `capacity` and its bounds sit in the trait alongside `capital_cost`. That is the outcome to want — an equation in lpspec asking for "the capacity of anything investable" gets one name — and it implies: **the record's vocabulary is not PyPSA's**, and the tool renames on the way in and out.
 
-**Renaming happens tool-side, and traits declare no roles.** The [schema a tool carries](../tools.md) already maps a framework's attribute names to a record's, per component type, so `p_nom -> capacity` for a Generator and `s_nom -> capacity` for a Line is what that mechanism is for.
+**Renaming happens tool-side, and traits declare no roles.** The [schema a tool carries](../tools/index.md) already maps a framework's attribute names to a record's, per component type, so `p_nom -> capacity` for a Generator and `s_nom -> capacity` for a Line is what that mechanism is for.
 A trait naming a _role_ an attribute fills would put the same mapping in the record's schema instead, which is one more indirection for something the tool seam already answers — and it would mean an equation dispatching on `capacity` has to resolve a role before it can read a column.
 
 **Collisions become representable rather than silent.** `Bus.x` is a coordinate, `Line.x` is reactance; `Bus.type` and `Line.type` are unrelated standard-type references.
@@ -528,9 +528,9 @@ Two declared dtypes and one column is a silent wrong read, and nothing rejects i
 Flattening cannot represent the disagreement, which is why the collision surfaces at declaration time instead.
 
 **The record does not resolve them.** One attribute name means one thing record-wide; two concepts wanting the same name is a limitation the record states rather than a problem it solves.
-A tool reconciles on its own side — prefixing (`line_x`), renaming to something meaningful (`reactance`), or refusing the network in `verify` — which is [the same seam](../tools.md) that renames `p_nom` to `capacity` above, and the same one that already reports a framework scoping names per type against a record scoping them record-wide.
+A tool reconciles on its own side — prefixing (`line_x`), renaming to something meaningful (`reactance`), or refusing the network in `verify` — which is [the same seam](../tools/index.md) that renames `p_nom` to `capacity` above, and the same one that already reports a framework scoping names per type against a record scoping them record-wide.
 
-No qualified names, no per-type namespaces: both would put the component type back into an attribute's address, which is exactly what [name uniqueness](../format.md#entity-is-unique-across-types) removed and what makes one file per attribute possible.
+No qualified names, no per-type namespaces: both would put the component type back into an attribute's address, which is exactly what [name uniqueness](../storage/format.md#a-label-is-unique-within-its-dim) removed and what makes one file per attribute possible.
 The example accordingly removes `type` from every type and `x`/`y` from `Bus` rather than inventing a mechanism.
 
 **Per-port attributes.** `Link.efficiency2`, `bus0`/`bus1` collapse to a stem addressed by the `connection` group, which the example shows for `efficiency` but not for the `bus0`/`bus1` columns themselves — those become group _rows_, not attributes, and the example does not show the group table.
@@ -541,7 +541,7 @@ Outputs are deliberately left out of this proposal.
 
 Rough, and deliberately so — the design is not finished, and the ordering below is what would make each step testable rather than a commitment.
 
-**Docs first, code after.** Every step is a schema change and [`version`](../schema.md#versioning) bumps once for the whole thing; all of it is incompatible, so there is no migration path and a record is rewritten rather than upgraded.
+**Docs first, code after.** Every step is a schema change and [`version`](../model/schema.md#versioning) bumps once for the whole thing; all of it is incompatible, so there is no migration path and a record is rewritten rather than upgraded.
 
 Two breaks in `mutable.py` are worth naming before they are met, because neither announces itself:
 
@@ -575,9 +575,9 @@ Its tests go with it, in the same step rather than ahead of it — the behaviour
 
 6. **[The protocol](#the-protocol).** `connections` becomes `groups`, `shape()` joins `flags`. Lands with 5, since `groups` has nothing to be keyed by until groups exist — but it is the change every consumer sees, so it is worth calling out separately from the fold work that forces it.
 
-7. **[`WorkingRecord`](../working-record.md) reaches the new attribute kinds.** `set(attr, value)` with `names=None` resolves targets through the types declaring the attribute, so a record-level attribute — no `entity` in its `dims` — resolves to no types, no names, and stages nothing at all rather than failing. And `bus=` is a single scalar parameter, which addresses the `connection` group but cannot spell a two-coordinate group like `corridor`. Both need a path that does not go through a component type. The compensation is that `_require_unique` and the name→type scan over every type's frame collapse to one read of `dims/entity.parquet`.
+7. **[`WorkingRecord`](../use/editing.md) reaches the new attribute kinds.** `set(attr, value)` with `names=None` resolves targets through the types declaring the attribute, so a record-level attribute — no `entity` in its `dims` — resolves to no types, no names, and stages nothing at all rather than failing. And `bus=` is a single scalar parameter, which addresses the `connection` group but cannot spell a two-coordinate group like `corridor`. Both need a path that does not go through a component type. The compensation is that `_require_unique` and the name→type scan over every type's frame collapse to one read of `dims/entity.parquet`.
 
-The long schema's columns become schema-derived at step 4 and stay that way. `union_by_name` is what makes files readable across shapes, so the fixed column order in [the long schema](../format.md#the-long-schema) matters less than its phrasing suggests — but `STRUCTURAL_TYPES` fixing `name` and `bus` does have to go.
+The long schema's columns become schema-derived at step 4 and stay that way. `union_by_name` is what makes files readable across shapes, so the fixed column order in [the long schema](../storage/format.md#the-long-schema) matters less than its phrasing suggests — but `STRUCTURAL_TYPES` fixing `name` and `bus` does have to go.
 
 Not in any step, and needed before step 1 ships against a real network: **the PyPSA tool's trait table**. Traits are authored, so someone writes the registry-to-trait mapping and the `p_nom -> capacity` renames for every exported type, and maintains them as PyPSA's registry moves. The [example](#a-pypsa-network-in-full) sketches four traits; a real one covers every type the tool exports.
 
@@ -589,7 +589,7 @@ Closes, in [open questions](../open-questions.md):
 
 Decided here, rather than left open:
 
-- **Vocabulary reconciliation is tool-side.** Renaming `p_nom`/`s_nom`/`e_nom` to `capacity` happens in [the tool's schema](../tools.md); traits declare no roles.
+- **Vocabulary reconciliation is tool-side.** Renaming `p_nom`/`s_nom`/`e_nom` to `capacity` happens in [the tool's schema](../tools/index.md); traits declare no roles.
 - **Genuine collisions are a limitation, not a mechanism.** One attribute name means one thing record-wide; `Bus.x` versus `Line.x` is a tool's problem to work around by prefixing or renaming.
 
 Opens:

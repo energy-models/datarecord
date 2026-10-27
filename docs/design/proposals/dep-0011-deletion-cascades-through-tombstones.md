@@ -16,7 +16,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version       | Unreleased                                                                                                             |
 | Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its removal by tombstone, and dead labels as winning tombstones) |
 
-A label is removed by a tombstone, and only by a tombstone: removing one tombstones every [group](../schema.md#groups) tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.
+A label is removed by a tombstone, and only by a tombstone: removing one tombstones every [group](../model/groups.md) tuple naming it, a layer leaving such a tuple alive is refused, and nothing is inferred on read from a dead label a row refers to.
 
 This supersedes the no-cascade rule [the struct proposal](dep-0010-a-group-is-a-struct-column.md#one-behaviour-that-must-not-move) kept — "the tuples stand, dangling" — for group tuples; values still never cascade further than the rules below say.
 
@@ -45,7 +45,7 @@ And the deletion paths go through `entity_coordinates` and `Schema.entity_fields
 
 ## Dead labels survive materialisation
 
-A [materialised node](../layers.md#materialised-node-caches) caches the owner map and the folded axes and groups, not value rows, and its folded relations are tombstone-free.
+A [materialised node](../layers/resolution.md#materialised-node-caches) caches the owner map and the folded axes and groups, not value rows, and its folded relations are tombstone-free.
 So rule 4 cannot take its dead labels from the layers above the base alone:
 
 - layer 1 sets `x(g1, bus0)`, with `connection` outside `partial`;
