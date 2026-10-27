@@ -594,35 +594,7 @@
   <span class="md-ellipsis">
     
   
-    The schema
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="layers/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Layers
+    Declaring a schema
   
 
     
@@ -671,14 +643,42 @@
   
   
     <li class="md-nav__item">
-      <a href="writing/" class="md-nav__link">
+      <a href="layers/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Writing
+    Branching and layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
   
 
     
@@ -706,7 +706,7 @@
   <span class="md-ellipsis">
     
   
-    Tools
+    The PyPSA tool
   
 
     
@@ -738,12 +738,6 @@
       
         
           
-        
-      
-        
-      
-        
-      
         
       
         
@@ -881,8 +875,6 @@
       
         
       
-        
-      
     
     
     
@@ -947,47 +939,6 @@
     
   
   
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#installation" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Installation
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#workspaces-and-stores" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Workspaces and stores
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#the-pages" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        The pages
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
 </nav>
                   </div>
                 </div>
@@ -1013,29 +964,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h1>
-<p>How to use the package. <a href="../design/">Design</a> is what it is and why;
-<a href="../api/">API Reference</a> is the generated signatures.</p>
-<h2 id="installation">Installation<a class="headerlink" href="#installation" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>datarecord<span class="w">           </span><span class="c1"># core</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pip<span class="w"> </span>install<span class="w"> </span>datarecord<span class="o">[</span>pypsa<span class="o">]</span><span class="w">    </span><span class="c1"># with the PyPSA tool</span>
-</code></pre></div>
-<p>Or with conda/mamba, from conda-forge:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>conda<span class="w"> </span>install<span class="w"> </span>-c<span class="w"> </span>conda-forge<span class="w"> </span>datarecord
-</code></pre></div>
-<h2 id="workspaces-and-stores">Workspaces and stores<a class="headerlink" href="#workspaces-and-stores" title="Permanent link">&para;</a></h2>
-<p>A <code>Workspace</code> holds the DuckDB database and reaches files; a <code>Store</code> is one
-location — its <a href="../design/schema/#one-schema-per-record">schema</a>, its
-revisions, its layers — on a workspace several stores share
-(<a href="../design/layers/#the-store">design</a>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>  <span class="c1"># ":memory:" by default</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">store</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"/data/my-record"</span><span class="p">)</span>  <span class="c1"># absolute; never empty</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone directory</span>
-</code></pre></div>
-<p><code>ws.con</code> is the calling thread's DuckDB cursor, so one workspace serves every
-thread; a frame belongs to the thread that built it.</p>
-<h2 id="the-pages">The pages<a class="headerlink" href="#the-pages" title="Permanent link">&para;</a></h2>
+<p>These pages show how to use the package, organised by task. <a href="../design/">Design</a> states what a record is and why. <a href="../api/">API Reference</a> holds the generated signatures.</p>
 <table>
 <thead>
 <tr>
@@ -1046,27 +975,27 @@ thread; a frame belongs to the thread that built it.</p>
 <tbody>
 <tr>
 <td><a href="reading/">Reading a record</a></td>
-<td>the <code>Record</code> protocol, <code>properties</code>, <code>flags</code></td>
+<td>the <code>RecordLike</code> protocol, <code>properties</code>, <code>flags</code></td>
 </tr>
 <tr>
-<td><a href="schema/">The schema</a></td>
-<td>declaring dims, properties and attributes</td>
-</tr>
-<tr>
-<td><a href="layers/">Layers</a></td>
-<td>revisions, branching, materialising</td>
+<td><a href="schema/">Declaring a schema</a></td>
+<td>dims, multi-dims, properties and attributes</td>
 </tr>
 <tr>
 <td><a href="editing/">Editing</a></td>
 <td><code>WorkingRecord</code>: <code>set</code>, <code>add</code>, <code>edits</code></td>
 </tr>
 <tr>
-<td><a href="writing/">Writing</a></td>
-<td><code>store.root</code>, <code>rev.child</code>, <code>ws.write</code></td>
+<td><a href="layers/">Branching and layers</a></td>
+<td>revisions, branching, materialising, writing a layer</td>
 </tr>
 <tr>
-<td><a href="tools/">Tools</a></td>
-<td>consuming a record from a modelling framework</td>
+<td><a href="storage/">Storage</a></td>
+<td>workspaces, stores, files local and remote, processes</td>
+</tr>
+<tr>
+<td><a href="tools/">The PyPSA tool</a></td>
+<td>consuming a record from PyPSA and writing results back</td>
 </tr>
 </tbody>
 </table>

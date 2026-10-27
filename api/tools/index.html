@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/api/tools/">
       
       
-        <link rel="prev" href="../mutable/">
+        <link rel="prev" href="../store/">
       
       
       
@@ -25,7 +25,7 @@
     
     
       
-        <title>Tools - datarecord</title>
+        <title>Frameworks - datarecord</title>
       
     
     
@@ -116,7 +116,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Tools
+              Frameworks
             
           </span>
         </div>
@@ -564,12 +564,6 @@
       
         
       
-        
-      
-        
-      
-        
-      
     
     
     
@@ -691,8 +685,6 @@
       
         
       
-        
-      
     
     
     
@@ -757,34 +749,6 @@
   
   
     <li class="md-nav__item">
-      <a href="../record/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Record
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
       <a href="../schema/" class="md-nav__link">
         
   
@@ -792,7 +756,7 @@
   <span class="md-ellipsis">
     
   
-    Schema
+    The data model
   
 
     
@@ -812,15 +776,39 @@
   
   
   
-    <li class="md-nav__item">
-      <a href="../layered/" class="md-nav__link">
+    
+    
+      
         
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../record/" class="md-nav__link">
+      
   
   
   <span class="md-ellipsis">
     
   
-    Layered
+    Using a record
   
 
     
@@ -828,7 +816,13 @@
   
   
 
-      </a>
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
     </li>
   
 
@@ -841,14 +835,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../mutable/" class="md-nav__link">
+      <a href="../store/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    WorkingRecord
+    Storage
   
 
     
@@ -885,7 +879,7 @@
   <span class="md-ellipsis">
     
   
-    Tools
+    Frameworks
   
 
     
@@ -903,7 +897,7 @@
   <span class="md-ellipsis">
     
   
-    Tools
+    Frameworks
   
 
     
@@ -978,17 +972,6 @@
     <span class="md-ellipsis">
       
         <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;to_datarecord
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#datarecord.tools.base.Tool.results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;results
       
     </span>
   </a>
@@ -1237,17 +1220,6 @@
   
 </li>
         
-          <li class="md-nav__item">
-  <a href="#datarecord.tools.base.Tool.results" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        <code class="doc-symbol doc-symbol-toc doc-symbol-method"></code>&nbsp;results
-      
-    </span>
-  </a>
-  
-</li>
-        
       </ul>
     </nav>
   
@@ -1483,7 +1455,7 @@ exists.</p>
 
 
 <a href="#datarecord.tools.base.Tool.requires" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">requires</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.record.RecordLike)" href="../record/#datarecord.record.RecordLike">RecordLike</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Requirements
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">requires</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Requirements
 
 
   
@@ -1501,21 +1473,21 @@ schema.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-276">276</a></span>
-<span class="normal"><a href="#__codelineno-0-277">277</a></span>
-<span class="normal"><a href="#__codelineno-0-278">278</a></span>
-<span class="normal"><a href="#__codelineno-0-279">279</a></span>
-<span class="normal"><a href="#__codelineno-0-280">280</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-280">280</a></span>
 <span class="normal"><a href="#__codelineno-0-281">281</a></span>
 <span class="normal"><a href="#__codelineno-0-282">282</a></span>
-<span class="normal"><a href="#__codelineno-0-283">283</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-276" name="__codelineno-0-276"></a><span class="k">def</span><span class="w"> </span><span class="nf">requires</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span>
-<a id="__codelineno-0-277" name="__codelineno-0-277"></a><span class="w">    </span><span class="sd">"""What this tool needs from `record` to build a model.</span>
-<a id="__codelineno-0-278" name="__codelineno-0-278"></a>
-<a id="__codelineno-0-279" name="__codelineno-0-279"></a><span class="sd">    Record-dependent, not a constant: which attributes are required</span>
-<a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="sd">    follows the categories the record's labels have and its declared</span>
-<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="sd">    schema.</span>
-<a id="__codelineno-0-282" name="__codelineno-0-282"></a><span class="sd">    """</span>
-<a id="__codelineno-0-283" name="__codelineno-0-283"></a>    <span class="o">...</span>
+<span class="normal"><a href="#__codelineno-0-283">283</a></span>
+<span class="normal"><a href="#__codelineno-0-284">284</a></span>
+<span class="normal"><a href="#__codelineno-0-285">285</a></span>
+<span class="normal"><a href="#__codelineno-0-286">286</a></span>
+<span class="normal"><a href="#__codelineno-0-287">287</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-280" name="__codelineno-0-280"></a><span class="k">def</span><span class="w"> </span><span class="nf">requires</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span>
+<a id="__codelineno-0-281" name="__codelineno-0-281"></a><span class="w">    </span><span class="sd">"""What this tool needs from `record` to build a model.</span>
+<a id="__codelineno-0-282" name="__codelineno-0-282"></a>
+<a id="__codelineno-0-283" name="__codelineno-0-283"></a><span class="sd">    Record-dependent, not a constant: which attributes are required</span>
+<a id="__codelineno-0-284" name="__codelineno-0-284"></a><span class="sd">    follows the categories the record's labels have and its declared</span>
+<a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="sd">    schema.</span>
+<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="sd">    """</span>
+<a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1530,7 +1502,7 @@ schema.</p>
 
 
 <a href="#datarecord.tools.base.Tool.verify" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">verify</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.record.RecordLike)" href="../record/#datarecord.record.RecordLike">RecordLike</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Requirements
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">verify</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Requirements
 
 
   
@@ -1545,11 +1517,11 @@ schema.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-285">285</a></span>
-<span class="normal"><a href="#__codelineno-0-286">286</a></span>
-<span class="normal"><a href="#__codelineno-0-287">287</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-285" name="__codelineno-0-285"></a><span class="k">def</span><span class="w"> </span><span class="nf">verify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span>
-<a id="__codelineno-0-286" name="__codelineno-0-286"></a><span class="w">    </span><span class="sd">"""What `record` fails to supply; falsy when the record is usable."""</span>
-<a id="__codelineno-0-287" name="__codelineno-0-287"></a>    <span class="o">...</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-289">289</a></span>
+<span class="normal"><a href="#__codelineno-0-290">290</a></span>
+<span class="normal"><a href="#__codelineno-0-291">291</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="k">def</span><span class="w"> </span><span class="nf">verify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span>
+<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="w">    </span><span class="sd">"""What `record` fails to supply; falsy when the record is usable."""</span>
+<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1564,7 +1536,7 @@ schema.</p>
 
 
 <a href="#datarecord.tools.base.Tool.build" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">build</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.record.RecordLike)" href="../record/#datarecord.record.RecordLike">RecordLike</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Any">Any</span></span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">build</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="typing.Any">Any</span></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -1574,11 +1546,11 @@ schema.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-289">289</a></span>
-<span class="normal"><a href="#__codelineno-0-290">290</a></span>
-<span class="normal"><a href="#__codelineno-0-291">291</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-289" name="__codelineno-0-289"></a><span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
-<a id="__codelineno-0-290" name="__codelineno-0-290"></a><span class="w">    </span><span class="sd">"""The tool's model object, built from the resolved record."""</span>
-<a id="__codelineno-0-291" name="__codelineno-0-291"></a>    <span class="o">...</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-293">293</a></span>
+<span class="normal"><a href="#__codelineno-0-294">294</a></span>
+<span class="normal"><a href="#__codelineno-0-295">295</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span>
+<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="w">    </span><span class="sd">"""The tool's model object, built from the resolved record."""</span>
+<a id="__codelineno-0-295" name="__codelineno-0-295"></a>    <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1594,8 +1566,12 @@ schema.</p>
 
 <a href="#datarecord.tools.base.Tool.to_datarecord" class="headerlink" title="Permanent link">&para;</a></h3>
 <div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">to_datarecord</span><span class="p">(</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">model</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n"><span title="duckdb.DuckDBPyConnection">DuckDBPyConnection</span></span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.record.RecordLike)" href="../record/#datarecord.record.RecordLike">RecordLike</a></span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">model</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">con</span><span class="p">:</span> <span class="n"><span title="duckdb.DuckDBPyConnection">DuckDBPyConnection</span></span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">results_only</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">base</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a></span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
@@ -1625,12 +1601,70 @@ shape is exactly what a tool knows and the record layer does not.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>The connection the frames are planned on - in practice <code>ws.con</code> of
+                <p>The connection the relations are planned on - in practice <code>ws.con</code> of
 the workspace that will write them.</p>
               </div>
             </td>
             <td>
                 <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>results_only</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Present only what a solve produced - its result attributes and the
+intermediates they need - as a thin layer to write as a child of
+<code>base</code>.</p>
+              </div>
+            </td>
+            <td>
+                  <code>False</code>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>base</code>
+            </td>
+            <td>
+                  <code><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a> | None</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>The record <code>model</code> was built from: required with <code>results_only</code>,
+refused without it.</p>
+              </div>
+            </td>
+            <td>
+                  <code>None</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
+
+
+<p><span class="doc-section-title">Raises:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th>Description</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                  <code><span title="ValueError">ValueError</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>If <code>base</code> is given without <code>results_only</code>, or missing with it.</p>
+              </div>
             </td>
           </tr>
       </tbody>
@@ -1640,17 +1674,14 @@ the workspace that will write them.</p>
 <details class="note" open>
   <summary>Notes</summary>
   <ul>
-<li><a href="https://energy-models.github.io/datarecord/design/format/">the record format</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/storage/format/">the record format</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results">writing results</a></li>
 </ul>
 </details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-293">293</a></span>
-<span class="normal"><a href="#__codelineno-0-294">294</a></span>
-<span class="normal"><a href="#__codelineno-0-295">295</a></span>
-<span class="normal"><a href="#__codelineno-0-296">296</a></span>
-<span class="normal"><a href="#__codelineno-0-297">297</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-297">297</a></span>
 <span class="normal"><a href="#__codelineno-0-298">298</a></span>
 <span class="normal"><a href="#__codelineno-0-299">299</a></span>
 <span class="normal"><a href="#__codelineno-0-300">300</a></span>
@@ -1662,100 +1693,9 @@ the workspace that will write them.</p>
 <span class="normal"><a href="#__codelineno-0-306">306</a></span>
 <span class="normal"><a href="#__codelineno-0-307">307</a></span>
 <span class="normal"><a href="#__codelineno-0-308">308</a></span>
-<span class="normal"><a href="#__codelineno-0-309">309</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-293" name="__codelineno-0-293"></a><span class="k">def</span><span class="w"> </span><span class="nf">to_datarecord</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RecordLike</span><span class="p">:</span>
-<a id="__codelineno-0-294" name="__codelineno-0-294"></a><span class="w">    </span><span class="sd">"""`model` presented as a layer `write_layer` can persist.</span>
-<a id="__codelineno-0-295" name="__codelineno-0-295"></a>
-<a id="__codelineno-0-296" name="__codelineno-0-296"></a><span class="sd">    The inverse of `build`. Framework-specific: undoing a framework's own</span>
-<a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="sd">    shape is exactly what a tool knows and the record layer does not.</span>
-<a id="__codelineno-0-298" name="__codelineno-0-298"></a>
-<a id="__codelineno-0-299" name="__codelineno-0-299"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-300" name="__codelineno-0-300"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-301" name="__codelineno-0-301"></a><span class="sd">    con</span>
-<a id="__codelineno-0-302" name="__codelineno-0-302"></a><span class="sd">        The connection the frames are planned on - in practice `ws.con` of</span>
-<a id="__codelineno-0-303" name="__codelineno-0-303"></a><span class="sd">        the workspace that will write them.</span>
-<a id="__codelineno-0-304" name="__codelineno-0-304"></a>
-<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-306" name="__codelineno-0-306"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    - [the record format](https://energy-models.github.io/datarecord/design/format/)</span>
-<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    """</span>
-<a id="__codelineno-0-309" name="__codelineno-0-309"></a>    <span class="o">...</span>
-</code></pre></div></td></tr></table></div>
-            </details>
-    </div>
-
-</div>
-
-<div class="doc doc-object doc-function">
-
-
-<h3 id="datarecord.tools.base.Tool.results" class="doc doc-heading">
-<code class="doc-symbol doc-symbol-heading doc-symbol-method"></code>            <span class="doc doc-object-name doc-function-name">results</span>
-
-
-<a href="#datarecord.tools.base.Tool.results" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">results</span><span class="p">(</span><span class="n">model</span><span class="p">:</span> <span class="n"><span title="typing.Any">Any</span></span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n"><span title="duckdb.DuckDBPyConnection">DuckDBPyConnection</span></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><a class="autorefs autorefs-internal" title="            Frames
-
-
-  
-      module-attribute
-   (datarecord.record.Frames)" href="../record/#datarecord.record.Frames">Frames</a></span>
-</code></pre></div>
-
-    <div class="doc doc-contents ">
-
-        <p>This model's result attributes in the record's long form.</p>
-<p>Keyed by attribute, each frame in the long schema - <code>name</code>, the dim
-columns, <code>value</code> - the same shape <code>Record.outputs</code> presents, so results
-go straight to <code>write_layer</code> or to <code>set(..., kind="outputs")</code>. One frame
-spans every category, needing no category column.</p>
-<p>Narwhals frames, so the seam names no one dataframe library, and lazy so
-an implementation may fetch a result attribute on demand rather than
-materialising every one.</p>
-
-
-<p><span class="doc-section-title">Parameters:</span></p>
-    <table>
-      <thead>
-        <tr>
-          <th>Name</th>
-          <th>Type</th>
-          <th>Description</th>
-          <th>Default</th>
-        </tr>
-      </thead>
-      <tbody>
-          <tr class="doc-section-item">
-            <td>
-                <code>con</code>
-            </td>
-            <td>
-                  <code><span title="duckdb.DuckDBPyConnection">DuckDBPyConnection</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The connection the frames are planned on - in practice the <code>con</code> of
-the record they are <code>set</code> on.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
-      </tbody>
-    </table>
-
-
-<details class="note" open>
-  <summary>Notes</summary>
-  <ul>
-<li><a href="https://energy-models.github.io/datarecord/design/format/#the-long-schema">the long schema</a></li>
-<li><a href="https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types">entity is unique across types</a></li>
-</ul>
-</details>
-
-            <details class="mkdocstrings-source">
-              <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-311">311</a></span>
+<span class="normal"><a href="#__codelineno-0-309">309</a></span>
+<span class="normal"><a href="#__codelineno-0-310">310</a></span>
+<span class="normal"><a href="#__codelineno-0-311">311</a></span>
 <span class="normal"><a href="#__codelineno-0-312">312</a></span>
 <span class="normal"><a href="#__codelineno-0-313">313</a></span>
 <span class="normal"><a href="#__codelineno-0-314">314</a></span>
@@ -1777,31 +1717,43 @@ the record they are <code>set</code> on.</p>
 <span class="normal"><a href="#__codelineno-0-330">330</a></span>
 <span class="normal"><a href="#__codelineno-0-331">331</a></span>
 <span class="normal"><a href="#__codelineno-0-332">332</a></span>
-<span class="normal"><a href="#__codelineno-0-333">333</a></span>
-<span class="normal"><a href="#__codelineno-0-334">334</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="k">def</span><span class="w"> </span><span class="nf">results</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span> <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Frames</span><span class="p">:</span>
-<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="w">    </span><span class="sd">"""This model's result attributes in the record's long form.</span>
-<a id="__codelineno-0-313" name="__codelineno-0-313"></a>
-<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">    Keyed by attribute, each frame in the long schema - `name`, the dim</span>
-<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">    columns, `value` - the same shape `Record.outputs` presents, so results</span>
-<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">    go straight to `write_layer` or to `set(..., kind="outputs")`. One frame</span>
-<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">    spans every category, needing no category column.</span>
-<a id="__codelineno-0-318" name="__codelineno-0-318"></a>
-<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">    Narwhals frames, so the seam names no one dataframe library, and lazy so</span>
-<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">    an implementation may fetch a result attribute on demand rather than</span>
-<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">    materialising every one.</span>
+<span class="normal"><a href="#__codelineno-0-333">333</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-297" name="__codelineno-0-297"></a><span class="k">def</span><span class="w"> </span><span class="nf">to_datarecord</span><span class="p">(</span>
+<a id="__codelineno-0-298" name="__codelineno-0-298"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-299" name="__codelineno-0-299"></a>    <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-300" name="__codelineno-0-300"></a>    <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">,</span>
+<a id="__codelineno-0-301" name="__codelineno-0-301"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-302" name="__codelineno-0-302"></a>    <span class="n">results_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-303" name="__codelineno-0-303"></a>    <span class="n">base</span><span class="p">:</span> <span class="n">RecordLike</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-304" name="__codelineno-0-304"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RecordLike</span><span class="p">:</span>
+<a id="__codelineno-0-305" name="__codelineno-0-305"></a><span class="w">    </span><span class="sd">"""`model` presented as a layer `write_layer` can persist.</span>
+<a id="__codelineno-0-306" name="__codelineno-0-306"></a>
+<a id="__codelineno-0-307" name="__codelineno-0-307"></a><span class="sd">    The inverse of `build`. Framework-specific: undoing a framework's own</span>
+<a id="__codelineno-0-308" name="__codelineno-0-308"></a><span class="sd">    shape is exactly what a tool knows and the record layer does not.</span>
+<a id="__codelineno-0-309" name="__codelineno-0-309"></a>
+<a id="__codelineno-0-310" name="__codelineno-0-310"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-311" name="__codelineno-0-311"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-312" name="__codelineno-0-312"></a><span class="sd">    con</span>
+<a id="__codelineno-0-313" name="__codelineno-0-313"></a><span class="sd">        The connection the relations are planned on - in practice `ws.con` of</span>
+<a id="__codelineno-0-314" name="__codelineno-0-314"></a><span class="sd">        the workspace that will write them.</span>
+<a id="__codelineno-0-315" name="__codelineno-0-315"></a><span class="sd">    results_only</span>
+<a id="__codelineno-0-316" name="__codelineno-0-316"></a><span class="sd">        Present only what a solve produced - its result attributes and the</span>
+<a id="__codelineno-0-317" name="__codelineno-0-317"></a><span class="sd">        intermediates they need - as a thin layer to write as a child of</span>
+<a id="__codelineno-0-318" name="__codelineno-0-318"></a><span class="sd">        `base`.</span>
+<a id="__codelineno-0-319" name="__codelineno-0-319"></a><span class="sd">    base</span>
+<a id="__codelineno-0-320" name="__codelineno-0-320"></a><span class="sd">        The record `model` was built from: required with `results_only`,</span>
+<a id="__codelineno-0-321" name="__codelineno-0-321"></a><span class="sd">        refused without it.</span>
 <a id="__codelineno-0-322" name="__codelineno-0-322"></a>
-<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">    Parameters</span>
-<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    ----------</span>
-<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    con</span>
-<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        The connection the frames are planned on - in practice the `con` of</span>
-<a id="__codelineno-0-327" name="__codelineno-0-327"></a><span class="sd">        the record they are `set` on.</span>
-<a id="__codelineno-0-328" name="__codelineno-0-328"></a>
-<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">    - [the long schema](https://energy-models.github.io/datarecord/design/format/#the-long-schema)</span>
-<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">    - [entity is unique across types](https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)</span>
-<a id="__codelineno-0-333" name="__codelineno-0-333"></a><span class="sd">    """</span>
-<a id="__codelineno-0-334" name="__codelineno-0-334"></a>    <span class="o">...</span>
+<a id="__codelineno-0-323" name="__codelineno-0-323"></a><span class="sd">    Raises</span>
+<a id="__codelineno-0-324" name="__codelineno-0-324"></a><span class="sd">    ------</span>
+<a id="__codelineno-0-325" name="__codelineno-0-325"></a><span class="sd">    ValueError</span>
+<a id="__codelineno-0-326" name="__codelineno-0-326"></a><span class="sd">        If `base` is given without `results_only`, or missing with it.</span>
+<a id="__codelineno-0-327" name="__codelineno-0-327"></a>
+<a id="__codelineno-0-328" name="__codelineno-0-328"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-329" name="__codelineno-0-329"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-330" name="__codelineno-0-330"></a><span class="sd">    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)</span>
+<a id="__codelineno-0-331" name="__codelineno-0-331"></a><span class="sd">    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)</span>
+<a id="__codelineno-0-332" name="__codelineno-0-332"></a><span class="sd">    """</span>
+<a id="__codelineno-0-333" name="__codelineno-0-333"></a>    <span class="o">...</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1841,7 +1793,8 @@ the record they are <code>set</code> on.</p>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="p">]</span> <span class="o">=</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">(),</span>
 <a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="n">names</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">]</span> <span class="o">=</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">(),</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">columns</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="str">str</span></span><span class="p">]]</span> <span class="o">=</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">(),</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="p">)</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="n">ignored</span><span class="p">:</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">[</span><span class="n"><span title="tuple">tuple</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="str">str</span></span><span class="p">]]</span> <span class="o">=</span> <span class="n"><span title="frozenset">frozenset</span></span><span class="p">(),</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents first">
@@ -1925,7 +1878,7 @@ attribute it is missing.</p>
             <td>
               <div class="doc-md-description">
                 <p><code>(key, dim)</code> pairs the schema declares that this tool cannot honour;
-<code>key</code> is <code>"input_key"</code>, the fold's unit of ownership. The record layer
+<code>key</code> is <code>"owner_map_key"</code>, the fold's unit of ownership. The record layer
 trusts every declared key, so this is a tool's verdict on the record it
 was handed, not a schema rejection.</p>
               </div>
@@ -1987,6 +1940,24 @@ one name is one spec record-wide.</p>
                   <code><span title="frozenset">frozenset</span>()</code>
             </td>
           </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>ignored</code>
+            </td>
+            <td>
+                  <code>frozenset of tuple of (str, str)</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p><code>(category, attribute)</code> pairs the record stores a value for that the
+tool's category does not take, so the build leaves it out. A report,
+not a failure: it leaves the result falsy and <code>describe</code> silent.</p>
+              </div>
+            </td>
+            <td>
+                  <code><span title="frozenset">frozenset</span>()</code>
+            </td>
+          </tr>
       </tbody>
     </table>
 
@@ -1994,8 +1965,8 @@ one name is one spec record-wide.</p>
 <details class="note" open>
   <summary>Notes</summary>
   <ul>
-<li><a href="https://energy-models.github.io/datarecord/design/record/#wide-and-long-rows">wide and long rows</a></li>
-<li><a href="https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types">entity is unique across types</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows">wide and long rows</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim">a label is unique within its dim</a></li>
 <li><a href="https://energy-models.github.io/datarecord/design/tools/">consuming a record</a></li>
 </ul>
 </details>
@@ -2038,12 +2009,7 @@ one name is one spec record-wide.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-93"> 93</a></span>
-<span class="normal"><a href="#__codelineno-0-94"> 94</a></span>
-<span class="normal"><a href="#__codelineno-0-95"> 95</a></span>
-<span class="normal"><a href="#__codelineno-0-96"> 96</a></span>
-<span class="normal"><a href="#__codelineno-0-97"> 97</a></span>
-<span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-98"> 98</a></span>
 <span class="normal"><a href="#__codelineno-0-99"> 99</a></span>
 <span class="normal"><a href="#__codelineno-0-100">100</a></span>
 <span class="normal"><a href="#__codelineno-0-101">101</a></span>
@@ -2066,35 +2032,40 @@ one name is one spec record-wide.</p>
 <span class="normal"><a href="#__codelineno-0-118">118</a></span>
 <span class="normal"><a href="#__codelineno-0-119">119</a></span>
 <span class="normal"><a href="#__codelineno-0-120">120</a></span>
-<span class="normal"><a href="#__codelineno-0-121">121</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-93" name="__codelineno-0-93"></a><span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
-<a id="__codelineno-0-94" name="__codelineno-0-94"></a><span class="w">    </span><span class="sd">"""A one-line summary, for an error message or a log line."""</span>
-<a id="__codelineno-0-95" name="__codelineno-0-95"></a>    <span class="n">parts</span> <span class="o">=</span> <span class="p">[]</span>
-<a id="__codelineno-0-96" name="__codelineno-0-96"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">:</span>
-<a id="__codelineno-0-97" name="__codelineno-0-97"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"dims </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-98" name="__codelineno-0-98"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">categories</span><span class="p">:</span>
-<a id="__codelineno-0-99" name="__codelineno-0-99"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"categories </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">categories</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">attributes</span><span class="p">:</span>
-<a id="__codelineno-0-101" name="__codelineno-0-101"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"attributes </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">attributes</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-102" name="__codelineno-0-102"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsupported_keys</span><span class="p">:</span>
-<a id="__codelineno-0-103" name="__codelineno-0-103"></a>        <span class="n">unsupported</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
-<a id="__codelineno-0-104" name="__codelineno-0-104"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">dim</span><span class="si">}</span><span class="s2"> as </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">dim</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unsupported_keys</span><span class="p">)</span>
-<a id="__codelineno-0-105" name="__codelineno-0-105"></a>        <span class="p">)</span>
-<a id="__codelineno-0-106" name="__codelineno-0-106"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"unsupported keys (</span><span class="si">{</span><span class="n">unsupported</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
-<a id="__codelineno-0-107" name="__codelineno-0-107"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsupported_values</span><span class="p">:</span>
-<a id="__codelineno-0-108" name="__codelineno-0-108"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-109" name="__codelineno-0-109"></a>            <span class="sa">f</span><span class="s2">"piecewise-linear attributes </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unsupported_values</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+<span class="normal"><a href="#__codelineno-0-121">121</a></span>
+<span class="normal"><a href="#__codelineno-0-122">122</a></span>
+<span class="normal"><a href="#__codelineno-0-123">123</a></span>
+<span class="normal"><a href="#__codelineno-0-124">124</a></span>
+<span class="normal"><a href="#__codelineno-0-125">125</a></span>
+<span class="normal"><a href="#__codelineno-0-126">126</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-98" name="__codelineno-0-98"></a><span class="k">def</span><span class="w"> </span><span class="nf">describe</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span><span class="p">:</span>
+<a id="__codelineno-0-99" name="__codelineno-0-99"></a><span class="w">    </span><span class="sd">"""A one-line summary, for an error message or a log line."""</span>
+<a id="__codelineno-0-100" name="__codelineno-0-100"></a>    <span class="n">parts</span> <span class="o">=</span> <span class="p">[]</span>
+<a id="__codelineno-0-101" name="__codelineno-0-101"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">:</span>
+<a id="__codelineno-0-102" name="__codelineno-0-102"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"dims </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-103" name="__codelineno-0-103"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">categories</span><span class="p">:</span>
+<a id="__codelineno-0-104" name="__codelineno-0-104"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"categories </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">categories</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-105" name="__codelineno-0-105"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">attributes</span><span class="p">:</span>
+<a id="__codelineno-0-106" name="__codelineno-0-106"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"attributes </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">attributes</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-107" name="__codelineno-0-107"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsupported_keys</span><span class="p">:</span>
+<a id="__codelineno-0-108" name="__codelineno-0-108"></a>        <span class="n">unsupported</span> <span class="o">=</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span>
+<a id="__codelineno-0-109" name="__codelineno-0-109"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">dim</span><span class="si">}</span><span class="s2"> as </span><span class="si">{</span><span class="n">key</span><span class="si">}</span><span class="s2">"</span> <span class="k">for</span> <span class="n">key</span><span class="p">,</span> <span class="n">dim</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unsupported_keys</span><span class="p">)</span>
 <a id="__codelineno-0-110" name="__codelineno-0-110"></a>        <span class="p">)</span>
-<a id="__codelineno-0-111" name="__codelineno-0-111"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
-<a id="__codelineno-0-112" name="__codelineno-0-112"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-113" name="__codelineno-0-113"></a>            <span class="sa">f</span><span class="s2">"labels claimed by more than one category "</span>
-<a id="__codelineno-0-114" name="__codelineno-0-114"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">)</span><span class="si">}</span><span class="s2"> (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types)"</span>
+<a id="__codelineno-0-111" name="__codelineno-0-111"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="sa">f</span><span class="s2">"unsupported keys (</span><span class="si">{</span><span class="n">unsupported</span><span class="si">}</span><span class="s2">)"</span><span class="p">)</span>
+<a id="__codelineno-0-112" name="__codelineno-0-112"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">unsupported_values</span><span class="p">:</span>
+<a id="__codelineno-0-113" name="__codelineno-0-113"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-114" name="__codelineno-0-114"></a>            <span class="sa">f</span><span class="s2">"piecewise-linear attributes </span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">unsupported_values</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
 <a id="__codelineno-0-115" name="__codelineno-0-115"></a>        <span class="p">)</span>
-<a id="__codelineno-0-116" name="__codelineno-0-116"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+<a id="__codelineno-0-116" name="__codelineno-0-116"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">:</span>
 <a id="__codelineno-0-117" name="__codelineno-0-117"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
-<a id="__codelineno-0-118" name="__codelineno-0-118"></a>            <span class="sa">f</span><span class="s2">"columns whose name is declared with another shape "</span>
-<a id="__codelineno-0-119" name="__codelineno-0-119"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-118" name="__codelineno-0-118"></a>            <span class="sa">f</span><span class="s2">"labels claimed by more than one category "</span>
+<a id="__codelineno-0-119" name="__codelineno-0-119"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">names</span><span class="p">)</span><span class="si">}</span><span class="s2"> (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)"</span>
 <a id="__codelineno-0-120" name="__codelineno-0-120"></a>        <span class="p">)</span>
-<a id="__codelineno-0-121" name="__codelineno-0-121"></a>    <span class="k">return</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="k">if</span> <span class="n">parts</span> <span class="k">else</span> <span class="s2">"nothing"</span>
+<a id="__codelineno-0-121" name="__codelineno-0-121"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">:</span>
+<a id="__codelineno-0-122" name="__codelineno-0-122"></a>        <span class="n">parts</span><span class="o">.</span><span class="n">append</span><span class="p">(</span>
+<a id="__codelineno-0-123" name="__codelineno-0-123"></a>            <span class="sa">f</span><span class="s2">"columns whose name is declared with another shape "</span>
+<a id="__codelineno-0-124" name="__codelineno-0-124"></a>            <span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">columns</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-125" name="__codelineno-0-125"></a>        <span class="p">)</span>
+<a id="__codelineno-0-126" name="__codelineno-0-126"></a>    <span class="k">return</span> <span class="s2">", "</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">parts</span><span class="p">)</span> <span class="k">if</span> <span class="n">parts</span> <span class="k">else</span> <span class="s2">"nothing"</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2174,7 +2145,7 @@ attributes in the <em>record's</em> vocabulary.</p>
 <details class="note" open>
   <summary>Notes</summary>
   <ul>
-<li><a href="https://energy-models.github.io/datarecord/design/schema/#attributespec">AttributeSpec</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/model/attributes/#attributespec">AttributeSpec</a></li>
 <li><a href="https://energy-models.github.io/datarecord/design/tools/">consuming a record</a></li>
 </ul>
 </details>
@@ -2222,17 +2193,17 @@ attributes in the <em>record's</em> vocabulary.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-225">225</a></span>
-<span class="normal"><a href="#__codelineno-0-226">226</a></span>
-<span class="normal"><a href="#__codelineno-0-227">227</a></span>
-<span class="normal"><a href="#__codelineno-0-228">228</a></span>
-<span class="normal"><a href="#__codelineno-0-229">229</a></span>
-<span class="normal"><a href="#__codelineno-0-230">230</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-225" name="__codelineno-0-225"></a><span class="k">def</span><span class="w"> </span><span class="nf">attr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctype</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Attr</span><span class="p">:</span>
-<a id="__codelineno-0-226" name="__codelineno-0-226"></a><span class="w">    </span><span class="sd">"""`ctype`'s mapping for `name`, or the identity when it has none."""</span>
-<a id="__codelineno-0-227" name="__codelineno-0-227"></a>    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ctype</span><span class="p">,</span> <span class="p">()):</span>
-<a id="__codelineno-0-228" name="__codelineno-0-228"></a>        <span class="k">if</span> <span class="n">a</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">name</span><span class="p">:</span>
-<a id="__codelineno-0-229" name="__codelineno-0-229"></a>            <span class="k">return</span> <span class="n">a</span>
-<a id="__codelineno-0-230" name="__codelineno-0-230"></a>    <span class="k">return</span> <span class="n">Attr</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="p">(</span><span class="n">name</span><span class="p">,))</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-220">220</a></span>
+<span class="normal"><a href="#__codelineno-0-221">221</a></span>
+<span class="normal"><a href="#__codelineno-0-222">222</a></span>
+<span class="normal"><a href="#__codelineno-0-223">223</a></span>
+<span class="normal"><a href="#__codelineno-0-224">224</a></span>
+<span class="normal"><a href="#__codelineno-0-225">225</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-220" name="__codelineno-0-220"></a><span class="k">def</span><span class="w"> </span><span class="nf">attr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctype</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Attr</span><span class="p">:</span>
+<a id="__codelineno-0-221" name="__codelineno-0-221"></a><span class="w">    </span><span class="sd">"""`ctype`'s mapping for `name`, or the identity when it has none."""</span>
+<a id="__codelineno-0-222" name="__codelineno-0-222"></a>    <span class="k">for</span> <span class="n">a</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">attrs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">ctype</span><span class="p">,</span> <span class="p">()):</span>
+<a id="__codelineno-0-223" name="__codelineno-0-223"></a>        <span class="k">if</span> <span class="n">a</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="n">name</span><span class="p">:</span>
+<a id="__codelineno-0-224" name="__codelineno-0-224"></a>            <span class="k">return</span> <span class="n">a</span>
+<a id="__codelineno-0-225" name="__codelineno-0-225"></a>    <span class="k">return</span> <span class="n">Attr</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">,</span> <span class="n">source</span><span class="o">=</span><span class="p">(</span><span class="n">name</span><span class="p">,))</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2259,19 +2230,19 @@ attribute is satisfied by its sources, not by its own name.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-232">232</a></span>
-<span class="normal"><a href="#__codelineno-0-233">233</a></span>
-<span class="normal"><a href="#__codelineno-0-234">234</a></span>
-<span class="normal"><a href="#__codelineno-0-235">235</a></span>
-<span class="normal"><a href="#__codelineno-0-236">236</a></span>
-<span class="normal"><a href="#__codelineno-0-237">237</a></span>
-<span class="normal"><a href="#__codelineno-0-238">238</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="k">def</span><span class="w"> </span><span class="nf">sources</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctype</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
-<a id="__codelineno-0-233" name="__codelineno-0-233"></a><span class="w">    </span><span class="sd">"""Which record attribute(s) `ctype`'s `name` needs; itself, if unmapped.</span>
-<a id="__codelineno-0-234" name="__codelineno-0-234"></a>
-<a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="sd">    What `verify` checks resolvability against: a renamed or computed</span>
-<a id="__codelineno-0-236" name="__codelineno-0-236"></a><span class="sd">    attribute is satisfied by its sources, not by its own name.</span>
-<a id="__codelineno-0-237" name="__codelineno-0-237"></a><span class="sd">    """</span>
-<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">attr</span><span class="p">(</span><span class="n">ctype</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">source</span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-227">227</a></span>
+<span class="normal"><a href="#__codelineno-0-228">228</a></span>
+<span class="normal"><a href="#__codelineno-0-229">229</a></span>
+<span class="normal"><a href="#__codelineno-0-230">230</a></span>
+<span class="normal"><a href="#__codelineno-0-231">231</a></span>
+<span class="normal"><a href="#__codelineno-0-232">232</a></span>
+<span class="normal"><a href="#__codelineno-0-233">233</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-227" name="__codelineno-0-227"></a><span class="k">def</span><span class="w"> </span><span class="nf">sources</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">ctype</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">tuple</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="o">...</span><span class="p">]:</span>
+<a id="__codelineno-0-228" name="__codelineno-0-228"></a><span class="w">    </span><span class="sd">"""Which record attribute(s) `ctype`'s `name` needs; itself, if unmapped.</span>
+<a id="__codelineno-0-229" name="__codelineno-0-229"></a>
+<a id="__codelineno-0-230" name="__codelineno-0-230"></a><span class="sd">    What `verify` checks resolvability against: a renamed or computed</span>
+<a id="__codelineno-0-231" name="__codelineno-0-231"></a><span class="sd">    attribute is satisfied by its sources, not by its own name.</span>
+<a id="__codelineno-0-232" name="__codelineno-0-232"></a><span class="sd">    """</span>
+<a id="__codelineno-0-233" name="__codelineno-0-233"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">attr</span><span class="p">(</span><span class="n">ctype</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">source</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2287,22 +2258,51 @@ attribute is satisfied by its sources, not by its own name.</p>
 
 <a href="#datarecord.tools.base.Schema.resolve" class="headerlink" title="Permanent link">&para;</a></h3>
 <div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">resolve</span><span class="p">(</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.record.RecordLike)" href="../record/#datarecord.record.RecordLike">RecordLike</a></span><span class="p">,</span> <span class="n">ctype</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="n"><span title="str">str</span></span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="duckdb.DuckDBPyRelation">DuckDBPyRelation</span></span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a></span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">ctype</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">name</span><span class="p">:</span> <span class="n"><span title="str">str</span></span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">labels</span><span class="p">:</span> <span class="n"><span title="collections.abc.Mapping">Mapping</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="duckdb.DuckDBPyRelation">DuckDBPyRelation</span></span><span class="p">],</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">flags</span><span class="p">:</span> <span class="n"><span title="collections.abc.Mapping">Mapping</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            Flags
+
+
+  
+      dataclass
+   (datarecord.protocols.Flags)" href="../record/#datarecord.protocols.Flags">Flags</a></span><span class="p">],</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="nb">filter</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="duckdb.DuckDBPyRelation">DuckDBPyRelation</span></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p><code>ctype</code>'s <code>name</code> as a long relation over <code>record</code>, mapping applied.</p>
+        <p><code>ctype</code>'s <code>name</code> as a long relation over <code>record</code>, mapping applied and settled (<code>Attr.resolve</code>).</p>
 
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-240">240</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-235">235</a></span>
+<span class="normal"><a href="#__codelineno-0-236">236</a></span>
+<span class="normal"><a href="#__codelineno-0-237">237</a></span>
+<span class="normal"><a href="#__codelineno-0-238">238</a></span>
+<span class="normal"><a href="#__codelineno-0-239">239</a></span>
+<span class="normal"><a href="#__codelineno-0-240">240</a></span>
 <span class="normal"><a href="#__codelineno-0-241">241</a></span>
-<span class="normal"><a href="#__codelineno-0-242">242</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-240" name="__codelineno-0-240"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">,</span> <span class="n">ctype</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span><span class="p">:</span>
-<a id="__codelineno-0-241" name="__codelineno-0-241"></a><span class="w">    </span><span class="sd">"""`ctype`'s `name` as a long relation over `record`, mapping applied."""</span>
-<a id="__codelineno-0-242" name="__codelineno-0-242"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">attr</span><span class="p">(</span><span class="n">ctype</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-242">242</a></span>
+<span class="normal"><a href="#__codelineno-0-243">243</a></span>
+<span class="normal"><a href="#__codelineno-0-244">244</a></span>
+<span class="normal"><a href="#__codelineno-0-245">245</a></span>
+<span class="normal"><a href="#__codelineno-0-246">246</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-235" name="__codelineno-0-235"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span>
+<a id="__codelineno-0-236" name="__codelineno-0-236"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-237" name="__codelineno-0-237"></a>    <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">,</span>
+<a id="__codelineno-0-238" name="__codelineno-0-238"></a>    <span class="n">ctype</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-239" name="__codelineno-0-239"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<a id="__codelineno-0-240" name="__codelineno-0-240"></a>    <span class="n">labels</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DuckDBPyRelation</span><span class="p">],</span>
+<a id="__codelineno-0-241" name="__codelineno-0-241"></a>    <span class="n">flags</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">],</span>
+<a id="__codelineno-0-242" name="__codelineno-0-242"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-243" name="__codelineno-0-243"></a>    <span class="nb">filter</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-244" name="__codelineno-0-244"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span><span class="p">:</span>
+<a id="__codelineno-0-245" name="__codelineno-0-245"></a><span class="w">    </span><span class="sd">"""`ctype`'s `name` as a long relation over `record`, mapping applied and settled (`Attr.resolve`)."""</span>
+<a id="__codelineno-0-246" name="__codelineno-0-246"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">attr</span><span class="p">(</span><span class="n">ctype</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span><span class="o">.</span><span class="n">resolve</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">labels</span><span class="p">,</span> <span class="n">flags</span><span class="p">,</span> <span class="nb">filter</span><span class="o">=</span><span class="nb">filter</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2398,8 +2398,8 @@ declared rather than open-coded in a <code>build</code>.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Maps one resolved long relation per <code>source</code>, in order, to this
-attribute's long relation; <code>None</code> for a plain rename, which requires
+                <p>Maps one settled long relation per <code>source</code> (<code>settle</code>), in order, to
+this attribute's long relation; <code>None</code> for a plain rename, which requires
 exactly one <code>source</code>. A relation in, a relation out, so the plan stays
 unmaterialised and a computed attribute needs no special case downstream.</p>
               </div>
@@ -2447,49 +2447,144 @@ unmaterialised and a computed attribute needs no special case downstream.</p>
 
 
 <a href="#datarecord.tools.base.Attr.resolve" class="headerlink" title="Permanent link">&para;</a></h3>
-<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">resolve</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.record.RecordLike)" href="../record/#datarecord.record.RecordLike">RecordLike</a></span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="duckdb.DuckDBPyRelation">DuckDBPyRelation</span></span>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nf">resolve</span><span class="p">(</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">record</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            RecordLike (datarecord.protocols.RecordLike)" href="../record/#datarecord.protocols.RecordLike">RecordLike</a></span><span class="p">,</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">labels</span><span class="p">:</span> <span class="n"><span title="collections.abc.Mapping">Mapping</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><span title="duckdb.DuckDBPyRelation">DuckDBPyRelation</span></span><span class="p">],</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">flags</span><span class="p">:</span> <span class="n"><span title="collections.abc.Mapping">Mapping</span></span><span class="p">[</span><span class="n"><span title="str">str</span></span><span class="p">,</span> <span class="n"><a class="autorefs autorefs-internal" title="            Flags
+
+
+  
+      dataclass
+   (datarecord.protocols.Flags)" href="../record/#datarecord.protocols.Flags">Flags</a></span><span class="p">],</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="nb">filter</span><span class="p">:</span> <span class="n"><span title="bool">bool</span></span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n"><span title="duckdb.DuckDBPyRelation">DuckDBPyRelation</span></span>
 </code></pre></div>
 
     <div class="doc doc-contents ">
 
-        <p>This attribute's long relation, read through the <code>Record</code> interface.</p>
-<p>The record rather than the record, so a tool builds from any backing.</p>
+        <p>This attribute's long relation, each source settled (<code>settle</code>) before <code>compute</code>.</p>
+
+
+<p><span class="doc-section-title">Parameters:</span></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Description</th>
+          <th>Default</th>
+        </tr>
+      </thead>
+      <tbody>
+          <tr class="doc-section-item">
+            <td>
+                <code>flags</code>
+            </td>
+            <td>
+                  <code><span title="collections.abc.Mapping">Mapping</span>[<span title="str">str</span>, <a class="autorefs autorefs-internal" title="            Flags
+
+
+  
+      dataclass
+   (datarecord.protocols.Flags)" href="../record/#datarecord.protocols.Flags">Flags</a>]</code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>Per source, its <code>Flags</code> as <code>settle</code> takes them.</p>
+              </div>
+            </td>
+            <td>
+                <em>required</em>
+            </td>
+          </tr>
+          <tr class="doc-section-item">
+            <td>
+                <code>filter</code>
+            </td>
+            <td>
+                  <code><span title="bool">bool</span></code>
+            </td>
+            <td>
+              <div class="doc-md-description">
+                <p>As <code>settle</code> takes it.</p>
+              </div>
+            </td>
+            <td>
+                  <code>True</code>
+            </td>
+          </tr>
+      </tbody>
+    </table>
 
 
 <details class="note" open>
   <summary>Notes</summary>
   <ul>
-<li><a href="https://energy-models.github.io/datarecord/design/record/">the Record protocol</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/use/reading/">the Record protocol</a></li>
+<li><a href="https://energy-models.github.io/datarecord/design/use/reading/#settling-rows">settling rows</a></li>
 </ul>
 </details>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-189">189</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-168">168</a></span>
+<span class="normal"><a href="#__codelineno-0-169">169</a></span>
+<span class="normal"><a href="#__codelineno-0-170">170</a></span>
+<span class="normal"><a href="#__codelineno-0-171">171</a></span>
+<span class="normal"><a href="#__codelineno-0-172">172</a></span>
+<span class="normal"><a href="#__codelineno-0-173">173</a></span>
+<span class="normal"><a href="#__codelineno-0-174">174</a></span>
+<span class="normal"><a href="#__codelineno-0-175">175</a></span>
+<span class="normal"><a href="#__codelineno-0-176">176</a></span>
+<span class="normal"><a href="#__codelineno-0-177">177</a></span>
+<span class="normal"><a href="#__codelineno-0-178">178</a></span>
+<span class="normal"><a href="#__codelineno-0-179">179</a></span>
+<span class="normal"><a href="#__codelineno-0-180">180</a></span>
+<span class="normal"><a href="#__codelineno-0-181">181</a></span>
+<span class="normal"><a href="#__codelineno-0-182">182</a></span>
+<span class="normal"><a href="#__codelineno-0-183">183</a></span>
+<span class="normal"><a href="#__codelineno-0-184">184</a></span>
+<span class="normal"><a href="#__codelineno-0-185">185</a></span>
+<span class="normal"><a href="#__codelineno-0-186">186</a></span>
+<span class="normal"><a href="#__codelineno-0-187">187</a></span>
+<span class="normal"><a href="#__codelineno-0-188">188</a></span>
+<span class="normal"><a href="#__codelineno-0-189">189</a></span>
 <span class="normal"><a href="#__codelineno-0-190">190</a></span>
 <span class="normal"><a href="#__codelineno-0-191">191</a></span>
 <span class="normal"><a href="#__codelineno-0-192">192</a></span>
 <span class="normal"><a href="#__codelineno-0-193">193</a></span>
 <span class="normal"><a href="#__codelineno-0-194">194</a></span>
 <span class="normal"><a href="#__codelineno-0-195">195</a></span>
-<span class="normal"><a href="#__codelineno-0-196">196</a></span>
-<span class="normal"><a href="#__codelineno-0-197">197</a></span>
-<span class="normal"><a href="#__codelineno-0-198">198</a></span>
-<span class="normal"><a href="#__codelineno-0-199">199</a></span>
-<span class="normal"><a href="#__codelineno-0-200">200</a></span>
-<span class="normal"><a href="#__codelineno-0-201">201</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span><span class="p">:</span>
-<a id="__codelineno-0-190" name="__codelineno-0-190"></a><span class="w">    </span><span class="sd">"""This attribute's long relation, read through the `Record` interface.</span>
-<a id="__codelineno-0-191" name="__codelineno-0-191"></a>
-<a id="__codelineno-0-192" name="__codelineno-0-192"></a><span class="sd">    The record rather than the record, so a tool builds from any backing.</span>
-<a id="__codelineno-0-193" name="__codelineno-0-193"></a>
-<a id="__codelineno-0-194" name="__codelineno-0-194"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-195" name="__codelineno-0-195"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-196" name="__codelineno-0-196"></a><span class="sd">    - [the Record protocol](https://energy-models.github.io/datarecord/design/record/)</span>
-<a id="__codelineno-0-197" name="__codelineno-0-197"></a><span class="sd">    """</span>
-<a id="__codelineno-0-198" name="__codelineno-0-198"></a>    <span class="n">rels</span> <span class="o">=</span> <span class="p">[</span><span class="n">to_relation</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="n">s</span><span class="p">])</span> <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">source</span><span class="p">]</span>
-<a id="__codelineno-0-199" name="__codelineno-0-199"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-200" name="__codelineno-0-200"></a>        <span class="k">return</span> <span class="n">rels</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-201" name="__codelineno-0-201"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="o">*</span><span class="n">rels</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-196">196</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-168" name="__codelineno-0-168"></a><span class="k">def</span><span class="w"> </span><span class="nf">resolve</span><span class="p">(</span>
+<a id="__codelineno-0-169" name="__codelineno-0-169"></a>    <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-170" name="__codelineno-0-170"></a>    <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">,</span>
+<a id="__codelineno-0-171" name="__codelineno-0-171"></a>    <span class="n">labels</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DuckDBPyRelation</span><span class="p">],</span>
+<a id="__codelineno-0-172" name="__codelineno-0-172"></a>    <span class="n">flags</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">],</span>
+<a id="__codelineno-0-173" name="__codelineno-0-173"></a>    <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-174" name="__codelineno-0-174"></a>    <span class="nb">filter</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span><span class="p">,</span>
+<a id="__codelineno-0-175" name="__codelineno-0-175"></a><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span><span class="p">:</span>
+<a id="__codelineno-0-176" name="__codelineno-0-176"></a><span class="w">    </span><span class="sd">"""This attribute's long relation, each source settled (`settle`) before `compute`.</span>
+<a id="__codelineno-0-177" name="__codelineno-0-177"></a>
+<a id="__codelineno-0-178" name="__codelineno-0-178"></a><span class="sd">    Parameters</span>
+<a id="__codelineno-0-179" name="__codelineno-0-179"></a><span class="sd">    ----------</span>
+<a id="__codelineno-0-180" name="__codelineno-0-180"></a><span class="sd">    flags</span>
+<a id="__codelineno-0-181" name="__codelineno-0-181"></a><span class="sd">        Per source, its `Flags` as `settle` takes them.</span>
+<a id="__codelineno-0-182" name="__codelineno-0-182"></a><span class="sd">    filter</span>
+<a id="__codelineno-0-183" name="__codelineno-0-183"></a><span class="sd">        As `settle` takes it.</span>
+<a id="__codelineno-0-184" name="__codelineno-0-184"></a>
+<a id="__codelineno-0-185" name="__codelineno-0-185"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-186" name="__codelineno-0-186"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-187" name="__codelineno-0-187"></a><span class="sd">    - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)</span>
+<a id="__codelineno-0-188" name="__codelineno-0-188"></a><span class="sd">    - [settling rows](https://energy-models.github.io/datarecord/design/use/reading/#settling-rows)</span>
+<a id="__codelineno-0-189" name="__codelineno-0-189"></a><span class="sd">    """</span>
+<a id="__codelineno-0-190" name="__codelineno-0-190"></a>    <span class="n">rels</span> <span class="o">=</span> <span class="p">[</span>
+<a id="__codelineno-0-191" name="__codelineno-0-191"></a>        <span class="n">settle</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="n">s</span><span class="p">],</span> <span class="n">labels</span><span class="p">,</span> <span class="n">flags</span><span class="p">[</span><span class="n">s</span><span class="p">],</span> <span class="nb">filter</span><span class="o">=</span><span class="nb">filter</span><span class="p">)</span>
+<a id="__codelineno-0-192" name="__codelineno-0-192"></a>        <span class="k">for</span> <span class="n">s</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">source</span>
+<a id="__codelineno-0-193" name="__codelineno-0-193"></a>    <span class="p">]</span>
+<a id="__codelineno-0-194" name="__codelineno-0-194"></a>    <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-195" name="__codelineno-0-195"></a>        <span class="k">return</span> <span class="n">rels</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-196" name="__codelineno-0-196"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">compute</span><span class="p">(</span><span class="o">*</span><span class="n">rels</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -2538,15 +2633,15 @@ unmaterialised and a computed attribute needs no special case downstream.</p>
 
                   <details class="mkdocstrings-source">
                     <summary>Source code in <code>src/datarecord/tools/base.py</code></summary>
-                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-248">248</a></span>
-<span class="normal"><a href="#__codelineno-0-249">249</a></span>
-<span class="normal"><a href="#__codelineno-0-250">250</a></span>
-<span class="normal"><a href="#__codelineno-0-251">251</a></span>
-<span class="normal"><a href="#__codelineno-0-252">252</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-248" name="__codelineno-0-248"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">missing</span><span class="p">:</span> <span class="n">Requirements</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-249" name="__codelineno-0-249"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
-<a id="__codelineno-0-250" name="__codelineno-0-250"></a>        <span class="sa">f</span><span class="s2">"record cannot build a </span><span class="si">{</span><span class="n">tool</span><span class="si">}</span><span class="s2"> model; missing: </span><span class="si">{</span><span class="n">missing</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span>
-<a id="__codelineno-0-251" name="__codelineno-0-251"></a>    <span class="p">)</span>
-<a id="__codelineno-0-252" name="__codelineno-0-252"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">missing</span> <span class="o">=</span> <span class="n">missing</span>
+                    <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-252">252</a></span>
+<span class="normal"><a href="#__codelineno-0-253">253</a></span>
+<span class="normal"><a href="#__codelineno-0-254">254</a></span>
+<span class="normal"><a href="#__codelineno-0-255">255</a></span>
+<span class="normal"><a href="#__codelineno-0-256">256</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-252" name="__codelineno-0-252"></a><span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">tool</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">missing</span><span class="p">:</span> <span class="n">Requirements</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-253" name="__codelineno-0-253"></a>    <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span>
+<a id="__codelineno-0-254" name="__codelineno-0-254"></a>        <span class="sa">f</span><span class="s2">"record cannot build a </span><span class="si">{</span><span class="n">tool</span><span class="si">}</span><span class="s2"> model; missing: </span><span class="si">{</span><span class="n">missing</span><span class="o">.</span><span class="n">describe</span><span class="p">()</span><span class="si">}</span><span class="s2">"</span>
+<a id="__codelineno-0-255" name="__codelineno-0-255"></a>    <span class="p">)</span>
+<a id="__codelineno-0-256" name="__codelineno-0-256"></a>    <span class="bp">self</span><span class="o">.</span><span class="n">missing</span> <span class="o">=</span> <span class="n">missing</span>
 </code></pre></div></td></tr></table></div>
                   </details>
 
@@ -2629,7 +2724,7 @@ unmaterialised and a computed attribute needs no special case downstream.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../mutable/" class="md-footer__link md-footer__link--prev" aria-label="Previous: WorkingRecord">
+          <a href="../store/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Storage">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2639,7 +2734,7 @@ unmaterialised and a computed attribute needs no special case downstream.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                WorkingRecord
+                Storage
               </div>
             </div>
           </a>

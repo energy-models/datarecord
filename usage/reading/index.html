@@ -663,6 +663,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#settling-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settling rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reading-a-directory" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -696,35 +707,7 @@
   <span class="md-ellipsis">
     
   
-    The schema
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../layers/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Layers
+    Declaring a schema
   
 
     
@@ -773,14 +756,42 @@
   
   
     <li class="md-nav__item">
-      <a href="../writing/" class="md-nav__link">
+      <a href="../layers/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Writing
+    Branching and layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
   
 
     
@@ -808,7 +819,7 @@
   <span class="md-ellipsis">
     
   
-    Tools
+    The PyPSA tool
   
 
     
@@ -840,12 +851,6 @@
       
         
           
-        
-      
-        
-      
-        
-      
         
       
         
@@ -983,8 +988,6 @@
       
         
       
-        
-      
     
     
     
@@ -1100,6 +1103,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#settling-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settling rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reading-a-directory" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1138,55 +1152,133 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="reading-a-record">Reading a record<a class="headerlink" href="#reading-a-record" title="Permanent link">&para;</a></h1>
 <h2 id="the-record-protocol">The <code>Record</code> protocol<a class="headerlink" href="#the-record-protocol" title="Permanent link">&para;</a></h2>
-<p>Everything a consumer codes against. It is read-only, and structural — a plain directory, a hundred-layer overlay, a record with pending edits and a framework's own object all satisfy it, and a consumer cannot tell which it holds (<a href="../../design/record/">design</a>).</p>
+<p>A consumer codes against the read-only <code>RecordLike</code> protocol.
+A plain directory, a hundred-layer tree, a record with pending edits and a framework's own object all satisfy it, and a consumer cannot tell which it holds (<a href="../../design/use/reading/">design</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">record</span><span class="o">.</span><span class="n">schema</span>  <span class="c1"># what may exist: the axes, the properties, the attributes</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># axis labels, keyed by dim</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># stored property values, keyed by dim or group</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">record</span><span class="o">.</span><span class="n">groups</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># group rows, keyed by group — one frame each</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>  <span class="c1"># long input frames, keyed by attribute</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">record</span><span class="o">.</span><span class="n">outputs</span><span class="p">[</span><span class="s2">"p"</span><span class="p">]</span>  <span class="c1"># long result frames, keyed by attribute</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">entity_type</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># which axes each attribute actually uses</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># a multi-dim's tuples, as one struct column</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># stored property values, keyed by dim</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>  <span class="c1"># long relations, results included, keyed by attribute</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># which axes each attribute actually uses</span>
 </code></pre></div>
-<p>Every frame is a <code>narwhals.LazyFrame</code> — a plan, not data. Nothing is read until you <code>.collect()</code>, and listing the keys reads nothing at all (<a href="../../design/record/#frames">design</a>).</p>
+<p>Every value is a <code>duckdb.DuckDBPyRelation</code> on <code>record.con</code>, which is a query plan.
+Nothing is read until you fetch it with <code>.df()</code>, <code>.pl()</code> or <code>.to_arrow_table()</code>, and listing the keys reads nothing (<a href="../../design/use/reading/#relations">design</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">entities</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">entities</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="n">nw</span><span class="o">.</span><span class="n">col</span><span class="p">(</span><span class="s2">"entity_type"</span><span class="p">)</span> <span class="o">==</span> <span class="s2">"Generator"</span><span class="p">)</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span><span class="o">.</span><span class="n">to_pandas</span><span class="p">()</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">entities</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">"ctype = 'Generator'"</span><span class="p">)</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">p_nom</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">"value &gt; 0"</span><span class="p">)</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
 <h2 id="labels-and-properties">Labels and properties<a class="headerlink" href="#labels-and-properties" title="Permanent link">&para;</a></h2>
-<p><code>dims[dim]</code> is the axis's key columns only — the labels, and a nested dim's parent keys — in axis order.</p>
-<p><code>properties[subject]</code> is a dim's or a group's key with every property declared for it, <strong>as stored</strong>: a NULL is a value no layer wrote.</p>
-<p>One category's labels are <code>properties[dim]</code> filtered on a categorizing property — an <code>Enum</code> property of a <code>partial</code> dim. Which properties they carry is <code>Schema.properties_for(dim, **categories)</code>, and an unset one's default, <code>default_by</code> per category included, is <code>Schema.default_for(name, **categories)</code> (<a href="../../design/record/#properties-and-categories">design</a>).</p>
+<p><code>dims[dim]</code> is the axis's label column alone, in axis order.
+A multi-period snapshot's period is a property of the snapshot (<a href="../../design/model/dims/#mapping-labels-to-another-dim">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"snapshot"</span><span class="p">]</span>  <span class="c1"># snapshot</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"snapshot"</span><span class="p">]</span>  <span class="c1"># snapshot | period | timestep</span>
+</code></pre></div>
+<p>A multi-dim's labels are its tuples, so <code>dims["connection"]</code> is the one struct column <code>connection STRUCT(entity, bus)</code>, in its own order (<a href="../../design/model/multi-dims/#one-struct-column">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># connection</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span>  <span class="c1"># connection | role | note</span>
+</code></pre></div>
+<p><code>properties[subject]</code> is a dim's key with every property declared for it, as stored.
+A NULL there is a value no layer wrote.</p>
+<p>A categorizing property is a property of a <code>partial</code> dim, a multi-dim among them, that refers to a dim with <code>one_of</code>.
+One category's labels are <code>properties[dim]</code> filtered on that property, with every property of the dim.
+<code>Schema.default_for("entity.sign", **categories)</code> gives an unset property's default, <code>default_by</code> per category included.
+It names the property by its subject and the categories by their plain names, as the frame's columns are (<a href="../../design/use/reading/#properties-and-categories">design</a>).</p>
 <h2 id="wide-and-long">Wide and long<a class="headerlink" href="#wide-and-long" title="Permanent link">&para;</a></h2>
-<p><code>dims</code>, <code>properties</code> and <code>groups</code> are <strong>wide</strong> — one row per label or tuple. <code>attributes</code> and <code>outputs</code> are <strong>long</strong> — one row per value:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>&lt;coordinate&gt; ... | attribute | breakpoint | value
+<p><code>dims</code> and <code>properties</code> are wide, with one row per label or tuple.
+<code>attributes</code> are long, with one row per value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>&lt;coordinate&gt; ... | attribute | breakpoint | value
 </code></pre></div>
-<p><code>attributes</code> holds <strong>every</strong> attribute, whatever its <code>dims</code> — <code>p_nom</code> over <code>entity</code> alone is long rows just like <code>p_max_pu</code>. The coordinates are the attribute's own — <code>entity</code> for <code>p_nom</code>, one <code>connection</code> struct column for a connection attribute like <code>efficiency</code>, and no entity column at all for one addressed by another axis alone (<a href="../../design/format/#the-long-schema">design</a>).</p>
-<p>A NULL dim column means "all values of that dim", not that the attribute lacks the axis: a constant <code>p_max_pu</code> is one row with <code>timestep = NULL</code>, a varying one is a row per timestep (<a href="../../design/record/#the-broadcast-rule">design</a>). <code>entity</code> broadcasts like any dim; on a categorized dim a NULL reaches only the labels whose categories carry the attribute, so one <code>p_max_pu</code> row with <code>entity = NULL</code> reaches every generator and no bus. A group column broadcasts the same way, a NULL <code>connection</code> meaning every connection. <code>breakpoint</code> carries the abscissa of a piecewise-linear value.</p>
-<p><code>attributes</code> shows stored rows only: a coordinate no row covers takes the attribute's default, which <code>Schema.default_for(name, **categories)</code> answers per category.</p>
-<p>No property is a column of an attribute row — <code>attributes["p_max_pu"]</code> holds every entity's rows together. To scope to one category, join <code>properties["entity"]</code>, filtered on the category, on <code>entity</code>.</p>
+<p><code>attributes</code> holds every attribute in long rows, whatever its <code>dims</code>, so <code>p_nom</code> over <code>entity</code> alone has the same layout as <code>p_max_pu</code>.
+The coordinates are the attribute's own (<a href="../../design/storage/format/#the-long-schema">design</a>).
+<code>p_nom</code> has <code>entity</code>, a connection attribute such as <code>efficiency</code> has one <code>connection</code> struct column, and an attribute addressed by another axis alone has no entity column.</p>
+<p>A NULL in a coordinate column means every label of that dim (<a href="../../design/model/attributes/#the-broadcast-rule">design</a>).
+A constant <code>p_max_pu</code> is one row with <code>timestep = NULL</code>, and a varying one is a row per timestep.
+One <code>p_max_pu</code> row with <code>entity = NULL</code> reaches every entity, loads included.
+A multi-dim's struct column broadcasts the same way: a NULL <code>connection</code> means every connection.
+<code>breakpoint</code> carries the abscissa of a piecewise-linear value.</p>
+<p><code>attributes</code> shows stored rows only, in no promised order.
+Two rows may cover one coordinate, of one layer or of two, and the row naming every dim the others there name gives its value.
+A consumer settles them with <code>settle</code>, as <a href="#settling-rows">settling rows</a> shows.
+A coordinate that no row covers takes the attribute's default, which <code>Schema.default_for(name, **categories)</code> gives per category.</p>
+<p>An attribute row holds no property, so <code>attributes["p_max_pu"]</code> holds every entity's rows together.
+To scope it to one category, join <code>properties["entity"]</code>, filtered on the category, on <code>entity</code>.</p>
 <h2 id="flags"><code>flags</code><a class="headerlink" href="#flags" title="Permanent link">&para;</a></h2>
-<p><code>flags()</code> answers which axes each attribute's rows actually use, across the record in one query, so a consumer can plan its reads without opening a file. <code>flags(**categories)</code> answers for one category of one dim, counting only rows reaching a matching label and only attributes those labels carry:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">entity_type</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="nb">set</span><span class="p">(</span><span class="n">flags</span><span class="p">)</span>  <span class="c1"># which attributes generators have at all</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="s2">"timestep"</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">varies</span>  <span class="c1"># some row sets it</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="s2">"timestep"</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">broadcast</span>  <span class="c1"># some row leaves it NULL</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">flags</span><span class="p">[</span><span class="s2">"marginal_cost"</span><span class="p">]</span><span class="o">.</span><span class="n">breakpoints</span>  <span class="c1"># some row carries a curve</span>
+<p><code>flags()</code> says which axes each attribute's rows use, across the record in one query, so a consumer can plan its reads before opening a file.
+<code>flags(**categories)</code> answers for one category of one dim, and counts only rows that reach a matching label:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nb">set</span><span class="p">(</span><span class="n">flags</span><span class="p">)</span>  <span class="c1"># which attributes generators have at all</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s2">"timestep"</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">varies</span>  <span class="c1"># some row sets it</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="s2">"timestep"</span> <span class="ow">in</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">broadcast</span>  <span class="c1"># some row leaves it NULL</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="n">flags</span><span class="p">[</span><span class="s2">"marginal_cost"</span><span class="p">]</span><span class="o">.</span><span class="n">breakpoints</span>  <span class="c1"># some row carries a curve</span>
 </code></pre></div>
-<p>The two sets are <strong>not</strong> complements: a dim in both means the labels disagree — some carry a per-timestep series, others a single constant row — which is the instruction to use both containers, not an ambiguity (<a href="../../design/record/#flags">design</a>).</p>
+<p>A dim can be in both sets.
+Then some labels carry a per-timestep series and others a single constant row, and the consumer uses both containers (<a href="../../design/use/reading/#flags">design</a>).</p>
+<h2 id="settling-rows">Settling rows<a class="headerlink" href="#settling-rows" title="Permanent link">&para;</a></h2>
+<p><code>attributes</code> gives rows as written, so a consumer applies the broadcast rule itself.
+<code>settle(rel, labels, flags)</code> does it in one query, and <code>flags</code> tells it how little it needs to do (<a href="../../design/use/reading/#settling-rows">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">settle</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">"ctype = 'Generator'"</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">)</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="n">p_max_pu</span> <span class="o">=</span> <span class="n">settle</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">],</span> <span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="n">gens</span><span class="p">},</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">])</span>
+</code></pre></div>
+<p><code>labels</code> names the coordinates to settle, each with a relation of its labels in a column of the coordinate's name.
+A NULL there becomes one row per label, a row naming a label not passed is dropped, and at each coordinate the most specific row is kept.
+So the rows of other categories need no filter first.
+A coordinate left out of <code>labels</code> stays as written, so a constant <code>p_max_pu</code> stays one row with <code>snapshot</code> NULL rather than one row per snapshot.
+Leave out every coordinate your container can hold a broadcast for.</p>
+<p><code>flags</code> decides, per coordinate in <code>labels</code>, how much work the query does:</p>
+<table>
+<thead>
+<tr>
+<th>the coordinate is in</th>
+<th>the rows</th>
+<th><code>settle</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>varies</code> only</td>
+<td>all name it</td>
+<td>keeps the rows naming a passed label</td>
+</tr>
+<tr>
+<td><code>broadcast</code> only</td>
+<td>all leave it NULL</td>
+<td>expands each row over the labels</td>
+</tr>
+<tr>
+<td><code>varies</code> and <code>broadcast</code></td>
+<td>some name it, some leave it NULL</td>
+<td>expands, then picks the most specific row</td>
+</tr>
+</tbody>
+</table>
+<p>The pick is a window over every coordinate and the costly step, so it runs only where a coordinate is in both sets.
+<code>flags(**categories)</code> counts only the rows reaching that category, which often takes a coordinate out of one set and spares the pick.
+Flags of a wider scope overstate the rows and give the same answer, only more slowly.</p>
+<p><code>flags</code> also chooses the container before any value is read:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">f</span> <span class="o">=</span> <span class="n">flags</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="k">if</span> <span class="s2">"snapshot"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">varies</span><span class="p">:</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>    <span class="o">...</span>  <span class="c1"># one value per generator</span>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="k">elif</span> <span class="s2">"snapshot"</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">f</span><span class="o">.</span><span class="n">broadcast</span><span class="p">:</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="o">...</span>  <span class="c1"># one series per generator</span>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="k">else</span><span class="p">:</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="o">...</span>  <span class="c1"># constants for some generators, series for others</span>
+</code></pre></div>
 <h2 id="reading-a-directory">Reading a directory<a class="headerlink" href="#reading-a-directory" title="Permanent link">&para;</a></h2>
-<p>A parquet directory is a record. Nothing about layers is involved:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">)</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>
+<p>A parquet directory is a record, and reading one involves no layers:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">)</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
-<p>The layout is the whole format (<a href="../../design/format/">design</a>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>record/
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>├── manifest.json            # the schema, and the record's id
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>├── dims/&lt;dim&gt;.parquet       # one axis per declared dim: labels and their properties
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>├── groups/&lt;group&gt;.parquet   # which tuples of the group exist, and their properties
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>├── inputs/&lt;attr&gt;.parquet    # one input attribute per file, whatever its dims
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>└── outputs/&lt;attr&gt;.parquet   # one result attribute per file
+<p>The layout is the whole format (<a href="../../design/storage/format/">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>record/
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>├── manifest.json            # the schema, and the record's id
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>├── dims/&lt;dim&gt;.parquet       # one axis per declared dim, multi-dims included: labels and their properties
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>└── attributes/&lt;attr&gt;.parquet  # one attribute per file, whatever its dims, results included
 </code></pre></div>
 
 
@@ -1240,13 +1332,13 @@ SPDX-License-Identifier: CC-BY-4.0
         
         
           
-          <a href="../schema/" class="md-footer__link md-footer__link--next" aria-label="Next: The schema">
+          <a href="../schema/" class="md-footer__link md-footer__link--next" aria-label="Next: Declaring a schema">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                The schema
+                Declaring a schema
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -633,12 +633,6 @@
       
         
       
-        
-      
-        
-      
-        
-      
     
     
     
@@ -748,8 +742,6 @@
       
         
           
-        
-      
         
       
         
@@ -879,21 +871,21 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="datarecord">datarecord<a class="headerlink" href="#datarecord" title="Permanent link">&para;</a></h1>
-<p>Dimensioned attribute data with a declared schema.</p>
-<p>A record holds <strong>entities</strong> (named members of a type), <strong>groups</strong> of them — connections between entities and buses being the one every network has — <strong>attribute values</strong> over both, and the <strong>axes</strong> those values vary along. A schema declares what may exist; the data says what does.</p>
-<p>Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.</p>
-<p><code>datarecord</code> depends only on <code>duckdb</code>, <code>narwhals</code> and <code>pydantic</code>. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.</p>
+<p>A record holds labeled data with a declared schema. Its labels sit on axes called dims. A multi-dim is a dim whose labels are tuples of other dims' labels, listing which combinations exist. Properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does.</p>
+<p>A record can be one parquet directory or a tree of layers, and a reader reads both through one interface. A layer adds a partial record on top of its parent, so a scenario variant stores only the rows it changes. Any parquet reader can open a record's directory.</p>
+<p><code>datarecord</code> depends on <code>duckdb</code>, <code>pydantic</code> and <code>mathspec</code>, and names no modelling framework. A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pip<span class="w"> </span>install<span class="w"> </span>datarecord<span class="w">           </span><span class="c1"># core</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>pip<span class="w"> </span>install<span class="w"> </span>datarecord<span class="o">[</span>pypsa<span class="o">]</span><span class="w">    </span><span class="c1"># with the PyPSA tool</span>
 </code></pre></div>
+<p>The package does not yet declare <code>mathspec</code>, which is not on PyPI. Install it alongside from <a href="https://github.com/energy-models/mathspec">GitHub</a>, at the commit <code>pixi.toml</code> pins (<a href="installation/">installation</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">)</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">record</span><span class="o">.</span><span class="n">entity_types</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>  <span class="c1"># wide member rows</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">collect</span><span class="p">()</span>  <span class="c1"># long value rows</span>
-<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># which axes each attribute uses</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>  <span class="c1"># one row per entity, its properties</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>  <span class="c1"># long value rows</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># which axes each attribute uses</span>
 </code></pre></div>
 <h2 id="where-to-go">Where to go<a class="headerlink" href="#where-to-go" title="Permanent link">&para;</a></h2>
 <div class="grid cards">
@@ -905,8 +897,8 @@ SPDX-License-Identifier: CC-BY-4.0
 <ul>
 <li><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M8.5 3A5.5 5.5 0 0 1 14 8.5c0 1.33-.47 2.55-1.26 3.5H21v9h-9v-8.26c-.95.79-2.17 1.26-3.5 1.26A5.5 5.5 0 0 1 3 8.5 5.5 5.5 0 0 1 8.5 3"/></svg></span> <strong><a href="design/">Design</a></strong></li>
 </ul>
-<p>What a record is and why it is that way — the authoritative design. The
-  docstrings cite these pages rather than restating the argument.</p>
+<p>What a record is and why it is that way. The design is authoritative, and
+  the docstrings cite it.</p>
 <ul>
 <li><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M7 7H5a2 2 0 0 0-2 2v8h2v-4h2v4h2V9a2 2 0 0 0-2-2m0 4H5V9h2m7-2h-4v10h2v-4h2a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2m0 4h-2V9h2m6 0v6h1v2h-4v-2h1V9h-1V7h4v2Z"/></svg></span> <strong><a href="api/">API Reference</a></strong></li>
 </ul>

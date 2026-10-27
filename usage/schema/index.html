@@ -16,7 +16,7 @@
         <link rel="prev" href="../reading/">
       
       
-        <link rel="next" href="../layers/">
+        <link rel="next" href="../editing/">
       
       
         
@@ -27,7 +27,7 @@
     
     
       
-        <title>The schema - datarecord</title>
+        <title>Declaring a schema - datarecord</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#the-schema" class="md-skip">
+        <a href="#declaring-a-schema" class="md-skip">
           Skip to content
         </a>
       
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              The schema
+              Declaring a schema
             
           </span>
         </div>
@@ -603,7 +603,7 @@
   <span class="md-ellipsis">
     
   
-    The schema
+    Declaring a schema
   
 
     
@@ -621,7 +621,7 @@
   <span class="md-ellipsis">
     
   
-    The schema
+    Declaring a schema
   
 
     
@@ -647,6 +647,83 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dims
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-dims
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#categories-and-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categories and defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unit-and-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        unit and description
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#compatibility" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -661,34 +738,6 @@
   
 </nav>
       
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../layers/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Layers
-  
-
-    
-  </span>
-  
-  
-
-      </a>
     </li>
   
 
@@ -729,14 +778,42 @@
   
   
     <li class="md-nav__item">
-      <a href="../writing/" class="md-nav__link">
+      <a href="../layers/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Writing
+    Branching and layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
   
 
     
@@ -764,7 +841,7 @@
   <span class="md-ellipsis">
     
   
-    Tools
+    The PyPSA tool
   
 
     
@@ -796,12 +873,6 @@
       
         
           
-        
-      
-        
-      
-        
-      
         
       
         
@@ -939,8 +1010,6 @@
       
         
       
-        
-      
     
     
     
@@ -1012,6 +1081,83 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dims
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#multi-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-dims
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#properties" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#categories-and-defaults" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Categories and defaults
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attributes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#unit-and-description" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        unit and description
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#compatibility" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1048,73 +1194,99 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-<h1 id="the-schema">The schema<a class="headerlink" href="#the-schema" title="Permanent link">&para;</a></h1>
-<p>One schema per record, written down as <code>manifest.json</code> (<a href="../../design/schema/">design</a>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">narwhals</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">nw</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Schema</span><span class="p">,</span> <span class="n">Dimension</span><span class="p">,</span> <span class="n">AttributeSpec</span><span class="p">,</span> <span class="n">PropertySpec</span><span class="p">,</span> <span class="n">Group</span><span class="p">,</span> <span class="n">Trait</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">Schema</span><span class="p">(</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">version</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="s2">"entity"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="s2">"bus"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="s2">"scenario"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">()),</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="s2">"timestep"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Datetime</span><span class="p">()),</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="p">},</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="s2">"entity"</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>            <span class="s2">"entity_type"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>                <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Enum</span><span class="p">([</span><span class="s2">"Bus"</span><span class="p">,</span> <span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">,</span> <span class="s2">"StorageUnit"</span><span class="p">])</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>            <span class="p">),</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>            <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span>
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>                <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">(),</span> <span class="n">default</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span> <span class="n">default_by</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity_type"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Bus"</span><span class="p">:</span> <span class="s2">"AC"</span><span class="p">}}</span>
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            <span class="p">),</span>
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>        <span class="p">},</span>
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>        <span class="s2">"connection"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"role"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">String</span><span class="p">())},</span>
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    <span class="p">},</span>
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>    <span class="n">groups</span><span class="o">=</span><span class="p">{</span><span class="s2">"connection"</span><span class="p">:</span> <span class="n">Group</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"bus"</span><span class="p">})},</span>
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>    <span class="n">attributes</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="s2">"p_nom"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"MW"</span>
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>        <span class="p">),</span>
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>        <span class="s2">"p_max_pu"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="p">),</span>
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="s2">"p_min_pu"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span>
-<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>            <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span>
-<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>            <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>            <span class="n">default_by</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity_type"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"StorageUnit"</span><span class="p">:</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">}},</span>
-<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>        <span class="p">),</span>
-<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="s2">"efficiency"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
-<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>            <span class="n">dtype</span><span class="o">=</span><span class="n">nw</span><span class="o">.</span><span class="n">Float64</span><span class="p">(),</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"connection"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
-<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="p">),</span>
-<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>    <span class="p">},</span>
-<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>    <span class="n">traits</span><span class="o">=</span><span class="p">{</span>
-<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>        <span class="s2">"dispatchable"</span><span class="p">:</span> <span class="n">Trait</span><span class="p">(</span>
-<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>            <span class="n">attributes</span><span class="o">=</span><span class="p">{</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="s2">"p_min_pu"</span><span class="p">},</span>
-<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>            <span class="n">on</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity_type"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"StorageUnit"</span><span class="p">}},</span>
-<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>        <span class="p">)</span>
-<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>    <span class="p">},</span>
-<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>    <span class="n">partial</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">,</span> <span class="s2">"connection"</span><span class="p">},</span>
-<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="p">)</span>
+<h1 id="declaring-a-schema">Declaring a schema<a class="headerlink" href="#declaring-a-schema" title="Permanent link">&para;</a></h1>
+<p>A record has one schema, written as <code>manifest.json</code> (<a href="../../design/model/schema/">design</a>). The schema declares the dims, the properties of their labels and the attributes. This example declares a small network:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Schema</span><span class="p">,</span> <span class="n">Dimension</span><span class="p">,</span> <span class="n">AttributeSpec</span><span class="p">,</span> <span class="n">PropertySpec</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">Schema</span><span class="p">(</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">version</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">dimensions</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>        <span class="s2">"entity"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">),</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>        <span class="s2">"ctype"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"Link"</span><span class="p">,</span> <span class="s2">"Load"</span><span class="p">,</span> <span class="s2">"StorageUnit"</span><span class="p">]),</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>        <span class="s2">"role"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="p">[</span><span class="s2">"input"</span><span class="p">,</span> <span class="s2">"output"</span><span class="p">,</span> <span class="s2">"attached"</span><span class="p">]),</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="s2">"bus"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">),</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">),</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="s2">"country"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">),</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="s2">"scenario"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">),</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="s2">"timestep"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"datetime"</span><span class="p">),</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="s2">"connection"</span><span class="p">:</span> <span class="n">Dimension</span><span class="p">(</span><span class="n">over</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"bus"</span><span class="p">}),</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="p">},</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>        <span class="s2">"entity"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>            <span class="s2">"ctype"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="s2">"ctype"</span><span class="p">),</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>            <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="s2">"carrier"</span><span class="p">),</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>            <span class="s2">"sign"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>                <span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>                <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>                <span class="n">default_by</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity.ctype"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Load"</span><span class="p">:</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">}},</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            <span class="p">),</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>        <span class="p">},</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        <span class="s2">"bus"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>            <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">"AC"</span><span class="p">),</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>            <span class="s2">"x"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>            <span class="s2">"country"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="s2">"country"</span><span class="p">),</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>        <span class="p">},</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>        <span class="s2">"connection"</span><span class="p">:</span> <span class="p">{</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>            <span class="s2">"role"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="s2">"role"</span><span class="p">),</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>            <span class="s2">"note"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"str"</span><span class="p">),</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a>        <span class="p">},</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a>    <span class="p">},</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a>    <span class="n">attributes</span><span class="o">=</span><span class="p">{</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a>        <span class="s2">"p_nom"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">unit</span><span class="o">=</span><span class="s2">"MW"</span><span class="p">),</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a>        <span class="s2">"x"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a>        <span class="s2">"co2_emissions"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"carrier"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">),</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a>        <span class="s2">"p_max_pu"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a>            <span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a>        <span class="p">),</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a>        <span class="s2">"p_min_pu"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a>            <span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a>            <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a>            <span class="n">default</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a>            <span class="n">default_by</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity.ctype"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"StorageUnit"</span><span class="p">:</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">}},</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a>        <span class="p">),</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a>        <span class="s2">"efficiency"</span><span class="p">:</span> <span class="n">AttributeSpec</span><span class="p">(</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a>            <span class="n">dtype</span><span class="o">=</span><span class="s2">"float"</span><span class="p">,</span> <span class="n">dims</span><span class="o">=</span><span class="p">{</span><span class="s2">"connection"</span><span class="p">,</span> <span class="s2">"timestep"</span><span class="p">},</span> <span class="n">default</span><span class="o">=</span><span class="mf">1.0</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a>        <span class="p">),</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a>    <span class="p">},</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a>    <span class="n">partial</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">,</span> <span class="s2">"scenario"</span><span class="p">,</span> <span class="s2">"connection"</span><span class="p">},</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="p">)</span>
 </code></pre></div>
-<ul>
-<li><strong><code>Dimension</code></strong> declares one axis: its <code>dtype</code> (a narwhals dtype, translated to its DuckDB name — a DuckDB type name works too, for a type narwhals does not spell) and <code>within</code> for an axis whose labels identify a point only inside another's — multi-period time being the case (<a href="../../design/schema/#within-an-axis-inside-an-axis">design</a>). <code>entity</code> is a dim like any other.</li>
-<li><strong><code>properties</code></strong> is metadata: per subject — a dim or a group — the values that identify, classify or describe one of its labels, one value per label and never varying along another axis. Each is a column of the subject's own file, <code>dims/entity.parquet</code> or <code>groups/connection.parquet</code> (<a href="../../design/schema/#properties">design</a>).</li>
-<li><strong>An <code>Enum</code> property of a <code>partial</code> dim categorizes it</strong>: its values are the dim's categories, which traits and <code>default_by</code> key on. <code>entity_type</code> above is one; a dim may have several, and no name is special. <code>Schema.categorizing("entity")</code> lists them (<a href="../../design/schema/#categories-an-enum-property-of-a-partial-dim">design</a>).</li>
-<li><strong><code>default_by</code></strong> overrides <code>default</code> per category, on properties and attributes alike: the first key listing the label's category wins. <code>Schema.default_for("p_min_pu", entity_type="StorageUnit")</code> answers <code>-1.0</code> (<a href="../../design/schema/#default_by-a-default-per-category">design</a>).</li>
-<li><strong><code>attributes</code> is data</strong>, and flat — one name, one spec, record-wide, across every section. <strong>A <code>Trait</code> narrows</strong> attributes (and properties) to the labels whose category its <code>on</code> names. One no trait claims is carried by every label its <code>dims</code> can address, so <code>p_nom</code> above reaches every entity while <code>p_max_pu</code> reaches only generators and storage units. <code>Schema.attributes_for("entity", entity_type="Bus")</code> and <code>Schema.properties_for(...)</code> resolve what a category carries (<a href="../../design/schema/#traits">design</a>).</li>
-<li><strong><code>AttributeSpec.dims</code></strong> is the only addressing mechanism, naming dims and groups alike — <code>efficiency</code> is a connection attribute because its <code>dims</code> name the group, carried as one struct column (<a href="../../design/schema/#addressing-dims-x">design</a>). It is what makes a scenario-varying <code>p_nom</code> a violation rather than data. Every attribute lands in <code>inputs/</code>, whatever its <code>dims</code>, so widening one is a compatible change that moves no file.</li>
-<li><strong><code>Group</code></strong> declares which tuples over several dims exist, mapping coordinate name → dim; a list is sugar where the two coincide. <code>connection</code> over <code>(entity, bus)</code> is the one every network has. Adding <strong><code>into</code></strong> declares the group <em>functional</em> into that dim — each <code>over</code> tuple carrying exactly one of its labels — which is a constraint checkable on write (<a href="../../design/schema/#groups">design</a>).</li>
-<li><strong><code>partial</code></strong> is the layering granularity — which dims and groups a layer may patch value by value, and the fold key. <code>entity</code> in it lets a layer patch one entity, and is required for its categories to key traits and defaults. <code>scenario</code> is patchable; <code>timestep</code> is not, so a patch to one hour restates that entity's whole series rather than leaving a curve resolved across two layers with a hole in it (<a href="../../design/schema/#partial-the-granularity-of-an-override">design</a>). A group is the same: with <code>connection</code> in it a layer patches one connection's <code>efficiency</code>, without it the layer restates every connection's.</li>
-<li><strong><code>unit</code></strong> and <strong><code>description</code></strong> are stored and never interpreted — no conversion, no dimensional analysis. <code>None</code> is undeclared, <code>""</code> genuinely dimensionless (<a href="../../design/schema/#unit-and-description">design</a>).</li>
-</ul>
+<h2 id="dims">Dims<a class="headerlink" href="#dims" title="Permanent link">&para;</a></h2>
+<p>A <code>Dimension</code> declares one axis. Its <code>dtype</code> is a mathspec dtype: <code>"float"</code>, <code>"int"</code>, <code>"str"</code> or <code>"datetime"</code>. A <code>"str"</code> dim may take <code>one_of=[...]</code>, its labels: the axis is then that list, in order, with no file and no properties, and <code>add</code> and <code>remove</code> refuse it (<a href="../../design/model/dims/#a-dim-with-one_of">design</a>).</p>
+<p>A multi-period snapshot is a label of <code>snapshot</code> with a property that refers to its period, <code>snapshot.period: {"one_of": "period"}</code> (<a href="../../design/model/dims/#mapping-labels-to-another-dim">design</a>).</p>
+<h2 id="multi-dims">Multi-dims<a class="headerlink" href="#multi-dims" title="Permanent link">&para;</a></h2>
+<p>A <code>Dimension</code> with <code>over</code> is a multi-dim: its labels are tuples of other dims' labels, and it declares which tuples exist. <code>over</code> maps each coordinate name to a dim, and a list is short for the case where the two coincide. A multi-dim has no <code>dtype</code> and no <code>one_of</code>. Above, <code>connection</code> is a multi-dim over <code>(entity, bus)</code>. <code>Schema.dimensions</code> holds every dim, <code>Schema.multi_dims</code> the multi-dims and <code>Schema.dims</code> the others (<a href="../../design/model/multi-dims/">design</a>).</p>
+<p><code>connection.bus</code> names a coordinate wherever a dotted <code>subject.name</code> stands, and <code>Schema.resolve("connection.bus")</code> answers <code>connection</code> and the dim <code>bus</code> (<a href="../../design/model/multi-dims/#coordinates">design</a>).</p>
+<p>A multi-dim's property may refer to a dim, such as <code>bus_country.country: {"one_of": "country"}</code> on the multi-dim <code>bus_country</code> over <code>["bus", "scenario"]</code>, for a bus's country per scenario. No property refers to a multi-dim (<a href="../../design/model/multi-dims/#one-struct-column">design</a>).</p>
+<h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">&para;</a></h2>
+<p><code>properties</code> declares, per subject, the values that identify, classify or describe one of its labels. A subject is a dim, multi-dims included. A property holds one value per label and does not vary along another axis. Each property is a column of its subject's own file, <code>dims/entity.parquet</code> or <code>dims/connection.parquet</code>. A caller addresses it as <code>subject.name</code>, such as <code>entity.carrier</code>, <code>bus.carrier</code> or <code>connection.role</code> (<a href="../../design/model/properties/#properties">design</a>).</p>
+<p>A property name belongs to its subject. It may match an attribute, a dim or another subject's property: <code>bus.x</code> and the attribute <code>x</code> are two names, as are <code>entity.carrier</code> and the dim <code>carrier</code>. The schema refuses a property named like its subject's key or like one of a multi-dim's coordinates.</p>
+<p>A property declares exactly one of <code>dtype</code> and <code>one_of</code>. Its <code>dtype</code> is <code>"float"</code>, <code>"int"</code>, <code>"bool"</code> or <code>"str"</code>. With <code>one_of="&lt;dim&gt;"</code> it refers to that dim, and its values are typed as the dim. Above, <code>entity.carrier</code> and <code>bus.carrier</code> refer to <code>carrier</code>, and <code>bus.country</code> to <code>country</code>. <code>set</code> and <code>add</code> refuse a label the record lacks, and NULL means no label. <code>remove("country", ...)</code> is refused while a bus still holds the label (<a href="../../design/model/properties/#referring-to-a-dim">design</a>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"country"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"DE"</span><span class="p">])</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">],</span> <span class="n">country</span><span class="o">=</span><span class="s2">"DE"</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"bus.country"</span><span class="p">,</span> <span class="s2">"FR"</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># refused: no `country` label FR</span>
+</code></pre></div>
+<h2 id="categories-and-defaults">Categories and defaults<a class="headerlink" href="#categories-and-defaults" title="Permanent link">&para;</a></h2>
+<p>A property of a dim in <code>partial</code>, a multi-dim among them, that refers to a dim with <code>one_of</code> categorizes its subject, as <code>connection.role</code> categorizes <code>connection</code>. Its values are the subject's categories. <code>default_by</code> keys on them by the property's dotted name, and a <code>set</code> or <code>flags</code> keyword selects by them. Above, <code>entity.ctype</code> refers to <code>ctype</code>, which has <code>one_of</code>, so it categorizes <code>entity</code>. A dim may have several categorizing properties. <code>entity.carrier</code> refers to <code>carrier</code>, which has no <code>one_of</code>, so its labels are data and it categorizes nothing. <code>Schema.categorizing("entity")</code> lists the categorizing properties (<a href="../../design/model/properties/#categories">design</a>).</p>
+<p><code>default_by</code> overrides <code>default</code> per category, on properties and attributes alike. The first key whose map holds the label's category wins. <code>Schema.default_for("p_min_pu", ctype="StorageUnit")</code> answers <code>-1.0</code> (<a href="../../design/model/properties/#default_by-a-default-per-category">design</a>).</p>
+<h2 id="attributes">Attributes<a class="headerlink" href="#attributes" title="Permanent link">&para;</a></h2>
+<p><code>attributes</code> holds the data. One name is one spec, record-wide. <code>Schema.resolve</code> tells the attribute <code>x</code> from the property <code>bus.x</code>.</p>
+<p>A NULL coordinate reaches every label of its dim, so a value set with no <code>entity</code> reaches every entity. A property keyword scopes a value to some labels, one row per label. Which labels a framework reads a name for is the tool's business (<a href="../../design/model/attributes/#the-broadcast-rule">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># one row per generator</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="p">[</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="s2">"StorageUnit"</span><span class="p">])</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">)</span>  <span class="c1"># every entity; PyPSA reads no load's</span>
+</code></pre></div>
+<p><code>AttributeSpec.dims</code> is the only addressing mechanism, and it names multi-dims as it names any dim. <code>efficiency</code> names the multi-dim <code>connection</code> in its <code>dims</code>, and its rows carry it as one struct column (<a href="../../design/model/multi-dims/#attributes-over-a-multi-dim">design</a>). <code>dims</code> makes a scenario-varying <code>p_nom</code> a schema violation. Every attribute lands in <code>attributes/</code>, whatever its <code>dims</code>, so widening <code>dims</code> is a compatible change that moves no file.</p>
+<h2 id="partial"><code>partial</code><a class="headerlink" href="#partial" title="Permanent link">&para;</a></h2>
+<p><code>partial</code> names the dims that a layer may patch value by value, and it is the fold key. <code>entity</code> in <code>partial</code> lets a layer patch one entity, and its categories need it to key defaults. Above, <code>bus</code> and <code>scenario</code> are patchable, and a layer restates <code>carrier</code> whole, which is a few rows. <code>timestep</code> is not patchable, so a patch to one hour restates that entity's whole series (<a href="../../design/layers/tree/#partial-the-granularity-of-an-override">design</a>). A multi-dim follows the same rule. With <code>connection</code> in <code>partial</code> a layer patches one connection's <code>efficiency</code>, and without it the layer restates every connection's.</p>
+<p><code>partial</code> applies to attribute values. A layer that changes an axis, a multi-dim's included, restates it whole either way (<a href="../../design/layers/removal/">design</a>).</p>
+<h2 id="unit-and-description"><code>unit</code> and <code>description</code><a class="headerlink" href="#unit-and-description" title="Permanent link">&para;</a></h2>
+<p><code>unit</code> and <code>description</code> are stored and never interpreted. The package does no unit conversion and no dimensional analysis. <code>None</code> means undeclared, and <code>""</code> means the quantity has no unit (<a href="../../design/model/schema/#unit-and-description">design</a>).</p>
 <h2 id="compatibility">Compatibility<a class="headerlink" href="#compatibility" title="Permanent link">&para;</a></h2>
-<p><code>schema.compatible_with(other)</code> answers whether layers written under <code>other</code> still read under <code>self</code>, returning one reason per incompatibility and an empty list when the change is compatible (<a href="../../design/schema/#versioning">design</a>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">reasons</span> <span class="o">=</span> <span class="n">new_schema</span><span class="o">.</span><span class="n">compatible_with</span><span class="p">(</span><span class="n">old_schema</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">if</span> <span class="n">reasons</span><span class="p">:</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">reasons</span><span class="p">))</span>
+<p><code>schema.compatible_with(other)</code> answers whether layers written under <code>other</code> still read under <code>self</code>. It returns one reason per incompatibility, and an empty list when the change is compatible (<a href="../../design/model/schema/#versioning">design</a>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">reasons</span> <span class="o">=</span> <span class="n">new_schema</span><span class="o">.</span><span class="n">compatible_with</span><span class="p">(</span><span class="n">old_schema</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">if</span> <span class="n">reasons</span><span class="p">:</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">"</span><span class="se">\n</span><span class="s2">"</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">reasons</span><span class="p">))</span>
 </code></pre></div>
 
 
@@ -1168,13 +1340,13 @@ SPDX-License-Identifier: CC-BY-4.0
         
         
           
-          <a href="../layers/" class="md-footer__link md-footer__link--next" aria-label="Next: Layers">
+          <a href="../editing/" class="md-footer__link md-footer__link--next" aria-label="Next: Editing">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Layers
+                Editing
               </div>
             </div>
             <div class="md-footer__button md-icon">

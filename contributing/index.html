@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/contributing/">
       
       
-        <link rel="prev" href="../design/proposals/dep-0012-properties/">
+        <link rel="prev" href="../design/proposals/dep-0024-categories-are-enum-dimensions/">
       
       
         <link rel="next" href="../changelog/">
@@ -566,12 +566,6 @@
       
         
       
-        
-      
-        
-      
-        
-      
     
     
     
@@ -815,8 +809,6 @@
       
         
       
-        
-      
     
     
     
@@ -1044,7 +1036,7 @@ original work and that you agree to license it under the project's MIT license.<
   weekly job sweeps any that outlive it. Both live in
   <code>.github/workflows/docs.yml</code>.</li>
 <li>No tool import may leak into core <code>datarecord</code>
-  (<a href="https://energy-models.github.io/datarecord/design/module-layout/">module layout</a>):
+  (<a href="https://energy-models.github.io/datarecord/design/package/">module layout</a>):
   everything framework-specific lives under <code>datarecord/tools/</code> behind an
   optional extra.</li>
 </ul>
@@ -1057,7 +1049,7 @@ argument for it, the design it lands, and usage examples.</p>
   copy it to <code>docs/design/proposals/dep-NNNN-slug.md</code>, where <code>NNNN</code> is the next
   free four-digit number, and append it to the end of the <code>Enhancement proposals</code>
   nav in <code>mkdocs.yml</code>. A number is never reused or reassigned.</li>
-<li>Its header carries <code>Status</code> — <code>Draft</code>, <code>Accepted</code>, <code>Implemented</code> or
+<li>Its header carries <code>Status</code> — <code>Draft</code>, <code>Accepted</code>, <code>On hold</code>, <code>Implemented</code> or
   <code>Superseded</code>, with the date — and <code>Version</code>, the release it ships in:
   <code>Unreleased</code> until the release that sets it.</li>
 <li>Implementing it moves the design into the
@@ -1083,9 +1075,9 @@ both, and the axes those values vary along. A record is defined by the
 directory is its on-disk form. The concrete <code>Record</code> folds a tree of layers
 resolved last-writer-wins, degenerating to a scan over a single directory
 (<code>Record.at(uri)</code>), so a consumer cannot tell how many layers it holds. Queries
-are built with <code>narwhals</code> and executed by <code>duckdb</code>, staying lazy until
-collected. Beyond those and <code>pydantic</code>, core depends on nothing. Keep new
-features consistent with this schema-declared, backend-agnostic,
+are DuckDB relations, staying lazy until fetched, and dtypes are <code>mathspec</code>'s.
+Beyond <code>duckdb</code>, <code>pydantic</code> and <code>mathspec</code>, core depends on nothing. Keep new
+features consistent with this schema-declared, DuckDB-backed,
 lazily-evaluated design.</p>
 <h2 id="releasing">Releasing<a class="headerlink" href="#releasing" title="Permanent link">&para;</a></h2>
 <p>The version lives in <code>[project].version</code> in <code>pyproject.toml</code>; there is no
@@ -1141,7 +1133,7 @@ by hand.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../design/proposals/dep-0012-properties/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 12: Properties">
+          <a href="../design/proposals/dep-0024-categories-are-enum-dimensions/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 24: Categories are enum dimensions">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1151,7 +1143,7 @@ by hand.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                DEP 12: Properties
+                DEP 24: Categories are enum dimensions
               </div>
             </div>
           </a>

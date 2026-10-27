@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/usage/tools/">
       
       
-        <link rel="prev" href="../writing/">
+        <link rel="prev" href="../storage/">
       
       
         <link rel="next" href="../../design/">
@@ -27,7 +27,7 @@
     
     
       
-        <title>Tools - datarecord</title>
+        <title>The PyPSA tool - datarecord</title>
       
     
     
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Tools
+              The PyPSA tool
             
           </span>
         </div>
@@ -594,35 +594,7 @@
   <span class="md-ellipsis">
     
   
-    The schema
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../layers/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Layers
+    Declaring a schema
   
 
     
@@ -671,14 +643,42 @@
   
   
     <li class="md-nav__item">
-      <a href="../writing/" class="md-nav__link">
+      <a href="../layers/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Writing
+    Branching and layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
   
 
     
@@ -715,7 +715,7 @@
   <span class="md-ellipsis">
     
   
-    Tools
+    The PyPSA tool
   
 
     
@@ -733,7 +733,7 @@
   <span class="md-ellipsis">
     
   
-    Tools
+    The PyPSA tool
   
 
     
@@ -757,6 +757,17 @@
       Table of contents
     </label>
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#buses-and-carriers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Buses and carriers
+      
+    </span>
+  </a>
+  
+</li>
       
         <li class="md-nav__item">
   <a href="#solving-and-writing-results-back" class="md-nav__link">
@@ -796,12 +807,6 @@
       
         
           
-        
-      
-        
-      
-        
-      
         
       
         
@@ -939,8 +944,6 @@
       
         
       
-        
-      
     
     
     
@@ -1012,6 +1015,17 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#buses-and-carriers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Buses and carriers
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#solving-and-writing-results-back" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1049,7 +1063,9 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h1>
-<p>A <strong>tool</strong> is one modelling framework's view of a record. Tools live under <code>datarecord/tools/</code>, are reached by importing them (no registry), and nothing in the core imports one — so importing the record layer pulls in no framework (<a href="../../design/tools/">design</a>, <a href="../../design/module-layout/">module layout</a>).</p>
+<p>A tool is one modelling framework's view of a record.
+Tools live under <code>datarecord/tools/</code>, and a caller reaches one by importing it.
+Nothing in the core imports a tool, so importing the record layer pulls in no framework (<a href="../../design/tools/">design</a>, <a href="../../design/package/">the package</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord.tools.pypsa</span><span class="w"> </span><span class="kn">import</span> <span class="n">PyPSA</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">missing</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">verify</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>
@@ -1059,22 +1075,57 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="n">n</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># a pypsa.Network</span>
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="n">n</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">record_back</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>  <span class="c1"># the inverse; a `Record`</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="n">results</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">results</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>  <span class="c1"># Frames, in the long schema</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="n">record_back</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">)</span>  <span class="c1"># the inverse, results included</span>
 </code></pre></div>
-<p><code>to_datarecord</code> and <code>results</code> plan their frames on the connection they are handed — the workspace's that writes them, or the record's they are <code>set</code> on — so they reach the write path without a copy; <code>build</code> reads <code>record.con</code> itself.</p>
-<p><code>verify</code> catches what the record layer cannot — an entity type the framework has no registry entry for, a connection <code>role</code> it cannot place, a <code>partial</code> set that breaks its constant-versus-varying split — and returns a falsy <code>Requirements</code> when the record is usable. <code>build</code> raises <code>UnsupportedRecordError</code> rather than producing a partial model.</p>
+<p><code>to_datarecord</code> plans its relations on the connection it receives, the one of the workspace that writes them, so they reach the write path with no copy.
+<code>build</code> reads <code>record.con</code> itself.</p>
+<p><code>verify</code> catches what the record layer cannot: an entity type the framework has no registry entry for, a connection <code>role</code> it cannot place, and a <code>partial</code> set that breaks the framework's split between constant and varying data.
+It returns a <code>Requirements</code> that is falsy when the record is usable.
+A stored attribute that a type does not take, such as <code>p_max_pu</code> on a load, is left out of the build and listed in <code>ignored</code>, and the result stays falsy.
+<code>build</code> raises <code>UnsupportedRecordError</code> for a record it cannot build in full.</p>
+<h2 id="buses-and-carriers">Buses and carriers<a class="headerlink" href="#buses-and-carriers" title="Permanent link">&para;</a></h2>
+<p>PyPSA's buses and carriers are dims.
+A bus is a label of <code>bus</code>, and a carrier is a label of <code>carrier</code>.
+What PyPSA stores on either is a property of the label or an attribute over the dim, and every name stays PyPSA's (<a href="../../design/tools/pypsa/#buses-and-carriers-are-dims">design</a>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"carrier"</span><span class="p">]</span>  <span class="c1"># carrier</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"bus"</span><span class="p">]</span>  <span class="c1"># bus | carrier | type | x | y | unit | location</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># entity | ctype | carrier | sign | type</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"v_nom"</span><span class="p">]</span>  <span class="c1"># bus | attribute | breakpoint | value</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"marginal_price"</span><span class="p">]</span>  <span class="c1"># bus | snapshot | scenario | ..., a result</span>
+</code></pre></div>
+<p>A property is named by its subject, so <code>x</code> is a line's reactance and <code>bus.x</code> is a bus's coordinate.
+<code>entity.carrier</code> and <code>bus.carrier</code> are <code>{"one_of": "carrier"}</code>, so they refer to <code>carrier</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"H2"</span><span class="p">],</span> <span class="n">color</span><span class="o">=</span><span class="s2">"#f0f"</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north H2"</span><span class="p">],</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"H2"</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="mf">10.1</span><span class="p">,</span> <span class="n">y</span><span class="o">=</span><span class="mf">52.0</span><span class="p">)</span>  <span class="c1"># bare: the dim's own</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"v_nom"</span><span class="p">,</span> <span class="mf">380.0</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"bus.x"</span><span class="p">,</span> <span class="mf">10.2</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># `x` alone is a Line's reactance</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"entity.ctype"</span><span class="p">,</span> <span class="s2">"Load"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g1"</span><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"entity.carrier"</span><span class="p">,</span> <span class="s2">"coal"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g1"</span><span class="p">)</span>  <span class="c1"># refused: no label `coal`</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="s2">"AC"</span><span class="p">)</span>  <span class="c1"># refused, naming `bus.carrier` and `entity.carrier`</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># selector: `entity.ctype`</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"south"</span><span class="p">])</span>  <span class="c1"># and every connection at it</span>
+<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"gas"</span><span class="p">])</span>  <span class="c1"># refused while a carrier names it</span>
+</code></pre></div>
+<p>A bus and a load may share a name, since they are labels of two dims.
+<code>to_datarecord</code> adds every carrier that a component or bus names and <code>n.carriers</code> lacks, and it stores PyPSA's <code>""</code> carrier as NULL.
+<code>verify</code> reports an entity attached to no bus.</p>
 <h2 id="solving-and-writing-results-back">Solving and writing results back<a class="headerlink" href="#solving-and-writing-results-back" title="Permanent link">&para;</a></h2>
-<p><code>results</code> returns the same <code>Frames</code> type <code>Record.outputs</code> presents, so a solve's output goes straight back:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">n</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>  <span class="c1"># a WorkingRecord is a Record</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">n</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="k">for</span> <span class="n">attr</span><span class="p">,</span> <span class="n">frame</span> <span class="ow">in</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">results</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">w</span><span class="o">.</span><span class="n">con</span><span class="p">)</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    <span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="n">attr</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">"outputs"</span><span class="p">)</span>
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># one layer, inputs and results together</span>
+<p>A result is an attribute.
+With <code>results_only=True</code>, <code>to_datarecord</code> presents only what the solve produced, as a thin layer over <code>base</code>, the record the network was built from:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">inputs</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># edited inputs are committed first</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">n</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">n</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">solved</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">child</span><span class="p">(</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>    <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">,</span> <span class="n">results_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">base</span><span class="o">=</span><span class="n">inputs</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="p">)</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">solved</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"marginal_price"</span><span class="p">]</span>  <span class="c1"># a child of solved reads it too</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">PyPSA</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">solved</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>  <span class="c1"># marginal_price is in the network</span>
 </code></pre></div>
-<p>Two checks are skipped for <code>kind="outputs"</code>: the attribute need not be schema-declared, and a result's labels need not resolve — a solve may produce rows for labels it derived rather than read (<a href="../../design/working-record/#results-through-kindoutputs">design</a>).</p>
+<p><code>base</code> is required with <code>results_only</code> and refused without it.
+A SubNetwork is a label of the dim <code>sub_network</code>, <code>0</code>, <code>1</code>, … as PyPSA names it.
+The results layer restates that axis with this solve's SubNetworks and leaves the entity axis to <code>base</code>, so a re-solve leaves none stale (<a href="../../design/tools/pypsa/#writing-results">design</a>).</p>
 
 
 
@@ -1110,7 +1161,7 @@ SPDX-License-Identifier: CC-BY-4.0
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../writing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Writing">
+          <a href="../storage/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Storage">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1120,20 +1171,20 @@ SPDX-License-Identifier: CC-BY-4.0
                 Previous
               </span>
               <div class="md-ellipsis">
-                Writing
+                Storage
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../design/" class="md-footer__link md-footer__link--next" aria-label="Next: Index">
+          <a href="../../design/" class="md-footer__link md-footer__link--next" aria-label="Next: Overview">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Index
+                Overview
               </div>
             </div>
             <div class="md-footer__button md-icon">
