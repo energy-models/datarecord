@@ -89,7 +89,7 @@ def test_partial_dims_is_the_union_over_attributes():
 
     wider = _schema(partial=frozenset({"entity", "scenario", "timestep", "connection"}))
     assert wider.partial_dims == ("entity", "timestep", "scenario", "connection"), (
-        "a `partial` dim or multi-dim joins the key"
+        "a `partial` dim joins the key"
     )
 
     dims = {

@@ -488,9 +488,8 @@ def schema(
     # needs it declared.
     for attr, spec in _default_attributes(dims, multi_dims).items():
         flat.setdefault(attr, spec)
-    # A multi-dim's coordinates are dims like any other, so they are declared
-    # here rather than assumed - which is what lets a caller pass a multi-dim
-    # over coordinates that are not called `bus`.
+    # Coordinates are declared here rather than assumed, which lets a caller
+    # pass a multi-dim over coordinates that are not called `bus`.
     coordinates = {c for over in multi_dims.values() for c in over}
     declared = {
         "entity": "str",

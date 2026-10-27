@@ -160,7 +160,7 @@ class Schema(_Declared):
         Bumped by any change to the declarations. A reader meeting a
         version it was not written for should refuse rather than guess.
     dimensions
-        Every declared axis, keyed by dim name, multi-dims among them.
+        Every declared axis, keyed by dim name.
     properties
         Subject dim -> property name -> spec: the columns of
         `dims/{dim}.parquet` that describe its labels. A name is unique
@@ -836,7 +836,7 @@ class Schema(_Declared):
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
         attribute may vary over, `partial_dims` the fold key (the `partial`
-        dims, multi-dims among them), and ownership is their intersection. A
+        dims), and ownership is their intersection. A
         dim in `dims` but not the fold key - a non-`partial` value axis like
         `timestep` - is owned whole, so a patch to one of its values restates the
         attribute's entire extent along it (`_owned_whole`).
@@ -937,7 +937,7 @@ class Schema(_Declared):
         """Return the declared DuckDB type of `column`, or None if the schema declares none.
 
         Covers the structural columns the format fixes, the declared dims,
-        multi-dims among them, the properties of `subject` - columns of its
+        the properties of `subject` - columns of its
         axis file, read first - and the owner map's two flag structs, whose fields
         follow the schema's dims.
 

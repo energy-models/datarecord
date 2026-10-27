@@ -6,7 +6,7 @@
 
 `bus.state` `one_of: state` says every bus is in at most one state: a
 column of the bus axis whose values are labels of `state`, which keeps an axis
-file for its order and for its properties. A multi-dim's property refers to a dim the same way.
+file for its order and for its properties.
 
 Notes
 -----

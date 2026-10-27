@@ -35,7 +35,7 @@ def _fold_axis(
 ) -> DuckDBPyRelation | None:
     """Return the deepest of `files`, else `seed`: one node's resolved axis.
 
-    The one fold for every axis, a multi-dim's included: a layer that changes
+    The one fold for every axis: a layer that changes
     one restates it whole, so the deepest restatement is the answer, in its
     own row order. `files` is root first. A frozen file holding `key` twice is
     refused; a staging area's table is keyed, so it holds no key twice.
@@ -274,7 +274,7 @@ def resolve_coords(
     con: DuckDBPyConnection,
     split: tuple[Fold | Coords | None, list[LayerSource]] | None = None,
 ) -> Coords:
-    """Resolve every dim `schema` declares, multi-dims among them, and the dead labels.
+    """Resolve every dim `schema` declares and the dead labels.
 
     Parameters
     ----------

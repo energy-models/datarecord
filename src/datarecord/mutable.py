@@ -844,7 +844,7 @@ class WorkingRecord(Record):
         )
 
     def _set_dotted(self, dotted: str, value: Any, coords: Mapping[str, Any]) -> None:
-        """Stage the property `dotted` names, of a dim or a multi-dim.
+        """Stage the property `dotted` names.
 
         Raises
         ------

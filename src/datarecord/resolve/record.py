@@ -503,7 +503,7 @@ class Record:
         # carries. A dim outside `partial` is in neither: it is not in the map
         # at all, so it constrains nothing and passes straight through.
         #
-        # Of those that are, each - a dim or a multi-dim - matches NULL-aware
+        # Of those that are, each matches NULL-aware
         # (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
         coordinates = schema.coordinates_of(attribute)
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)

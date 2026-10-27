@@ -117,7 +117,7 @@ class Fold:
     schema
         The record's one schema, which says which broadcast dims the flags carry.
     axes
-        Each resolved dim's axis relation, keyed by dim, multi-dims among them.
+        Each resolved dim's axis relation, keyed by dim.
     owner_map
         The resolved owner map: `(owner_map_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per key as its layer wrote it,

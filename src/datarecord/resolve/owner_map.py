@@ -181,11 +181,11 @@ def fold_attributes(
     """This layer's owner map: its `attributes/` keys as written, folded over `parent`.
 
     The parent rows naming a label `removed` holds are dropped first, per
-    `partial` dim, multi-dims among them. A label inside a struct is reached through
-    its tuple, which the layer removed with it. A parent row this layer's rows
-    cover whole is dropped; one they cross stays as written, and the layer
-    owns an overlap row for each crossing pair (`_overlaps`). `None` where
-    neither side holds a row.
+    `partial` dim. A label inside a struct is reached through its tuple, which
+    the layer removed with it. A parent row this layer's rows cover whole is
+    dropped; one they cross stays as written, and the layer owns an overlap
+    row for each crossing pair (`_overlaps`). `None` where neither side holds
+    a row.
 
     Raises
     ------
@@ -528,9 +528,7 @@ def _checkpoint(
 
 
 def _pruned(schema: Schema) -> tuple[str, ...]:
-    """The memberships whose removed labels prune the owner map: the keyed ones.
-
-    A `partial` dim, multi-dims among them.
+    """The memberships whose removed labels prune the owner map: the `partial` dims.
 
     Notes
     -----

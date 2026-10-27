@@ -203,7 +203,7 @@ class AttributeSpec(_ValueSpec):
     dtype
         The value column's type, a mathspec `ParameterDtype`.
     dims
-        Dims this attribute may vary over, multi-dims among them; a subset
+        Dims this attribute may vary over; a subset
         of those declared. Whatever they are, its values are long rows of
         `attributes/<attr>.parquet`.
     default
@@ -239,7 +239,7 @@ class AttributeSpec(_ValueSpec):
 
 
 class PropertySpec(_ValueSpec):
-    """One value per label of a dim, a multi-dim's tuples included, describing it.
+    """One value per label of a dim, describing it.
 
     A property is keyed by its subject (`Schema.properties`) and stored as a
     column of `dims/{dim}.parquet`.
