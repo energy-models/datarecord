@@ -10,17 +10,19 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Title    | one default per value                                                                                                    |
 | Author   | Bryn Pickering                                                                                                           |
-| Status   | Draft                                                                                                                    |
+| Status   | On hold (2026-10-27)                                                                                                     |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 23](dep-0023-multi-dims.md), [DEP 24](dep-0024-categories-are-enum-dimensions.md) |
 | Created  | 2026-10-21                                                                                                               |
 
 ## Abstract
 
-`default` and `default_by` become one `default`, which takes a value or `{by, cases, otherwise}` to differ per category. The categorizing property moves from a mapping key to a value, so no manifest key holds a `.`.
+`default` and `default_by` become one `default`, which takes a value or `{by, cases, otherwise}` to differ per category. The categorizing property moves from a mapping key to a value, so no manifest key holds a `.`. [mathspec#940](https://github.com/energy-models/mathspec/issues/940) proposes the same form for mathspec's `missing`, and this DEP lands with the shape it settles on.
 
 ## Motivation
 
 **A dotted name stands as a key.** `default_by: {entity.ctype: {Load: -1}}` puts an address where a name belongs. A reader of the manifest, mathspec's among them, takes a key as an opaque string, while it parses `entity.ctype` in an expression. One address should be spelled one way. Since [DEP 16](dep-0016-remove-traits.md) removed traits and their `on`, `default_by` is the only key left that holds one.
+
+**One fill, spelled as mathspec spells it.** A datarecord `default` is a mathspec `missing`. A per-category fill written one way in datarecord and another in mathspec would be translated at every boundary between them.
 
 **Two fields for one fill.** `default` and `default_by` are read in order, and `default_by` may list several categorizing properties, the first match winning. Nothing in PyPSA uses more than one: the tool keys every `default_by` on `entity.ctype`.
 
@@ -57,7 +59,9 @@ In Python, `default` holds the value or a `ByCategory(by, cases, otherwise)` mod
 
 ## Rationale
 
-**`by` as a value.** An address belongs where an expression parser reads it. `by` is the keyword mathspec's `sum` uses for "grouped by this", and `cases` and `otherwise` are the keys of its cased expressions, so a reader of both meets one vocabulary.
+**`by` as a value.** An address belongs where an expression parser reads it. `by` is the keyword mathspec's `sum` uses for "grouped by this", and [mathspec#939](https://github.com/energy-models/mathspec/issues/939) would let mathspec address `entity.ctype` as datarecord does.
+
+**One `by` is enough.** Every per-category default in PyPSA depends on `ctype` alone, and a fill by two categories reads as a rule of the model rather than a fill of the data.
 
 **`otherwise`, not `default` beside `cases`.** One field holds the fill, whatever shape it takes, so a reader asks one field and a writer cannot set two that disagree.
 
@@ -101,5 +105,6 @@ Checks that hold once built:
 
 ## Open Issues
 
-- **Whether one `by` is enough.** A list of `{by, cases}` would add `default_by`'s several properties back if something needs them.
-- **mathspec has no per-category fill.** Nothing here needs one: datarecord fills a default itself. If mathspec adopts one for `missing` in another shape, this form follows it.
+- **The shape mathspec settles on.** On hold until [mathspec#940](https://github.com/energy-models/mathspec/issues/940) is decided; a different shape there is adopted here.
+- **A reading per case.** mathspec#940 lets a case be `refused` or `absent`, as in `cases: {Line: refused, Generator: absent}`. datarecord's `default` is a value or `null` and has no readings, so a case holding one needs a meaning here first.
+- **`cases` in two shapes.** On a mathspec named expression, `cases` maps a case name to `{when, expression}`; here it maps a category to a fill. A reader of both meets one key with two meanings unless mathspec#940 picks another.
