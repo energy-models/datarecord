@@ -20,7 +20,6 @@ import time
 from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from contextlib import AbstractContextManager, contextmanager, nullcontext
 from functools import reduce
-from hashlib import sha256
 from itertools import combinations
 from uuid import UUID, uuid4
 
@@ -60,13 +59,11 @@ def _table_name(revision_id: UUID, schema: Schema) -> str:
 
 
 def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
-    """The shared table one folded axis or owner map is kept in.
+    """The shared table one folded axis, dead label set or owner map is kept in.
 
-    The name is hashed rather than spelled, being a caller's string that becomes
-    an identifier.
+    `name` is spelled as declared, which `Schema` holds to a plain identifier.
     """
-    digest = sha256(name.encode()).hexdigest()[:16]
-    return f"{kind}_{digest}_{revision_id.hex}"
+    return f"{kind}_{name}_{revision_id.hex}"
 
 
 def _shared(

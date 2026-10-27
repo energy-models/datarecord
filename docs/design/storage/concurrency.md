@@ -31,9 +31,11 @@ A relation and a `WorkingRecord` belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
 
 A fold caches its results as shared tables.
-The frozen prefix's folded axes are the tables `dims_<dim>_<id>`, a [multi-dim](../model/multi-dims.md)'s like any other, beside the [owner map](../layers/resolution.md#owner-map) `owner_map_<key>_<id>`.
-A last table, `coords_<id>`, lists them and is created after them, so a reader that finds it finds them all.
-A dim's name is a caller's string, so the table name holds its hash, and `<key>` is the hash of the owner map's key columns.
+The frozen prefix's folded axes are the tables `dims_<dim>_<id>`, a [multi-dim](../model/multi-dims.md)'s like any other.
+Its [dead labels](../layers/resolution.md#a-label-outside-the-key) are the tables `dead_<dim>_<id>`, one per coordinate that has any.
+A last table, `coords_<id>`, lists both kinds and is created after them, so a reader that finds it finds them all.
+The [owner map](../layers/resolution.md#owner-map) is `owner_map_<key>_<id>` beside them, where `<key>` is the owner map's key columns joined by commas.
+A dim's name is spelled as declared, since the schema [holds every name to a plain identifier](../model/schema.md#names).
 `<id>` is the node whose frozen layers were folded: a revision's id, the base's id for a `WorkingRecord`, or the [id in the manifest](../model/schema.md#one-schema-per-record) for a standalone directory.
 
 The schema is no part of the key beyond `partial`, so a fold made before the manifest widened is read as it is under the wider schema, while one made before a dim joined or left `partial` is folded again.
