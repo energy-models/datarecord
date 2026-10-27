@@ -192,7 +192,10 @@ def test_a_node_cache_points_at_the_scenario_layer(store, parent, stochastic):
     middle = empty_child(parent)
     middle.materialise()
 
-    owners = read_dim_owners(middle.id, store.workspace.con, store)
+    owners = {
+        d: layer
+        for d, layer, _ in read_dim_owners(middle.id, store.workspace.con, store)
+    }
     assert owners["scenario"] == parent.id, "the axis stays in the layer writing it"
     assert not Path(store.layer_dir(middle.id), "dims", "scenario.parquet").exists()
 

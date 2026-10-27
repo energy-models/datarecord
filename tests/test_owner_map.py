@@ -148,30 +148,37 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     assert not any("resolved" in p.parts for p in reachable)
 
 
-def _dims(store, revision):
-    """`revision`'s resolved axes as records, read through a workspace of its own.
+def _coords(store, revision):
+    """`revision`'s resolved axes and dead labels, read through a workspace of its own.
 
     A fresh workspace holds no fold of an earlier read, so it reads whatever
     caches are on disk now.
     """
     workspace = Workspace()
     try:
-        dims = workspace.store(store.uri).revision(revision.id).record.dims
-        return {d: dims[d].df().to_dict("records") for d in dims}
+        record = workspace.store(store.uri).revision(revision.id).record
+        dims = record.dims
+        dead = record._fold.dead
+        return (
+            {d: dims[d].df().to_dict("records") for d in dims},
+            {d: sorted(rel.fetchall()) for d, rel in dead.items()},
+        )
     finally:
         workspace.close()
 
 
+@pytest.mark.parametrize("dropped", [[], ["gas"]], ids=["nothing-dead", "gas-dead"])
 @pytest.mark.parametrize(
     "cached",
     [(), ("root",), ("middle",), ("root", "middle")],
     ids=["leaf-only", "root", "middle", "root-and-middle"],
 )
-def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached):
-    """A node cache names each axis's layer, and reads back as the full fold.
+def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropped):
+    """A node cache names each axis's layer and whether it has dead labels, and reads back as the full fold.
 
     `scenario` and `connection` are restated only in the root, so a leaf cache
-    seeded from a cache above it carries their owners forward.
+    seeded from a cache above it carries their owners forward. `gas`, added in
+    the middle, is dropped in the leaf where `dropped` says so.
 
     Notes
     -----
@@ -187,8 +194,10 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached):
     write_component(middle, "Generator", [{"entity": "gas"}])
     leaf = empty_child(middle)
     write_axis(leaf, "bus", [{"bus": "south"}])
+    if dropped:
+        drop_entities(leaf, dropped)
     reader = empty_child(leaf)
-    full = _dims(store, reader)
+    full = _coords(store, reader)
 
     nodes = {"root": root, "middle": middle}
     for name in cached:
@@ -196,16 +205,22 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached):
     store.revision(leaf.id).materialise()
 
     owners = read_dim_owners(leaf.id, store.workspace.con, store)
-    assert owners == {
-        "entity": middle.id,
+    assert {d: layer for d, layer, _ in owners} == {
+        "entity": middle.id if not dropped else leaf.id,
         "bus": leaf.id,
         "connection": root.id,
         "scenario": root.id,
     }, "each axis is owned by the deepest layer restating it; `ctype` by none"
-    assert _dims(store, reader) == full, "the cache changes no answer"
+    assert {d for d, _, has_dead in owners if has_dead} == set(full[1]), (
+        "`has_dead` marks exactly the dims the full fold finds dead labels for"
+    )
+    assert _coords(store, reader) == full, "the cache changes no answer"
     assert not list(Path(store.uri, "layers").glob("*/resolved/dims")), (
         "no axis is copied into a cache"
     )
+    assert bool(list(Path(store.uri, "layers").glob("*/resolved/dead/*"))) == bool(
+        dropped
+    ), "dead label files are written only where a dim has dead labels"
 
 
 def test_last_writer_wins_per_key(store, parent):

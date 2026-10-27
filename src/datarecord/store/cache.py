@@ -22,9 +22,9 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from datarecord.duck import ensure_local_dir, write_parquet
 from datarecord.resolve.coords import resolve_coords
 from datarecord.resolve.fold import read_owner_map
-from datarecord.resolve.owner_map import LAYER_UUID_TYPE, _checkpointed
+from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
-from datarecord.schema.schema import LAYER_COLUMN, Schema
+from datarecord.schema.schema import Schema
 from datarecord.store.manifest import read_schema
 
 if TYPE_CHECKING:
@@ -134,24 +134,6 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection) -> Non
     os.replace(tmp, uri)
 
 
-def _to_parquet_unless_empty(
-    rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection
-) -> None:
-    """`_to_parquet`, writing nothing where `rel` has no row.
-
-    `rel` is evaluated once, into a temporary table, rather than once to
-    probe and again to write.
-    """
-    table = f"_unless_empty_{uuid4().hex}"
-    rel.create(table)
-    try:
-        rows = con.table(table)
-        if rows.limit(1).fetchall():
-            _to_parquet(rows, uri, con)
-    finally:
-        con.execute(f"DROP TABLE {table}")
-
-
 def _materialise_dims(
     revision_id: UUID,
     sources: Sequence[LayerSource],
@@ -167,13 +149,7 @@ def _materialise_dims(
     con = store.workspace.con
     coords = resolve_coords(schema, sources, con)
     dead = f"{store.resolved_dir(revision_id)}dead/"
-    ensure_local_dir(dead)
+    ensure_local_dir(dead if coords.dead else store.resolved_dir(revision_id))
     for name, rel in coords.dead.items():
-        _to_parquet_unless_empty(rel, f"{dead}{name}.parquet", con)
-    owners = coords.dim_owners
-    rows = con.sql(
-        f"SELECT unnest($dims::VARCHAR[]) AS dim, "
-        f"unnest($layers::VARCHAR[])::{LAYER_UUID_TYPE} AS {LAYER_COLUMN}",
-        params={"dims": list(owners), "layers": [str(u) for u in owners.values()]},
-    )
-    _to_parquet(rows, store.dim_owners_uri(revision_id), con)
+        _to_parquet(rel, f"{dead}{name}.parquet", con)
+    _to_parquet(coords.owners(con), store.dim_owners_uri(revision_id), con)
