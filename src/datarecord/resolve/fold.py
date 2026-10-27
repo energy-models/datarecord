@@ -39,7 +39,6 @@ from duckdb import DuckDBPyRelation, Expression
 from datarecord.duck import (
     distinct_values,
     fn,
-    parquet_names,
     struct_field,
     struct_of,
     try_read_parquet,
@@ -273,7 +272,8 @@ class Fold:
         The owner map is the presence marker: the map is written last
         (`cache.materialise`), so if it is absent or stale (`read_owner_map`)
         the node reads as having no cache at all. Each axis is read from the
-        layer `dim_owners.parquet` names for it.
+        layer `dim_owners.parquet` names for it, and a dim's dead labels only
+        where it says the dim has any.
 
         Notes
         -----
@@ -282,16 +282,21 @@ class Fold:
         owner_map = read_owner_map(revision_id, con, schema, store)
         if owner_map is None:
             return None
-        dim_owners = read_dim_owners(revision_id, con, store)
+        rows = read_dim_owners(revision_id, con, store)
+        dead = f"{store.resolved_dir(revision_id)}dead/"
         return cls(
             schema=schema,
             axes={
                 dim: con.read_parquet(store.axis_uri(layer, dim))
-                for dim, layer in dim_owners.items()
+                for dim, layer, _ in rows
             },
-            dim_owners=dim_owners,
+            dim_owners={dim: layer for dim, layer, _ in rows},
             owner_map=owner_map,
-            dead=_read_dir(f"{store.resolved_dir(revision_id)}dead/", con),
+            dead={
+                dim: con.read_parquet(f"{dead}{dim}.parquet")
+                for dim, _, has_dead in rows
+                if has_dead
+            },
         )
 
 
@@ -319,8 +324,8 @@ def read_owner_map(
 
 def read_dim_owners(
     revision_id: UUID, con: DuckDBPyConnection, store: Store
-) -> dict[str, UUID]:
-    """`revision_id`'s materialised dim owners: each dim's axis-holding layer.
+) -> list[tuple[str, UUID, bool]]:
+    """`revision_id`'s materialised `(dim, layer_uuid, has_dead)` rows (`Coords.owners`).
 
     A dim absent has no axis.
 
@@ -334,15 +339,4 @@ def read_dim_owners(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     rel = con.read_parquet(store.dim_owners_uri(revision_id))
-    return dict(rel.project(col("dim"), col(LAYER_COLUMN)).fetchall())
-
-
-def _read_dir(dir_uri: str, con: DuckDBPyConnection) -> dict[str, DuckDBPyRelation]:
-    """Every `<name>.parquet` in `dir_uri`, keyed by name, tolerant of an absent dir."""
-    rels = {}
-    for name in parquet_names(dir_uri, con):
-        stem = name.removesuffix(".parquet")
-        rel = try_read_parquet(f"{dir_uri}{name}", con, union_by_name=True)
-        if rel is not None:
-            rels[stem] = rel
-    return rels
+    return rel.project(col("dim"), col(LAYER_COLUMN), col("has_dead")).fetchall()

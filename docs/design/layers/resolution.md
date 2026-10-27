@@ -312,11 +312,12 @@ The same rule decides where resolved axes come from: the layers a revision's own
 The presence of the cache answers this, and no recorded state is involved.
 A map whose key columns are not those the schema's [`partial`](tree.md#partial-the-granularity-of-an-override) gives is no cache: one persisted before a dim joined `partial` holds NULL there for a row varying along it, so the read folds from the layers as if nothing were materialised.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
-`resolved/dim_owners.parquet` holds a row `(dim, layer_uuid)` per axis, a multi-dim's included: the layer whose `dims/<dim>.parquet` is the deepest at or below the revision. A read of an axis stops there too, and opens that layer's file. A dim it does not name has no axis. A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) is never named, its axis being the schema's list.
+`resolved/dim_owners.parquet` holds a row `(dim, layer_uuid, has_dead)` per axis, a multi-dim's included: the layer whose `dims/<dim>.parquet` is the deepest at or below the revision, and whether the dim has dead labels. A read of an axis stops there too, and opens that layer's file. A dim it does not name has no axis. A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) is never named, its axis being the schema's list.
 The file points into ancestor layers by UUID, as the owner map does, rather than copying their files. A layer is write-once, so the pointer never goes stale, and on object storage it is one read where a directory of copies is a listing.
 
 Beside them, `resolved/dead/<coord>.parquet` holds the [dead labels](#a-label-outside-the-key) of each coordinate outside the owner-map key, and of each dim that a multi-dim's coordinate draws on or a property refers to.
-It is written only where there are any.
+It is written only where there are any, and `has_dead` in `dim_owners.parquet` says which are written, so a read opens each by name rather than listing the directory.
+A coordinate with dead labels always has an axis, so `dim_owners.parquet` names every one.
 A read above the revision seeds its dead labels from these files, since the axis files hold only live labels.
 `resolved/dead/` and `owner_map.parquet` are folds, since no layer file holds either.
 

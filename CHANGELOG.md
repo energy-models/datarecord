@@ -129,7 +129,9 @@ All notable changes to datarecord are documented here. The format follows
 - A materialised node no longer copies its axes into `resolved/dims/`.
   `resolved/dim_owners.parquet` names, per dim, the layer whose
   `dims/<dim>.parquet` is the deepest at or below the node, and a read opens
-  that file. `Store.dim_owners_uri(id)` is where it lives. A node materialised
+  that file. Its `has_dead` column says which dims have dead labels in
+  `resolved/dead/`, so a read opens those by name and lists no directory.
+  `Store.dim_owners_uri(id)` is where it lives. A node materialised
   before holds no such file and fails the read: delete its `resolved/` and
   materialise it again.
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
