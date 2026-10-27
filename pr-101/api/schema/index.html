@@ -1751,7 +1751,7 @@ version it was not written for should refuse rather than guess.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Every declared axis, keyed by dim name, multi-dims among them.</p>
+                <p>Every declared axis, keyed by dim name.</p>
               </div>
             </td>
           </tr>
@@ -1765,7 +1765,7 @@ version it was not written for should refuse rather than guess.</p>
                 <p>Subject dim -&gt; property name -&gt; spec: the columns of
 <code>dims/{dim}.parquet</code> that describe its labels. A name is unique
 within its subject only, addressed as <code>subject.name</code>. A property of a
-dim in <code>partial</code>, a multi-dim among them, that refers to a dim with
+dim in <code>partial</code> that refers to a dim with
 <code>one_of</code> categorizes its subject. A dim with <code>one_of</code> has none.</p>
               </div>
             </td>
@@ -2729,7 +2729,7 @@ per-snapshot weighting has no column for any other dim.</p>
 
         <p>Return the categorizing properties of <code>dim</code>, the ones <code>default_by</code> keys on.</p>
 <p>A categorizing property is a property of <code>dim</code> that refers to a dim with
-<code>one_of</code>. Only a dim in <code>partial</code>, a multi-dim among them, has any.</p>
+<code>one_of</code>. Only a dim in <code>partial</code> has any.</p>
 
 
 <details class="note" open>
@@ -2762,7 +2762,7 @@ per-snapshot weighting has no column for any other dim.</p>
 <a id="__codelineno-0-648" name="__codelineno-0-648"></a><span class="w">    </span><span class="sd">"""Return the categorizing properties of `dim`, the ones `default_by` keys on.</span>
 <a id="__codelineno-0-649" name="__codelineno-0-649"></a>
 <a id="__codelineno-0-650" name="__codelineno-0-650"></a><span class="sd">    A categorizing property is a property of `dim` that refers to a dim with</span>
-<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">    `one_of`. Only a dim in `partial`, a multi-dim among them, has any.</span>
+<a id="__codelineno-0-651" name="__codelineno-0-651"></a><span class="sd">    `one_of`. Only a dim in `partial` has any.</span>
 <a id="__codelineno-0-652" name="__codelineno-0-652"></a>
 <a id="__codelineno-0-653" name="__codelineno-0-653"></a><span class="sd">    Notes</span>
 <a id="__codelineno-0-654" name="__codelineno-0-654"></a><span class="sd">    -----</span>
@@ -3450,7 +3450,7 @@ property is called, naming each dotted form.</p>
         <p>Which dims a layer owns <code>attribute</code> per.</p>
 <p>Derived rather than declared: <code>AttributeSpec.dims</code> says which axes the
 attribute may vary over, <code>partial_dims</code> the fold key (the <code>partial</code>
-dims, multi-dims among them), and ownership is their intersection. A
+dims), and ownership is their intersection. A
 dim in <code>dims</code> but not the fold key - a non-<code>partial</code> value axis like
 <code>timestep</code> - is owned whole, so a patch to one of its values restates the
 attribute's entire extent along it (<code>_owned_whole</code>).</p>
@@ -3489,7 +3489,7 @@ attribute's entire extent along it (<code>_owned_whole</code>).</p>
 <a id="__codelineno-0-849" name="__codelineno-0-849"></a>
 <a id="__codelineno-0-850" name="__codelineno-0-850"></a><span class="sd">    Derived rather than declared: `AttributeSpec.dims` says which axes the</span>
 <a id="__codelineno-0-851" name="__codelineno-0-851"></a><span class="sd">    attribute may vary over, `partial_dims` the fold key (the `partial`</span>
-<a id="__codelineno-0-852" name="__codelineno-0-852"></a><span class="sd">    dims, multi-dims among them), and ownership is their intersection. A</span>
+<a id="__codelineno-0-852" name="__codelineno-0-852"></a><span class="sd">    dims), and ownership is their intersection. A</span>
 <a id="__codelineno-0-853" name="__codelineno-0-853"></a><span class="sd">    dim in `dims` but not the fold key - a non-`partial` value axis like</span>
 <a id="__codelineno-0-854" name="__codelineno-0-854"></a><span class="sd">    `timestep` - is owned whole, so a patch to one of its values restates the</span>
 <a id="__codelineno-0-855" name="__codelineno-0-855"></a><span class="sd">    attribute's entire extent along it (`_owned_whole`).</span>
@@ -3578,7 +3578,7 @@ attribute's entire extent along it (<code>_owned_whole</code>).</p>
 
         <p>Return the declared DuckDB type of <code>column</code>, or None if the schema declares none.</p>
 <p>Covers the structural columns the format fixes, the declared dims,
-multi-dims among them, the properties of <code>subject</code> - columns of its
+the properties of <code>subject</code> - columns of its
 axis file, read first - and the owner map's two flag structs, whose fields
 follow the schema's dims.</p>
 <p>No dim is structural: each is declared, and typed from that
@@ -3633,7 +3633,7 @@ falls back to <code>VARCHAR</code> for a map that will never hold a row.</p>
 <a id="__codelineno-0-950" name="__codelineno-0-950"></a><span class="w">    </span><span class="sd">"""Return the declared DuckDB type of `column`, or None if the schema declares none.</span>
 <a id="__codelineno-0-951" name="__codelineno-0-951"></a>
 <a id="__codelineno-0-952" name="__codelineno-0-952"></a><span class="sd">    Covers the structural columns the format fixes, the declared dims,</span>
-<a id="__codelineno-0-953" name="__codelineno-0-953"></a><span class="sd">    multi-dims among them, the properties of `subject` - columns of its</span>
+<a id="__codelineno-0-953" name="__codelineno-0-953"></a><span class="sd">    the properties of `subject` - columns of its</span>
 <a id="__codelineno-0-954" name="__codelineno-0-954"></a><span class="sd">    axis file, read first - and the owner map's two flag structs, whose fields</span>
 <a id="__codelineno-0-955" name="__codelineno-0-955"></a><span class="sd">    follow the schema's dims.</span>
 <a id="__codelineno-0-956" name="__codelineno-0-956"></a>
@@ -4452,7 +4452,7 @@ and <code>remove</code> refuse it. Only a <code>str</code> dim takes <code>one_o
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Dims this attribute may vary over, multi-dims among them; a subset
+                <p>Dims this attribute may vary over; a subset
 of those declared. Whatever they are, its values are long rows of
 <code>attributes/&lt;attr&gt;.parquet</code>.</p>
               </div>
