@@ -1814,13 +1814,13 @@ def test_one_call_spans_component_types(staged):
     """Names decide the type, so one edit may cross types.
 
     `p_nom` is declared for both `Generator` and `Link`, and each name is
-    validated against its own type's spec - one call, two types, no keyword.
+    validated against its own type's spec - one call, two types, no `ctype`.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
-    staged.set("p_nom", {"Manchester Wind": 150.0, "DC link": 80.0})
+    staged.set("p_nom", [150.0, 80.0], entity=["Manchester Wind", "DC link"])
     got = _entity_values(staged, "p_nom")
     assert got["Manchester Wind"] == 150.0
     assert got["DC link"] == 80.0

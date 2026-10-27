@@ -203,8 +203,8 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
         "color",
         "nice_name",
     ]
-    assert record.schema.attributes["v_nom"].dims == {"bus"}
-    assert record.schema.attributes["co2_emissions"].dims == {"carrier"}
+    assert record.schema.attributes["v_nom"].dims == {"bus", "scenario"}
+    assert record.schema.attributes["co2_emissions"].dims == {"carrier", "scenario"}
 
     built = PyPSA.build(record)
     for ctype in ("Bus", "Carrier"):
@@ -698,7 +698,7 @@ def test_a_custom_column_round_trips_on_its_own_type(store, ctype, column, value
     n.c[ctype].static[column] = value
 
     record = export_network(n, store).record
-    assert record.schema.attributes[column].dims == {dim}
+    assert record.schema.attributes[column].dims == {dim, "scenario"}
     assert_networks_equal(PyPSA.build(record), n)
 
 
@@ -773,7 +773,7 @@ def test_a_derived_v_nom_stays_on_the_bus(store, ac_dc):
     n.calculate_dependent_values()
 
     record = export_network(n, store).record
-    assert record.schema.attributes["v_nom"].dims == {"bus"}
+    assert record.schema.attributes["v_nom"].dims == {"bus", "scenario"}
 
     built = PyPSA.build(record)
     built.calculate_dependent_values()
@@ -1168,6 +1168,47 @@ def test_a_stochastic_third_port_efficiency_survives_a_round_trip(store):
     }, "each scenario's port values land in their own columns"
 
 
+def test_a_static_attribute_differing_per_scenario_survives_a_round_trip(store):
+    """A fixed `p_nom` is an input and may differ per scenario, as PyPSA allows.
+
+    Notes
+    -----
+    - [entities and their properties](https://energy-models.github.io/datarecord/design/tools/pypsa/#entities-and-their-properties)
+    """
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "b")
+    n.add("Generator", "g", bus="b", p_nom=10.0, marginal_cost=1.0)
+    n.add("Load", "l", bus="b", p_set=5.0)
+    n.set_scenarios({"low": 0.5, "high": 0.5})
+    n.c.generators.static.loc[("high", "g"), "p_nom"] = 20.0
+    n.consistency_check(strict=["scenario_invariant_attrs"])
+
+    static = PyPSA.build(export_network(n, store).record).c.generators.static
+    assert static[["p_nom", "marginal_cost"]].to_dict("index") == {
+        ("low", "g"): {"p_nom": 10.0, "marginal_cost": 1.0},
+        ("high", "g"): {"p_nom": 20.0, "marginal_cost": 1.0},
+    }, "p_nom keeps its scenario, a shared marginal_cost reaches both"
+
+
+@pytest.mark.parametrize(
+    ("attr", "per_scenario"),
+    [
+        ("p_nom", True),
+        ("p_nom_extendable", False),
+        ("p_nom_opt", False),
+    ],
+)
+def test_only_pypsas_scenario_invariant_attributes_lack_the_scenario_dim(
+    attr, per_scenario
+):
+    """Every stored attribute may differ per scenario, but those PyPSA keeps invariant."""
+    dims = _registry_schema().attributes[attr].dims
+    assert ("scenario" in dims) == per_scenario, dims
+
+
 def _three_port_process():
     import pypsa
 
@@ -1354,7 +1395,10 @@ def test_delays_are_rows_keyed_by_their_connections(workspace, store):
         ("split", "b"): 3,
         ("split", "c"): 4,
     }, "bus0 of a Link has no delay"
-    assert _registry_schema().attributes["cyclic_delay"].dims == {"connection"}
+    assert _registry_schema().attributes["cyclic_delay"].dims == {
+        "connection",
+        "scenario",
+    }
 
     built = PyPSA.build(export_network(n, store).record)
     assert built.c["Link"].static.loc["split", ["delay", "delay2"]].tolist() == [3, 4]

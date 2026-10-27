@@ -111,7 +111,7 @@ w.set("p_max_pu", 0.9, ctype=["Generator", "StorageUnit"])
 w.set("p_max_pu", 0.9)  # every entity; PyPSA reads no load's
 ```
 
-`AttributeSpec.dims` is the only addressing mechanism, and it names multi-dims as it names any dim. `efficiency` names the multi-dim `connection` in its `dims`, and its rows carry it as one struct column ([design](../design/model/multi-dims.md#attributes-over-a-multi-dim)). `dims` makes a scenario-varying `p_nom` a schema violation. Every attribute lands in `attributes/`, whatever its `dims`, so widening `dims` is a compatible change that moves no file.
+`AttributeSpec.dims` is the only addressing mechanism, and it names multi-dims as it names any dim. `efficiency` names the multi-dim `connection` in its `dims`, and its rows carry it as one struct column ([design](../design/model/multi-dims.md#attributes-over-a-multi-dim)). Every attribute lands in `attributes/`, whatever its `dims`, so widening `dims` is a compatible change that moves no file.
 
 ## `partial`
 

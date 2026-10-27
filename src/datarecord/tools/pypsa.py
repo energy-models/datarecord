@@ -97,6 +97,31 @@ _SUB_NETWORK_CARRIER = "The carrier of a sub-network's buses."
 #: that holds its labels. The port vocabulary is this tool's.
 ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
+#: The attributes PyPSA keeps the same in every scenario: mirrors the local
+#: `INVARIANT_ATTRS` of `pypsa.consistency.check_scenario_invariant_attributes`.
+_SCENARIO_INVARIANT = frozenset(
+    {
+        "name",
+        "bus",
+        "type",
+        "p_nom_extendable",
+        "s_nom_extendable",
+        "e_nom_extendable",
+        "p_nom_mod",
+        "s_nom_mod",
+        "e_nom_mod",
+        "committable",
+        "sign",
+        "carrier",
+        "weight",
+        "p_nom_opt",
+        "s_nom_opt",
+        "e_nom_opt",
+        "build_year",
+        "lifetime",
+        "active",
+    }
+)
 #: The `meta` key naming, per entity type, the custom static columns it was
 #: exported with: the part of `_taken`'s vocabulary the registry lacks.
 _CUSTOM = "custom_columns"
@@ -590,6 +615,15 @@ def _dim_of(ctype: str) -> str:
     return _AXIS_TYPES.get(ctype, ENTITY)
 
 
+def _static_dims(name: str, over: str) -> frozenset[str]:
+    """The dims of attribute `name` over `over`, less `snapshot`.
+
+    `scenario` is among them unless PyPSA keeps `name` the same in every
+    scenario (`_SCENARIO_INVARIANT`).
+    """
+    return frozenset({over} if name in _SCENARIO_INVARIANT else {over, SCENARIO})
+
+
 def _keyed_as_entity(rel: DuckDBPyRelation, dim: str) -> DuckDBPyRelation:
     """`rel` with its `dim` column named `entity`, the key PyPSA's frames are built on."""
     if dim == ENTITY:
@@ -701,7 +735,7 @@ def _clashing_columns(n: pypsa.Network) -> frozenset[tuple[str, str]]:
         if len(dims[name]) > 1
         or (
             (spec := declared.attributes.get(name)) is not None
-            and spec.dims != frozenset({_dim_of(ctype)})
+            and spec.dims != _static_dims(name, _dim_of(ctype))
         )
     )
 
@@ -1603,20 +1637,18 @@ def _attribute_spec(row: pd.Series, *, over: str) -> AttributeSpec:
     `over` is the dim its labels are: `entity` for a component's,
     the `connection` multi-dim for a per-port one, whose rows carry it as one
     `{entity, bus}` struct, `bus` or `carrier` for an axis type's
-    (`_AXIS_TYPES`). A varying attribute varies over time and, in a stochastic
-    network, scenario; both are declared always, a network without scenarios
-    writing none.
+    (`_AXIS_TYPES`). A varying attribute varies over time too, beside its
+    `_static_dims`.
 
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
     - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
-    dims = {SNAPSHOT, SCENARIO} if row["varying"] else set()
-    dims.add(over)
+    dims = _static_dims(row.name, over)
     return AttributeSpec(
         dtype=_DTYPES.get(row["typ"], "str"),
-        dims=frozenset(dims),
+        dims=dims | ({SNAPSHOT} if row["varying"] else set()),
         default=_default(row["default"]),
         unit=_text(row.get("unit")),
         description=_text(row.get("description")),
@@ -1959,7 +1991,7 @@ class _NetworkSource:
             dim = _dim_of(ctype)
             for name, dtype in columns.items():
                 attributes.setdefault(
-                    name, AttributeSpec(dtype=dtype, dims=frozenset({dim}))
+                    name, AttributeSpec(dtype=dtype, dims=_static_dims(name, dim))
                 )
         return RecordSchema(
             **{
