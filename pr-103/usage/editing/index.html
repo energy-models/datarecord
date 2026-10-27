@@ -1,0 +1,1361 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-103/usage/editing/">
+      
+      
+        <link rel="prev" href="../schema/">
+      
+      
+        <link rel="next" href="../layers/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Editing - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../static/extras.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#editing" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Editing
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../design/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reading a record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Declaring a schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editing
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        set
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add / remove
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspecting-and-rolling-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspecting and rolling back
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-the-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing the edits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Branching and layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The PyPSA tool
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../design/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#set" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        set
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#add-remove" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        add / remove
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#inspecting-and-rolling-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Inspecting and rolling back
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#writing-the-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing the edits
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="editing">Editing<a class="headerlink" href="#editing" title="Permanent link">&para;</a></h1>
+<p>A <code>WorkingRecord</code> is a record plus pending edits, held in DuckDB tables and not yet written anywhere.
+It is a <code>Record</code>, so it reads as the data with its pending edits applied.
+You can read an edit back, or hand the record to something that only reads, before writing it (<a href="../../design/use/editing/">design</a>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkingRecord</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">root</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+</code></pre></div>
+<h2 id="set"><code>set</code><a class="headerlink" href="#set" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>  <span class="c1"># broadcast</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">[</span><span class="mf">150.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">],</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>  <span class="c1"># per label, positional</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"wind1"</span><span class="p">:</span> <span class="mf">150.0</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">:</span> <span class="mf">80.0</span><span class="p">})</span>  <span class="c1"># per label, keyed</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    <span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">]</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="p">)</span>  <span class="c1"># a long frame: pandas, polars, arrow, a relation</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">series</span><span class="o">.</span><span class="n">rename_axis</span><span class="p">(</span><span class="s2">"snapshot"</span><span class="p">),</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>  <span class="c1"># a series</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">)</span>  <span class="c1"># every entity, loads included, now and later</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># every generator there is now</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>  <span class="c1"># the ones there are now</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"efficiency"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"dc"</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># a connection</span>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">200.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># scoped to one scenario</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"entity.carrier"</span><span class="p">,</span> <span class="s2">"solar"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g2"</span><span class="p">)</span>  <span class="c1"># a property, by its subject</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"bus.x"</span><span class="p">,</span> <span class="mf">10.2</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># a property; `x` alone names an attribute</span>
+</code></pre></div>
+<p>Every coordinate is a keyword, a multi-dim's coordinates included.
+<code>bus="north"</code> with <code>entity="dc"</code> addresses one connection, and <code>from=</code> with <code>to=</code> one corridor.
+A coordinate that no keyword names is NULL, which means every label of it: every entity, loads included, and entities added later.
+A multi-dim value is a whole tuple, so you give all of its coordinates or none (<a href="../../design/use/editing/#set">design</a>).</p>
+<p>A property as a keyword selects labels at call time.
+A keyword is bare: it names a coordinate of the attribute first, else any property of a dim the attribute reaches.
+<code>ctype="Generator", carrier="wind"</code> stages one row per label that matches both, on the record as staged.
+A label added later is not reached, and a plain NULL is how a value reaches such labels.
+A name that several reached dims declare a property of is refused, so set it per dim.</p>
+<p>A multi-period snapshot carries its period as <code>snapshot.period</code>, which names a label of <code>period</code>.
+It carries its timestep as <code>snapshot.timestep</code>, which names a label of the <code>datetime</code> dim <code>timestep</code> (<a href="../../design/model/dims/#mapping-labels-to-another-dim">design</a>).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"period"</span><span class="p">,</span> <span class="p">[</span><span class="mi">2030</span><span class="p">,</span> <span class="mi">2040</span><span class="p">])</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"timestep"</span><span class="p">,</span> <span class="p">[</span><span class="n">t0</span><span class="p">,</span> <span class="n">t1</span><span class="p">])</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="s2">"snapshot"</span><span class="p">,</span> <span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="mi">3</span><span class="p">],</span> <span class="n">period</span><span class="o">=</span><span class="p">[</span><span class="mi">2030</span><span class="p">,</span> <span class="mi">2030</span><span class="p">,</span> <span class="mi">2040</span><span class="p">,</span> <span class="mi">2040</span><span class="p">],</span> <span class="n">timestep</span><span class="o">=</span><span class="p">[</span><span class="n">t0</span><span class="p">,</span> <span class="n">t1</span><span class="p">,</span> <span class="n">t0</span><span class="p">,</span> <span class="n">t1</span><span class="p">]</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="p">)</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g1"</span><span class="p">,</span> <span class="n">period</span><span class="o">=</span><span class="mi">2030</span><span class="p">)</span>  <span class="c1"># snapshots 0 and 1</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g1"</span><span class="p">,</span> <span class="n">timestep</span><span class="o">=</span><span class="n">t0</span><span class="p">)</span>  <span class="c1"># snapshots 0 and 2</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"snapshot.period"</span><span class="p">,</span> <span class="p">{</span><span class="mi">3</span><span class="p">:</span> <span class="mi">2030</span><span class="p">})</span>
+<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"period"</span><span class="p">,</span> <span class="p">[</span><span class="mi">2040</span><span class="p">])</span>  <span class="c1"># refused while a snapshot.period names it</span>
+</code></pre></div>
+<p>A mapping's keys or a series' index are labels of the one coordinate that no keyword names, unless the series' index is named after a coordinate.
+Where neither says which coordinate, the call is refused.</p>
+<p><code>set</code> writes properties too, a category included, each named by its subject.
+<code>set("entity.ctype", "Load", entity="g1")</code> patches one column of <code>g1</code>'s axis row.
+A plain name is an attribute.
+<code>set("carrier", ...)</code> in a schema where only properties are called <code>carrier</code> is refused, and the error suggests <code>bus.carrier</code> and <code>entity.carrier</code>.</p>
+<p>A multi-dim's property takes a scalar, and its coordinates as keywords select the tuples it patches, none selecting every tuple.
+A category keyword selects for a property as for an attribute: <code>role="output"</code> picks the output connections, as <code>ctype="Generator"</code> picks the generators for <code>entity.carrier</code>.
+A category of a coordinate selects too: <code>ctype="Link"</code> picks the connections of links.
+A coordinate is part of the key, so <code>set("connection.bus", ...)</code> is refused: <code>remove</code> the tuple and <code>add</code> it anew.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"connection.role"</span><span class="p">,</span> <span class="s2">"input"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"dc"</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"entity.carrier"</span><span class="p">,</span> <span class="s2">"wind"</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"connection.note"</span><span class="p">,</span> <span class="s2">"export"</span><span class="p">,</span> <span class="n">role</span><span class="o">=</span><span class="s2">"output"</span><span class="p">)</span>  <span class="c1"># every output connection</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"connection.note"</span><span class="p">,</span> <span class="s2">"link"</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Link"</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"north"</span><span class="p">)</span>  <span class="c1"># links at north</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"connection.bus"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"dc"</span><span class="p">)</span>  <span class="c1"># refused: a coordinate is the key</span>
+</code></pre></div>
+<h2 id="add-remove"><code>add</code> / <code>remove</code><a class="headerlink" href="#add-remove" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind"</span><span class="p">])</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">])</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"dc"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Link"</span><span class="p">)</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">[</span><span class="mf">100.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">],</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"old_coal"</span><span class="p">])</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a>    <span class="s2">"connection"</span><span class="p">,</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a>    <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">},</span> <span class="p">{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"south"</span><span class="p">}],</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a>    <span class="n">role</span><span class="o">=</span><span class="p">[</span><span class="s2">"input"</span><span class="p">,</span> <span class="s2">"output"</span><span class="p">],</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="p">)</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">pd</span><span class="o">.</span><span class="n">DataFrame</span><span class="p">({</span><span class="s2">"entity"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"wind1"</span><span class="p">],</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">]}))</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">])</span>  <span class="c1"># another record's tuples, as read</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"south"</span><span class="p">}])</span>
+</code></pre></div>
+<p><code>add(dim, labels, **columns)</code> works on any dim but one with <code>one_of</code>, such as <code>ctype</code>, whose labels are the schema's; <code>add</code> and <code>remove</code> refuse it (<a href="../../design/model/dims/#a-dim-with-one_of">design</a>).
+The keywords are the axis file's other columns, the dim's properties, bare.
+Each is a scalar or a sequence aligned to <code>labels</code>.
+An attribute keyword is refused, since attributes go through <code>set</code> whatever their <code>dims</code> (<a href="../../design/use/editing/#add-remove">design</a>).
+A label exists by virtue of its axis row, so <code>add</code> is an edit of its own: adding a bus with no properties sets nothing.</p>
+<p><code>remove(dim, labels)</code> takes the labels out of the staged axis.
+It need not list what it deletes.
+The fold applies it to every value keyed by the label, and <code>remove</code> also takes every tuple that names one of the labels out of its multi-dim, with the tuple's values (<a href="../../design/layers/removal/">design</a>).
+<code>remove("bus", ["north"])</code> removes every connection at <code>north</code>.</p>
+<p>A layer restates each axis it changes whole, a multi-dim's included: every label the base has, with the edits applied, in the base's order, then the labels it adds.
+An <code>add</code> of a label that <code>remove</code> took out puts it back where the base has it.
+<code>remove</code> is refused while a property that refers to the dim still stores one of the labels, such as <code>entity.carrier</code> naming <code>gas</code>.
+That row belongs to its subject and outlives the label, so <code>set</code> it to another label or None first (<a href="../../design/use/editing/#add-remove">design</a>).</p>
+<p>On a multi-dim, <code>add</code> and <code>remove</code> take tuples.
+A frame DuckDB scans gives them in the struct column named for the multi-dim, as <code>dims["connection"]</code> reads it, or with one column per coordinate instead, but not both; it may carry a column per property, and beside it a property keyword must be a scalar.
+A tuple is also a mapping from coordinate to label, and a list of them takes each property keyword as a scalar or a sequence aligned to the list.
+A tuple with a coordinate missing or NULL is refused, as is one naming a label its coordinate's dim lacks, so <code>add</code> the label first (<a href="../../design/model/multi-dims/">design</a>).</p>
+<h2 id="inspecting-and-rolling-back">Inspecting and rolling back<a class="headerlink" href="#inspecting-and-rolling-back" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">w</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>  <span class="c1"># the edit applied, over the base's rows</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">w</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># additions in, removals out</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># discard everything staged</span>
+</code></pre></div>
+<p>You read what you staged from the record itself, which answers with the edits applied (<a href="../../design/use/editing/#reading-with-pending-edits">design</a>).
+Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk (<a href="../../design/use/editing/#staging">design</a>).</p>
+<h2 id="writing-the-edits">Writing the edits<a class="headerlink" href="#writing-the-edits" title="Permanent link">&para;</a></h2>
+<p>A <code>WorkingRecord</code> does not write.
+The record stays unchanged until you hand its edits to a writer (<a href="../../design/use/editing/#edits">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">new</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># a patch layer under a new child of the base</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone record, flattened</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># clear the staging area, if you are done</span>
+</code></pre></div>
+<p><code>w.edits</code> holds only the edits: the attribute rows set, and each axis changed, restated whole.
+The fold resolves the rest from the parent.
+<code>w</code> itself is the resolved result, what is staged plus what the record already reads.
+A standalone directory needs that, since it has no parent to resolve against.</p>
+<p>The edits are a delta against the revision <code>w</code> was built over, so <code>child</code> raises if you write them under another one.
+Layers are write-once, so the layer lands in the new child (<a href="../../design/layers/tree/#a-layers-data-is-write-once">design</a>).
+The returned revision reads the edits back:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">new</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+</code></pre></div>
+<p>Writing clears nothing: a <code>WorkingRecord</code> that still holds its edits reads exactly what it did before, until <code>rollback()</code>.</p>
+<p>An edit replaces the rows it names, so restating a coordinate overwrites it and the last write stands.
+A <code>remove</code> after a <code>set</code> wins regardless of order, since a removed label has no values.
+An <code>add</code> after a <code>remove</code> brings the label back with its parent's values and without the multi-dim tuples that named it.</p>
+<p>A base's results are attributes and carry like any other.
+A child written from <code>edits</code> inherits them, though an edited input may no longer support them.
+The tool writes a solve's results as a layer of its own (<a href="../tools/#solving-and-writing-results-back">tools</a>).</p>
+<p>Edit-level mistakes are caught when the edit is staged, so a typo is reported at the line that typed it (<a href="../../design/use/editing/#validation">design</a>).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../schema/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Declaring a schema">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Declaring a schema
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../layers/" class="md-footer__link md-footer__link--next" aria-label="Next: Branching and layers">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Branching and layers
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
