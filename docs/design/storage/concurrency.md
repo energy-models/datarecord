@@ -33,7 +33,9 @@ When one of them reaches another thread's write path, it is rejected as [a relat
 A fold caches its results as shared tables.
 The frozen prefix's folded axes are the tables `dims_<dim>_<id>`, a [multi-dim](../model/multi-dims.md)'s like any other.
 Its [dead labels](../layers/resolution.md#a-label-outside-the-key) are the tables `dead_<dim>_<id>`, one per coordinate that has any.
-A last table, `coords_<id>`, lists both kinds and is created after them, so a reader that finds it finds them all.
+A last table, `dim_owners_<id>`, has the shape of a node cache's [`dim_owners.parquet`](../layers/resolution.md#materialised-node-caches), a row `(dim, layer_uuid, has_dead)` per folded axis.
+It is created after them, so a reader that finds it finds them all.
+A reader opens `dead_<dim>_<id>` only where `has_dead` is true.
 The [owner map](../layers/resolution.md#owner-map) is `owner_map_<key>_<id>` beside them, where `<key>` is the owner map's key columns joined by commas.
 A dim's name is spelled as declared, since the schema [holds every name to a plain identifier](../model/schema.md#names).
 `<id>` is the node whose frozen layers were folded: a revision's id, the base's id for a `WorkingRecord`, or the [id in the manifest](../model/schema.md#one-schema-per-record) for a standalone directory.
