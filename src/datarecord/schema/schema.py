@@ -165,7 +165,7 @@ class Schema(_Declared):
         Subject dim -> property name -> spec: the columns of
         `dims/{dim}.parquet` that describe its labels. A name is unique
         within its subject only, addressed as `subject.name`. A property of a
-        dim in `partial`, a multi-dim among them, that refers to a dim with
+        dim in `partial` that refers to a dim with
         `one_of` categorizes its subject. A dim with `one_of` has none.
     attributes
         Attribute -> spec, record-wide. One attribute is one spec and
@@ -648,7 +648,7 @@ class Schema(_Declared):
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
 
         A categorizing property is a property of `dim` that refers to a dim with
-        `one_of`. Only a dim in `partial`, a multi-dim among them, has any.
+        `one_of`. Only a dim in `partial` has any.
 
         Notes
         -----
