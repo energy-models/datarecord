@@ -18,7 +18,7 @@ class WorkingRecord:
     def set(
         self,
         attribute: str,  # an attribute, a result, or a property
-        value: Any,  # scalar | sequence | mapping | series | frame | nw.Expr
+        value: Any,  # scalar | sequence | mapping | series | frame
         *,
         kind: Literal["inputs", "outputs"] = "inputs",
         **coords: Any,  # coordinates, a group's fields, properties of a dim reached
@@ -84,7 +84,6 @@ w.set("p_max_pu", 0.9)  # every label carrying it, now and later
 w.set("p_max_pu", 0.8, component="Generator", carrier="wind")  # selected now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped
-w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
 w.set("p", solved, kind="outputs")  # a result
@@ -105,22 +104,21 @@ A field is named by its own name: a contract `(from, to)` over `entity` is addre
 A label added later is not reached — a plain NULL and [`default_by`](schema.md#default_by-a-default-per-category) are the two ways a value reaches labels not yet added.
 The property's dim must be one the attribute reaches through exactly one coordinate, and the keyword is refused beside that coordinate's own.
 
-**`set` writes a property too**, a category included, when `attribute` names one as [`subject.name`](schema.md#properties) — a plain name is an attribute or result, never a property: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result and never derived, so `kind="outputs"` and an `nw.Expr` are refused for one.
+**`set` writes a property too**, a category included, when `attribute` names one as [`subject.name`](schema.md#properties) — a plain name is an attribute or result, never a property: a patch of one column of the axis rows of its subject, the other columns kept. Its value is a mapping or series from label to value, a scalar with a `dim=` keyword naming the labels, or a scalar for every label the axis has. A group's property takes a scalar, its fields as keywords selecting the tuples. A property is never a result, so `kind="outputs"` is refused for one.
 Changing a category is such a patch: `set("entity.component", "Load", entity="g1")`. What `g1` holds for attributes a Load does not carry stays stored but falls outside every per-category read.
 
 `kind` names the destination in the format's own terms — [the shape of an edit](#the-shape-of-an-edit) is a mapping from edit to destination, and this makes that destination the parameter it was always implicitly carrying.
 `"outputs"` stages into `outputs/` instead of `inputs/`, which is how a tool [hands results back](#results-through-kindoutputs) to a record before it is written.
 
-`value` takes six forms, because assigning one value to many labels and assigning a different value to each are equally ordinary and neither should require building a frame:
+`value` takes five forms, because assigning one value to many labels and assigning a different value to each are equally ordinary and neither should require building a frame:
 
-| `value`   | meaning                            | keywords                                                                     |
-| --------- | ---------------------------------- | ---------------------------------------------------------------------------- |
-| scalar    | staged at every listed combination | an omitted coordinate broadcasts                                             |
-| sequence  | aligned positionally               | exactly one list keyword, same length                                        |
-| mapping   | keys are labels of one coordinate  | the one coordinate no keyword names                                          |
-| series    | index is labels of one coordinate  | the index's own name, else the one coordinate no keyword names               |
-| frame     | supplies its own keys              | single labels completing it                                                  |
-| `nw.Expr` | a function of the current value    | selects what to [derive from](#an-nwexpr-value-derived-from-the-current-one) |
+| `value`  | meaning                            | keywords                                                       |
+| -------- | ---------------------------------- | -------------------------------------------------------------- |
+| scalar   | staged at every listed combination | an omitted coordinate broadcasts                               |
+| sequence | aligned positionally               | exactly one list keyword, same length                          |
+| mapping  | keys are labels of one coordinate  | the one coordinate no keyword names                            |
+| series   | index is labels of one coordinate  | the index's own name, else the one coordinate no keyword names |
+| frame    | supplies its own keys              | single labels completing it                                    |
 
 A mapping's keys or a series' index are ambiguous: they may hold labels of any of the attribute's coordinates, an axis label being a string like any other.
 **The caller says which** by naming the series' index after a coordinate, or by naming every other coordinate as a keyword; where neither settles it, the call is refused.
@@ -134,33 +132,6 @@ The first four normalise to a long frame before staging, so there is one staging
 A length mismatch between a sequence and its keyword is an error at the call, not a silently truncated edit.
 
 Every form is checked against [the labels the record resolves](#validation), the frame form included: "supplies its own keys" decides where the labels come from, not whether they have to exist.
-
-## An `nw.Expr` value — derived from the current one
-
-```python
-w.set("p_nom", nw.col("value") * 1.1)  # scale up every p_nom
-w.set("p_max_pu", nw.col("value").clip(upper=0.9), entity=["wind1"])
-```
-
-A sixth `value` form rather than a second method.
-Nothing else a caller passes is an `nw.Expr`, so the dispatch is unambiguous — unlike the series-versus-mapping tie, which [`set`](#set) has the caller settle rather than guessing at.
-
-What it does differently is read before it stages:
-
-- What it derives from is the resolved value **including earlier pending edits** ([reading with pending edits](#reading-with-pending-edits)), so two such calls compose.
-- Where the other forms stage without touching parent data, this one must resolve the keys it targets first.
-  On a layered record that is a fold, so a broad derived edit is the one edit whose cost scales with the ancestry rather than with the rows written.
-- What is staged is the _result_, not the expression.
-  So a written layer holds ordinary rows, and nothing in the format records that a value was derived — replaying an edit sequence is not a thing the record supports.
-
-The expression is evaluated by narwhals against the resolved long frame, so it names `value` rather than the attribute: the frame is long, and one attribute per call means the column is always `value`.
-
-**A named target must resolve to a row.**
-If the caller names a coordinate, every one of those targets must produce a row to derive from, or the call raises.
-The caller asked for those rows to take a new value and there is nothing to compute one from, which is a failed change rather than a no-op — the same class of error as [naming a label no layer declares](#validation).
-
-With no keyword the instruction is "whatever resolves", so an empty result is an answer rather than a failure.
-That asymmetry is the whole of the rule: a broad derived edit where only some labels carry the attribute is ordinary, while a targeted one that hits nothing is a typo.
 
 ## Results through `kind="outputs"`
 
@@ -205,7 +176,7 @@ w.remove("entity", ["old_coal"])
 w.remove("carrier", ["gas"])  # refused while a property `into` carrier names it
 ```
 
-`add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim`, and a nested dim's parent keys — each a scalar for every label or a sequence aligned to `labels`.
+`add(dim, labels, **columns)` stages whole axis rows: `columns` are the other columns of `dims/<dim>.parquet` — the dim's properties, bare since the subject is `dim` — each a scalar for every label or a sequence aligned to `labels`.
 A column no keyword names is NULL on these rows, since `add` restates a label's row whole.
 An `Enum` property's value must be one of its categories.
 An attribute keyword is refused with a pointer to `set`: an attribute's values are long rows whatever its `dims`, never a column of the axis.
@@ -219,9 +190,9 @@ Adding a component with its connections and varying values is `add`, then [`add_
 
 `remove(dim, labels)` stages one tombstone per label, and no dim scope: a label [exists or it does not](schema.md#existence-does-not-vary-along-a-dim).
 It need not enumerate what it deletes: [the fold](layers.md#deletion) drops every value keyed by the label where `dim` is `partial`, a group attribute's by the label inside its struct ([the owner map](read-path.md#owner-map)).
-It also tombstones every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple. Only for a dim keyed by its label alone: a nested dim's label names no point without its parents, which a tuple does not carry.
+It also tombstones every tuple, of any group, with a field over `dim` naming one of `labels`, read from the record as it resolves with pending edits, so the [writer](layers.md#deletion) never meets a dangling tuple.
 An `add` of the same label revives the label alone: its tuples are re-added through [`add_group`](#add_group-remove_group).
-`remove` is **refused while a [property `into`](schema.md#properties) `dim` names one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first. A nested dim is not checked, as above.
+`remove` is **refused while a [property `into`](schema.md#properties) `dim` names one of the labels**, read from the record as staged: a tuple goes with its label, but a property's row is its subject's and outlives it, so the caller `set`s it to another label or None first.
 
 ## `add_group` / `remove_group`
 
@@ -309,7 +280,7 @@ What editing adds is edit-level, caught when the edit is **staged**, not at writ
 - a label whose categories do not carry the attribute ([traits](schema.md#traits)), judged by its current categories; a label with no category passes;
 - a value an `Enum` property does not list, in `add` or `set`;
 - a value of a [property `into` a dim](schema.md#properties) naming no label of it, as staged, in `add` or `set` — `set("entity.carrier", "coal", entity="g1")` with no `carrier` label `coal`; NULL names none;
-- an `add` missing a nested dim's parent key, or naming an attribute.
+- an `add` naming an attribute.
 
 The label read these need is the one a property keyword already performs, so checking categories costs nothing beyond it. Two coordinates over one categorized dim — a contract's `from` and `to` — name no one label whose categories decide, so neither is checked against them.
 

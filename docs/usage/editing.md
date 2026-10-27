@@ -26,7 +26,6 @@ w.set("p_max_pu", 0.9)  # every label carrying it, now and later
 w.set("p_max_pu", 0.8, component="Generator", carrier="wind")  # the ones there are now
 w.set("efficiency", 0.9, entity="dc", bus="north")  # a connection
 w.set("p_nom", 200.0, entity="wind1", scenario="high")  # scoped to one scenario
-w.set("p_nom", nw.col("value") * 1.1, entity=["wind1"])  # derived
 w.set("entity.carrier", "solar", entity="g2")  # a property, by its subject
 w.set("bus.x", 10.2, bus="north")  # not `x`, an attribute of its own
 w.set("p", solved_frame, kind="outputs")  # a result
@@ -36,11 +35,22 @@ w.set("p", solved_frame, kind="outputs")  # a result
 
 **A property as a keyword selects labels at call time**: a keyword is bare, a coordinate of the attribute first, else any property of a dim it reaches, so `component="Generator", carrier="wind"` stages one row per label matching both on the record as staged. A label added later is not reached; a plain NULL is how a value reaches those. A name several reached dims declare a property of is refused: set it per dim.
 
+A parent is such a property: a dim is flat, so a multi-period snapshot carries its period as `snapshot.period`, `into` `period` ([design](../design/schema.md#a-dim-is-flat)).
+
+```python
+w.add("period", [2030, 2040])
+w.add(
+    "snapshot", [0, 1, 2, 3], period=[2030, 2030, 2040, 2040], timestep=[t0, t1, t0, t1]
+)
+w.set("p_max_pu", 0.8, entity="g1", period=2030)  # snapshots 0 and 1
+w.set("p_max_pu", 0.5, entity="g1", timestep=t0)  # snapshots 0 and 2
+w.set("snapshot.period", {3: 2030})
+w.remove("period", [2040])  # refused while a snapshot.period names it
+```
+
 A mapping's keys or a series' index are labels of the one coordinate no keyword names, unless the series' index is named after a coordinate; where neither says, the call is refused rather than guessed.
 
 `set` writes **properties** too, a category included, each named by its subject: `set("entity.component", "Load", entity="g1")` patches one column of `g1`'s axis row. A plain name is an attribute or result; `set("carrier", ...)` with only properties so called is refused, suggesting `bus.carrier` and `entity.carrier`.
-
-An `nw.Expr` value is a **function of the current value**: it reads the resolved value including earlier pending edits, so two such calls compose, and what gets staged is the result rather than the expression ([design](../design/working-record.md#an-nwexpr-value-derived-from-the-current-one)). A named target that resolves to no row raises — the caller asked for those rows to take a new value and there is nothing to compute one from.
 
 ## `add` / `remove` / `add_group` / `remove_group`
 
@@ -70,7 +80,7 @@ w.add_group(
 w.remove_group("connection", [("dc", "south")])
 ```
 
-`add(dim, labels, **columns)` works on any dim. The keywords are the axis file's other columns — the dim's properties, bare, and a nested dim's parent keys — each a scalar or a sequence aligned to `labels`. An attribute keyword is refused: attributes go through `set`, whatever their `dims` ([design](../design/working-record.md#add-remove)). A label exists by virtue of its axis row, so `add` is not a sequence of `set` calls: adding a bus with no properties makes the point.
+`add(dim, labels, **columns)` works on any dim. The keywords are the axis file's other columns — the dim's properties, bare — each a scalar or a sequence aligned to `labels`. An attribute keyword is refused: attributes go through `set`, whatever their `dims` ([design](../design/working-record.md#add-remove)). A label exists by virtue of its axis row, so `add` is not a sequence of `set` calls: adding a bus with no properties makes the point.
 
 `remove(dim, labels)` stages a tombstone per label, with no dim scope — a label [exists or it does not](../design/schema.md#existence-does-not-vary-along-a-dim). It need not enumerate what it deletes: the fold applies it to every value keyed by the label, and `remove` also tombstones every group tuple naming one ([design](../design/layers.md#deletion)). It is refused while a property `into` the dim still names one of the labels — `entity.carrier` naming `gas` — since that row is its subject's and outlives the label: `set` it to another label or None first ([design](../design/working-record.md#add-remove)).
 

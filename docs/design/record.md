@@ -61,7 +61,7 @@ class LayerData(Protocol):
 Each pair is an enumerator — the keys of that kind — and a read for one key.
 The enumerators return `Iterable[str]` rather than `set[str]` so a `Resolver`, whose keys carry a stable order a `Record` over it relies on, can return a `list` where a source returns a `set`; the meaning is the same set of keys either way.
 
-An `axis` is the rows of its file: the labels, their `within` keys, their tombstones and the dim's properties. A `group` is its tuples, its `into` label and the group's properties.
+An `axis` is the rows of its file: the labels, their tombstones and the dim's properties. A `group` is its tuples, its `into` label and the group's properties.
 
 One object, two meanings: a [`LayerSource`](read-path.md#owner-map) answers `axis`/`group`/`attribute` for its own layer's rows; a `Resolver` answers the same names for everything folded into it.
 The writer cannot tell which it holds and does not need to — a staged layer's own rows (`w.edits`) and a resolved whole record are both a `LayerData`, so a [`WorkingRecord`](working-record.md#edits) hands over either without a third shape adapting one to the other.
@@ -85,7 +85,7 @@ properties["entity"]               entity | component | carrier | ... stored val
 groups["connection"]               connection STRUCT(entity, bus) | role | ...
 ```
 
-`dims[dim]` is the axis's key — the label and its `within` parents — in [axis order](#axis-order), and nothing else. Properties and categories are covered [below](#properties-and-categories).
+`dims[dim]` is the axis's key — the label — in [axis order](#axis-order), and nothing else. Properties and categories are covered [below](#properties-and-categories).
 
 `groups` is keyed by the group alone, one frame each: `groups/connection.parquet` holds every attachment whatever the categories of its entities ([where the rows live](format.md#where-a-value-lives)).
 A group's own frame is keyed by the one struct column named for it, as an axis's is by the column named for the dim, its `into` label and its properties beside it.

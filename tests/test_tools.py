@@ -705,8 +705,9 @@ def test_results_extracts_long_form_outputs(single_revision, solved):
     p = results["p"].collect()
     # The long schema's columns (https://energy-models.github.io/datarecord/design/record/), so the write path can persist it as-is -
     # and no `component`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/format/#entity-is-unique-across-types).
-    assert {"connection", "snapshot", "scenario", "period", "value"} <= set(p.columns)
+    assert {"connection", "snapshot", "scenario", "value"} <= set(p.columns)
     assert "component" not in p.columns
+    assert "period" not in p.columns, "a series over `snapshot` reaches its period"
     assert set(p["attribute"].to_list()) == {"p"}
     # Series output: one row per (name, snapshot), for the Generator rows -
     # selected by name, since the frame no longer carries the type.

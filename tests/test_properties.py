@@ -202,9 +202,8 @@ def test_a_name_shared_by_attribute_property_and_dim_reaches_its_own(record):
         (("carrier", "solar"), {}, KeyError, "did you mean `entity.carrier`"),
         (("p_set", 2.0), {"entity.carrier": "wind"}, ValueError, "a keyword is bare"),
         (("entity.sign", 1.0), {"kind": "outputs"}, ValueError, "never a result"),
-        (("entity.sign", nw.col("value")), {}, ValueError, "nor derived"),
     ],
-    ids=["plain-property", "dotted-keyword", "outputs", "derived"],
+    ids=["plain-property", "dotted-keyword", "outputs"],
 )
 def test_set_names_a_property_dotted_and_selects_by_it_bare(
     record, args, kwargs, error, match

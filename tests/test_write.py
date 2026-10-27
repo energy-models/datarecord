@@ -9,6 +9,7 @@ Notes
 - [writing a whole record](https://energy-models.github.io/datarecord/design/writing/)
 """
 
+import json
 import shutil
 from pathlib import Path
 
@@ -237,20 +238,44 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
     record = workspace.write(source, out)
 
     assert (Path(out) / "manifest.json").exists()
-    assert record.schema == _SCHEMA
-    assert workspace.at(out).schema == _SCHEMA
+    assert record.schema == _SCHEMA.model_copy(update={"id": record.schema.id})
+    assert workspace.at(out).schema == record.schema
 
     # And it is that file answering: a standalone record is one whole record,
     # so it reads the same through a workspace that knows nothing about it.
     elsewhere = Workspace()
     try:
         again = elsewhere.at(out)
-        assert again.schema == _SCHEMA
+        assert again.schema == record.schema
         assert again.resolver.revision_id == record.resolver.revision_id, (
             "the manifest's id names one layer to every reader"
         )
     finally:
         elsewhere.close()
+
+
+def test_only_a_standalone_manifest_carries_an_id(store, tmp_path):
+    """The id is the schema's field, in the file and on the record read from it.
+
+    Notes
+    -----
+    - [one schema per record](https://energy-models.github.io/datarecord/design/schema/#one-schema-per-record)
+    """
+    source = _Source(_SCHEMA, attributes={"p_nom": _long()})
+    out = tmp_path / "standalone"
+    record = store.workspace.write(source, str(out))
+
+    written = Schema.model_validate_json((out / "manifest.json").read_text())
+    assert written.id == record.resolver.revision_id
+    assert record.schema.id == record.resolver.revision_id
+
+    copy = store.workspace.write(record, str(tmp_path / "copy"))
+    assert copy.schema.id not in {None, record.schema.id}, "a copy mints its own id"
+
+    store.root(record)
+    tree = store.files.read_text(store.manifest_uri)
+    assert tree is not None
+    assert "id" not in json.loads(tree[0]), "a tree's manifest carries no id"
 
 
 def test_a_directory_without_a_manifest_is_no_standalone_record(store, tmp_path):
@@ -280,7 +305,8 @@ def test_a_standalone_write_refuses_an_existing_directory(workspace, tmp_path):
     assert list(tmp_path.iterdir()) == [], "refused before anything was written"
 
     out = str(tmp_path / "new")
-    assert workspace.write(source, out).schema == _SCHEMA
+    record = workspace.write(source, out)
+    assert record.schema == _SCHEMA.model_copy(update={"id": record.schema.id})
     with pytest.raises(FileExistsError, match="does not exist yet"):
         workspace.write(source, out)
 
@@ -531,24 +557,18 @@ def test_a_write_rejects_a_group_struct_not_of_its_key(store):
         store.root(source)
 
 
-def test_a_write_rejects_a_nested_axis_without_its_parent(store):
-    """A `within` dim's file needs a column per parent, or the fold miskeys it.
-
-    `snapshot within period` makes the axis key `(period, snapshot)`, so a
-    `snapshot.parquet` carrying only timestamps would fold two periods'
-    identically labelled hours into one row.
+def test_a_write_rejects_an_axis_without_its_key_column(store):
+    """An axis file is keyed by its dim's column; one without it labels nothing.
 
     Notes
     -----
-    - [within](https://energy-models.github.io/datarecord/design/schema/#within-an-axis-inside-an-axis)
+    - [where a value lives](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    nested = schema(within={"snapshot": {"period"}})
     source = _Source(
-        nested,
-        dims={"snapshot": pd.DataFrame({"snapshot": pd.to_datetime(["2020-01-01"])})},
+        schema(), dims={"snapshot": pd.DataFrame({"period": pd.array([2030])})}
     )
 
-    with pytest.raises(ValueError, match="axis key columns.*period"):
+    with pytest.raises(ValueError, match="missing its key column 'snapshot'"):
         store.root(source)
     _nothing_reachable(store)
 
@@ -776,7 +796,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     out = str(tmp_path / "standalone")
     workspace.write(child.record, out)
     again = workspace.at(out)
-    assert again.schema == _AWKWARD
+    assert again.schema == _AWKWARD.model_copy(update={"id": again.schema.id})
     flat = again.attributes["Order Size"].collect().to_pandas()
     assert dict(zip(zip(flat["select"], flat["Horizon"]), flat["value"])) == got, (
         "a flattened standalone copy reads the same"
