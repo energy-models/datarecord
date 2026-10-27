@@ -313,6 +313,15 @@ class Store:
         """
         return f"{self.uri}/layers/{id}/"
 
+    def axis_uri(self, id: UUID | str, dim: str) -> str:
+        """Where revision `id`'s layer holds `dim`'s axis.
+
+        Notes
+        -----
+        - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+        """
+        return f"{self.layer_dir(id)}dims/{dim}.parquet"
+
     def resolved_dir(self, id: UUID | str) -> str:
         """Revision `id`'s node caches, under its layer where no glob reaches.
 
@@ -330,6 +339,15 @@ class Store:
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         return f"{self.resolved_dir(id)}owner_map.parquet"
+
+    def dim_owners_uri(self, id: UUID | str) -> str:
+        """Where revision `id`'s dim owners are materialised.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+        """
+        return f"{self.resolved_dir(id)}dim_owners.parquet"
 
     def _revision_uri(self, id: UUID | str) -> str:
         return f"{self.uri}/revisions/{id}.json"
@@ -611,7 +629,7 @@ class Revision(BaseModel):
         return self.store._write(source, self.id)
 
     def materialise(self) -> None:
-        """Write this node's caches - owner maps and resolved dims.
+        """Write this node's caches - owner map, dim owners and dead labels.
 
         A policy rather than a lifecycle step, and purely additive: it changes
         no answer, only how many layers a descendant's read touches. Once these
