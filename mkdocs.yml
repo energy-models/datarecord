@@ -85,6 +85,7 @@ nav:
           - "DEP 22: A layer restates membership whole": design/proposals/dep-0022-a-layer-restates-membership-whole.md
           - "DEP 23: Multi-dims replace groups": design/proposals/dep-0023-multi-dims.md
           - "DEP 24: Categories are enum dimensions": design/proposals/dep-0024-categories-are-enum-dimensions.md
+          - "DEP 25: One default per value": design/proposals/dep-0025-one-default.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
