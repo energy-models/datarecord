@@ -160,11 +160,10 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
 
 
 def test_component_level_attribute_is_unaffected(store):
-    """A component attribute carries no `bus` column at all, and resolves as ever.
+    """A component attribute carries no `bus` column.
 
     `bus` is the `connection` multi-dim's coordinate, so it is on the files of the
-    attributes addressed by that multi-dim and on no others - where before every
-    long file carried it, all-NULL, whether or not the attribute could use it.
+    attributes addressed by that multi-dim and on no others.
 
     Notes
     -----
