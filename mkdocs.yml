@@ -67,6 +67,9 @@ nav:
           - "DEP 17: Results are attributes": design/proposals/dep-0017-results-are-attributes.md
           - "DEP 18: Drop narwhals": design/proposals/dep-0018-drop-narwhals.md
           - "DEP 19: One Record and a package layout": design/proposals/dep-0019-one-record-and-a-package-layout.md
+          - "DEP 20: A layer restates an axis whole": design/proposals/dep-0020-a-layer-restates-an-axis-whole.md
+          - "DEP 21: The owner map holds keys as written": design/proposals/dep-0021-the-owner-map-holds-keys-as-written.md
+          - "DEP 22: A layer restates membership whole": design/proposals/dep-0022-a-layer-restates-membership-whole.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:

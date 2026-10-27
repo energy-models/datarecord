@@ -2,13 +2,14 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Hand-built patch layers, since the v2 write path does not exist.
+"""Hand-built layers, written beside the write path rather than through it.
 
 Notes
 -----
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+from collections.abc import Sequence
 from pathlib import Path
 from typing import Any
 
@@ -99,24 +100,80 @@ def write_attribute(
     rel.to_parquet(str(target / f"{attribute}.parquet"))
 
 
-def write_group(layer: str, group: str, rows: list[dict]) -> None:
-    """Write `groups/<group>.parquet` from plain rows, whatever columns they carry.
+def _hashable(value: Any) -> Any:
+    """A key value as a dict key: a struct's fields as a tuple."""
+    return tuple(value.values()) if isinstance(value, dict) else value
 
-    The generic form of `write_connections`: one file per group, keyed by the
-    struct column named for it - a dict per row here - with `deleted` supplied
-    where a row does not carry it.
+
+def _as_written(revision: Revision, kind: str, name: str) -> pd.DataFrame:
+    """The layer's file of `name` so far, else its parent's resolved one, else nothing.
+
+    A layer restates an axis or group whole, so a first write in a child starts
+    from what its parent resolves, properties and order included.
+    """
+    path = Path(revision.store.layer_dir(revision.id), kind, f"{name}.parquet")
+    if path.exists():
+        return pd.read_parquet(path)
+    if revision.parent is None:
+        return pd.DataFrame()
+    record = revision.store.revision(revision.parent).record
+    if kind == "groups":
+        rel = record.groups.get(name)
+    elif name in record.schema.properties:
+        rel = record.properties.get(name)
+    else:
+        rel = record.dims.get(name)
+    if rel is None:
+        return pd.DataFrame()
+    frame = rel.df()
+    enums = [c for c, t in frame.dtypes.items() if isinstance(t, pd.CategoricalDtype)]
+    return frame.astype(dict.fromkeys(enums, object))
+
+
+def restate(
+    revision: Revision,
+    kind: str,
+    name: str,
+    rows: list[dict],
+    *,
+    drop: Sequence[Any] = (),
+) -> None:
+    """Write `{kind}/{name}.parquet` of `revision`'s layer whole, as a layer restates it.
+
+    It starts from `_as_written`. A row of `rows` replaces the row of its key
+    in place, a new key is appended, and a key in `drop` is left out.
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
+    """
+    old = _as_written(revision, kind, name)
+    records = old.to_dict("records")
+    at = {_hashable(r[name]): i for i, r in enumerate(records)}
+    for row in rows:
+        key = _hashable(row[name])
+        if key in at:
+            records[at[key]] = row
+        else:
+            at[key] = len(records)
+            records.append(row)
+    gone = {_hashable(k) for k in drop}
+    kept = [r for r in records if _hashable(r[name]) not in gone]
+    columns = list(dict.fromkeys([*old.columns, *(c for r in rows for c in r)]))
+    frame = pd.DataFrame(kept, columns=columns)
+    target = Path(revision.store.layer_dir(revision.id), kind)
+    target.mkdir(parents=True, exist_ok=True)
+    frame.to_parquet(target / f"{name}.parquet", index=False)
+
+
+def write_group(revision: Revision, group: str, rows: list[dict]) -> None:
+    """Restate `groups/<group>.parquet` with `rows`, each keyed by the struct column, a dict.
 
     Notes
     -----
     - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    df = pd.DataFrame(rows)
-    if "deleted" not in df:
-        df["deleted"] = False
-    df["deleted"] = df["deleted"].fillna(False).astype(bool)
-    target = Path(layer, "groups")
-    target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / f"{group}.parquet", index=False)
+    restate(revision, "groups", group, rows)
 
 
 def unpacked(rel: Any, group: str = "connection") -> pd.DataFrame:
@@ -128,123 +185,69 @@ def unpacked(rel: Any, group: str = "connection") -> pd.DataFrame:
     return rel.project(f"unnest({group}), * EXCLUDE ({group})").df()
 
 
-def write_connections(layer: str, rows: list[dict]) -> None:
-    """Write `groups/connection.parquet`, including the `deleted` tombstone.
+def _connection(row: dict) -> dict:
+    """`row` with its `entity` and `bus` packed into the `connection` struct."""
+    rest = {k: v for k, v in row.items() if k not in ("entity", "bus")}
+    return {"connection": {"entity": row["entity"], "bus": row["bus"]}, **rest}
 
-    Each row needs `entity` and `bus`, packed into the `connection` struct the
-    file is keyed by; `role` describes the connection and keys nothing, so it is
-    optional here.
 
-    No component type - one file holds every type's rows. Appended rather than
-    replaced, since a layer may write them a call at a time.
+def write_connections(revision: Revision, rows: list[dict]) -> None:
+    """Restate `groups/connection.parquet` with `rows`, each needing `entity` and `bus`.
+
+    No component type - one file holds every type's rows.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     - [where the rows live](https://energy-models.github.io/datarecord/design/format/#where-a-value-lives)
     """
-    df = pd.DataFrame(rows)
-    for col in ("scenario", "role"):
-        if col not in df:
-            df[col] = None
-        df[col] = df[col].astype("string")
-    if "deleted" not in df:
-        df["deleted"] = False
-    df["deleted"] = df["deleted"].fillna(False).astype(bool)
-    df["connection"] = [
-        {"entity": e, "bus": b} for e, b in zip(df.pop("entity"), df.pop("bus"))
-    ]
-
-    lead = ["connection", "role", "scenario", "deleted"]
-    ordered = lead + [c for c in df.columns if c not in lead]
-    target = Path(layer, "groups")
-    target.mkdir(parents=True, exist_ok=True)
-    path = target / "connection.parquet"
-    out = df[ordered]
-    if path.exists():
-        out = pd.concat([pd.read_parquet(path), out], ignore_index=True)
-    out.to_parquet(path, index=False)
+    restate(revision, "groups", "connection", [_connection(r) for r in rows])
 
 
-def tombstone_connection(layer: str, pairs: list[tuple[str, str]]) -> None:
-    """Mark connections deleted in this layer, by `(entity, bus)`.
+def drop_connections(revision: Revision, pairs: list[tuple[str, str]]) -> None:
+    """Restate `groups/connection.parquet` without the `(entity, bus)` pairs.
 
     Notes
     -----
     - [connections](https://energy-models.github.io/datarecord/design/record/#connections)
     """
-    write_connections(
-        layer,
-        [{"entity": name, "bus": bus, "deleted": True} for name, bus in pairs],
-    )
+    gone = [{"entity": e, "bus": b} for e, b in pairs]
+    restate(revision, "groups", "connection", [], drop=gone)
 
 
-def write_component(layer: str, ctype: str, rows: list[dict]) -> None:
-    """Append rows of category `ctype` to `dims/entity.parquet`.
-
-    The label is the `ctype` property column; tombstones ride along as
-    `deleted`. Appended rather than replaced: several labels land in one entity
-    axis, and a layer may write them one call at a time.
-    """
-    df = pd.DataFrame(rows)
-    df["ctype"] = ctype
-    if "deleted" not in df:
-        df["deleted"] = False
-    df["deleted"] = df["deleted"].fillna(False).astype(bool)
-
-    lead = ["entity", "ctype", "deleted"]
-    entities = df[lead + [c for c in df.columns if c not in lead]]
-    target = Path(layer, "dims")
-    target.mkdir(parents=True, exist_ok=True)
-    axis = target / "entity.parquet"
-    if axis.exists():
-        entities = pd.concat([pd.read_parquet(axis), entities], ignore_index=True)
-    entities.to_parquet(axis, index=False)
+def write_component(revision: Revision, ctype: str, rows: list[dict]) -> None:
+    """Restate `dims/entity.parquet` with `rows`, each an entity of type `ctype`."""
+    restate(revision, "dims", "entity", [{**r, "ctype": ctype} for r in rows])
 
 
-def tombstone(layer: str, ctype: str, names: list[str]) -> None:
-    """Mark components deleted in this layer.
+def drop_entities(revision: Revision, names: list[str]) -> None:
+    """Restate `dims/entity.parquet` without `names`.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/#deletion)
     """
-    write_component(
-        layer,
-        ctype,
-        [{"entity": n, "deleted": True} for n in names],
-    )
+    restate(revision, "dims", "entity", [], drop=names)
 
 
-def write_scenarios(layer: str, rows: list[dict]) -> None:
-    """Write `dims/scenario.parquet`; each row needs `scenario`."""
-    df = pd.DataFrame(rows)
-    target = Path(layer, "dims")
-    target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "scenario.parquet", index=False)
-
-
-def write_periods(layer: str, rows: list[dict]) -> None:
-    """Write `dims/period.parquet`; each row needs `period`."""
-    df = pd.DataFrame(rows)
-    target = Path(layer, "dims")
-    target.mkdir(parents=True, exist_ok=True)
-    df.to_parquet(target / "period.parquet", index=False)
-
-
-def write_axis(layer: str, dim: str, rows: list[dict]) -> None:
-    """Write `dims/<dim>.parquet` from plain rows, whatever columns they carry.
-
-    The generic form of `write_scenarios`/`write_periods`: an axis file is its
-    key columns plus the dim's properties.
+def write_axis(revision: Revision, dim: str, rows: list[dict]) -> None:
+    """Restate `dims/<dim>.parquet` with `rows`, each carrying `dim` and its properties.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/format/)
     """
-    target = Path(layer, "dims")
-    target.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(rows).to_parquet(target / f"{dim}.parquet", index=False)
+    restate(revision, "dims", dim, rows)
+
+
+def write_scenarios(revision: Revision, rows: list[dict]) -> None:
+    """Restate `dims/scenario.parquet`; each row needs `scenario`."""
+    write_axis(revision, "scenario", rows)
+
+
+def write_periods(revision: Revision, rows: list[dict]) -> None:
+    """Restate `dims/period.parquet`; each row needs `period`."""
+    write_axis(revision, "period", rows)
 
 
 def example(load):

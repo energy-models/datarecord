@@ -546,9 +546,8 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     """Edits fold onto the base's fold tables and read as every layer folded from files.
 
     The base is three layers deep. It has removed a label and a tuple, each in
-    a layer above the one that added it, and a snapshot, so the tables the
-    edits fold onto hold a fold, dead labels included: a removed snapshot's
-    values stay in its layer, and only its dead label drops them. The edits add
+    a layer above the one that added it, and a snapshot added and removed in
+    one layer, whose staged values go with it. The edits add
     the removed label and tuple back, and each comes where it is added again.
     Writing the edits as a child folds every layer from its files, which the
     seeded fold has to match: the same labels, tuples, properties and values,
@@ -768,6 +767,7 @@ def units(store):
         store,
     )
     staged = WorkingRecord(empty_root(store).record)
+    staged.add("hour", [0])
     staged.add("tech", ["plant", "node"])
     staged.add(
         "unit",
@@ -804,7 +804,7 @@ def test_set_may_change_a_category(units):
             ("unit.site", "east"),
             {"unit": "x"},
             KeyError,
-            "no 'unit' label \\['x'\\]",
+            "names 'unit' labels \\['x'\\]",
         ),
         (
             "set",
@@ -887,7 +887,9 @@ def test_a_dim_listing_labels_holds_the_labels_added_and_removes_like_any_dim(un
     assert units.dims["tech"].df()["tech"].tolist() == ["plant"], (
         "a listed label not on the axis is absent"
     )
-    with pytest.raises(KeyError, match="no 'tech' label \\['node'\\]"):
+    with pytest.raises(
+        KeyError, match="names 'tech' labels \\['node'\\] in 'unit.tech'"
+    ):
         units.add("unit", ["n2"], tech="node")
 
     units.add("tech", ["node"])
@@ -968,7 +970,46 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
     assert rows.loc["NewSolar", "ctype"] == GEN, "unaffected by the later add"
 
 
-def test_remove_tombstones_without_enumerating_attributes(staged, root):
+@pytest.mark.parametrize(
+    ("edits", "appended"),
+    [
+        pytest.param(
+            [("remove", "Norway Gas"), ("add", "Norway Gas")], [], id="re-add"
+        ),
+        pytest.param([("add", "NewSolar")], ["NewSolar"], id="add"),
+        pytest.param(
+            [("remove", "Norway Gas"), ("add", "NewSolar"), ("add", "Norway Gas")],
+            ["NewSolar"],
+            id="re-add-after-a-new-label",
+        ),
+    ],
+)
+def test_a_staged_axis_is_the_whole_axis_in_order(staged, root, edits, appended):
+    """A label of the base removed and added again takes its base place back, and a new one is appended.
+
+    Notes
+    -----
+    - [add / remove](https://energy-models.github.io/datarecord/design/working-record/#add-remove)
+    - [axis order](https://energy-models.github.io/datarecord/design/record/#axis-order)
+    """
+    labels = [*root.record.dims["entity"].df()["entity"], *appended]
+    for op, label in edits:
+        if op == "add":
+            staged.add("entity", [label], ctype=GEN)
+        else:
+            staged.remove("entity", [label])
+    assert staged.edits.axis("entity").df()["entity"].tolist() == labels
+
+    child = root.child(staged.edits)
+    written = _layer_axis(child, "entity")["entity"].tolist()
+    assert written == labels, "the layer restates the axis whole, in that order"
+    kept = _entity_values(child.record, "p_nom")["Norway Gas"]
+    assert kept == _entity_values(root.record, "p_nom")["Norway Gas"], (
+        "a label removed and added again in one staging area keeps its values"
+    )
+
+
+def test_remove_needs_no_attribute_enumerated(staged, root):
     staged.remove("entity", ["Norway Gas"])
     assert "Norway Gas" not in _entity_axis(staged).index, "it reads back at once"
 
@@ -976,7 +1017,7 @@ def test_remove_tombstones_without_enumerating_attributes(staged, root):
     assert "Norway Gas" not in set(child.record.dims["entity"].df()["entity"])
 
 
-def test_a_tombstone_drops_that_labels_staged_attributes(staged, root):
+def test_removing_a_label_drops_its_staged_attributes(staged, root):
     """Removing a label discards values staged for it, via the anti-join.
 
     Notes
@@ -993,8 +1034,8 @@ def test_a_tombstone_drops_that_labels_staged_attributes(staged, root):
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/working-record/#add-remove, https://energy-models.github.io/datarecord/design/record/#connections) --------------------------------------
 
 
-def test_remove_group_stages_a_tombstone(staged, root):
-    """One `deleted` row per `(entity, bus)`, the group's own key.
+def test_remove_group_stages_the_group_without_the_tuple(staged, root):
+    """Per `(entity, bus)`, the group's own key.
 
     Notes
     -----
@@ -1216,11 +1257,11 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
 
 def test_remove_of_no_labels_stages_nothing(staged):
     staged.remove("entity", [])
-    assert not staged.edits.axes(), "no tombstone, and no cascade to look up"
+    assert not staged.edits.axes(), "no axis restated, and no cascade to look up"
 
 
 def test_remove_then_add_starts_without_the_parents_connections(staged, root):
-    """`add` replaces the entity's tombstone, not its connections'.
+    """`add` puts the entity back, not its connections.
 
     Notes
     -----
@@ -1381,7 +1422,9 @@ def test_a_group_property_is_a_column_of_the_group_file(store):
     child = root.child(staged.edits)
     assert _roles(child.record) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
     patch = pd.read_parquet(f"{store.layer_dir(child.id)}groups/connection.parquet")
-    assert len(patch) == 1, "the patch is the one tuple it selected"
+    assert patch["role"].tolist() == ["in", "both"], (
+        "the layer restates the group whole"
+    )
 
 
 def test_a_group_property_with_no_field_reaches_every_tuple(store):
@@ -1426,12 +1469,9 @@ def test_rollback_discards_everything_staged(staged, root):
     staged.remove("entity", ["Norway Gas"])
     staged.rollback()
 
-    # The record reads the base rows again, edit and tombstone alike.
     rows = staged.attributes["p_max_pu"].df()
     assert 0.42 not in set(rows["value"])
-    assert "Norway Gas" in _entity_axis(staged).index, (
-        "the tombstone went with the rest"
-    )
+    assert "Norway Gas" in _entity_axis(staged).index, "the removal went with the rest"
 
 
 def test_a_key_set_read_before_rollback_raises_after_it(store):

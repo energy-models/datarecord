@@ -375,21 +375,31 @@ class Record:
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/working-record/#reading-with-pending-edits)
         - [versioning](https://energy-models.github.io/datarecord/design/schema/#versioning)
         """
+        prefix = self._prefix
+        if self.frozen:
+            return prefix
+        above = self.sources[frozen_prefix(self.sources) :]
+        return resolve_coords(self.schema, self.sources, self.con, (prefix, above))
+
+    @property
+    def _prefix(self) -> Coords:
+        """Return the frozen prefix's coords, its shared tables read on the calling thread's cursor.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/read-path/#a-cursor-per-thread)
+        """
         con = self.con
         tables = {
             (kind, name): con.table(_coord_table(kind, name, self.revision_id))
             for kind, name in self._coord_names
         }
-        prefix = Coords(
+        return Coords(
             schema=self.schema,
             axes={n: rel for (k, n), rel in tables.items() if k == "dims"},
             groups={n: rel for (k, n), rel in tables.items() if k == "group"},
             dead={n: rel for (k, n), rel in tables.items() if k == "dead"},
         )
-        if self.frozen:
-            return prefix
-        above = self.sources[frozen_prefix(self.sources) :]
-        return resolve_coords(self.schema, self.sources, con, (prefix, above))
 
     @cached_property
     def _coord_names(self) -> list[tuple[str, str]]:
@@ -414,7 +424,7 @@ class Record:
             axes=coords.axes,
             groups=coords.groups,
             owner_map=_table(
-                self.revision_id, self.sources, self.con, self.schema, coords
+                self.revision_id, self.sources, self.con, coords, self._prefix
             ),
             dead=coords.dead,
         )

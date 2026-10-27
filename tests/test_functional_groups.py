@@ -18,6 +18,7 @@ Notes
 from typing import Any
 
 import duckdb
+import pandas as pd
 import pytest
 from duckdb import sqltypes
 from pydantic import ValidationError
@@ -33,6 +34,7 @@ from tests.fixtures import (
     write_group,
     write_schema,
 )
+from tests.test_write import _Source
 
 
 def _schema(**overrides) -> Schema:
@@ -215,10 +217,10 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
     """
     revision = empty_root(store)
     write_schema(_budget_schema(), store)
-    write_axis(store.layer_dir(revision.id), "bus", [{"bus": "north"}])
-    write_axis(store.layer_dir(revision.id), "state", [{"state": "lower"}])
+    write_axis(revision, "bus", [{"bus": "north"}])
+    write_axis(revision, "state", [{"state": "lower"}])
     write_axis(
-        store.layer_dir(revision.id),
+        revision,
         "country",
         [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
     )
@@ -230,7 +232,7 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
     assert axes["bus"].df()["bus"].tolist() == ["north"]
 
 
-def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
+def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
     """A group may draw on a dim `partial` does not list; removal still cascades.
 
     Notes
@@ -239,11 +241,10 @@ def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
     """
     revision = empty_root(store)
     write_schema(_schema(), store)
-    layer = store.layer_dir(revision.id)
-    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
-    write_axis(layer, "state", [{"state": "lower"}, {"state": "upper"}])
+    write_axis(revision, "bus", [{"bus": "north"}, {"bus": "south"}])
+    write_axis(revision, "state", [{"state": "lower"}, {"state": "upper"}])
     write_group(
-        layer,
+        revision,
         "bus_state",
         [
             {"bus_state": {"bus": "north", "state": "lower"}},
@@ -254,7 +255,7 @@ def test_removing_a_label_of_a_dim_outside_partial_tombstones_its_tuples(store):
     staged = WorkingRecord(revision.record)
     staged.remove("bus", ["north"])
     assert _tuples(staged) == [{"bus": "south", "state": "upper"}], (
-        "the tuple naming the removed bus is tombstoned"
+        "the tuple naming the removed bus is dropped"
     )
 
     child = revision.child(staged.edits)
@@ -266,26 +267,26 @@ def _tuples(record) -> list[dict]:
 
 
 def test_member_order_survives_a_restate_through_a_materialised_parent(store):
-    """A group's member order is the resolved file's row order, preserved across a
-    materialised parent: a key introduced at the root stays first, and a
-    grandchild's addition sorts after the materialised seed's members.
+    """A group's member order is the deepest restatement's row order, across a
+    materialised parent: a key added at the root stays first, and a
+    grandchild's addition comes after the materialised copy's members.
 
-    No `order_key` column - member order is the fold's output order, read back
-    order-preserving (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
+    No `order_key` column - member order is the file's own row order
+    (https://energy-models.github.io/datarecord/design/read-path/#one-fold-for-every-axis).
     """
     schema = _budget_schema()
     write_schema(schema, store)
 
     root = empty_root(store)
     write_group(
-        store.layer_dir(root.id),
+        root,
         "bus_state",
         [{"bus_state": {"bus": "north", "state": "lower"}}],
     )
 
     child = empty_child(root)
     write_group(
-        store.layer_dir(child.id),
+        child,
         "bus_state",
         [{"bus_state": {"bus": "south", "state": "upper"}}],
     )
@@ -293,7 +294,7 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
 
     grandchild = empty_child(child)
     write_group(
-        store.layer_dir(grandchild.id),
+        grandchild,
         "bus_state",
         [{"bus_state": {"bus": "east", "state": "lower"}}],
     )
@@ -315,7 +316,7 @@ def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
     schema = _budget_schema()
     write_schema(schema, store)
     write_axis(
-        store.layer_dir(revision.id),
+        revision,
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
@@ -358,7 +359,7 @@ def test_setting_one_property_keeps_its_siblings_value(store):
         store,
     )
     write_axis(
-        store.layer_dir(revision.id),
+        revision,
         "country",
         [{"country": "DE", "co2_budget": 40.0, "population": 83.0}],
     )
@@ -380,60 +381,22 @@ def test_setting_one_property_keeps_its_siblings_value(store):
     assert frame["population"].to_pylist() == [84.0]
 
 
-def test_a_child_layer_holds_only_the_axis_labels_it_touched(store):
-    """With the axis `partial`, a patch layer's `dims/` is the edits alone.
-
-    The fold resolves every untouched label from the parent, which is what
-    `partial` buys - and what it costs is a wider owner map, so an axis is only
-    declared so where a layer really does patch label by label.
-    """
-    revision = empty_root(store)
-    write_schema(_budget_schema(), store)
-    write_axis(
-        store.layer_dir(revision.id),
-        "country",
-        [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
-    )
-
-    # Deliberately not materialised: a patch layer resolves over its parent's
-    # raw layer, so no node cache is required for the fold to see both labels.
-    staged = WorkingRecord(revision.record)
-    staged.set("country.co2_budget", {"DE": 12.0})
-    country = staged.edits.axis("country")
-    assert country is not None
-    patch = country.df()
-    assert patch["country"].tolist() == ["DE"], "only the touched label"
-    frame = staged.properties["country"].to_arrow_table()
-    got = dict(zip(frame["country"].to_pylist(), frame["co2_budget"].to_pylist()))
-    assert got == {"DE": 12.0, "FR": 55.0}, (
-        "a read with pending edits answers the new value; FR keeps the base's"
-    )
-
-    child = revision.child(staged.edits)
-    axis = child.record.properties["country"].df()
-    resolved = dict(zip(axis["country"], axis["co2_budget"]))
-    assert resolved == {"DE": 12.0, "FR": 55.0}, "last writer wins per label"
-    assert axis["country"].tolist() == ["DE", "FR"], (
-        "axis order follows the layer that introduced each label"
-    )
-
-
-def test_a_child_layer_restates_an_axis_it_owns_whole(store):
-    """Outside `partial`, touching an axis means carrying every label of it.
+@pytest.mark.parametrize("partial", [frozenset({"country"}), frozenset()])
+def test_a_child_layer_restates_an_axis_whole(store, partial):
+    """Touching an axis means carrying every label of it, in order, whatever `partial` says.
 
     A layer holding the edited label alone would not leave the others stale, it
-    would remove them: the fold keys by the axis key, so the axis here is what
-    this layer says it is. That is the price of keeping `partial` small, and it
-    is bounded by the axis rather than paid by every read.
+    would remove them: the axis here is what this layer says it is.
+
+    Notes
+    -----
+    - [partial](https://energy-models.github.io/datarecord/design/schema/#partial-the-granularity-of-an-override)
     """
     revision = empty_root(store)
-    # `partial` left empty, unlike `_budget_schema`.
-    write_schema(
-        _schema(properties={"country": {"co2_budget": PropertySpec(dtype="float")}}),
-        store,
-    )
+    properties = {"country": {"co2_budget": PropertySpec(dtype="float")}}
+    write_schema(_schema(properties=properties, partial=partial), store)
     write_axis(
-        store.layer_dir(revision.id),
+        revision,
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
@@ -444,8 +407,8 @@ def test_a_child_layer_restates_an_axis_it_owns_whole(store):
     country = staged.edits.axis("country")
     assert country is not None
     patch = country.df()
-    assert sorted(patch["country"].tolist()) == ["DE", "FR"], (
-        "the whole axis, not just the edited label"
+    assert patch["country"].tolist() == ["DE", "FR"], (
+        "the whole axis in order, not just the edited label"
     )
 
     child = revision.child(staged.edits)
@@ -464,16 +427,14 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(store):
     """
     revision = empty_root(store)
     write_schema(_budget_schema(), store)
-    write_axis(
-        store.layer_dir(revision.id), "country", [{"country": "DE"}, {"country": "FR"}]
-    )
+    write_axis(revision, "country", [{"country": "DE"}, {"country": "FR"}])
 
     child = empty_child(revision)
-    write_axis(store.layer_dir(child.id), "country", [{"country": "NO"}])
+    write_axis(child, "country", [{"country": "NO"}])
 
     labels = child.record.dims["country"].df()["country"].tolist()
     assert labels == ["DE", "FR", "NO"], (
-        "the parent's labels survive, in the order it introduced them"
+        "the child restates the parent's labels in their order, then its own"
     )
 
 
@@ -481,9 +442,7 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     """A property is a column of a label's row, so `add` makes the label first."""
     revision = empty_root(store)
     write_schema(_budget_schema(), store)
-    write_axis(
-        store.layer_dir(revision.id), "country", [{"country": "DE", "co2_budget": 40.0}]
-    )
+    write_axis(revision, "country", [{"country": "DE", "co2_budget": 40.0}])
 
     staged = WorkingRecord(revision.record)
     with pytest.raises(KeyError, match="`add` them first"):
@@ -504,20 +463,19 @@ def classified(store) -> Revision:
     """North in lower, south in upper, both in DE, and the pair (north, lower) in DE."""
     revision = empty_root(store)
     write_schema(_schema(), store)
-    layer = store.layer_dir(revision.id)
-    write_axis(layer, "country", [{"country": "DE"}, {"country": "NO"}])
+    write_axis(revision, "country", [{"country": "DE"}, {"country": "NO"}])
     write_axis(
-        layer,
+        revision,
         "state",
         [{"state": "lower", "country": "DE"}, {"state": "upper", "country": "DE"}],
     )
     write_axis(
-        layer,
+        revision,
         "bus",
         [{"bus": "north", "state": "lower"}, {"bus": "south", "state": "upper"}],
     )
     write_group(
-        layer,
+        revision,
         "bus_state",
         [{"bus_state": {"bus": "north", "state": "lower"}, "country": "DE"}],
     )
@@ -529,19 +487,31 @@ EDITS = [
     pytest.param(lambda w, v: w.set("bus.state", {"north": v}), id="set-mapping"),
     pytest.param(lambda w, v: w.add("bus", ["east"], state=v), id="add"),
     pytest.param(lambda w, v: w.set("bus_state.country", v), id="set-on-a-group"),
+    pytest.param(
+        lambda w, v: w.add_group(
+            "bus_state",
+            w.con.sql(
+                "SELECT {'bus': 'south', 'state': 'upper'}"
+                "::STRUCT(bus VARCHAR, state VARCHAR) AS bus_state, "
+                "?::VARCHAR AS country",
+                params=[v],
+            ),
+        ),
+        id="add-group",
+    ),
 ]
 
 
 @pytest.mark.parametrize("edit", EDITS)
 def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
-    """`set` and `add` refuse a value naming no label of the dim, as staged.
+    """`set`, `add` and `add_group` refuse a value naming no label of the dim, as staged.
 
     Notes
     -----
     - [validation](https://energy-models.github.io/datarecord/design/working-record/#validation)
     """
     staged = WorkingRecord(classified.record)
-    with pytest.raises(KeyError, match=r"no '(state|country)' label \['coal'\]"):
+    with pytest.raises(KeyError, match=r"names '(state|country)' labels \['coal'\]"):
         edit(staged, "coal")
 
 
@@ -556,6 +526,21 @@ def test_a_property_naming_a_dim_takes_null_or_a_label_added_first(
     staged.add("country", ["added"])
     edit(staged, value)
     classified.child(staged.edits)
+
+
+def test_add_group_refuses_a_label_the_dim_does_not_list(store):
+    """A label outside the list cannot be added, so the message does not say to."""
+    revision = empty_root(store)
+    dimensions = {**_schema().dimensions, "country": Dimension(one_of=["DE", "NO"])}
+    write_schema(_schema(dimensions=dimensions), store)
+    write_axis(revision, "country", [{"country": "DE"}])
+    staged = WorkingRecord(revision.record)
+    rel = staged.con.sql(
+        "SELECT {'bus': 'a', 'state': 'b'}::STRUCT(bus VARCHAR, state VARCHAR) "
+        "AS bus_state, 'coal'::VARCHAR AS country"
+    )
+    with pytest.raises(KeyError, match="lists its labels, so use one of them"):
+        staged.add_group("bus_state", rel)
 
 
 def test_remove_is_refused_while_a_property_names_the_label(classified):
@@ -573,14 +558,14 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
 
     staged.set("bus.state", None, bus="north")
     staged.remove("state", ["lower"])
-    with pytest.raises(KeyError, match=r"no 'state' label \['lower'\]"):
+    with pytest.raises(KeyError, match=r"names 'state' labels \['lower'\]"):
         staged.set("bus.state", "lower", bus="south")
     child = classified.child(staged.edits)
     assert child.record.dims["state"].df()["state"].tolist() == ["upper"]
 
 
 def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
-    """`add_group` checks no label, so the writer is what catches it.
+    """A source written whole is not staged, so the writer checks it.
 
     Notes
     -----
@@ -590,13 +575,9 @@ def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
     staged.remove("country", ["NO"])
     removed = classified.child(staged.edits)
 
-    revived = WorkingRecord(removed.record)
-    revived.add_group(
-        "bus_state",
-        revived.con.sql(
-            "SELECT {'bus': 'south', 'state': 'upper'}"
-            "::STRUCT(bus VARCHAR, state VARCHAR) AS bus_state, 'NO' AS country"
-        ),
+    tuples = pd.DataFrame(
+        {"bus_state": [{"bus": "south", "state": "upper"}], "country": ["NO"]}
     )
+    source = _Source(_schema(), connections={"bus_state": tuples}, dims={})
     with pytest.raises(ValueError, match=r"a removed country in 'country'"):
-        removed.child(revived.edits)
+        removed.child(source)

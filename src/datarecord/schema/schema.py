@@ -52,7 +52,6 @@ from datarecord.schema.specs import (
 STRUCTURAL_TYPES = {
     "attribute": sqltypes.VARCHAR,
     "breakpoint": sqltypes.DOUBLE,
-    "deleted": sqltypes.BOOLEAN,
     "breakpoints": sqltypes.BOOLEAN,
 }
 
