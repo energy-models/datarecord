@@ -104,7 +104,7 @@ A record has one schema. A directory record's schema is `manifest.json` in the d
 record-root/
 ├── manifest.json               # the schema, one for the whole tree
 └── layers/<uuid>/              # a layer: dims/, attributes/
-    └── resolved/               # caches (owner map, resolved dims)
+    └── resolved/               # caches (owner map, dim owners, dead labels)
 ```
 
 The schema is not layered data. A layer cannot change what `p_nom` means, its dtype or the dims it varies over. The schema is known without walking the ancestry, and the record can validate it before anything is read. Adding an attribute amends the root schema, so a new attribute is visible at the top of the tree. A layer directory holds only data, which keeps it a plain parquet directory that a tool knowing nothing about layering can read.

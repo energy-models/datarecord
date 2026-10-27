@@ -62,8 +62,8 @@ All notable changes to datarecord are documented here. The format follows
   is removed where a restatement omits a label that the previous one held,
   and its order is the file's row order. The deepest file for an axis or group
   is the answer for a node. A `WorkingRecord` stages an edited axis or group
-  whole, copied from the base at its first edit. A materialised node holds
-  copies of the deepest files in `resolved/dims/` and `resolved/groups/`.
+  whole, copied from the base at its first edit. A materialised node names
+  the layer holding each axis's deepest file in `resolved/dim_owners.parquet`.
 - `WorkingRecord.set` checks that an attribute value names a label that its
   dim's axis, as staged, holds, for every dim, and a tuple that its group, as
   staged, holds. `add` checks that each label of a tuple is on its axis
@@ -126,6 +126,12 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- A materialised node no longer copies its axes into `resolved/dims/`.
+  `resolved/dim_owners.parquet` names, per dim, the layer whose
+  `dims/<dim>.parquet` is the deepest at or below the node, and a read opens
+  that file. `Store.dim_owners_uri(id)` is where it lives. A node materialised
+  before holds no such file and fails the read: delete its `resolved/` and
+  materialise it again.
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
 
@@ -145,11 +151,12 @@ All notable changes to datarecord are documented here. The format follows
   `check_multi_dim_columns` and `coordinate_over`; `dims` lists every dim but
   the multi-dims. The PyPSA tool declares `connection` under `dimensions`.
 - A dim with `one_of` has its axis derived from the list: `record.dims["ctype"]`
-  is the list, and no `dims/<dim>.parquet` or `resolved/dims/<dim>.parquet` is
-  written or read for it. The writer refuses a `LayerData` handing one over, a
-  read refuses a layer holding one, and a `RecordLike`'s axis of it is dropped
-  where it is the list, same labels in the same order, and refused otherwise,
-  naming a NULL, a repeated, missing or extra label, or else the order.
+  is the list, and no `dims/<dim>.parquet` is written or read for it, nor is
+  it named in `resolved/dim_owners.parquet`. The writer refuses a `LayerData`
+  handing one over, a read refuses a layer holding one, and a `RecordLike`'s
+  axis of it is dropped where it is the list, same labels in the same order,
+  and refused otherwise, naming a NULL, a repeated, missing or extra label, or
+  else the order.
   `add` and `remove` on it are refused, and a property declared on it is
   refused at load. A record carrying such a file is written again. New on
   `Schema`: `one_of_dims`; `Schema.require_listed` is `require_one_of`. The

@@ -12,10 +12,10 @@ Notes
 
 from pathlib import Path
 
-import pandas as pd
 import pytest
 
 from datarecord import Workspace
+from datarecord.resolve.fold import read_dim_owners
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -182,8 +182,8 @@ def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochas
     assert scenarios == list(stochastic.scenarios) + added
 
 
-def test_resolved_dims_are_node_scoped(store, parent, stochastic):
-    """Closing writes the resolved scenario axis to the node cache, not the layer.
+def test_a_node_cache_points_at_the_scenario_layer(store, parent, stochastic):
+    """Closing points the node cache at the layer holding the scenario axis.
 
     Notes
     -----
@@ -192,12 +192,8 @@ def test_resolved_dims_are_node_scoped(store, parent, stochastic):
     middle = empty_child(parent)
     middle.materialise()
 
-    resolved = Path(store.resolved_dir(middle.id), "dims", "scenario.parquet")
-    assert resolved.exists()
-    assert set(pd.read_parquet(resolved)["scenario"]) == set(stochastic.scenarios)
-
-    # `middle` wrote nothing itself, so its layer directory has no dims at
-    # all - the resolved axis must not have been written there.
+    owners = read_dim_owners(middle.id, store.workspace.con, store)
+    assert owners["scenario"] == parent.id, "the axis stays in the layer writing it"
     assert not Path(store.layer_dir(middle.id), "dims", "scenario.parquet").exists()
 
 

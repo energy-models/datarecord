@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import reduce
+from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
@@ -354,6 +355,7 @@ def resolve_coords(
     keep = mortal(schema)
     axes: dict[str, DuckDBPyRelation] = {}
     dead: dict[str, DuckDBPyRelation] = {}
+    dim_owners: dict[str, UUID] = {}
     for name in schema.dimensions:
         if name in schema.one_of_dims:
             axes[name] = one_of_axis(schema, name, con)
@@ -368,6 +370,10 @@ def resolve_coords(
         if rel is None:
             continue
         axes[name] = rel
+        if files:
+            dim_owners[name] = files[-1][0].layer_id
+        elif base is not None:
+            dim_owners[name] = base.dim_owners[name]
         if name not in keep:
             continue
         before = None if base is None else base.dead.get(name)
@@ -376,7 +382,7 @@ def resolve_coords(
             before = _dead_keys(held, rel, name)
         if before is not None:
             dead[name] = before
-    return Coords(schema=schema, axes=axes, dead=dead)
+    return Coords(schema=schema, axes=axes, dead=dead, dim_owners=dim_owners)
 
 
 def resolve_one(
@@ -443,6 +449,9 @@ class Coords:
         column alone - its properties ride along; a multi-dim's is keyed by
         its struct column. A dim with no rows anywhere is absent rather than
         present-and-empty.
+    dim_owners : dict of str to UUID
+        Each folded axis's owner: the layer whose `dims/<dim>.parquet` it
+        resolved to. A dim with `one_of` has none, its axis being the schema's.
     dead : dict of str to DuckDBPyRelation
         Each `mortal` coordinate's dead labels, keyed as its axis.
 
@@ -455,4 +464,5 @@ class Coords:
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
+    dim_owners: dict[str, UUID]
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
