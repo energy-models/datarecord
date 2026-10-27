@@ -2,242 +2,242 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/changelog/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/contributing/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/installation/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/api/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/api/mutable/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/api/record/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/api/schema/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/api/store/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/api/tools/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/open-questions/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/package/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/layers/removal/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/layers/resolution/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/layers/tree/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/model/attributes/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/model/dims/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/model/multi-dims/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/model/properties/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/model/schema/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0001-dims-groups-traits/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0002-groups/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0003-trait-switches/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0004-staging-as-a-layer/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0005-one-record-over-a-node-cache/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0006-a-member-file-holds-values/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0007-staging-without-seq/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0008-one-interface-source-and-fold/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0009-store/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0010-a-group-is-a-struct-column/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0011-deletion-cascades-through-tombstones/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0012-properties/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0013-buses-and-carriers-are-dims/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0014-combining-records/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0015-a-dim-is-flat/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0016-remove-traits/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0017-results-are-attributes/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0018-drop-narwhals/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0019-one-record-and-a-package-layout/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0020-a-layer-restates-an-axis-whole/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0021-the-owner-map-holds-keys-as-written/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0022-a-layer-restates-membership-whole/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-0023-multi-dims/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/proposals/dep-NNNN-template/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/storage/concurrency/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/storage/format/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/storage/store/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/tools/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/tools/pypsa/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/use/editing/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/use/reading/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/design/use/writing/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/usage/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/usage/editing/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/usage/layers/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/usage/reading/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/usage/schema/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/usage/storage/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-100/usage/tools/</loc>
-         <lastmod>2026-10-26</lastmod>
+         <lastmod>2026-10-27</lastmod>
     </url>
 </urlset>
