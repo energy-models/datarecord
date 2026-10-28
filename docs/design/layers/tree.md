@@ -56,7 +56,7 @@ That question differs from the one [`AttributeSpec`](../model/attributes.md#attr
 
 - Which dims may an attribute vary over?
   This belongs to the attribute, as `AttributeSpec.dims`.
-  `p_max_pu` varies over scenario and snapshot, and `p_nom` over neither.
+  `p_max_pu` varies over scenario and snapshot, and `p_nom_opt` over neither.
 - May a layer patch single values along an axis, or must it restate the axis whole?
   This belongs to the dim, as `schema.partial`.
   A layer patches `scenario` value by value, and restates `snapshot` whole for every attribute.
@@ -84,11 +84,11 @@ A schema that patches entity by entity lists `entity`, as PyPSA's `{entity, bus,
 A layer that patches a per-bus `marginal_price` one bus at a time needs `bus` in `partial`.
 A layer that patches one connection's `efficiency` needs `connection` there, and the connection's bus is patched with it inside the `connection` column.
 Under PyPSA's `partial`, `p_max_pu` is owned per entity and per scenario, so a patch to one hour restates that entity and scenario's whole series.
-`marginal_cost` is owned per entity and scenario, and `p_nom` per entity, once across everything else.
+`marginal_cost` is owned per entity and scenario, and `p_nom_opt` per entity, once across everything else.
 
-Splitting the two questions lets the schema tell `p_max_pu` from `p_nom`.
+Splitting the two questions lets the schema tell `p_max_pu` from `p_nom_opt`.
 A flag on the dim alone would make every attribute owned per scenario, including the ones a scenario must not change.
-A `p_nom` row that carries `scenario` is refused at write, since `p_nom` is not addressed by `scenario` ([the long schema](../storage/format.md#the-long-schema)).
+A `p_nom_opt` row that carries `scenario` is refused at write, since `p_nom_opt` is not addressed by `scenario` ([the long schema](../storage/format.md#the-long-schema)).
 A first-stage decision turned into a per-scenario one is the error worth catching.
 
 The owner-map key is `(*partial_dims, attribute)`, one fixed tuple for every attribute.

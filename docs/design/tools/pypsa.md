@@ -17,6 +17,10 @@ PyPSA's registry decides what is a property and what is an attribute.
 The properties of `entity` are exactly `ctype`, `carrier`, `sign` and `type`, and `role` is a property of `connection`.
 Every other input, every number among them, is an attribute, so `p_nom` is long rows of `attributes/p_nom.parquet` ([where a value lives](../storage/format.md#where-a-value-lives)).
 
+Every component attribute is declared over `scenario`, except those PyPSA keeps the same in every scenario: `active`, `build_year`, `committable`, `lifetime`, `weight`, `*_nom_extendable`, `*_nom_mod` and the `*_nom_opt` results.
+A fixed `p_nom` may thus differ per scenario, while the capacity decision `p_nom_opt` stays one value.
+`to_datarecord` writes a value the same in every scenario as one row with a NULL `scenario`, and a network without scenarios writes no `scenario` value.
+
 `entity.ctype` is `{one_of: ctype}`, where `ctype` is a dim with `one_of` that holds the types exported as entities.
 `connection.role` is `{one_of: role}`, where `role` is a dim with `one_of` that holds `input`, `output` and `attached`.
 `to_datarecord` writes neither axis: the axis of a [dim with `one_of`](../model/dims.md#a-dim-with-one_of) is its list, every type and role, those the network leaves unused included.
