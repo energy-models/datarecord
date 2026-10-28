@@ -38,7 +38,7 @@ pytest-cov = "*"
 mypy = "*"
 pandas = "*"
 pyarrow = "*"
-pypsa = "*"
+pypsa = ">=1.4"
 boto3 = ">=1.35.69"
 [feature.test.tasks]
 test = "pytest"
@@ -48,7 +48,7 @@ test-coverage = "pytest --cov=datarecord --cov-report=xml --cov-report=term-miss
 # core datarecord); kept as its own feature/environment too, as a model
 # for integrating further tools, even though `test` now pulls it in directly.
 [feature.pypsa.dependencies]
-pypsa = "*"
+pypsa = ">=1.4"
 
 # The published site. Its own feature, not `test`: nothing in the suite imports
 # any of it, and a contributor running `pixi run test` should not pay for a docs

@@ -82,8 +82,7 @@ All notable changes to datarecord are documented here. The format follows
   `bus` and a carrier a label of `carrier`. The properties of `bus` are
   `carrier`, `type`, `x`, `y`, `unit` and `location`, and those of `carrier`
   are `color` and `nice_name`. `v_nom`, `v_mag_pu_*`, `co2_emissions`,
-  `max_growth`, `max_relative_growth` and custom bus or carrier columns are
-  attributes over their dim. `marginal_price`, `v_mag_pu` and `v_ang` are
+  `max_growth` and `max_relative_growth` are attributes over their dim. `marginal_price`, `v_mag_pu` and `v_ang` are
   results over `bus`, and `build` sets them back. `to_datarecord` adds every
   carrier that a component names and `carrier` does not list, and stores `""`
   as NULL. `verify` reports an entity attached to no bus.
@@ -94,7 +93,17 @@ All notable changes to datarecord are documented here. The format follows
   `sub_network.carrier` refers to `carrier`, and `slack_bus` is a
   property over `sub_network`. A solve that has SubNetworks restates the
   `sub_network` axis, and a solve without them restates it empty where the
-  record has SubNetworks.
+  record has SubNetworks. `SubNetwork.obj` is not written, and `build`
+  gives each SubNetwork a fresh one, so a built network passes PyPSA's
+  topology code and optimises.
+- A static column that PyPSA's registry lacks is a property of its type's
+  subject if it holds text, such as pypsa-eur's `Bus.country` as
+  `bus.country`, or if as an attribute its name would hold two shapes, such as
+  a custom `Generator.v_nom`. Any other, such as `Bus.nom_max_onwind_2050`, is
+  an attribute over its type's dim. `build` sets either back on the types
+  that carried it. `to_datarecord` refuses a custom property that types of
+  one dim carry with different dtypes. `Requirements.columns` is gone, as no
+  custom column clashes any more.
 - The PyPSA tool stores per-port results on connections like per-port inputs.
   `p0`, `p1`, `p2` and a one-port type's `p` are one result `p` over the
   `connection` group, with a row per `(entity, bus)` that keeps the port's
@@ -122,11 +131,31 @@ All notable changes to datarecord are documented here. The format follows
   as a thin layer. The layer restates the SubNetworks of `base` and sets
   NULL on the results of `base` that it does not write again. A NULL series
   value on export leaves the component at its static value.
+- `PyPSA.to_datarecord` takes a `pypsa.NetworkCollection` with
+  `collection_dim`, the dim its index labels, as a full export or as results
+  over `base`. `collection_dim` is required for a collection and refused for
+  a single network. Over `period` it is a myopic solve, written as the one network
+  holding every member's period, whose static values must agree. Over
+  `scenario` its deterministic members are one stochastic record, weighing
+  equally, and members may differ only in an attribute PyPSA declares over
+  `scenario`: members solved apart, whose `p_nom_opt` differs, are refused at
+  the call. Over any other name, a dim of the record's own, that dim is added
+  to the schema and to `partial`, an attribute whose values differ across the
+  members varies over it, and one whose values agree is written once, as
+  declared. Members hold one set of components, their axes are one union in
+  one order, their properties must agree, and every check runs when
+  `to_datarecord` is called. A record has at most one dim of its own: a
+  collection over another is refused over a `base` that has one.
+- `PyPSA.build` returns a `pypsa.NetworkCollection` indexed by a record's dim
+  of its own, each member the network at its label. `verify` reports each such
+  dim of a record declaring more than one in `Requirements.unsupported_dims`,
+  a new field for dims a tool has no place for.
 
 ### Changed
 
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
+- The `pypsa` extra requires PyPSA 1.4.
 
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are
@@ -295,6 +324,12 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- The PyPSA tool keeps a network's own line and transformer types. A
+  `LineType` or `TransformerType` that PyPSA's standard library does not name
+  is an entity of that `ctype`, and `build` adds it to the library. A
+  PyPSA-Earth network, whose lines use its own `ZM_330kV_bison_2bundle`, no
+  longer builds back with lines that reference a missing type. As in PyPSA's
+  netCDF export, a library row the network has changed is not written.
 - A pointwise `set` leaving one of two dims outside `partial` NULL keeps the
   rest of the series.
 - A broadcast reaches every label the record holds, including one added below

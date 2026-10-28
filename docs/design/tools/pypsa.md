@@ -30,6 +30,19 @@ A layer then patches one link's `efficiency` series, or one bus's `v_nom`, and i
 `entity` is in `partial` also because `ctype` [categorizes it](../model/properties.md#categories).
 `carrier` is outside `partial`, so a layer restates every carrier's `co2_emissions`, a few dozen rows.
 
+## Standard types
+
+Every new PyPSA network holds a library of `LineType` and `TransformerType` rows.
+A network may add types of its own: PyPSA-Earth adds a `ZM_330kV_bison_2bundle` that its lines use.
+`to_datarecord` writes a type the library lacks as an entity of `ctype` `LineType` or `TransformerType`, and its inputs as attributes like any other entity's.
+`build` adds those entities to the library that the new network already holds.
+
+A type is the library's by name, as in PyPSA's own netCDF export.
+`to_datarecord` writes no row the library names, even one whose values the network has changed.
+`build` therefore restores that row with the library's values.
+A type's name is an entity, so it must not also name a line or any other entity ([below](#what-verify-reports)).
+A results layer writes no type.
+
 ## What `verify` reports
 
 `verify` catches what the record layer cannot: an entity type that PyPSA has no registry entry for, a connection `role` it cannot place, and a `partial` set that breaks PyPSA's split between constant and varying data.
@@ -52,17 +65,18 @@ PyPSA itself is moving to names unique across the network, which removes the con
 A bus is a label of `bus`, and a carrier is a label of `carrier`.
 [The properties rule](../model/properties.md#properties) places what PyPSA stores on either, and every name stays PyPSA's:
 
-| PyPSA                                                                   | record                                               |
-| ----------------------------------------------------------------------- | ---------------------------------------------------- |
-| `Bus.type`, `Bus.carrier`, `Bus.x`, `Bus.y`, `Bus.unit`, `Bus.location` | properties of `bus`                                  |
-| `Bus.v_nom`, `Bus.v_mag_pu_min`, `Bus.v_mag_pu_max`, `Bus.v_mag_pu_set` | attributes over `bus` (and the varying dims)         |
-| `Bus.marginal_price`, `Bus.v_mag_pu`, `Bus.v_ang`                       | result attributes over `bus` and the varying dims    |
-| `Bus.p`, `Bus.q`, `Bus.control`, `Bus.generator`, `Bus.sub_network`     | not written: derived from the connections            |
-| `Line.v_nom`, `ShuntImpedance.v_nom`                                    | not written: derived from the bus                    |
-| a custom Bus or Carrier column                                          | attribute over its dim, as a custom entity column is |
-| `Carrier.color`, `Carrier.nice_name`                                    | properties of `carrier`                              |
-| `Carrier.co2_emissions`, `max_growth`, `max_relative_growth`            | attributes over `carrier`                            |
-| a component's `carrier`                                                 | `entity.carrier`, `{one_of: carrier}`                |
+| PyPSA                                                                   | record                                            |
+| ----------------------------------------------------------------------- | ------------------------------------------------- |
+| `Bus.type`, `Bus.carrier`, `Bus.x`, `Bus.y`, `Bus.unit`, `Bus.location` | properties of `bus`                               |
+| `Bus.v_nom`, `Bus.v_mag_pu_min`, `Bus.v_mag_pu_max`, `Bus.v_mag_pu_set` | attributes over `bus` (and the varying dims)      |
+| `Bus.marginal_price`, `Bus.v_mag_pu`, `Bus.v_ang`                       | result attributes over `bus` and the varying dims |
+| `Bus.p`, `Bus.q`, `Bus.control`, `Bus.generator`, `Bus.sub_network`     | not written: derived from the connections         |
+| `Line.v_nom`, `ShuntImpedance.v_nom`                                    | not written: derived from the bus                 |
+| `SubNetwork.obj`                                                        | not written: `build` makes a fresh one            |
+| a custom Bus or Carrier column                                          | [property or attribute](#custom-columns)          |
+| `Carrier.color`, `Carrier.nice_name`                                    | properties of `carrier`                           |
+| `Carrier.co2_emissions`, `max_growth`, `max_relative_growth`            | attributes over `carrier`                         |
+| a component's `carrier`                                                 | `entity.carrier`, `{one_of: carrier}`             |
 
 So `x` is a line's reactance and `bus.x` is a bus's coordinate, each addressed by its own name.
 `entity.carrier` and `bus.carrier` [refer to](../model/properties.md#properties) `carrier`, and `bus.carrier` defaults to `AC`.
@@ -113,12 +127,20 @@ The schema's attributes and the frames that `to_datarecord` presents follow one 
 
 ## Custom columns
 
-A static column that PyPSA's registry lacks is an attribute over its type's dim.
-Where that dim is `entity`, `build` puts it onto that type alone ([below](#a-value-its-type-does-not-take)).
-One name is one spec, so a custom `Bus.country` beside a custom `Generator.country` would be one `country` with two `dims`.
-`Carrier.efficiency` likewise meets the per-port `efficiency`.
-`to_datarecord` reports either clash in `Requirements.columns`.
-A custom column clashes only with an attribute of the same name, so a custom `Generator.location` is an attribute beside the property `bus.location`.
+A static column that PyPSA's registry lacks is placed by what it holds and what its name meets, on any type.
+Its subject is its type's dim: `entity`, `bus`, `carrier` or `sub_network`.
+
+- A text column describes its label, so it is a property of the subject.
+  pypsa-eur's `Bus.country` is `bus.country`, a column of `dims/bus.parquet` beside `x` and `y`, and a sector `Generator.country` is `entity.country`.
+- A column of any dtype whose name, as an attribute, would hold two shapes is a property too.
+  One name is one attribute spec, so a custom `Generator.v_nom` would meet `v_nom` over `bus`, `Carrier.efficiency` the per-port `efficiency`, and a numeric custom column on `Bus` and on `Generator` would be one attribute over two dims.
+  A property is its subject's column, so it clashes with nothing.
+- Any other column is an attribute over its subject, such as pypsa-eur's `Bus.nom_max_onwind_2050`, which a scenario patches as it does `p_nom_max`.
+
+A name placed as a property is one for every type of that dim carrying it, typed from its values and without a default.
+`to_datarecord` refuses one that two types carry with different dtypes.
+`build` sets each back on the types that carried it alone ([below](#a-value-its-type-does-not-take)).
+A custom column on one type never clashes with a property of another subject, so a custom `Generator.location` is `entity.location` beside `bus.location`.
 
 ## A value its type does not take
 
@@ -194,6 +216,77 @@ A solve without SubNetworks over a record with a `sub_network` axis restates the
 Over a record without that axis, it writes no `sub_network` axis.
 A full export writes the axis beside `bus` and `carrier`, and `build` adds the SubNetworks from it.
 A results layer meets full validation, so it carries the labels its results name.
+
+A solve of several networks writes them as one [collection](#a-collection).
+
+## A collection
+
+`to_datarecord` takes a `pypsa.NetworkCollection` with `collection_dim`, the dim whose labels its one index level holds.
+It is required with a collection and refused without one, since nothing in the collection says what its index means.
+A collection is written on either path: as a full export, or as results over `base`.
+A record the tool writes builds back, so what a member may hold is decided by the dim:
+
+- `period` is a myopic solve, one network per investment period.
+- `scenario` is a set of deterministic networks, written as one stochastic record.
+- Any other name, such as `sensitivity` or `weather_year`, is a dim of the record's own, and the record builds back as a `NetworkCollection` indexed by it.
+
+`period` and `scenario` are PyPSA's dims, and a record over them follows PyPSA's declarations, so `build` gives the network PyPSA would hold.
+A name the PyPSA schema declares otherwise, such as `bus` or `snapshot`, is refused.
+The record's network attributes, `meta` and CRS are the first member's.
+Every check runs when `to_datarecord` is called, on the members in memory, so a collection that does not fit is refused before anything is written.
+Two values agree where a float is within `numpy.isclose`'s default tolerance and any other value is equal, which decides both what must agree and what differs, and where the record holds one value it is the first member's.
+
+### Over `period`
+
+A myopic solve is written as the one multi-period network holding every member's period, so a myopic and a perfect-foresight solve of one record are read the same way.
+A member holds its own period alone.
+A series is each member's at its snapshots, and a static value such as `p_nom_opt` or a global constraint's `mu` comes from the members that hold the entity.
+Two members holding different static values for one entity are refused, and an entity no member holds is at its default.
+The SubNetworks are numbered once for the whole network rather than per member.
+Over `base`, a member holds only snapshots and components that `base` holds, and the layer is the one a single network solving every period of `base` would write.
+A `base` with a dim of its own is refused, since it builds to a collection rather than the one network the members split.
+
+```python
+members = pypsa.NetworkCollection({2030: n_2030, 2040: n_2040})
+solved = inputs.child(
+    PyPSA.to_datarecord(
+        members, ws.con, results_only=True, base=inputs.record, collection_dim="period"
+    )
+)
+```
+
+### Over `scenario` or a dim of its own
+
+Each member is written as a network on its own would be.
+An attribute whose values agree across the members is written once, as declared, without the dim.
+One whose values differ, a member holding a value another lacks included, holds each member's values at its label.
+A member holds the components the first one does, and one holding others is refused: the record holds a component at every label, so one a member lacked would read its defaults at that member's label.
+
+The collection's axis holds its labels in order, restated whole on either path.
+The members' axes are one union, in the first member's order with each later member's new labels after it, and a member that orders shared labels otherwise is refused ([axis order](../model/dims.md#axis-order)).
+A property describes a label whatever the member, so a label's properties agree across the members holding it, such as a bus's `x`.
+That holds for the `sub_network` axis too: each member numbers its own SubNetworks, so members whose topologies differ, as a sweep over lines may, number them differently and are refused.
+The members declare one schema, so a custom column one member carries and another lacks is refused.
+
+Over `scenario`, the deterministic members are one stochastic record, its scenarios the collection's labels in order, each weighing equally.
+That holds for a full export and for results over a `base` without scenarios.
+A member must be deterministic, and a `base` holding scenarios is refused.
+An attribute may differ across the members only where PyPSA declares it over `scenario`, as it does a series such as `p_max_pu` or `p` and a varying input such as `marginal_cost`.
+One it holds once for every scenario, such as `p_nom_opt` or a global constraint's `mu`, is a first-stage value, and members differing in it are refused naming the entity, the attribute and the values, so the record is a stochastic network PyPSA could have solved to.
+Members solved apart differ in exactly those, so they are a sweep over a dim of their own.
+
+Over a dim of its own, an attribute whose values differ gains the dim, whatever PyPSA declares it over.
+The tool cannot tell in advance which values a sweep varies, since every member is a whole network, so the schema depends on the data: the record is the smallest that holds every member, an attribute carrying the dim only where its values vary along it.
+Members solved apart differ in their capacities and duals, which gain the dim, while an input the sweep leaves alone stays as declared.
+The dim is added to the schema, typed from the labels, and joins `partial`, as `scenario` is in it, so a later layer patches one member's values without restating the others.
+A results layer starts from its `base`'s schema, so a later layer whose values differ where an earlier one's agreed widens an attribute's `dims`, which is [compatible](../model/schema.md#versioning): a row written without the dim broadcasts to every label.
+A later layer whose values agree keeps the `dims` it found and writes its rows once, NULL on the dim, so they reach every label; so does a single network's results over such a `base`.
+
+`build` gives a record with a dim of its own a `NetworkCollection` indexed by that dim, its labels in axis order.
+Each member is the network a record of the rows at its label would build, a row NULL on the dim reaching every label, and a row at the label standing over it ([the broadcast rule](../model/attributes.md#the-broadcast-rule)).
+A record has at most one dim of its own: a `NetworkCollection` has one index, and collections do not nest.
+A collection over a new dim is refused over a `base` that has another, and `verify` reports each dim of its own of a record declaring more than one as an unsupported dim, so `build` refuses it.
+A re-solve over the same dim keeps the record buildable.
 
 ## Geometry
 

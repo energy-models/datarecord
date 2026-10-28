@@ -21,25 +21,19 @@ def store(workspace, tmp_path):
 
 @pytest.fixture(scope="session")
 def ac_dc():
-    """PyPSA's `ac_dc_meshed`, with its carriers' own cost columns dropped.
+    """PyPSA's `ac_dc_meshed`.
 
     Its loads keep their buses' names, a bus being a label of `bus` rather
-    than an entity. Its carriers' own `efficiency`, `marginal_cost` and
-    `capital_cost` columns have nowhere to go: a custom carrier column is an
-    attribute over `carrier`, and PyPSA declares all three names over
-    another dim. `test_tools.py` pins the rejection itself.
+    than an entity. Its own `Bus.country` and carriers' `efficiency`,
+    `marginal_cost` and `capital_cost` are properties of `bus` and `carrier`.
 
     Notes
     -----
     - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
     """
     import pypsa
 
     from tests.fixtures import example
 
-    n = example(pypsa.examples.ac_dc_meshed)
-    n.c.Carrier.static = n.c.Carrier.static.drop(
-        columns=["efficiency", "marginal_cost", "capital_cost"]
-    )
-    return n
+    return example(pypsa.examples.ac_dc_meshed)

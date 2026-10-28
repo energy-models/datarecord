@@ -46,6 +46,7 @@ record.attributes["marginal_price"]  # bus | snapshot | scenario | ..., a result
 ```
 
 A property is named by its subject, so `x` is a line's reactance and `bus.x` is a bus's coordinate.
+A column PyPSA does not know is a property where it holds text, such as pypsa-eur's `Bus.country` as `bus.country`, and an attribute where it holds numbers, such as `Bus.nom_max_onwind_2050` ([design](../design/tools/pypsa.md#custom-columns)).
 `entity.carrier` and `bus.carrier` are `{"one_of": "carrier"}`, so they refer to `carrier`:
 
 ```python
@@ -86,3 +87,32 @@ PyPSA.build(solved.record)  # marginal_price is in the network
 `base` is required with `results_only` and refused without it.
 A SubNetwork is a label of the dim `sub_network`, `0`, `1`, … as PyPSA names it.
 The results layer restates that axis with this solve's SubNetworks and leaves the entity axis to `base`, so a re-solve leaves none stale ([design](../design/tools/pypsa.md#writing-results)).
+
+Several networks solved apart are written as one `pypsa.NetworkCollection`, its index labelling `collection_dim`, as a full export or as results over `base`.
+A myopic solve, one network per investment period, is a collection over `period`, and its layer is the one a perfect-foresight solve of `base` would write:
+
+```python
+members = pypsa.NetworkCollection({2030: n_2030, 2040: n_2040})
+solved = inputs.child(
+    PyPSA.to_datarecord(
+        members, ws.con, results_only=True, base=inputs.record, collection_dim="period"
+    )
+)
+```
+
+Two members that hold different static results for one entity, such as `p_nom_opt`, are refused over `period`.
+Over `scenario`, deterministic members are written as one stochastic record whose scenarios weigh equally, and they may differ only where PyPSA varies a value by scenario, such as `marginal_cost` or a series; members solved apart, whose `p_nom_opt` differs, are refused.
+Name a dim of your own for them instead: an attribute whose values differ across the members varies over it, one whose values agree is written once, as declared, and `build` returns a `NetworkCollection` indexed by it:
+
+```python
+sweep = pypsa.NetworkCollection({"low": n_low, "high": n_high})
+record = ws.write(
+    PyPSA.to_datarecord(sweep, ws.con, collection_dim="weather_year"), "out/"
+)
+record.attributes["p_nom_opt"]  # a row per entity and weather_year, where they differ
+PyPSA.build(record)  # a NetworkCollection over weather_year: n_low and n_high
+```
+
+A record has one dim of its own, since collections do not nest: a collection over another is refused over a `base` that has one.
+A member holds the components the first one does, its axes join the others' in one order, and a label's properties agree across the members holding it.
+Every check runs when `to_datarecord` is called ([design](../design/tools/pypsa.md#a-collection)).
