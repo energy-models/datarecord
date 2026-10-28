@@ -17,7 +17,6 @@ Notes
 from __future__ import annotations
 
 import shutil
-from contextlib import nullcontext
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -28,7 +27,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import PARQUET_COMPRESSION, as_relation, fn, null_safe, unordered
+from datarecord.duck import as_relation, fn, null_safe, write_parquet
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
     refuse_one_of_file,
@@ -174,10 +173,7 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                with (
-                    unordered(workspace.con) if kind == "attributes" else nullcontext()
-                ):
-                    uri = _write_frame(rel, staging, kind, key, schema)
+                uri = _write_frame(rel, staging, kind, key, schema, workspace.con)
                 written = workspace.con.read_parquet(uri)
                 file = f"{kind}/{key}.parquet"
                 if kind == "attributes":
@@ -217,7 +213,12 @@ def write_layer(
 
 
 def _write_frame(
-    rel: DuckDBPyRelation, staging: str, kind: str, key: str, schema: Schema
+    rel: DuckDBPyRelation,
+    staging: str,
+    kind: str,
+    key: str,
+    schema: Schema,
+    con: DuckDBPyConnection,
 ) -> str:
     """Write `rel` as `{kind}/{key}.parquet` under `staging`, unmaterialised; return its URI.
 
@@ -248,9 +249,8 @@ def _write_frame(
     subject = key if kind == "dims" else None
     attribute = key if kind == "attributes" else None
     rel = schema.require_takes(rel, file, subject, attribute)
-    cast_declared(schema, rel, subject, attribute).to_parquet(
-        uri, compression=PARQUET_COMPRESSION
-    )
+    rel = cast_declared(schema, rel, subject, attribute)
+    write_parquet(rel, uri, con, ordered=kind == "dims")
     return uri
 
 

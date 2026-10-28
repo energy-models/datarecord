@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from datarecord.duck import PARQUET_COMPRESSION, ensure_local_dir
+from datarecord.duck import ensure_local_dir, write_parquet
 from datarecord.resolve.coords import resolve_coords
 from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.owner_map import _checkpointed
@@ -116,21 +116,21 @@ def materialise(
     con = store.workspace.con
     _materialise_dims(revision_id, sources, store, schema)
     with _checkpointed(sources, con, schema) as owner_map:
-        _to_parquet(owner_map, store.owner_map_uri(revision_id))
+        _to_parquet(owner_map, store.owner_map_uri(revision_id), con)
 
 
-def _to_parquet(rel: DuckDBPyRelation, uri: str) -> None:
-    """`rel.to_parquet(uri)`, never visible half-written where `uri` is local.
+def _to_parquet(rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection) -> None:
+    """`write_parquet` in order, never visible half-written where `uri` is local.
 
-    `to_parquet` creates the file at its final path before it is complete, and
+    A `COPY` creates the file at its final path before it is complete, and
     a reader meeting it mid-write fails rather than misses, so a local file is
     written under a temporary name and renamed into place.
     """
     if "://" in uri:
-        rel.to_parquet(uri, compression=PARQUET_COMPRESSION)
+        write_parquet(rel, uri, con, ordered=True)
         return
     tmp = f"{uri}.{uuid4().hex}.tmp"
-    rel.to_parquet(tmp, compression=PARQUET_COMPRESSION)
+    write_parquet(rel, tmp, con, ordered=True)
     os.replace(tmp, uri)
 
 
@@ -147,7 +147,7 @@ def _to_parquet_unless_empty(
     try:
         rows = con.table(table)
         if rows.limit(1).fetchall():
-            _to_parquet(rows, uri)
+            _to_parquet(rows, uri, con)
     finally:
         con.execute(f"DROP TABLE {table}")
 
@@ -173,7 +173,7 @@ def _materialise_dims(
     ensure_local_dir(base)
     for dim, rel in dims.axes.items():
         if dim not in schema.one_of_dims:
-            _to_parquet(rel, f"{base}{dim}.parquet")
+            _to_parquet(rel, f"{base}{dim}.parquet", con)
     dead = store.resolved_dir(revision_id) + "dead/"
     ensure_local_dir(dead)
     for name, rel in dims.dead.items():

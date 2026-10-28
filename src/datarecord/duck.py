@@ -20,8 +20,7 @@ Notes
 
 import os
 import sys
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
@@ -55,26 +54,25 @@ class _Functions:
 
 fn = _Functions()
 
-#: The codec of every parquet file datarecord writes. zstd finds the repeats a long
-#: series spreads past snappy's window, a few times smaller on an hourly year.
-PARQUET_COMPRESSION = "zstd"
+#: The options of every parquet file datarecord writes. Format v2 delta-encodes a
+#: series' snapshots and byte-stream-splits its values; the dictionary limit keeps
+#: a row group's few entity names in a dictionary but not 8760 timestamps.
+_PARQUET_OPTIONS = (
+    "FORMAT parquet, COMPRESSION zstd, PARQUET_VERSION v2, DICTIONARY_SIZE_LIMIT 4096"
+)
 
 
-@contextmanager
-def unordered(con: DuckDBPyConnection) -> Iterator[None]:
-    """Let queries on `con`'s database emit rows in any order until the block exits.
+def write_parquet(
+    rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection, *, ordered: bool
+) -> None:
+    """Write `rel` to the parquet file `uri`, keeping its row order where `ordered`.
 
-    An order-preserving `COPY` buffers every batch a parallel scan finishes
-    early, so melting a wide series into hundreds of millions of rows spills
-    tens of GB. The setting is global to the database, so it is restored on
-    exit; `to_parquet` has no per-`COPY` `PRESERVE_ORDER`.
+    Leave `ordered` off where the row order carries no meaning: an
+    order-preserving write buffers every batch a parallel scan finishes early,
+    which spills tens of GB for a series melted into hundreds of millions of rows.
     """
-    (was,) = con.sql("SELECT current_setting('preserve_insertion_order')").fetchall()[0]
-    con.execute("SET preserve_insertion_order = false")
-    try:
-        yield
-    finally:
-        con.execute(f"SET preserve_insertion_order = {was}")
+    order = "" if ordered else ", PRESERVE_ORDER false"
+    con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
 
 
 def try_read_parquet(

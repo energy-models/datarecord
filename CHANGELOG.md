@@ -133,10 +133,12 @@ All notable changes to datarecord are documented here. The format follows
   `p_max_pu` file of an 80,000-generator hourly network shrinks from 4.7 GB to
   2.3 GB.
 
-- Every parquet file datarecord writes is zstd-compressed, which brings that
-  `p_max_pu` file to 828 MB. Attribute files are written without keeping row
-  order, so writing a long series no longer spills tens of GB; dims files keep
-  theirs, which is the axis order.
+- Every parquet file datarecord writes is zstd-compressed parquet v2, with a
+  row group's dictionary capped at 4 KB, so a series' snapshots are
+  delta-encoded and its values byte-stream-split. That `p_max_pu` file comes
+  to 406 MB. Attribute files are written without keeping row order, so writing
+  a long series no longer spills tens of GB; dims files keep theirs, which is
+  the axis order.
 
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are

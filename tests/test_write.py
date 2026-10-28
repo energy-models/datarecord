@@ -1352,13 +1352,6 @@ def test_a_curve_is_no_pair_of_rows(store):
     assert sorted(df["breakpoint"]) == [0, 1], "both points held as written"
 
 
-def test_writing_attributes_leaves_insertion_order_preserved(store):
-    """Attribute files are written unordered, but the connection gets its setting back."""
-    _rows_layer(store, [{"entity": "a", "value": 1.0}], "write_layer")
-    setting = "SELECT current_setting('preserve_insertion_order')"
-    assert store.workspace.con.sql(setting).fetchall() == [(True,)], "setting restored"
-
-
 def test_a_stored_pair_naming_the_same_dims_fails_the_read(store, tmp_path):
     """A layer not written by `write_layer` is held to the rule when it is read.
 
