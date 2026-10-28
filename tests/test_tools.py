@@ -29,8 +29,7 @@ from datarecord.tools.pypsa import (
     CTYPE,
     PyPSA,
     _colliding_names,
-    _input_names,
-    _registry_schema,
+    _registry,
     _weightings,
 )
 from tests.fixtures import (
@@ -1242,9 +1241,9 @@ class TestPyPSA:
         """
         schema = results.record.schema
         over_bus = {
-            a for a, spec in _registry_schema().attributes.items() if "bus" in spec.dims
+            a for a, spec in _registry().schema.attributes.items() if "bus" in spec.dims
         }
-        assert over_bus - _input_names() == {"marginal_price", "v_mag_pu", "v_ang"}
+        assert over_bus - _registry().inputs == {"marginal_price", "v_mag_pu", "v_ang"}
         assert not solved.c["Bus"].dynamic["p"].empty, "PyPSA did compute a `Bus.p`"
         assert "bus" not in schema.attributes["p"].dims
 
@@ -1396,7 +1395,7 @@ class TestPyPSA:
         assert "bus" not in internal.columns
         assert set(internal["entity"]) == set(links)
         assert len(internal) == len(n.snapshots) * len(links)
-        assert "p_internal" in _registry_schema().attributes
+        assert "p_internal" in _registry().schema.attributes
 
     def test_a_three_port_record_writes_p_on_each_connection(self, workspace):
         """`p0`, `p1` and `p2` are `p` on each port's connection, though the bare registry has no `p2`.
@@ -1460,7 +1459,7 @@ class TestPyPSA:
         self, attr
     ):
         """Every stored attribute may differ per scenario, but those PyPSA keeps invariant."""
-        dims = _registry_schema().attributes[attr].dims
+        dims = _registry().schema.attributes[attr].dims
         assert "scenario" not in dims, dims
 
     @pytest.mark.parametrize(
@@ -1506,7 +1505,7 @@ class TestPyPSA:
         record = export_network(n, store).record
         positional = {*static, series_attr} - {attr}
         assert not positional & set(record.attributes), "no positional names"
-        assert _registry_schema().attributes[attr].default == default, (
+        assert _registry().schema.attributes[attr].default == default, (
             "rate0 and rate1 default differently"
         )
         built = PyPSA.build(record)
@@ -1532,7 +1531,7 @@ class TestPyPSA:
 
         from datarecord.mutable import WorkingRecord
 
-        sign = _registry_schema().properties["entity"]["sign"]
+        sign = _registry().schema.properties["entity"]["sign"]
         assert sign.default_by["entity.ctype"]["Load"] == -1.0, (
             "PyPSA declares a load's sign through `default_by`"
         )
@@ -1598,7 +1597,7 @@ class TestPyPSA:
             ("split", "b"): 3,
             ("split", "c"): 4,
         }, "bus0 of a Link has no delay"
-        assert _registry_schema().attributes["cyclic_delay"].dims == {
+        assert _registry().schema.attributes["cyclic_delay"].dims == {
             "connection",
             "scenario",
         }
