@@ -1079,6 +1079,20 @@ SPDX-License-Identifier: CC-BY-4.0
   relation: it re-runs on every fetch and has no <code>fetchone()</code>.</p>
 </li>
 <li>
+<p>The PyPSA tool melts a time series one entity at a time, so a parquet row
+  group holds few entity names and encodes them by dictionary. The
+  <code>p_max_pu</code> file of an 80,000-generator hourly network shrinks from 4.7 GB to
+  2.3 GB.</p>
+</li>
+<li>
+<p>Every parquet file datarecord writes is zstd-compressed parquet v2, with a
+  row group's dictionary capped at 4 KB, so a series' snapshots are
+  delta-encoded and its values byte-stream-split. That <code>p_max_pu</code> file comes
+  to 406 MB. Attribute files are written without keeping row order, so writing
+  a long series no longer spills tens of GB; dims files keep theirs, which is
+  the axis order.</p>
+</li>
+<li>
 <p>Groups are multi-dims. A dim declared under <code>dimensions</code> with
   <code>over</code>, and neither <code>dtype</code> nor <code>one_of</code>, is a multi-dim: its labels are
   tuples of other dims' labels, carried as one struct column named for it.
@@ -1247,6 +1261,9 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>The writer's check that no coordinate of a file is held twice groups 64-bit
+  hashes in passes of at most 100 million rows, so a file of hundreds of
+  millions of rows is checked in bounded memory and spill.</li>
 <li>A pointwise <code>set</code> leaving one of two dims outside <code>partial</code> NULL keeps the
   rest of the series.</li>
 <li>A broadcast reaches every label the record holds, including one added below
