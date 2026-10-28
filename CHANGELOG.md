@@ -128,6 +128,11 @@ All notable changes to datarecord are documented here. The format follows
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
 
+- The PyPSA tool melts a time series one entity at a time, so a parquet row
+  group holds few entity names and encodes them by dictionary. The
+  `p_max_pu` file of an 80,000-generator hourly network shrinks from 4.7 GB to
+  2.3 GB.
+
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are
   tuples of other dims' labels, carried as one struct column named for it.
