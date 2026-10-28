@@ -128,6 +128,18 @@ All notable changes to datarecord are documented here. The format follows
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
 
+- The PyPSA tool melts a time series one entity at a time, so a parquet row
+  group holds few entity names and encodes them by dictionary. The
+  `p_max_pu` file of an 80,000-generator hourly network shrinks from 4.7 GB to
+  2.3 GB.
+
+- Every parquet file datarecord writes is zstd-compressed parquet v2, with a
+  row group's dictionary capped at 4 KB, so a series' snapshots are
+  delta-encoded and its values byte-stream-split. That `p_max_pu` file comes
+  to 406 MB. Attribute files are written without keeping row order, so writing
+  a long series no longer spills tens of GB; dims files keep theirs, which is
+  the axis order.
+
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are
   tuples of other dims' labels, carried as one struct column named for it.
@@ -295,6 +307,9 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- The writer's check that no coordinate of a file is held twice groups 64-bit
+  hashes in passes of at most 100 million rows, so a file of hundreds of
+  millions of rows is checked in bounded memory and spill.
 - A pointwise `set` leaving one of two dims outside `partial` NULL keeps the
   rest of the series.
 - A broadcast reaches every label the record holds, including one added below

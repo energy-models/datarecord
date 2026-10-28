@@ -27,7 +27,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, fn, null_safe
+from datarecord.duck import as_relation, fn, null_safe, write_parquet
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
     refuse_one_of_file,
@@ -173,7 +173,7 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                uri = _write_frame(rel, staging, kind, key, schema)
+                uri = _write_frame(rel, staging, kind, key, schema, workspace.con)
                 written = workspace.con.read_parquet(uri)
                 file = f"{kind}/{key}.parquet"
                 if kind == "attributes":
@@ -213,7 +213,12 @@ def write_layer(
 
 
 def _write_frame(
-    rel: DuckDBPyRelation, staging: str, kind: str, key: str, schema: Schema
+    rel: DuckDBPyRelation,
+    staging: str,
+    kind: str,
+    key: str,
+    schema: Schema,
+    con: DuckDBPyConnection,
 ) -> str:
     """Write `rel` as `{kind}/{key}.parquet` under `staging`, unmaterialised; return its URI.
 
@@ -244,7 +249,8 @@ def _write_frame(
     subject = key if kind == "dims" else None
     attribute = key if kind == "attributes" else None
     rel = schema.require_takes(rel, file, subject, attribute)
-    cast_declared(schema, rel, subject, attribute).to_parquet(uri)
+    rel = cast_declared(schema, rel, subject, attribute)
+    write_parquet(rel, uri, con, ordered=kind == "dims")
     return uri
 
 

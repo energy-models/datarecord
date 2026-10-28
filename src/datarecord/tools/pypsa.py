@@ -2200,52 +2200,54 @@ class _NetworkSource:
         `UNPIVOT ... IN ()` and an empty relation the caller would only union
         away.
 
-        The melted columns are named by position and aliased back to their
-        names as string literals, so a name never becomes an SQL identifier:
-        a quote in it would end the identifier, a name equal to an id column
-        would duplicate it, and DuckDB folds identifiers' case.
+        The frame is transposed before the melt, so the rows come out entity by
+        entity: a parquet row group then holds a handful of entity names, which
+        its dictionary encodes, where snapshot-major rows put every name in
+        each row group and leave them unencoded.
+
+        The snapshots are melted by position and looked up in a typed list of
+        the labels, so a label never becomes an SQL identifier and keeps its
+        dtype.
         """
         wide = c.dynamic[attr]
         stochastic = isinstance(wide.columns, pd.MultiIndex)
-        # One flat value column per melted column: `scenario\x1fentity` where a
+        # One flat value row per melted column: `scenario\x1fentity` where a
         # scenario level exists, split back out after the UNPIVOT. `reset_index`
-        # returns a fresh frame, so relabelling its columns never mutates the
-        # dynamic frame PyPSA owns - no defensive copy needed.
+        # returns a fresh frame, so relabelling it never mutates the dynamic
+        # frame PyPSA owns - no defensive copy needed.
         valcols = (
             [f"{s}\x1f{e}" for s, e in wide.columns]
             if stochastic
             else list(wide.columns)
         )
-        if not valcols:
+        if not valcols or wide.empty:
             return None
-        positional = [f"v{i}" for i in range(len(valcols))]
+        positional = [f"s{i}" for i in range(len(wide.index))]
         w = (
-            wide.set_axis(positional, axis=1)
-            .set_axis(self._snapshot_labels)
+            wide.T.set_axis(positional, axis=1)
+            .set_axis(pd.Index(valcols, name="colname"))
             .reset_index()
         )
         # `from_df` captures the frame into the relation's own plan, so a later
         # call reusing the frame variable cannot rebind this one (unlike a named
         # registered view).
         wide_rel = con.from_df(w)  # noqa: F841 - bound by name for the query below
-        inlist = ", ".join(
-            f"{p} AS {lit(str(name))}"
-            for p, name in zip(positional, valcols, strict=True)
-        )
+        inlist = ", ".join(f"{p} AS {lit(str(i))}" for i, p in enumerate(positional))
         # Two steps rather than one nested query: the local-relation replacement
         # scan does not compose through a subquery, so melt first, then project.
         melted = con.sql(  # noqa: F841 - bound by name for the query below
-            "SELECT snapshot, colname, value FROM wide_rel "
-            f"UNPIVOT INCLUDE NULLS (value FOR colname IN ({inlist}))"
+            "SELECT colname, CAST(pos AS INTEGER) AS pos, value FROM wide_rel "
+            f"UNPIVOT INCLUDE NULLS (value FOR pos IN ({inlist}))"
         )
         if stochastic:
             entity = "split_part(colname, chr(31), 2)"
             scenario = "split_part(colname, chr(31), 1)"
         else:
             entity, scenario = "colname", "CAST(NULL AS VARCHAR)"
+        labels = lit(self._snapshot_labels.tolist())
         return con.sql(
-            f"SELECT {entity} AS entity, snapshot, {scenario} AS scenario, "
-            "value FROM melted"
+            f"SELECT {entity} AS entity, ({labels})[pos + 1] AS {SNAPSHOT}, "
+            f"{scenario} AS scenario, value FROM melted"
         )
 
     def _scalar_rel(
