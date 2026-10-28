@@ -29,8 +29,7 @@ from datarecord.tools.pypsa import (
     CTYPE,
     PyPSA,
     _colliding_names,
-    _input_names,
-    _registry_schema,
+    _registry,
     _weightings,
 )
 from tests.fixtures import (
@@ -1281,9 +1280,9 @@ class TestPyPSA:
         revision = _results_over(exported, solved)
         schema = revision.record.schema
         over_bus = {
-            a for a, spec in _registry_schema().attributes.items() if "bus" in spec.dims
+            a for a, spec in _registry().schema.attributes.items() if "bus" in spec.dims
         }
-        assert over_bus - _input_names() == {"marginal_price", "v_mag_pu", "v_ang"}
+        assert over_bus - _registry().inputs == {"marginal_price", "v_mag_pu", "v_ang"}
         assert not solved.c["Bus"].dynamic["p"].empty, "PyPSA did compute a `Bus.p`"
         assert "bus" not in schema.attributes["p"].dims
 
@@ -1438,7 +1437,7 @@ class TestPyPSA:
         assert "bus" not in internal.columns
         assert set(internal["entity"]) == set(links)
         assert len(internal) == len(n.snapshots) * len(links)
-        assert "p_internal" in _registry_schema().attributes
+        assert "p_internal" in _registry().schema.attributes
 
     def test_a_third_port_result_lands_on_its_connection(self, workspace):
         """`p2` is `p` on the bus2 connection, declared though the bare registry has no `p2`.
@@ -1454,7 +1453,7 @@ class TestPyPSA:
 
         results = PyPSA.to_datarecord(n, workspace.con).attributes
         assert "p2" not in results
-        assert "p" in _registry_schema().attributes, "the bare registry declares `p`"
+        assert "p" in _registry().schema.attributes, "the bare registry declares `p`"
         p = _flat(results["p"])
         assert p["bus"].to_list() == ["c", "c"], "a third port's flow is on bus2"
         assert p["value"].to_list() == [1.0, 2.0]
@@ -1521,7 +1520,7 @@ class TestPyPSA:
             "b": 1.5,
             "c": 0.3,
         }
-        spec = _registry_schema().attributes["rate"]
+        spec = _registry().schema.attributes["rate"]
         assert "connection" in spec.dims
         assert spec.default is None, "rate0 and rate1 default differently"
 
@@ -1620,7 +1619,7 @@ class TestPyPSA:
 
         from datarecord.mutable import WorkingRecord
 
-        sign = _registry_schema().properties["entity"]["sign"]
+        sign = _registry().schema.properties["entity"]["sign"]
         assert sign.default_by["entity.ctype"]["Load"] == -1.0, (
             "PyPSA declares a load's sign through `default_by`"
         )
@@ -1686,7 +1685,7 @@ class TestPyPSA:
             ("split", "b"): 3,
             ("split", "c"): 4,
         }, "bus0 of a Link has no delay"
-        assert _registry_schema().attributes["cyclic_delay"].dims == {"connection"}
+        assert _registry().schema.attributes["cyclic_delay"].dims == {"connection"}
 
         built = PyPSA.build(export_network(n, store).record)
         assert built.c["Link"].static.loc["split", ["delay", "delay2"]].tolist() == [
