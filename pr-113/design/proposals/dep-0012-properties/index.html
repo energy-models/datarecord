@@ -1,0 +1,2857 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-113/design/proposals/dep-0012-properties/">
+      
+      
+        <link rel="prev" href="../dep-0011-deletion-cascades-through-tombstones/">
+      
+      
+        <link rel="next" href="../dep-0013-buses-and-carriers-are-dims/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>DEP 12: Properties - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../static/extras.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dep-12-properties-metadata-declared-apart-from-data" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DEP 12: Properties
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../model/dims/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The data model
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../layers/tree/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../use/reading/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using a record
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../storage/format/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../tools/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frameworks
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../package/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The package
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../open-questions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_9" id="__nav_4_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enhancement proposals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Enhancement proposals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-NNNN-template/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0001-dims-groups-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 1: Dims, mappings, groups and traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0002-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 2: Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0003-trait-switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 3: Trait switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0004-staging-as-a-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 4: Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0005-one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 5: One Record over a NodeCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0006-a-member-file-holds-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 6: A member file holds values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0007-staging-without-seq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 7: Staging without _seq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0008-one-interface-source-and-fold/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 8: One interface, source and fold
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0009-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 9: A Workspace and a Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0010-a-group-is-a-struct-column/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 10: A group is one struct column
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0011-deletion-cascades-through-tombstones/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 11: Deletion cascades through tombstones
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 12: Properties
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 12: Properties
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#properties-and-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties and attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-enum-property-of-a-partial-dim-categorizes-its-subject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An Enum property of a partial dim categorizes its subject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default_by-a-default-per-category" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        default_by — a default per category
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#traits-are-scoped-by-a-category" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traits are scoped by a category
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-null-reaches-the-labels-carrying-the-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A NULL reaches the labels carrying the attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entity-is-an-ordinary-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entity is an ordinary dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-file-per-subject-on-disk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One file per subject on disk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#editing-is-generic-over-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing is generic over dims
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-the-section-decides-where-a-value-lives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: the section decides where a value lives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional: members
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-stage-categories-in-attribute-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional stage: categories in attribute rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-buys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this buys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0013-buses-and-carriers-are-dims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 13: Buses and carriers are dims
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0014-combining-records/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 14: Combining a record with an extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0015-a-dim-is-flat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 15: A dim is flat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0016-remove-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 16: Remove traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0017-results-are-attributes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 17: Results are attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0018-drop-narwhals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 18: Drop narwhals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0019-one-record-and-a-package-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 19: One Record and a package layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0020-a-layer-restates-an-axis-whole/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 20: A layer restates an axis whole
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0021-the-owner-map-holds-keys-as-written/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 21: The owner map holds keys as written
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0022-a-layer-restates-membership-whole/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 22: A layer restates membership whole
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0023-multi-dims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 23: Multi-dims replace groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0024-categories-are-enum-dimensions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 24: Categories are enum dimensions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#what-starts-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What starts it
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-construct" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The construct
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The construct">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#properties-and-attributes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Properties and attributes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#an-enum-property-of-a-partial-dim-categorizes-its-subject" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        An Enum property of a partial dim categorizes its subject
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#default_by-a-default-per-category" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        default_by — a default per category
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#traits-are-scoped-by-a-category" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Traits are scoped by a category
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-null-reaches-the-labels-carrying-the-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A NULL reaches the labels carrying the attribute
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entity-is-an-ordinary-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        entity is an ordinary dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#one-file-per-subject-on-disk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        One file per subject on disk
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#editing-is-generic-over-dims" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing is generic over dims
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-the-section-decides-where-a-value-lives" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: the section decides where a value lives
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-members" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional: members
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#optional-stage-categories-in-attribute-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Optional stage: categories in attribute rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-this-buys" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What this buys
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-costs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it costs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-it-opens" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What it opens
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#status" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Status
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-know-it-worked" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How to know it worked
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="dep-12-properties-metadata-declared-apart-from-data">DEP 12: properties — metadata declared apart from data<a class="headerlink" href="#dep-12-properties-metadata-declared-apart-from-data" title="Permanent link">&para;</a></h1>
+<table>
+<thead>
+<tr>
+<th>DEP</th>
+<th>12</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Title</td>
+<td>properties — metadata declared apart from data</td>
+</tr>
+<tr>
+<td>Author</td>
+<td>Jonas Hörsch</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>Implemented 2026-10-13 (steps 1 and 2)</td>
+</tr>
+<tr>
+<td>Requires</td>
+<td><a href="../dep-0010-a-group-is-a-struct-column/">DEP 10</a>, <a href="../dep-0011-deletion-cascades-through-tombstones/">DEP 11</a></td>
+</tr>
+<tr>
+<td>Created</td>
+<td>2026-10-12</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>Unreleased</td>
+</tr>
+<tr>
+<td>Replaces</td>
+<td><a href="../dep-0006-a-member-file-holds-values/">DEP 6</a></td>
+</tr>
+</tbody>
+</table>
+<p>Two changes that are one. <strong>Properties</strong> — what classifies or describes one label of a dim, its metadata — get their own section of the manifest, apart from <strong>attributes</strong>, the data. And the entity-type axis stops being a dim with a group over <code>entity</code>: it becomes an ordinary <code>Enum</code> property of <code>entity</code>, whose values — <strong>categories</strong> — per-category defaults and trait scoping key on. With it goes every special case of <code>entity</code> and <code>entity_type</code> in core: <code>entity</code> becomes a dim like any other, listed in <code>partial</code>, and the name <code>entity_type</code> is data a schema happens to declare.</p>
+<p>It builds on <a href="../dep-0010-a-group-is-a-struct-column/">a group is one struct column</a> — a group is a dim, referenced in rows by one struct column — and on <a href="../dep-0011-deletion-cascades-through-tombstones/">deletion cascading through tombstones</a>.</p>
+<p>It lands in two steps. <strong>Step 1</strong> — properties, categories, and <code>entity</code> as an ordinary dim — is being built. <strong>Step 2</strong> — the section, not the shape, deciding where a value lives — is the rest of the design below, sequenced after. A per-category read, <a href="#optional-members"><code>members</code></a>, is deferred. An <a href="#optional-stage-categories-in-attribute-rows">optional stage</a>, storing a category in an attribute row, is to be decided.</p>
+<h2 id="what-starts-it">What starts it<a class="headerlink" href="#what-starts-it" title="Permanent link">&para;</a></h2>
+<p><strong>Where a value is read depends on how many coordinates address it, not on what it is.</strong> <code>p_nom</code> and <code>carrier</code> are both declared under <code>attributes</code> with <code>dims: [entity]</code>, so both land on the entity axis — and <code>record.attributes</code> hands over neither, since it <a href="../../use/reading/">holds long frames only</a>; a caller finds them on <code>record.dims["entity"]</code> or <code>record.entity_types["Generator"]</code>. Yet <code>p_nom</code> is data a model optimises against, and <code>carrier</code> a label describing the generator. The rule placing them — <a href="../../storage/format/#where-a-value-lives">exactly one addressing coordinate</a> — groups the two by an accident of shape.</p>
+<p>The same rule makes a compatible schema change move a file. Widening <code>p_nom</code> to <code>dims: [entity, scenario]</code> is <a href="../../model/schema/#versioning">compatible</a> because NULL broadcasts, but it moves <code>p_nom</code> from a column of the entity axis to <code>inputs/p_nom.parquet</code>, so the rows a layer wrote before are in a file the new schema no longer reads it from.</p>
+<p><strong>The entity-type axis is a special case at every layer.</strong> It is a dim, plus a group over <code>entity</code> <code>into</code> it, whose rows are <a href="../../storage/format/#where-a-value-lives">the entity axis file rather than a <code>groups/</code> file</a> — the one exception to a file per group. Its name is reserved as an attribute name. Whether it is declared decides the <a href="../../storage/format/#axis-files">layout of the entity axis</a>: per-type member files under <code>dims/entity_type/</code> in one case, columns of <code>dims/entity.parquet</code> in the other. Traits may be scoped by it. Its <code>Enum</code> dtype is what makes it a vocabulary, while a <code>String</code>-typed declaration of it is an <a href="../dep-0006-a-member-file-holds-values/#what-it-opens-rather-than-settles">open question</a>.</p>
+<p><strong><code>entity</code> is a special case too.</strong> It is in the fold key whatever <code>partial</code> says, a NULL in it never broadcasts, its tombstones alone cascade into a group's fields, and the read API answers per entity type (<code>entity_types</code>, <code>entity_type(ctype)</code>, <code>flags(ctype)</code>). None of that is said in the schema; all of it is code naming <code>"entity"</code>.</p>
+<p><strong>And the schema cannot say what a framework's registry says.</strong> PyPSA defaults differ per component for one name:</p>
+<table>
+<thead>
+<tr>
+<th>name</th>
+<th>default per type</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>sign</code></td>
+<td><code>1</code> for Generator, Store, StorageUnit; <code>-1</code> for Load, ShuntImpedance</td>
+</tr>
+<tr>
+<td><code>carrier</code></td>
+<td><code>"AC"</code> for Bus; <code>""</code> otherwise</td>
+</tr>
+<tr>
+<td><code>type</code></td>
+<td><code>"primary_energy"</code> for GlobalConstraint; <code>""</code> otherwise</td>
+</tr>
+<tr>
+<td><code>p_min_pu</code></td>
+<td><code>-1</code> for StorageUnit; <code>0</code> otherwise</td>
+</tr>
+<tr>
+<td><code>p_set</code></td>
+<td><code>0</code> for Load; <code>NaN</code> otherwise</td>
+</tr>
+</tbody>
+</table>
+<p><code>AttributeSpec.default</code> is one value, so today a tool either picks one and writes the others out as data, or loses them. None of the 142 input names differs in <strong>dtype</strong> between types — only in default.</p>
+<h2 id="the-construct">The construct<a class="headerlink" href="#the-construct" title="Permanent link">&para;</a></h2>
+<h3 id="properties-and-attributes">Properties and attributes<a class="headerlink" href="#properties-and-attributes" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">dimensions</span><span class="p">:</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">entity</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">String</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">bus</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">String</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">snapshot</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> Datetime</span><span class="p">:</span><span class="w"> </span><span class="nv">us</span><span class="w"> </span><span class="p p-Indicator">}</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">scenario</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">String</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="nt">groups</span><span class="p">:</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">  </span><span class="nt">connection</span><span class="p">:</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">over</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> entity</span><span class="p">:</span><span class="w"> </span><span class="nv">entity</span><span class="p p-Indicator">,</span><span class="nt"> bus</span><span class="p">:</span><span class="w"> </span><span class="nv">bus</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="nt">properties</span><span class="p">:</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">  </span><span class="nt">entity</span><span class="p">:</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">entity_type</span><span class="p">:</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">      </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> Enum</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">Bus</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">Generator</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">Load</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">Link</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">Store</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">StorageUnit</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">carrier</span><span class="p">:</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">      </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">String</span>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="s">""</span>
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a><span class="w">      </span><span class="nt">default_by</span><span class="p">:</span>
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a><span class="w">        </span><span class="nt">entity_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> Bus</span><span class="p">:</span><span class="w"> </span><span class="nv">AC</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a><span class="w">    </span><span class="nt">sign</span><span class="p">:</span>
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a><span class="w">      </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Float64</span>
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a><span class="w">      </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a><span class="w">      </span><span class="nt">default_by</span><span class="p">:</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a><span class="w">        </span><span class="nt">entity_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> Load</span><span class="p">:</span><span class="w"> </span><span class="nv">-1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a><span class="w">  </span><span class="nt">bus</span><span class="p">:</span>
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a><span class="w">    </span><span class="nt">x</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">Float64</span><span class="p p-Indicator">,</span><span class="nt"> unit</span><span class="p">:</span><span class="w"> </span><span class="s">"°"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a><span class="w">    </span><span class="nt">y</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> dtype</span><span class="p">:</span><span class="w"> </span><span class="nv">Float64</span><span class="p p-Indicator">,</span><span class="nt"> unit</span><span class="p">:</span><span class="w"> </span><span class="s">"°"</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a><span class="nt">attributes</span><span class="p">:</span>
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="w">  </span><span class="nt">p_nom</span><span class="p">:</span>
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Float64</span>
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">entity</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a><span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<a id="__codelineno-0-34" name="__codelineno-0-34" href="#__codelineno-0-34"></a><span class="w">  </span><span class="nt">p_nom_extendable</span><span class="p">:</span>
+<a id="__codelineno-0-35" name="__codelineno-0-35" href="#__codelineno-0-35"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Boolean</span>
+<a id="__codelineno-0-36" name="__codelineno-0-36" href="#__codelineno-0-36"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">entity</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-37" name="__codelineno-0-37" href="#__codelineno-0-37"></a><span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<a id="__codelineno-0-38" name="__codelineno-0-38" href="#__codelineno-0-38"></a><span class="w">  </span><span class="nt">p_max_pu</span><span class="p">:</span>
+<a id="__codelineno-0-39" name="__codelineno-0-39" href="#__codelineno-0-39"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Float64</span>
+<a id="__codelineno-0-40" name="__codelineno-0-40" href="#__codelineno-0-40"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">entity</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">snapshot</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-41" name="__codelineno-0-41" href="#__codelineno-0-41"></a><span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-0-42" name="__codelineno-0-42" href="#__codelineno-0-42"></a><span class="w">  </span><span class="nt">p_min_pu</span><span class="p">:</span>
+<a id="__codelineno-0-43" name="__codelineno-0-43" href="#__codelineno-0-43"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Float64</span>
+<a id="__codelineno-0-44" name="__codelineno-0-44" href="#__codelineno-0-44"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">entity</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">snapshot</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-45" name="__codelineno-0-45" href="#__codelineno-0-45"></a><span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<a id="__codelineno-0-46" name="__codelineno-0-46" href="#__codelineno-0-46"></a><span class="w">    </span><span class="nt">default_by</span><span class="p">:</span>
+<a id="__codelineno-0-47" name="__codelineno-0-47" href="#__codelineno-0-47"></a><span class="w">      </span><span class="nt">entity_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> StorageUnit</span><span class="p">:</span><span class="w"> </span><span class="nv">-1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-48" name="__codelineno-0-48" href="#__codelineno-0-48"></a><span class="w">  </span><span class="nt">efficiency</span><span class="p">:</span>
+<a id="__codelineno-0-49" name="__codelineno-0-49" href="#__codelineno-0-49"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Float64</span>
+<a id="__codelineno-0-50" name="__codelineno-0-50" href="#__codelineno-0-50"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">connection</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-51" name="__codelineno-0-51" href="#__codelineno-0-51"></a><span class="w">  </span><span class="nt">weight</span><span class="p">:</span>
+<a id="__codelineno-0-52" name="__codelineno-0-52" href="#__codelineno-0-52"></a><span class="w">    </span><span class="nt">dtype</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Float64</span>
+<a id="__codelineno-0-53" name="__codelineno-0-53" href="#__codelineno-0-53"></a><span class="w">    </span><span class="nt">dims</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">scenario</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-54" name="__codelineno-0-54" href="#__codelineno-0-54"></a><span class="w">    </span><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span>
+<a id="__codelineno-0-55" name="__codelineno-0-55" href="#__codelineno-0-55"></a>
+<a id="__codelineno-0-56" name="__codelineno-0-56" href="#__codelineno-0-56"></a><span class="nt">traits</span><span class="p">:</span>
+<a id="__codelineno-0-57" name="__codelineno-0-57" href="#__codelineno-0-57"></a><span class="w">  </span><span class="nt">generator</span><span class="p">:</span>
+<a id="__codelineno-0-58" name="__codelineno-0-58" href="#__codelineno-0-58"></a><span class="w">    </span><span class="nt">attributes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">p_max_pu</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">p_nom_extendable</span><span class="p p-Indicator">]</span>
+<a id="__codelineno-0-59" name="__codelineno-0-59" href="#__codelineno-0-59"></a><span class="w">    </span><span class="nt">on</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> entity_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">Generator</span><span class="p p-Indicator">]</span><span class="w"> </span><span class="p p-Indicator">}</span>
+<a id="__codelineno-0-60" name="__codelineno-0-60" href="#__codelineno-0-60"></a><span class="w">    </span><span class="nt">switch</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">p_nom_extendable</span>
+<a id="__codelineno-0-61" name="__codelineno-0-61" href="#__codelineno-0-61"></a>
+<a id="__codelineno-0-62" name="__codelineno-0-62" href="#__codelineno-0-62"></a><span class="nt">partial</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">entity</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">scenario</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">connection</span><span class="p p-Indicator">]</span>
+</code></pre></div>
+<p><strong>A property is one value per label of one dim, its subject</strong>, and is declared under that subject's key — there is no <code>dims</code> on a property, and it never varies along another axis. It identifies, classifies or describes the label: a type, a carrier, a sign convention, a coordinate on a map.</p>
+<p><strong>An attribute is data</strong>: what a model reads as part of its problem and what a scenario or a layer would vary. It keeps <code>dims</code>, which may name a single coordinate — <code>p_nom</code> over <code>entity</code>, a scenario <code>weight</code> over <code>scenario</code> — without that making it a property.</p>
+<p>Which a name is, is the author's declaration, not derived. The test is the one above, and a tool reads it from its registry where it can.</p>
+<p><strong>One name, one spec, across every section.</strong> A name declared as a property and as an attribute, or as a property of two subjects, is rejected — <a href="../../use/reading/#flags"><code>flags</code></a> would have two answers for it. So is a property sharing a dim's or a group's name, which would collide with that coordinate's column. This is the <a href="../../model/attributes/#attributespec">flat-attributes argument</a> extended to the new section.</p>
+<h3 id="an-enum-property-of-a-partial-dim-categorizes-its-subject">An <code>Enum</code> property of a <code>partial</code> dim categorizes its subject<a class="headerlink" href="#an-enum-property-of-a-partial-dim-categorizes-its-subject" title="Permanent link">&para;</a></h3>
+<p><strong>Any <code>Enum</code>-typed property of a dim listed in <code>partial</code> may be named by <code>Trait.on</code> and <code>default_by</code>.</strong> Its values are that dim's <strong>categories</strong> along it. There is no flag declaring the role, and no limit of one per dim: <code>entity_type</code> categorizes <code>entity</code>, and an <code>Enum</code>-typed <code>carrier</code> would too, as would a <code>bus_type</code> on <code>bus</code>. Naming any other property — a <code>String</code>, or one of a dim outside <code>partial</code> — is refused.</p>
+<p>The two conditions are what a category needs:</p>
+<ul>
+<li><strong><code>Enum</code></strong>, so the categories a trait or a default names are checkable against a declared vocabulary. This settles the <a href="../dep-0006-a-member-file-holds-values/#what-it-opens-rather-than-settles"><code>String</code>-typed axis question</a>: a set of categories is an <code>Enum</code>, or nothing can key on it.</li>
+<li><strong>The dim in <code>partial</code></strong>, because only there is a dim owned and checked per label. Outside it, a layer setting one entity's value would own every entity's, and a label could not be refused against an axis the fold does not key.</li>
+</ul>
+<p>That replaces the whole entity-type construct: no <code>entity_type</code> dim, no group over <code>entity</code> into it, no exception to a file per group, and no reserved name — <code>entity_type</code> is a column of <code>dims/entity.parquet</code> because every property of <code>entity</code> is. A schema whose entities have no categories declares no <code>Enum</code> property of <code>entity</code>, and nothing else about it differs. The schema attaches no meaning to the name <code>entity_type</code>; it is what PyPSA and every existing record call it.</p>
+<p><strong>Category</strong> is the word for such a property's values throughout, because <strong>label</strong> already names an axis value — what <code>add(dim, labels)</code> and <code>remove(dim, labels)</code> take. <code>Schema.categorizing(dim)</code> lists the properties of <code>dim</code> a trait or default may key on; which attributes a label carries is <code>attributes_for(dim, **categories)</code> — the label's value of each categorizing property — and its default <code>default_for(name, **categories)</code>.</p>
+<p><strong>A category may change.</strong> <code>set("entity_type", "Load", entity="g1")</code> is a patch of one property like any other. The values <code>g1</code> holds for attributes a Load does not carry stay stored — <code>record.attributes</code> shows what was written — but fall outside every per-category read and every broadcast, which are evaluated against its current categories.</p>
+<h3 id="default_by-a-default-per-category"><code>default_by</code> — a default per category<a class="headerlink" href="#default_by-a-default-per-category" title="Permanent link">&para;</a></h3>
+<p><code>default</code> stays the fallback. <code>default_by</code> maps a categorizing property to per-category overrides:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">default</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="nt">default_by</span><span class="p">:</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">entity_type</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">{</span><span class="nt"> StorageUnit</span><span class="p">:</span><span class="w"> </span><span class="nv">-1</span><span class="w"> </span><span class="p p-Indicator">}</span>
+</code></pre></div>
+<p>A value read unset — a NULL property column, or no <code>inputs/</code> row reaching the label — reads the first <code>default_by</code> key, in declaration order, whose map lists the label's category; else <code>default</code>.</p>
+<ul>
+<li><strong>On properties and attributes alike.</strong> <code>p_min_pu</code> and <code>p_set</code> need it as much as <code>sign</code> does, and a default is never stored, so it costs no file layout.</li>
+<li><strong>Each key reachable from the value's address.</strong> A key must categorize a dim the value reaches: <code>entity</code> directly, or through <code>connection</code>'s <code>entity</code> field for a value over the group. A category outside the property's <code>Enum</code> is refused.</li>
+<li><strong>Only the default varies.</strong> <code>dtype</code>, <code>unit</code> and <code>description</code> are the spec's own and never per category, which is what keeps one name one column and one <code>inputs/</code> file.</li>
+</ul>
+<p>Step 1 declares and validates <code>default_by</code> and answers it through <code>Schema.default_for</code>; applying it on read is step 2.</p>
+<h3 id="traits-are-scoped-by-a-category">Traits are scoped by a category<a class="headerlink" href="#traits-are-scoped-by-a-category" title="Permanent link">&para;</a></h3>
+<p><code>Trait.on</code> keeps its shape — <code>on: {entity_type: [Generator, Link]}</code> — and names a categorizing property where it named an entity-type axis; one property per trait, as built. <a href="../dep-0016-remove-traits/">A trait narrows; it does not grant</a> holds unchanged, whichever property each trait keys on: an attribute no trait claims is carried by every label, and a claimed one by every label some claiming trait matches. A trait on <code>entity_type: [Generator]</code> and one on <code>carrier: [wind]</code>, both claiming <code>p_max_pu</code>, give it to every generator and every wind entity. Every trait in the PyPSA tool reads as before.</p>
+<p>A switch is addressed by exactly the dim its trait's property categorizes, and a trait with a switch must have an <code>on</code>.</p>
+<p><strong><code>switch</code> is not subsumed.</strong> A category is a property — one value per label, never varying along another axis — while a switch may: <code>p_nom_extendable</code> per <code>investment_period</code> is a trait an entity carries in some periods and not others. Lifting the <a href="../dep-0003-trait-switches/#what-it-opens">trait-switches restriction</a> to the categorized dim exactly is step 2: <code>switch</code> would then name a property of the subject or an attribute addressed by it and further dims. Which categories <em>may</em> carry a value stays a schema answer; which labels <em>do</em> in a given period stays a question about data.</p>
+<h3 id="a-null-reaches-the-labels-carrying-the-attribute">A NULL reaches the labels carrying the attribute<a class="headerlink" href="#a-null-reaches-the-labels-carrying-the-attribute" title="Permanent link">&para;</a></h3>
+<p><code>entity</code> broadcasts like any dim: a row leaving it NULL means every entity. On a categorized dim, <strong>every</strong> is narrowed by the schema — a NULL expands only to the labels that carry the attribute (<code>attributes_for</code>), judged by their categories at read time. <code>set("p_max_pu", 0.9)</code> reaches every generator, those added in a later layer included, and never a bus. One filter where the fold expands a NULL, and the old "every entity whose type declares it" without a list of names stored.</p>
+<h3 id="entity-is-an-ordinary-dim"><code>entity</code> is an ordinary dim<a class="headerlink" href="#entity-is-an-ordinary-dim" title="Permanent link">&para;</a></h3>
+<p>With the categories a property and the fold key a schema declaration, nothing in core names <code>entity</code>:</p>
+<ul>
+<li><strong>The fold key</strong> is exactly what <code>partial</code> lists — dims and groups alike. Every dim and every group broadcasts. A dim a group draws on need not be in <code>partial</code>: its dead labels are kept and dropped on read (<a href="../dep-0011-deletion-cascades-through-tombstones/">deletion</a>).</li>
+<li><strong>Deletion</strong> is <a href="../dep-0011-deletion-cascades-through-tombstones/">tombstones cascading</a>: <code>remove(dim, labels)</code> tombstones the labels and every live tuple of a group with a field over <code>dim</code> naming one; the fold anti-joins the tombstones of every <code>partial</code> dim and group.</li>
+<li><strong>The read API</strong> answers per record, not per type: <code>Record</code>, <code>Resolver</code>, <code>Fold</code> and <code>LayerData</code> lose <code>entity_types</code>, <code>entity_type(ctype)</code> and <code>entity_axis</code>, and <code>flags()</code> takes no type. A per-category frame is <code>dims[dim]</code> filtered on a categorizing column.</li>
+<li><strong>Uniqueness</strong> across types is structural: one axis row per label.</li>
+</ul>
+<h3 id="one-file-per-subject-on-disk">One file per subject on disk<a class="headerlink" href="#one-file-per-subject-on-disk" title="Permanent link">&para;</a></h3>
+<p><strong>On disk</strong>, every property of a dim is a column of <code>dims/&lt;dim&gt;.parquet</code>, categories and all, NULL on a row whose category does not carry it. <code>dims/entity_type/&lt;Type&gt;.parquet</code> goes, and with it the second entity-axis layout <a href="../dep-0006-a-member-file-holds-values/#what-it-costs">the member-file proposal</a> introduced: a record with and one without categories have one layout, differing by one column.</p>
+<p>Per-type files existed because every type has a different column set. The schema now says which columns each category carries, so a category's frame is a filter on its property and a projection to those columns — recoverable from one file, where per-type files would state each entity's category twice, once in the column and once in the filename. Parquet stores an all-NULL column chunk for almost nothing and DuckDB reads only what it projects. Only a per-category <strong>dtype</strong> would need per-category files, and that is ruled out above.</p>
+<h3 id="editing-is-generic-over-dims">Editing is generic over dims<a class="headerlink" href="#editing-is-generic-over-dims" title="Permanent link">&para;</a></h3>
+<p><code>WorkingRecord</code> loses its per-type calls (<code>add(ctype, frame)</code>, <code>remove(ctype, names)</code>, <code>set(..., entity=…)</code>) for ones over any dim:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"g2"</span><span class="p">],</span> <span class="n">entity_type</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="s2">"solar"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"g2"</span><span class="p">)</span>  <span class="c1"># a property: one column of one axis row</span>
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">)</span>  <span class="c1"># every generator, now and later</span>
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"efficiency"</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"l1"</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"b0"</span><span class="p">)</span>  <span class="c1"># a group's fields by keyword</span>
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span>
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.8</span><span class="p">,</span> <span class="n">entity_type</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span>
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="p">)</span>  <span class="c1"># the wind generators there are now</span>
+<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"g1"</span><span class="p">])</span>  <span class="c1"># tombstones g1 and its connections</span>
+</code></pre></div>
+<ul>
+<li><strong><code>add(dim, labels, **columns)</code></strong> writes whole axis rows: a column must be one the axis file has — a property, a single-dim attribute, a parent key of a nested dim. An <code>Enum</code> property's value must be one of its categories.</li>
+<li><strong><code>set(attribute, value, **coords)</code></strong> addresses every coordinate by keyword, a group's fields included. It writes a property too, a category included, as a patch of one column of the axis row.</li>
+<li><strong>A property keyword selects labels when <code>set</code> is called.</strong> <code>entity_type="Generator", carrier="wind"</code> resolves to the labels matching both on the record as staged, and <code>set</code> writes one row per label — nothing of the filter is stored. A label added later is not reached; a plain NULL (every label carrying the attribute) and <code>default_by</code> are the two ways a value reaches labels not yet added. Storing a category in the row instead is the <a href="#optional-stage-categories-in-attribute-rows">optional stage</a>.</li>
+<li><strong><code>remove(dim, labels)</code></strong> writes axis tombstones and cascades to group tuples.</li>
+</ul>
+<p>Adding a component with its connections and varying values is now <code>add</code>, <code>add_group</code> and a <code>set</code> per attribute, where the old wide-frame <code>add</code> split one frame three ways. Whether a wide-frame convenience comes back, over the generic calls, is open below.</p>
+<h2 id="step-2-the-section-decides-where-a-value-lives">Step 2: the section decides where a value lives<a class="headerlink" href="#step-2-the-section-decides-where-a-value-lives" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>declared as</th>
+<th>lands in</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>property of a dim</td>
+<td><code>dims/&lt;dim&gt;.parquet</code> — a column of the axis file</td>
+</tr>
+<tr>
+<td>attribute, any <code>dims</code></td>
+<td><code>inputs/&lt;attr&gt;.parquet</code> — long rows</td>
+</tr>
+</tbody>
+</table>
+<p>That replaces <a href="../../storage/format/#where-a-value-lives">where a value lives</a> as a rule over <code>len(dims)</code>. <code>inputs/p_nom.parquet</code> is <code>entity | attribute | breakpoint | value</code>, one row per entity, and widening <code>p_nom</code> over <code>scenario</code> adds a column to the same file — NULL in every row written before, which is what <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a> needs to read them unchanged. An axis file then carries only its labels, its <code>within</code> keys, its tombstones and the subject's properties; no data.</p>
+<p>Step 1 keeps single-dim attributes as axis columns, so no file moves yet.</p>
+<p><strong>In the API</strong> each accessor then holds one section:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># entity — labels only</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>  <span class="c1"># entity | entity_type | carrier | sign | ...</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>  <span class="c1"># entity | attribute | breakpoint | value</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>  <span class="c1"># entity | snapshot | attribute | breakpoint | value</span>
+</code></pre></div>
+<p><code>properties[dim]</code> holds stored values, no defaults applied. A framework's static frame — PyPSA's <code>n.generators</code> — is that frame filtered on a category, its <code>default_by</code> filled, and joined with the entity-only rows of its attributes; the tool keeps calling it <code>entity_types</code>. <code>Schema.attributes_for</code> splits into <code>properties_for</code> and <code>attributes_for</code>, both narrowed by the same traits.</p>
+<p>Also step 2: <strong>properties of a group</strong> (<code>connection.role</code>, today an attribute over <code>connection</code>), and <strong>per-category flags</strong> — <code>flags()</code> per record loses what PyPSA's <code>verify</code> checked per type.</p>
+<h2 id="optional-members">Optional: <code>members</code><a class="headerlink" href="#optional-members" title="Permanent link">&para;</a></h2>
+<p>Status: <strong>deferred</strong> — not part of the accepted scope, until a caller needs it. <code>properties[dim]</code>, stored values without defaults, and <code>flags(**categories)</code> cover what is read today.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">record</span><span class="o">.</span><span class="n">members</span><span class="p">(</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="s2">"entity"</span><span class="p">,</span> <span class="n">entity_type</span><span class="o">=</span><span class="s2">"Generator"</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="p">)</span>  <span class="c1"># entity | carrier | sign | ... — its rows, its properties</span>
+</code></pre></div>
+<p>A per-category read — <code>members</code> here, the name open — would filter a dim's labels on its categorizing properties and project to the properties those labels carry, with <code>default_by</code> applied; no attribute columns. A framework's static frame would be that frame joined with the entity-only rows of its attributes.</p>
+<h2 id="optional-stage-categories-in-attribute-rows">Optional stage: categories in attribute rows<a class="headerlink" href="#optional-stage-categories-in-attribute-rows" title="Permanent link">&para;</a></h2>
+<p>Status: <strong>to be decided</strong> — implications first, independent of step 2.</p>
+<p>A row of <code>inputs/</code> would carry a categorizing property as a column, narrowing a NULL along its dim: <code>entity</code> NULL and <code>entity_type = Generator</code> reads "every generator", those added in a later layer included, where a staging-time filter writes the generators there are now.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>inputs/p_max_pu.parquet
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>entity | entity_type | snapshot | attribute | breakpoint | value
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>NULL   | Generator   | NULL     | p_max_pu  | NULL       | 0.9    every generator, now and later
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>g7     | NULL        | NULL     | p_max_pu  | NULL       | 0.5    one label
+</code></pre></div>
+<p>It is the step-1 broadcast filter — a NULL reaching only the labels carrying the attribute — with a category chosen by the row as well as by the schema.</p>
+<p>What it would mean:</p>
+<ul>
+<li><strong>The format.</strong> Every attribute reaching a categorized dim gains its categorizing properties as columns of its long rows — <code>long_columns_for</code> grows by one per property reached. Adding one to a schema is compatible: old rows read NULL, which filters nothing.</li>
+<li><strong>Reach follows the category.</strong> The filter is evaluated at read time against each label's current category, so a label re-categorized by <code>set</code> moves into or out of the row's reach — what "every wind generator" means. A non-<code>Enum</code> property cannot be stored as a filter, as it cannot key a trait.</li>
+<li><strong>The fold.</strong> The filter applies where a NULL is expanded, against the resolved axis, before the owner map is keyed, so the owner key keeps its shape and the column never reaches a reader. A row naming its label explicitly has the column NULL; a non-NULL category on an explicit label is redundant at best and is refused.</li>
+<li><strong>Overlap within one layer.</strong> Today a staged row is replaced by its key. A category row and an explicit row, or two category rows on different properties, have different keys and reach the same label. That needs a specificity rule — explicit label over category row over plain NULL — and two rows of equal specificity reaching one label refused at staging.</li>
+<li><strong>Overlap across layers</strong> is unchanged: last writer wins per expanded key, so a later layer's category row overrides an earlier layer's explicit value for every label it reaches, exactly as a later plain NULL does.</li>
+<li><strong>Flags.</strong> <code>broadcast</code> says a row left a dim NULL; a category row is a narrowed broadcast. Either it counts as broadcast (the narrowing invisible to <code>flags</code>) or <code>flags</code> gains a third state.</li>
+<li><strong>Groups.</strong> A value over <code>connection</code> reaches <code>entity</code> through a field; its category column names the category of that field. A group drawing twice on one categorized dim — a corridor <code>(from, to)</code> — would need a column per field, and is refused until wanted.</li>
+<li><strong>Against <code>default_by</code>.</strong> Two per-category mechanisms: the schema's default and a layer's category row. Data wins where it reaches; the default fills the rest. The difference is who declares it — a schema author once, or any layer.</li>
+<li><strong>The read and the write.</strong> <code>record.attributes</code> stays per label, the category expanded away; <code>write_layer</code> checks the column's values are categories carrying the attribute; <code>set(..., entity_type=…)</code> writes the column instead of resolving labels.</li>
+</ul>
+<p>What would decide it: a case where layer data, not the schema, must reach every label of one category, those not yet added included, for an attribute other categories carry too. Until one appears, staging-time filters cover the rest.</p>
+<h2 id="what-this-buys">What this buys<a class="headerlink" href="#what-this-buys" title="Permanent link">&para;</a></h2>
+<p><strong>The entity-type special cases go.</strong> The dim, the group into it, the group-file exception, the reserved name, the two entity-axis layouts, and every literal <code>"entity"</code> in core — all of them were there to make one dim and one of its properties special.</p>
+<p><strong>Categories need no new construct.</strong> An <code>Enum</code> property of a <code>partial</code> dim is one; any dim may have several, and a <code>bus_type</code> scopes traits and defaults over buses exactly as <code>entity_type</code> does over entities.</p>
+<p><strong>A registry's per-type defaults round-trip.</strong> <code>sign</code>, <code>carrier</code>, <code>p_min_pu</code> and <code>p_set</code> are declared as PyPSA defines them instead of written out as data or lost.</p>
+<p><strong>Step 2: each section answers where its values are read</strong>, <code>p_nom</code> included — the confusion this starts from — and widening an attribute's <code>dims</code> is compatible in fact.</p>
+<h2 id="what-it-costs">What it costs<a class="headerlink" href="#what-it-costs" title="Permanent link">&para;</a></h2>
+<p><strong>The read API answers less, for now.</strong> No per-type flags until step 2, no per-type frame and no applied defaults; PyPSA filters the entity axis itself, and its <code>verify</code> counts an attribute one type owns as owned by every type.</p>
+<p><strong><code>partial</code> must list what used to be implicit.</strong> A schema keying traits or defaults on <code>entity</code>'s categories must put <code>entity</code> in <code>partial</code>; a schema omitting it is refused rather than silently keyed.</p>
+<p><strong>A category is schema vocabulary.</strong> Making <code>carrier</code> categorizing means an <code>Enum</code>, so adding a carrier is a schema change.</p>
+<p><strong>Re-categorized labels keep stale values.</strong> A label whose category changes keeps what it held for attributes it no longer carries; they are out of every per-category read's reach, but stored.</p>
+<p><strong>Entity-only data reads through the fold, not the axis</strong> (step 2). <code>p_nom</code> was a column resolved with the entity row; it becomes long rows keyed by the <a href="../../layers/tree/#partial-the-granularity-of-an-override">fold key</a> like any attribute — a static frame of forty columns is forty attribute reads and a pivot where it was one file.</p>
+<p><strong>The choice is the author's, and can be wrong.</strong> Nothing derives whether <code>x</code> on a bus is metadata or data; a schema declaring it either way is valid. Moving a name between sections moves its file and is an <a href="../../model/schema/#versioning">incompatible change</a>.</p>
+<p><strong>A per-type value addressed by the type alone loses its home.</strong> An <code>icon</code> per entity type lived on <code>dims/entity_type.parquet</code>; with no <code>entity_type</code> dim there is no file keyed by category. Nothing in the tools declares one; if a case appears, it is a property of a dim declared for the purpose.</p>
+<p><strong>Every manifest is rewritten</strong>, and every record re-exported: the entity-type dim and group become one property, and <code>entity</code> joins <code>partial</code>. <a href="https://github.com/energy-models/datarecord/blob/main/AGENTS.md">Breaking changes are free</a>.</p>
+<h2 id="what-it-opens">What it opens<a class="headerlink" href="#what-it-opens" title="Permanent link">&para;</a></h2>
+<p><strong>Whether a functional group over one coordinate is a property.</strong> <code>country</code> over <code>[bus]</code> <code>into</code> <code>country</code> is one label per bus — metadata, of a dtype ranging over a dim. The old entity-type axis was exactly that, and this proposal turns it into a property; <code>into</code> might go the same way, or <a href="../../model/properties/#properties">the chain argument</a> might keep it a group.</p>
+<p><strong>Whether wide-frame editing comes back</strong> — one call adding a component with its properties, connections and values, built on <code>add</code>, <code>add_group</code> and <code>set</code>, as the inverse of what <code>to_datarecord</code> produces.</p>
+<p><strong>Whether a broadcast survives materialisation.</strong> A materialised ancestor's owner map stores a NULL row already expanded to the labels that existed then, and seeds a child's fold without re-expanding. So <code>set("p_max_pu", 0.9)</code> reaches a generator added — or re-categorized — in a child only while the ancestor is unmaterialised; plain NULLs behave the same today. One level down, a <code>WorkingRecord</code> folds its committed prefix once, so a label staged or re-categorized there is not reached by a parent's NULL even while the parent is unmaterialised. To be gone into once this proposal is built.</p>
+<p><strong>Whether groups edit like dims.</strong> A group is a dim, yet is edited through <code>add_group</code>/<code>remove_group</code> with a struct frame where <code>set</code> takes its fields by keyword; <code>add(name, keys, **columns)</code> over a group would close that.</p>
+<h2 id="status">Status<a class="headerlink" href="#status" title="Permanent link">&para;</a></h2>
+<p>Steps 1 and 2 are built on <code>feat/properties-structs</code>, and the design pages, usage pages and changelog follow them. Two departures from the text above:</p>
+<ul>
+<li><strong>No <code>partial</code> rule for groups.</strong> A dim a group draws on need not be in <code>partial</code>; its dead labels already cover deletion. The only <code>partial</code> requirement is a categorized dim's.</li>
+<li><strong>A <code>default_by</code> is applied by its reader.</strong> <code>record.properties</code> and <code>record.attributes</code> show stored rows, and a reader fills a per-category default through <code>Schema.default_for</code>, as the PyPSA tool does.</li>
+</ul>
+<p>Neither <a href="#optional-members"><code>members</code></a> nor the optional stage is built.</p>
+<h2 id="how-to-know-it-worked">How to know it worked<a class="headerlink" href="#how-to-know-it-worked" title="Permanent link">&para;</a></h2>
+<p><strong>No <code>entity</code> or <code>entity_type</code> in <code>src/datarecord</code> outside <code>tools/</code>, docstrings and tests.</strong> The names are only data — a dim and a property a schema happens to declare.</p>
+<p><strong>A record with and one without categories differ on disk by one column.</strong> Same files, <code>dims/entity.parquet</code> with or without <code>entity_type</code>, no <code>dims/entity_type/</code> in either.</p>
+<p><strong>A category on <code>bus</code> works like one on <code>entity</code>.</strong> A trait <code>on: {bus_type: [DC]}</code> narrows attributes over <code>bus</code>, and <code>default_by: {bus_type: …}</code> validates.</p>
+<p><strong>Two categorizing properties of one dim combine.</strong> Traits on <code>entity_type: [Generator]</code> and <code>carrier: [wind]</code> claiming one attribute give it to both sets of labels.</p>
+<p><strong><code>set("p_max_pu", 0.9)</code> reaches every generator, a later-added one included, and no bus.</strong></p>
+<p><strong>A trait keyed on a <code>String</code> property, or on a property of a dim outside <code>partial</code>, is refused.</strong></p>
+<p><strong>PyPSA round-trips <code>sign</code> and <code>p_min_pu</code> with nothing written</strong> (step 2). An <code>add</code> of a Load and a StorageUnit setting neither reads back <code>sign == -1</code> and <code>p_min_pu == -1</code>.</p>
+<p><strong><code>p_nom</code> is in <code>record.attributes</code></strong> (step 2), <code>inputs/p_nom.parquet</code> holds one row per entity, and widening it over <code>scenario</code> reads an old layer's values back in every scenario.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../dep-0011-deletion-cascades-through-tombstones/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 11: Deletion cascades through tombstones">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                DEP 11: Deletion cascades through tombstones
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../dep-0013-buses-and-carriers-are-dims/" class="md-footer__link md-footer__link--next" aria-label="Next: DEP 13: Buses and carriers are dims">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                DEP 13: Buses and carriers are dims
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
