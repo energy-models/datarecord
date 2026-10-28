@@ -97,7 +97,7 @@ def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
         raise ValueError(msg)
 
 
-_ROWS_PER_PASS = 50_000_000
+_ROWS_PER_PASS = 100_000_000
 
 
 def _twin(rel: DuckDBPyRelation, keys: Sequence[str]) -> tuple | None:

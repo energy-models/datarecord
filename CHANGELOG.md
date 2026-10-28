@@ -308,7 +308,7 @@ All notable changes to datarecord are documented here. The format follows
 ### Fixed
 
 - The writer's check that no coordinate of a file is held twice groups 64-bit
-  hashes in passes of at most 50 million rows, so a file of hundreds of
+  hashes in passes of at most 100 million rows, so a file of hundreds of
   millions of rows is checked in bounded memory and spill.
 - A pointwise `set` leaving one of two dims outside `partial` NULL keeps the
   rest of the series.
