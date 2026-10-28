@@ -19,7 +19,7 @@ from uuid import UUID, uuid4
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
-from datarecord.duck import ensure_local_dir
+from datarecord.duck import PARQUET_COMPRESSION, ensure_local_dir
 from datarecord.resolve.coords import resolve_coords
 from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.owner_map import _checkpointed
@@ -127,10 +127,10 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str) -> None:
     written under a temporary name and renamed into place.
     """
     if "://" in uri:
-        rel.to_parquet(uri)
+        rel.to_parquet(uri, compression=PARQUET_COMPRESSION)
         return
     tmp = f"{uri}.{uuid4().hex}.tmp"
-    rel.to_parquet(tmp)
+    rel.to_parquet(tmp, compression=PARQUET_COMPRESSION)
     os.replace(tmp, uri)
 
 

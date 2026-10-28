@@ -20,7 +20,8 @@ Notes
 
 import os
 import sys
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from functools import partial, reduce
 from glob import glob
 from pathlib import Path
@@ -53,6 +54,27 @@ class _Functions:
 
 
 fn = _Functions()
+
+#: The codec of every parquet file datarecord writes. zstd finds the repeats a long
+#: series spreads past snappy's window, a few times smaller on an hourly year.
+PARQUET_COMPRESSION = "zstd"
+
+
+@contextmanager
+def unordered(con: DuckDBPyConnection) -> Iterator[None]:
+    """Let queries on `con`'s database emit rows in any order until the block exits.
+
+    An order-preserving `COPY` buffers every batch a parallel scan finishes
+    early, so melting a wide series into hundreds of millions of rows spills
+    tens of GB. The setting is global to the database, so it is restored on
+    exit; `to_parquet` has no per-`COPY` `PRESERVE_ORDER`.
+    """
+    (was,) = con.sql("SELECT current_setting('preserve_insertion_order')").fetchall()[0]
+    con.execute("SET preserve_insertion_order = false")
+    try:
+        yield
+    finally:
+        con.execute(f"SET preserve_insertion_order = {was}")
 
 
 def try_read_parquet(
