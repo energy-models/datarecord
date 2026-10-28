@@ -97,6 +97,33 @@ def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
         raise ValueError(msg)
 
 
+_ROWS_PER_PASS = 50_000_000
+
+
+def _twin(rel: DuckDBPyRelation, keys: Sequence[str]) -> tuple | None:
+    """Return the values of `keys` two rows of `rel` share and their row count, else None.
+
+    A hash table over every distinct key outgrows memory and spill on a file
+    of hundreds of millions of rows, so the rows are bucketed by `hash(keys)`
+    into passes of at most `_ROWS_PER_PASS` rows, each grouping 64-bit hashes
+    only. A hash held twice is a candidate, confirmed by grouping its few rows
+    on the keys themselves, so a hash collision is never reported.
+    """
+    h = fn.hash(*map(col, keys))
+    passes = -(-rel.count("*").fetchall()[0][0] // _ROWS_PER_PASS) or 1
+    for p in range(passes):
+        bucket = rel.filter(h % lit(passes) == lit(p))
+        counted = bucket.aggregate([h.alias("_h"), fn.count_star().alias("_rows")])
+        for candidate, _ in counted.filter(col("_rows") > lit(1)).fetchall():
+            exact = rel.filter(h == lit(candidate)).aggregate(
+                [*map(col, keys), fn.count_star().alias("_rows")]
+            )
+            twin = exact.filter(col("_rows") > lit(1)).limit(1).fetchall()
+            if twin:
+                return twin[0]
+    return None
+
+
 def refuse_twice(
     rel: DuckDBPyRelation,
     keys: Sequence[str],
@@ -117,16 +144,10 @@ def refuse_twice(
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
-    key = ", ".join(str(col(k)) for k in keys)
-    twin = (
-        rel.aggregate(f"{key}, count(*) AS _rows", key)
-        .filter(col("_rows") > lit(1))
-        .limit(1)
-        .fetchall()
-    )
-    if not twin:
+    twin = _twin(rel, keys)
+    if twin is None:
         return
-    *values, rows = twin[0]
+    *values, rows = twin
     at = ", ".join(
         f"{k}={v}" for k, v in zip(keys, values, strict=True) if v is not None
     )
