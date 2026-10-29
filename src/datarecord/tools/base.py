@@ -313,13 +313,13 @@ class Tool(Protocol):
             intermediates they need - as a thin layer to write as a child of
             `base`.
         base
-            The record `model` was built from: required with `results_only`,
-            refused without it.
+            The record the layer is written over as a child: required with
+            `results_only`.
 
         Raises
         ------
         ValueError
-            If `base` is given without `results_only`, or missing with it.
+            If `base` is missing with `results_only`.
 
         Notes
         -----
