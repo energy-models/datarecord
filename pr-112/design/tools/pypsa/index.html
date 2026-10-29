@@ -1156,6 +1156,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#selecting-before-a-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting before a build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#geometry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1645,6 +1656,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#selecting-before-a-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting before a build
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#geometry" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1682,13 +1704,14 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="pypsa">PyPSA<a class="headerlink" href="#pypsa" title="Permanent link">&para;</a></h1>
-<p>The PyPSA tool maps components to <code>entity</code> labels with <code>ctype</code> as a category, and buses and carriers to dims of their own.
+<p>The PyPSA tool maps components to <code>entity</code> labels with <code>ctype</code> as a category, and buses, carriers, SubNetworks, line types and transformer types to dims of their own.
+A shape is a property of the label it outlines.
 Each port of a component is a <code>connection</code> tuple, and per-port inputs and results are attributes over that multi-dim.
 Multi-period snapshots are one flat axis with a <code>period</code> property.
 A solve writes its results as a thin child layer.</p>
 <h2 id="entities-and-their-properties">Entities and their properties<a class="headerlink" href="#entities-and-their-properties" title="Permanent link">&para;</a></h2>
 <p>PyPSA's registry decides what is a property and what is an attribute.
-The properties of <code>entity</code> are exactly <code>ctype</code>, <code>carrier</code>, <code>sign</code> and <code>type</code>, and <code>role</code> is a property of <code>connection</code>.
+The registry's properties of <code>entity</code> are exactly <code>ctype</code>, <code>carrier</code>, <code>sign</code> and <code>type</code>, and <code>role</code> is a property of <code>connection</code>.
 Every other input, every number among them, is an attribute, so <code>p_nom</code> is long rows of <code>attributes/p_nom.parquet</code> (<a href="../../storage/format/#where-a-value-lives">where a value lives</a>).</p>
 <p><code>entity.ctype</code> is <code>{one_of: ctype}</code>, where <code>ctype</code> is a dim with <code>one_of</code> that holds the types exported as entities.
 <code>connection.role</code> is <code>{one_of: role}</code>, where <code>role</code> is a dim with <code>one_of</code> that holds <code>input</code>, <code>output</code> and <code>attached</code>.
@@ -1703,13 +1726,16 @@ A layer then patches one link's <code>efficiency</code> series, or one bus's <co
 <h2 id="standard-types">Standard types<a class="headerlink" href="#standard-types" title="Permanent link">&para;</a></h2>
 <p>Every new PyPSA network holds a library of <code>LineType</code> and <code>TransformerType</code> rows.
 A network may add types of its own: PyPSA-Earth adds a <code>ZM_330kV_bison_2bundle</code> that its lines use.
-<code>to_datarecord</code> writes a type the library lacks as an entity of <code>ctype</code> <code>LineType</code> or <code>TransformerType</code>, and its inputs as attributes like any other entity's.
-<code>build</code> adds those entities to the library that the new network already holds.</p>
+<code>entity</code> is the network's topology, and a type is no entity: a line type is a label of the dim <code>line_type</code>, and a transformer type a label of <code>transformer_type</code>.
+Every registry column of a type, such as <code>x_per_length</code> or <code>s_nom</code>, is a property of its dim, since a type is catalog metadata that describes its label.
+A type's columns therefore clash with no attribute: <code>transformer_type.s_nom</code> is a column of <code>dims/transformer_type.parquet</code>, and a transformer's own <code>s_nom</code> an attribute over <code>entity</code>.
+<code>entity.type</code> is plain text that names the type and refers to no dim, so a selection of lines keeps every type.
+<code>to_datarecord</code> writes a type the library lacks as a label of its dim, and <code>build</code> adds it to the library that the new network already holds.</p>
 <p>A type is the library's by name, as in PyPSA's own netCDF export.
 <code>to_datarecord</code> writes no row the library names, even one whose values the network has changed.
 <code>build</code> therefore restores that row with the library's values.
-A type's name is an entity, so it must not also name a line or any other entity (<a href="#what-verify-reports">below</a>).
-A results layer writes no type.</p>
+A results layer writes no type.
+<code>line_type</code> and <code>transformer_type</code> stay outside <code>partial</code>, as do <code>carrier</code> and <code>sub_network</code>.</p>
 <h2 id="what-verify-reports">What <code>verify</code> reports<a class="headerlink" href="#what-verify-reports" title="Permanent link">&para;</a></h2>
 <p><code>verify</code> catches what the record layer cannot: an entity type that PyPSA has no registry entry for, a connection <code>role</code> it cannot place, and a <code>partial</code> set that breaks PyPSA's split between constant and varying data.
 The record checks a category against the <code>one_of</code> of its dim, and the tool checks it against PyPSA's registry.</p>
@@ -1718,7 +1744,8 @@ PyPSA permits a <code>Generator</code> and a <code>Load</code> both called <code
 A record cannot hold two entities under one key.
 Collisions are within a dim.
 A bus is a label of <code>bus</code>, so a <code>Bus</code> and a <code>Load</code> called <code>north</code>, as in every clustered pypsa-eur network, do not collide.
-SubNetworks, which PyPSA names <code>0</code>, <code>1</code>, … on every topology pass as it numbers Lines, are labels of their own dim <code>sub_network</code> (<a href="#writing-results">writing results</a>).</p>
+SubNetworks, which PyPSA names <code>0</code>, <code>1</code>, … on every topology pass as it numbers Lines, are labels of their own dim <code>sub_network</code> (<a href="#writing-results">writing results</a>).
+A line type and a transformer type are labels of their own dims too, so a type may share its name with a line (<a href="#standard-types">standard types</a>).</p>
 <p>The tool reports a collision and repairs none.
 A renamed <code>Generator:north</code> would come back as a component that PyPSA cannot find by its own name, and the framework's vocabulary belongs to the framework.
 PyPSA itself is moving to names unique across the network, which removes the constraint.</p>
@@ -1814,7 +1841,8 @@ PyPSA's internal power sits at no bus, so it is a result over <code>entity</code
 <code>build</code> turns <code>p</code> back into PyPSA's per-port columns as it does a per-port input, and <code>p_internal</code> into <code>Link.p</code>.</p>
 <h2 id="custom-columns">Custom columns<a class="headerlink" href="#custom-columns" title="Permanent link">&para;</a></h2>
 <p>A static column that PyPSA's registry lacks is placed by what it holds and what its name meets, on any type.
-Its subject is its type's dim: <code>entity</code>, <code>bus</code>, <code>carrier</code> or <code>sub_network</code>.</p>
+Its subject is its type's dim: <code>entity</code>, <code>bus</code>, <code>carrier</code>, <code>sub_network</code>, <code>line_type</code> or <code>transformer_type</code>.
+On a type it is a property, as every column of a type is.</p>
 <ul>
 <li>A text column describes its label, so it is a property of the subject.
   pypsa-eur's <code>Bus.country</code> is <code>bus.country</code>, a column of <code>dims/bus.parquet</code> beside <code>x</code> and <code>y</code>, and a sector <code>Generator.country</code> is <code>entity.country</code>.</li>
@@ -1823,6 +1851,10 @@ Its subject is its type's dim: <code>entity</code>, <code>bus</code>, <code>carr
   A property is its subject's column, so it clashes with nothing.</li>
 <li>Any other column is an attribute over its subject, such as pypsa-eur's <code>Bus.nom_max_onwind_2050</code>, which a scenario patches as it does <code>p_nom_max</code>.</li>
 </ul>
+<p>A text property named like a dim the record declares <a href="../../model/properties/#referring-to-a-dim">refers to</a> that dim.
+pypsa-eur's <code>bus.country</code> is <code>{one_of: country}</code> where its shapes make a <code>country</code> dim (<a href="#geometry">geometry</a>), so a value is a country's label or NULL, and <code>to_datarecord</code> refuses one that names no label.
+A custom column named <code>shape_…</code> is refused, since that prefix names a shape's geometry, and so is a custom column on a Shape.
+So is one named like a dim that keys a record's rows, <code>snapshot</code>, <code>timestep</code>, <code>period</code>, <code>scenario</code>, <code>entity</code> or <code>connection</code>, which no property or attribute is named like.</p>
 <p>A name placed as a property is one for every type of that dim carrying it, typed from its values and without a default.
 <code>to_datarecord</code> refuses one that two types carry with different dtypes.
 <code>build</code> sets each back on the types that carried it alone (<a href="#a-value-its-type-does-not-take">below</a>).
@@ -1842,10 +1874,10 @@ A value meant for the types that take it is written per label, as in <code>set("
 <h2 id="snapshots-and-weightings">Snapshots and weightings<a class="headerlink" href="#snapshots-and-weightings" title="Permanent link">&para;</a></h2>
 <p>PyPSA's multi-period <code>(period, timestep)</code> snapshots are one flat <code>snapshot</code> axis.
 Each snapshot carries its period as <code>snapshot.period</code>, a property that <a href="../../model/properties/#properties">refers to</a> <code>period</code>, and <code>period</code> is an axis of its own beside it.
-A snapshot is labelled by its timestep where no timestep repeats across periods.
-Otherwise it is labelled by its position, <code>0</code> to <code>n-1</code> across every period in the network's order, and its timestep becomes the property <code>snapshot.timestep</code>.
+A multi-period snapshot is labelled by its position, <code>0</code> to <code>n-1</code> across every period in the network's order, and its timestep becomes the property <code>snapshot.timestep</code>.
+That holds whether or not a timestep repeats across periods, as the <code>pd.MultiIndex.from_product</code> of <code>set_investment_periods</code> repeats every one, so a child whose timesteps repeat where its parent's did not keeps the parent's labels and restates <code>snapshot.timestep</code>.
 That property refers to the <code>datetime</code> dim <code>timestep</code>, PyPSA's own index level name, whose axis holds each timestep once.
-The <code>pd.MultiIndex.from_product</code> of <code>set_investment_periods</code> repeats every timestep, so its snapshots are positions.</p>
+A single-period network's snapshot is labelled by its timestep.</p>
 <p>A multi-period network declares its attributes over <code>snapshot</code> as a single-period network does, and a single-period network's schema declares no property of <code>snapshot</code>.
 <code>build</code> rebuilds the <code>(period, timestep)</code> index from the axis order, <code>snapshot.period</code>, and the label or <code>snapshot.timestep</code>.
 A period is selected like any property of a dim that an attribute reaches: <code>set("p_max_pu", 0.5, entity="wind", period=2030)</code> stages the snapshots of 2030 alone (<a href="../../use/editing/#set"><code>set</code></a>).</p>
@@ -1859,10 +1891,15 @@ The tool writes them for each axis the network holds, and a multi-period network
 <code>build</code> copies every attribute the record holds into the network, a solved bus's <code>marginal_price</code> included.
 Only the tool knows which attributes are outputs, from PyPSA's registry status "Output".
 It reads that status on import alone, and the status decides only what <code>results_only</code> presents.
-A full export leaves out a result still at its default, so an unsolved network writes none.</p>
+A full export leaves out a static value still at its default, so an unsolved network writes no result.</p>
+<p>A full export may take <code>base</code>, the record it is written over as a child.
+It then leaves out a static value only where it repeats what <code>base</code> resolves there: <code>base</code>'s value for that entity and scenario, else the default.
+A value back at its default over a <code>base</code> holding another is written, so <code>base</code>'s value does not show through.
+A value is compared exactly, and NULL repeats NULL.
+A collection is exported over nothing.</p>
 <p>With <code>results_only=True</code>, <code>to_datarecord</code> presents only what the solve produced.
 It is a thin layer written as a child of <code>base</code>, the record the model was built from.
-<code>base</code> is required with <code>results_only</code> and refused without it.</p>
+<code>base</code> is required with <code>results_only</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">inputs</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># edited inputs are committed first</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">n</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">build</span><span class="p">(</span><span class="n">inputs</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">n</span><span class="o">.</span><span class="n">optimize</span><span class="p">()</span>
@@ -1875,6 +1912,12 @@ It holds the result attributes and the intermediate results they need, since a s
 A result at its default is written too, so a re-solve's value stands over its parent's.
 <code>base</code>'s inputs are never written.</p>
 <p>A result row that <code>base</code> holds and the solve does not write again, such as the <code>mu_*</code> duals under <code>assign_all_duals=False</code>, is restated as NULL, so no stale value is inherited.
+Only a row at the scenarios, buses, entities and connections the network holds is restated, so a re-solve of a <a href="#selecting-before-a-build">selection</a> leaves every other label's results to <code>base</code>.
+A result over no <code>scenario</code>, such as <code>p_nom_opt</code>, is one value across every scenario, so a re-solve of some scenarios writes it for all of them.
+A series is written at the network's snapshots, and <code>base</code>'s values stand at the others.
+Since <code>snapshot</code> is outside <code>partial</code>, the layer restates such a series whole, writing <code>base</code>'s values at the snapshots it did not solve again.
+Over a multi-period <code>base</code>, a result over no <code>snapshot</code>, such as <code>p_nom_opt</code>, is written for the entities PyPSA holds active in the network's periods alone, <code>build_year &lt;= period &lt; build_year + lifetime</code>.
+So <code>base</code>'s results stand at every period, snapshot and entity the network does not hold, and writing one period's solve after another's leaves the earlier one's dispatch and the capacities of the entities idle in the later period in place.
 NULL reads as no value, where a <code>marginal_price</code> at its default <code>0.0</code> would read as a price, and <code>build</code> leaves PyPSA its own default there.
 A layer removes a label or a tuple by restating its axis without it, a multi-dim's included, and has no way to remove a value, so restating is how a value is replaced.</p>
 <p>A PyPSA SubNetwork is a label of the dim <code>sub_network</code>, <code>0</code>, <code>1</code>, … as PyPSA names it.
@@ -1884,13 +1927,14 @@ A results layer restates the <code>sub_network</code> axis alone and leaves the 
 A re-solve that numbers SubNetworks differently therefore leaves no stale label behind and rewrites no input axis.
 A solve without SubNetworks over a record with a <code>sub_network</code> axis restates the axis empty, its columns typed as the schema declares them, so the record holds none of the earlier SubNetworks.
 Over a record without that axis, it writes no <code>sub_network</code> axis.
+A solve of a network holding fewer buses or entities than <code>base</code> writes neither the axis nor <code>slack_bus</code> and the <code>sub_network</code> of a line, since it numbers its SubNetworks over the selection alone, and leaves the whole network's to <code>base</code>.
 A full export writes the axis beside <code>bus</code> and <code>carrier</code>, and <code>build</code> adds the SubNetworks from it.
 A results layer meets full validation, so it carries the labels its results name.</p>
 <p>A solve of several networks writes them as one <a href="#a-collection">collection</a>.</p>
 <h2 id="a-collection">A collection<a class="headerlink" href="#a-collection" title="Permanent link">&para;</a></h2>
 <p><code>to_datarecord</code> takes a <code>pypsa.NetworkCollection</code> with <code>collection_dim</code>, the dim whose labels its one index level holds.
 It is required with a collection and refused without one, since nothing in the collection says what its index means.
-A collection is written on either path: as a full export, or as results over <code>base</code>.
+A collection is written on either path: as a full export over nothing, or as results over <code>base</code>.
 A record the tool writes builds back, so what a member may hold is decided by the dim:</p>
 <ul>
 <li><code>period</code> is a myopic solve, one network per investment period.</li>
@@ -1908,8 +1952,10 @@ A member holds its own period alone.
 A series is each member's at its snapshots, and a static value such as <code>p_nom_opt</code> or a global constraint's <code>mu</code> comes from the members that hold the entity.
 Two members holding different static values for one entity are refused, and an entity no member holds is at its default.
 The SubNetworks are numbered once for the whole network rather than per member.
-Over <code>base</code>, a member holds only snapshots and components that <code>base</code> holds, and the layer is the one a single network solving every period of <code>base</code> would write.
-A <code>base</code> with a dim of its own is refused, since it builds to a collection rather than the one network the members split.</p>
+A static value counts only from the members holding the entity active in their period, so an entity a member holds idle, such as a generator retired before it, agrees with no one; an entity active in no member takes the value the members holding it agree on.
+Over <code>base</code>, a member holds only snapshots, buses and entities that <code>base</code> holds, and <code>base</code>'s results stand at every period, snapshot and entity no member holds (<a href="#writing-results">writing results</a>).
+A <code>base</code> with a dim of its own is refused, since it builds to a collection rather than the one network the members split.
+A single network over a multi-period <code>base</code> may carry any of its investment periods, one built at one period (<a href="#selecting-before-a-build">selecting before a build</a>) writing at that period, and one carrying fewer than all is written as results.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">members</span> <span class="o">=</span> <span class="n">pypsa</span><span class="o">.</span><span class="n">NetworkCollection</span><span class="p">({</span><span class="mi">2030</span><span class="p">:</span> <span class="n">n_2030</span><span class="p">,</span> <span class="mi">2040</span><span class="p">:</span> <span class="n">n_2040</span><span class="p">})</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">solved</span> <span class="o">=</span> <span class="n">inputs</span><span class="o">.</span><span class="n">child</span><span class="p">(</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span>
@@ -1938,19 +1984,96 @@ The tool cannot tell in advance which values a sweep varies, since every member 
 Members solved apart differ in their capacities and duals, which gain the dim, while an input the sweep leaves alone stays as declared.
 The dim is added to the schema, typed from the labels, and joins <code>partial</code>, as <code>scenario</code> is in it, so a later layer patches one member's values without restating the others.
 A results layer starts from its <code>base</code>'s schema, so a later layer whose values differ where an earlier one's agreed widens an attribute's <code>dims</code>, which is <a href="../../model/schema/#versioning">compatible</a>: a row written without the dim broadcasts to every label.
-A later layer whose values agree keeps the <code>dims</code> it found and writes its rows once, NULL on the dim, so they reach every label; so does a single network's results over such a <code>base</code>.</p>
+A later layer whose values agree keeps the <code>dims</code> it found and writes its rows once, NULL on the dim, so they reach every label.
+A single network's results over such a <code>base</code> are refused, since NULL on the dim they would stand over every member's.</p>
 <p><code>build</code> gives a record with a dim of its own a <code>NetworkCollection</code> indexed by that dim, its labels in axis order.
 Each member is the network a record of the rows at its label would build, a row NULL on the dim reaching every label, and a row at the label standing over it (<a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>).
 A record has at most one dim of its own: a <code>NetworkCollection</code> has one index, and collections do not nest.
+A dim the network's shapes make, such as <code>country</code> (<a href="#geometry">geometry</a>), is no dim of its own: it indexes no member, and a collection is never over it.
 A collection over a new dim is refused over a <code>base</code> that has another, and <code>verify</code> reports each dim of its own of a record declaring more than one as an unsupported dim, so <code>build</code> refuses it.
 A re-solve over the same dim keeps the record buildable.</p>
+<h2 id="selecting-before-a-build">Selecting before a build<a class="headerlink" href="#selecting-before-a-build" title="Permanent link">&para;</a></h2>
+<p><code>build(record, select={...})</code> builds from a selection of the record's labels, by dim, as xarray's <code>sel</code> takes them.
+The selection is the tool's view of the record, not a record of its own: nothing is written, and <code>verify(record, select=...)</code> checks the view <code>build</code> builds.</p>
+<p><code>period</code>, <code>scenario</code> and the record's dim of its own squeeze at one label: the dim leaves the network.
+Each attribute's rows are those at the label and those NULL on the dim, settled by <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>, as a member of a collection is built.
+An attribute over squeezed dims alone, such as a weighting of the dim, goes with it, and so does a property referring to it, such as <code>snapshot.period</code>.
+A list of labels, one label in a list included, keeps the dim at those labels in axis order: an attribute row at another label is dropped, and one NULL on the dim kept.
+<code>snapshot</code>, <code>bus</code>, <code>entity</code> and <code>carrier</code> are never squeezed, so one label is a list of one.
+Any other dim, such as <code>role</code>, <code>ctype</code>, <code>sub_network</code>, <code>line_type</code>, <code>transformer_type</code>, <code>timestep</code> or a dim shapes made (<a href="#geometry">geometry</a>), is refused, as is a dim the record does not declare, a label its axis lacks, an empty list and a selection leaving no snapshot.</p>
+<p>A snapshot is selected by its timestamp: <code>snapshot.timestep</code> where declared, the label otherwise (<a href="#snapshots-and-weightings">snapshots and weightings</a>).
+Over several periods the label is a position, so a timestamp names its snapshot in every period holding it.
+One key is matched as pandas' <code>.loc</code> matches it: a timestamp exactly, and a partial date string, such as <code>"2013-02"</code>, naming every label in its span and so keeping the dim, as xarray's <code>sel</code> does.
+A key in a list is matched exactly, read as <code>pd.Timestamp</code> reads it on a datetime axis.</p>
+<p>A slice, <code>slice(start, stop)</code>, selects along an ordered axis: <code>snapshot</code> by timestamp, <code>period</code>, and a dim of the record's own whose labels are numbers or datetimes.
+It is pandas' label slice: both ends inclusive, <code>None</code> an open end, and a partial date string covering its span, so <code>slice("2013-02", "2013-03")</code> is February and March.
+A slice keeps the dim at the labels it covers, even one, and never squeezes it.
+A slice with a step, one along any other dim, such as <code>bus</code>, <code>entity</code>, <code>carrier</code> or <code>scenario</code>, or an axis of text, one whose end the axis cannot compare and one covering no label are refused.</p>
+<table>
+<thead>
+<tr>
+<th>selected</th>
+<th>one label</th>
+<th>a list or a slice</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>period</code></td>
+<td>a single-period network over the period's snapshots, of its active entities</td>
+<td>a multi-period network over the periods' snapshots, of the entities active in one of them</td>
+</tr>
+<tr>
+<td><code>scenario</code></td>
+<td>a deterministic network of the scenario's values</td>
+<td>a stochastic network, its weights renormalised to 1</td>
+</tr>
+<tr>
+<td>a dim of its own</td>
+<td>a <code>Network</code></td>
+<td>a <code>NetworkCollection</code> over the labels</td>
+</tr>
+<tr>
+<td><code>snapshot</code>, <code>bus</code>, <code>entity</code>, <code>carrier</code></td>
+<td>a list of one</td>
+<td>the dim at those labels</td>
+</tr>
+</tbody>
+</table>
+<p>A label whose property refers to a selected dim stays only where its value is selected: a snapshot whose <code>snapshot.period</code> is a selected period, a bus, entity or SubNetwork whose <code>carrier</code>, its default applied, is a selected carrier.
+A NULL property names no label, so it refers to none the selection drops and stays: PyPSA's <code>""</code> carrier is NULL (<a href="#buses-and-carriers-are-dims">buses and carriers are dims</a>).
+A period none of whose snapshots is selected goes, since PyPSA holds no period without one.
+An entity attached to a dropped bus goes, with its connections, so no component reaches the network with a dangling port.
+Selecting <code>entity</code> keeps those entities and their connections, every bus left in place.
+A shape goes with the label it outlines, and a dim shapes made keeps every label, since <code>select</code> takes none of its labels, though a property such as <code>bus.country</code> refers to it.</p>
+<p>One period is a single-period network indexed by the period's timesteps, <code>snapshot.timestep</code> where declared and the label otherwise (<a href="#snapshots-and-weightings">snapshots and weightings</a>), without the period weightings.
+It holds the entities PyPSA holds active in the period, <code>build_year &lt;= period &lt; build_year + lifetime</code>, each value resolved with its declared default and PyPSA's, <code>0</code> and infinity, where none is declared.
+An entity whose value of either varies over a dim the selection keeps, such as a collection's dim of its own, is refused.
+A list or a slice of periods holds the entities active in at least one of them, so an entity idle in every kept period goes.
+The period one label squeezes out is recorded in the network's <code>meta</code>, so its results write back at that period, and a full export leaves the record out.
+A <code>GlobalConstraint</code> whose <code>investment_period</code>, its declared default applied, names a period the selection drops goes, and one NULL on it, applying in every period, stays.
+One period drops <code>investment_period</code> too, since a single-period network has no period to name, and its value varying over a dim the selection keeps is refused, as <code>build_year</code> is.
+One scenario drops <code>scenario_weight</code>, and a list renormalises the kept scenarios' weights, a scenario no row reaches taking its equal share of the whole axis first, since PyPSA takes weights summing to 1; kept weights summing to 0 are refused.</p>
+<p>A network built at selected labels writes its results back over the whole record at those labels (<a href="#writing-results">writing results</a>), a snapshot at <code>base</code>'s label of its period and timestep, and one built at one label of <code>period</code> at that period.
+One built at one label of <code>scenario</code> or of a dim of the record's own is refused there, since its results, NULL on the squeezed dim, would reach every label.
+A scenario is kept in a list of one instead, and a dim of the record's own is written back as the whole collection.</p>
+<p>Several dims combine, so <code>select={"period": 2030, "scenario": "high", "carrier": ["AC", "wind"]}</code> builds one deterministic, single-period network of the AC buses and the wind generators at them.</p>
 <h2 id="geometry">Geometry<a class="headerlink" href="#geometry" title="Permanent link">&para;</a></h2>
-<p>A geometry is text.
-PyPSA's <code>Shape.geometry</code>, the column its registry types <code>geometry</code>, is an attribute like <code>idx</code> and <code>component</code> beside it.
-Its values are <a href="https://en.wikipedia.org/wiki/Well-known_text_representation_of_geometry">WKT</a> in <code>attributes/geometry.parquet</code>, declared <code>String</code>.
-A network has one coordinate reference system, so the CRS is <code>crs</code> in the schema's <a href="../../model/schema/"><code>meta</code></a>, as the CRS's authority string (<code>EPSG:3035</code>) where it has one.
+<p>A shape describes the label it outlines, a bus's onshore region or a country's offshore waters, so it lives on that label rather than as a label of its own.
+PyPSA's <code>Shape</code> is no entity type and makes no <code>shape</code> dim.</p>
+<p>A shape's <code>component</code> names its dim: a PyPSA type names that type's dim, <code>Bus</code> names <code>bus</code> and an entity type such as <code>Generator</code> names <code>entity</code>.
+Any other <code>component</code>, such as pypsa-eur's <code>country</code>, is a dim of its own with that name, its labels the shapes' <code>idx</code> in the network's order.
+<code>type</code> names the property, <code>shape_{type}</code>, and <code>idx</code> the label: a bus's onshore region is <code>bus.shape_onshore</code>, and Germany's offshore waters are <code>country.shape_offshore</code> at label <code>DE</code>.
+The <code>shape_</code> prefix is how the tool, and any reader, recognises a geometry.
+A geometry is text: its values are <a href="https://en.wikipedia.org/wiki/Well-known_text_representation_of_geometry">WKT</a>, declared <code>str</code>.</p>
+<p><code>to_datarecord</code> refuses a shape without a <code>component</code>, an <code>idx</code> or a <code>type</code>, two shapes sharing <code>(component, idx, type)</code>, an <code>idx</code> that is not a label its PyPSA type writes (a standard type or a carrier <code>n.carriers</code> lacks is none), and a <code>component</code> that is no PyPSA type but names a dim the PyPSA schema declares.
+A dim that shapes make stays outside <code>partial</code>, is written by a full export alone, and is no <a href="#over-scenario-or-a-dim-of-its-own">dim of the record's own</a>.
+A results layer writes no shape.</p>
+<p>A network has one coordinate reference system, so the CRS is <code>crs</code> in the schema's <a href="../../model/schema/"><code>meta</code></a>, as the CRS's authority string (<code>EPSG:3035</code>) where it has one.
 The tool does not write PyPSA's <code>srid</code> network attribute, that CRS's EPSG code.</p>
-<p><code>build</code> sets the network's CRS from <code>crs</code> before it adds any component, and parses each geometry back into a GeoSeries in that CRS.
+<p><code>build</code> rebuilds <code>n.shapes</code> from every non-NULL <code>shape_{type}</code> property of every dim, named <code>"{component} {idx} {type}"</code>, such as <code>"Bus DE onshore"</code> beside <code>"country DE onshore"</code>, unique since <code>(component, idx, type)</code> is.
+Its <code>component</code> is the dim's PyPSA type, an entity's <code>ctype</code>, or the name of a dim shapes made.
+<code>build</code> sets the network's CRS from <code>crs</code> before it adds any component, and parses each geometry back into a GeoSeries in that CRS.
 A record without <code>crs</code> builds in PyPSA's default, <code>EPSG:4326</code>.</p>
 
 

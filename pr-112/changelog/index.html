@@ -1065,17 +1065,28 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>The PyPSA tool round-trips multi-period networks. <code>snapshot</code> is one flat dim
   next to <code>period</code>, and each snapshot has a property <code>snapshot.period</code> with
   <code>one_of: period</code>, so <code>period=2030</code> selects the snapshots of one period. A
-  snapshot is labelled by its timestep where no timestep repeats across
-  periods, and by its position otherwise, with the timestep in
-  <code>snapshot.timestep</code>. <code>build</code> restores snapshots, investment periods, time
-  series and both weightings.</li>
+  snapshot is labelled by its position, whether or not a timestep repeats
+  across periods, with the timestep in <code>snapshot.timestep</code>, so a child whose
+  timesteps repeat otherwise than its parent's keeps the parent's labels.
+  <code>build</code> restores snapshots, investment periods, time series and both
+  weightings.</li>
 <li>The PyPSA tool round-trips snapshot and period weightings:
   <code>snapshot_weighting_objective</code>, <code>_stores</code> and <code>_generators</code> over <code>snapshot</code>,
   <code>period_weighting_objective</code> and <code>_years</code> over <code>period</code>, and
   <code>scenario_weight</code>.</li>
-<li>The PyPSA tool round-trips a network's shapes. A geometry is stored as WKT
-  in <code>attributes/geometry.parquet</code>, the CRS is <code>crs</code> in the schema's <code>meta</code>,
-  and <code>build</code> restores <code>n.shapes</code> as a GeoDataFrame in that CRS.</li>
+<li>The PyPSA tool round-trips a network's shapes. A shape is the property
+  <code>shape_{type}</code> of the label it outlines, its geometry as WKT: a <code>Bus</code> shape
+  is <code>bus.shape_onshore</code>, and a <code>component</code> that is no PyPSA type, such as
+  pypsa-eur's <code>country</code>, is a dim of its own whose labels are the shapes'
+  <code>idx</code>. Such a dim is no dim of the record's own and <code>build(select=...)</code>
+  refuses it. A custom text column named like a dim refers to it, so
+  pypsa-eur's <code>bus.country</code> is <code>{one_of: country}</code>. The CRS is <code>crs</code> in the
+  schema's <code>meta</code>, and <code>build</code> restores <code>n.shapes</code> in that CRS.
+  <code>to_datarecord</code> refuses a shape without a <code>component</code>, <code>idx</code> or <code>type</code>, two
+  sharing <code>(component, idx, type)</code>, one naming no member of its PyPSA type, a
+  custom column named <code>shape_...</code> or like a key dim (<code>scenario</code>, <code>entity</code>,
+  ...) and a custom value naming no label of the dim it refers to. <code>build</code>
+  names each shape <code>"{component} {idx} {type}"</code>.</li>
 <li><code>PyPSA.to_datarecord(n, con, results_only=True, base=record)</code> writes a solve
   as a thin layer. The layer restates the SubNetworks of <code>base</code> and sets
   NULL on the results of <code>base</code> that it does not write again. A NULL series
@@ -1099,13 +1110,51 @@ SPDX-License-Identifier: CC-BY-4.0
   of its own, each member the network at its label. <code>verify</code> reports each such
   dim of a record declaring more than one in <code>Requirements.unsupported_dims</code>,
   a new field for dims a tool has no place for.</li>
+<li><code>PyPSA.build(record, select={...})</code> builds from a selection of the record's
+  labels, as xarray's <code>sel</code> takes them. One label of <code>period</code>, <code>scenario</code> or a
+  dim of the record's own squeezes the dim: a single-period network indexed by
+  its timesteps holding the entities active in that period, a global
+  constraint for another period dropped, a deterministic
+  network, or one <code>Network</code> of a collection; the period squeezed out is
+  recorded in <code>n.meta</code>, so the network's results write back at it. A list
+  keeps the dim at those labels, renormalising the kept scenarios' weights,
+  and a list of periods holds the entities active in at least one of them.
+  <code>snapshot</code>, <code>bus</code>,
+  <code>entity</code> and <code>carrier</code> take a label or a list, and a label referring to a
+  dropped one goes with it: a snapshot of another period, a bus or entity of
+  another carrier, an entity attached to a dropped bus. A snapshot is named by
+  its timestamp, in every period where the periods repeat their timesteps, and
+  a partial date string names every one in its span. A
+  slice, as pandas' <code>.loc</code> takes it, keeps <code>snapshot</code>, <code>period</code> or a dim of
+  the record's own of numbers or datetimes at the labels it covers. <code>verify</code>
+  takes the same <code>select</code>.</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
 <li>datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no <code>fetchone()</code>.</li>
+<li>The <code>pypsa</code> extra requires PyPSA 1.4.</li>
 <li>
-<p>The <code>pypsa</code> extra requires PyPSA 1.4.</p>
+<p><code>PyPSA.to_datarecord</code> takes <code>base</code> on a full export too, and drops the
+  <code>ValueError</code> for <code>base</code> without <code>results_only</code>. Over <code>base</code> a static value
+  is left out only where it repeats <code>base</code>'s value, else the default, so a
+  value set back to PyPSA's default over a parent holding another is written
+  and no longer lets the parent's show through. A <code>NetworkCollection</code> takes
+  <code>base</code> only with <code>results_only=True</code>.</p>
+</li>
+<li>
+<p>The PyPSA tool melts a time series one entity at a time, so a parquet row
+  group holds few entity names and encodes them by dictionary. The
+  <code>p_max_pu</code> file of an 80,000-generator hourly network shrinks from 4.7 GB to
+  2.3 GB.</p>
+</li>
+<li>
+<p>Every parquet file datarecord writes is zstd-compressed parquet v2, with a
+  row group's dictionary capped at 4 KB, so a series' snapshots are
+  delta-encoded and its values byte-stream-split. That <code>p_max_pu</code> file comes
+  to 406 MB. Attribute files are written without keeping row order, so writing
+  a long series no longer spills tens of GB; dims files keep theirs, which is
+  the axis order.</p>
 </li>
 <li>
 <p>Groups are multi-dims. A dim declared under <code>dimensions</code> with
@@ -1276,12 +1325,53 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Reading a property's default keeps the rows in their order. A relation
+  filtered by several <code>IN (SELECT …)</code> subqueries no longer comes back
+  reordered, as when the PyPSA tool builds a network with <code>select=</code> on two
+  dims.</li>
 <li>The PyPSA tool keeps a network's own line and transformer types. A
   <code>LineType</code> or <code>TransformerType</code> that PyPSA's standard library does not name
-  is an entity of that <code>ctype</code>, and <code>build</code> adds it to the library. A
+  is a label of the dim <code>line_type</code> or <code>transformer_type</code>, every column of it
+  a property, and <code>build</code> adds it to the library. A
   PyPSA-Earth network, whose lines use its own <code>ZM_330kV_bison_2bundle</code>, no
   longer builds back with lines that reference a missing type. As in PyPSA's
   netCDF export, a library row the network has changed is not written.</li>
+<li>A results layer writes a series at the network's snapshots alone,
+  restating <code>base</code>'s values at the others, and over a multi-period <code>base</code> a
+  result over no snapshot, such as <code>p_nom_opt</code>, for the entities active in
+  the network's periods alone, so <code>base</code>'s results stand at every period,
+  snapshot and entity the network does not hold. Writing one period's solve after
+  another's no longer zeroes the earlier period's dispatch and capacities,
+  and the write no longer builds <code>base</code> first. The network may carry any of
+  <code>base</code>'s investment periods, or none where <code>build</code> squeezed one out; one
+  carrying fewer than all is written with <code>results_only=True</code>, and one
+  holding a snapshot, bus or entity <code>base</code> lacks is refused at the call. A <code>period</code>
+  collection counts a static value only from the members holding the entity
+  active in their period, so an idle entity's value no longer clashes.</li>
+<li>The PyPSA tool declares a custom column of dtype <code>object</code> by its non-null
+  values, so a column of bools, ints or floats holding a NaN, numpy scalars
+  among them, is written as <code>bool</code>, <code>int</code> or <code>float</code> rather than failing as
+  <code>str</code>, and one of mixed types is written as text.</li>
+<li>A results layer of a network built from selected snapshots of a record
+  repeating its timesteps across periods lands on <code>base</code>'s snapshots, not on
+  the first ones, and one holding a snapshot <code>base</code> lacks is refused at the
+  call. A results layer restates as NULL only <code>base</code>'s results at
+  the scenarios, buses, entities and connections the network holds, so a
+  re-solve of a selection keeps every other label's results. A result over
+  no <code>scenario</code>, such as <code>p_nom_opt</code>, is one value across every scenario, so
+  a re-solve of some scenarios writes it for all of them. A re-solve of
+  fewer buses or entities than <code>base</code> leaves <code>base</code>'s SubNetworks, since it
+  numbers its own over the selection alone. The
+  results of a deterministic network over a <code>base</code> holding scenarios, or of a
+  single network over a <code>base</code> with a dim of its own, are refused rather than
+  written over every label.</li>
+<li><code>PyPSA.build</code> of a stochastic record indexes <code>n.shapes</code> by
+  <code>(scenario, name)</code>, as PyPSA indexes every other component.</li>
+<li>A collection whose members carry one custom column on different types is
+  refused, as one whose members declare different schemas is.</li>
+<li>The writer's check that no coordinate of a file is held twice groups 64-bit
+  hashes in passes of at most 100 million rows, so a file of hundreds of
+  millions of rows is checked in bounded memory and spill.</li>
 <li>A pointwise <code>set</code> leaving one of two dims outside <code>partial</code> NULL keeps the
   rest of the series.</li>
 <li>A broadcast reaches every label the record holds, including one added below
