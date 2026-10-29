@@ -31,6 +31,26 @@ It returns a `Requirements` that is falsy when the record is usable.
 A stored attribute that a type does not take, such as `p_max_pu` on a load, is left out of the build and listed in `ignored`, and the result stays falsy.
 `build` raises `UnsupportedRecordError` for a record it cannot build in full.
 
+`build` takes `select`, the labels to build from by dim, as xarray's `sel` takes them ([design](../design/tools/pypsa.md#selecting-before-a-build)):
+
+```python
+PyPSA.build(record, select={"period": 2030})  # single-period, its active entities
+PyPSA.build(record, select={"period": [2030, 2040]})  # multi-period, those two
+PyPSA.build(record, select={"period": slice(2030, None)})  # 2030 onwards, multi-period
+PyPSA.build(record, select={"snapshot": slice("2013-02", "2013-03")})  # Feb and March
+PyPSA.build(record, select={"snapshot": "2013-02-01 06:00"})  # in every period
+PyPSA.build(record, select={"scenario": ["low", "high"]})  # weights renormalised
+PyPSA.build(record, select={"weather_year": 2012})  # a Network, not a collection
+PyPSA.build(record, select={"bus": ["north", "south"]})  # and what attaches to them
+PyPSA.build(record, select={"carrier": ["AC", "wind"]})  # AC buses, wind entities
+```
+
+One label of `period`, `scenario` or the record's dim of its own squeezes the dim, and a list keeps it.
+`snapshot`, `bus`, `entity` and `carrier` take a label or a list and are never squeezed.
+A snapshot is named by its timestamp, and a partial date string such as `"2013-02"` names every snapshot in its span.
+A slice keeps an ordered dim, `snapshot`, `period` or a dim of its own of numbers or datetimes, at the labels it covers, both ends included and a partial date string covering its span, as pandas' `.loc` slices.
+A label referring to one the selection drops goes too, such as an entity attached to a dropped bus, and any other dim, an unknown label or an empty list is refused.
+
 ## Buses and carriers
 
 PyPSA's buses and carriers are dims.
@@ -66,6 +86,18 @@ A bus and a load may share a name, since they are labels of two dims.
 `to_datarecord` adds every carrier that a component or bus names and `n.carriers` lacks, and it stores PyPSA's `""` carrier as NULL.
 `verify` reports an entity attached to no bus.
 
+## Writing an edited network over its parent
+
+A network edited in PyPSA is written back whole as a child of the record it was built from, with that record as `base`:
+
+```python
+n = PyPSA.build(rev.record)
+n.c.Generator.static.loc["wind1", "p_nom_extendable"] = False  # PyPSA's default
+edited = rev.child(PyPSA.to_datarecord(n, ws.con, base=rev.record))
+```
+
+The layer holds what differs from `base`, a value back at its default included, so `base`'s value does not show through ([design](../design/tools/pypsa.md#writing-results)).
+
 ## Solving and writing results back
 
 A result is an attribute.
@@ -84,7 +116,7 @@ solved.record.attributes["marginal_price"]  # a child of solved reads it too
 PyPSA.build(solved.record)  # marginal_price is in the network
 ```
 
-`base` is required with `results_only` and refused without it.
+`base` is required with `results_only`.
 A SubNetwork is a label of the dim `sub_network`, `0`, `1`, … as PyPSA names it.
 The results layer restates that axis with this solve's SubNetworks and leaves the entity axis to `base`, so a re-solve leaves none stale ([design](../design/tools/pypsa.md#writing-results)).
 

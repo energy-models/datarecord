@@ -150,12 +150,33 @@ All notable changes to datarecord are documented here. The format follows
   of its own, each member the network at its label. `verify` reports each such
   dim of a record declaring more than one in `Requirements.unsupported_dims`,
   a new field for dims a tool has no place for.
+- `PyPSA.build(record, select={...})` builds from a selection of the record's
+  labels, as xarray's `sel` takes them. One label of `period`, `scenario` or a
+  dim of the record's own squeezes the dim: a single-period network indexed by
+  its timesteps holding the entities active in that period, a global
+  constraint for another period dropped, a deterministic
+  network, or one `Network` of a collection. A list keeps the dim at those
+  labels, renormalising the kept scenarios' weights. `snapshot`, `bus`,
+  `entity` and `carrier` take a label or a list, and a label referring to a
+  dropped one goes with it: a snapshot of another period, a bus or entity of
+  another carrier, an entity attached to a dropped bus. A snapshot is named by
+  its timestamp, in every period where the periods repeat their timesteps, and
+  a partial date string names every one in its span. A
+  slice, as pandas' `.loc` takes it, keeps `snapshot`, `period` or a dim of
+  the record's own of numbers or datetimes at the labels it covers. `verify`
+  takes the same `select`.
 
 ### Changed
 
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
 - The `pypsa` extra requires PyPSA 1.4.
+- `PyPSA.to_datarecord` takes `base` on a full export too, and drops the
+  `ValueError` for `base` without `results_only`. Over `base` a static value
+  is left out only where it repeats `base`'s value, else the default, so a
+  value set back to PyPSA's default over a parent holding another is written
+  and no longer lets the parent's show through. A `NetworkCollection` takes
+  `base` only with `results_only=True`.
 
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are

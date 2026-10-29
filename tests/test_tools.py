@@ -467,6 +467,22 @@ def test_a_second_tool_needs_no_record_change():
     assert isinstance(FakeTool(), Tool), "conformance to `Tool` is structural"
 
 
+_SNAPSHOT_SELECTIONS = pytest.mark.parametrize(
+    ("value", "hours"),
+    [
+        pytest.param("2015-01-01 03:00", [3], id="scalar"),
+        pytest.param("2015-01", list(range(10)), id="partial-scalar"),
+        pytest.param(
+            [pd.Timestamp("2015-01-01 05:00"), "2015-01-01 01:00"], [1, 5], id="list"
+        ),
+        pytest.param(slice("2015-01-01 02", "2015-01-01 04"), [2, 3, 4], id="slice"),
+        pytest.param(slice(None, "2015-01-01 01"), [0, 1], id="open-start"),
+        pytest.param(slice("2015-01", None), list(range(10)), id="partial-month"),
+        pytest.param(slice("2015-01-01 09", "2015-01-01 09"), [9], id="one-slice"),
+    ],
+)
+
+
 class TestPyPSA:
     """The PyPSA tool: export a network, verify and build a record, write results back."""
 
@@ -1406,21 +1422,64 @@ class TestPyPSA:
         )
         pd.testing.assert_frame_equal(read(resolved, "p_nom"), read(base, "p_nom"))
 
-    @pytest.mark.parametrize("results_only", [True, False])
-    def test_results_only_takes_base_exactly_with_it(
-        self, single_revision, solved, results_only
-    ):
-        """A results layer is written over the record it was built from, a full export over nothing.
+    def test_results_only_takes_base(self, single_revision, solved):
+        """A results layer is written over the record it was built from.
 
         Notes
         -----
         - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
         """
-        base = None if results_only else single_revision.record
-        with pytest.raises(ValueError, match="takes `base` exactly when"):
+        with pytest.raises(ValueError, match="takes `base` with `results_only=True`"):
+            PyPSA.to_datarecord(solved, single_revision.record.con, results_only=True)
+
+    def test_a_collection_is_exported_over_nothing(self, single_revision, sweep):
+        """A full export of a collection takes no `base`."""
+        record = single_revision.record
+        with pytest.raises(ValueError, match="exported whole over nothing"):
             PyPSA.to_datarecord(
-                solved, single_revision.record.con, results_only=results_only, base=base
+                pypsa.NetworkCollection(sweep),
+                record.con,
+                base=record,
+                collection_dim="sensitivity",
             )
+
+    @pytest.mark.parametrize(
+        ("attr", "value"), [("p_nom_extendable", False), ("marginal_cost", 0.0)]
+    )
+    def test_a_full_export_over_base_writes_a_return_to_the_default(
+        self, exported, attr, value
+    ):
+        """A value back at PyPSA's default is written over a `base` holding another, which would show through.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        n = PyPSA.build(exported.record)
+        assert n.c.Generator.static.at["Manchester Wind", attr] != value
+        n.c.Generator.static.at["Manchester Wind", attr] = value
+        layer = PyPSA.to_datarecord(n, exported.record.con, base=exported.record)
+        child = PyPSA.build(exported.child(layer).record)
+        assert child.c.Generator.static.at["Manchester Wind", attr] == value
+
+    @pytest.mark.parametrize("attr", ["p_nom_extendable", "marginal_cost", "p_nom_min"])
+    @pytest.mark.parametrize(
+        "entity",
+        ["Manchester Wind", "Newcomer"],
+        ids=["unchanged", "new-at-default"],
+    )
+    def test_a_full_export_over_base_leaves_out_what_it_repeats(
+        self, exported, attr, entity
+    ):
+        """A static value equal to what `base` resolves, its row or the default, is not written."""
+        n = PyPSA.build(exported.record)
+        n.add("Generator", "Newcomer", bus="Manchester")
+        layer = PyPSA.to_datarecord(n, exported.record.con, base=exported.record)
+        rows = layer.attributes[attr].df()
+        assert entity not in set(rows["entity"]), "the layer stays thin"
+        child = PyPSA.build(exported.child(layer).record)
+        expected = n.c.Generator.static.at[entity, attr]
+        assert child.c.Generator.static.at[entity, attr] == expected
 
     def test_link_internal_power_is_p_internal(self, single_revision, solved):
         """`Link.p` is power at no bus: an entity-level `p_internal`, no `bus`.
@@ -2176,3 +2235,418 @@ class TestPyPSA:
         assert missing.unsupported_dims == set(own)
         with pytest.raises(UnsupportedRecordError, match="unsupported dims"):
             PyPSA.build(exported.record)
+
+    @pytest.mark.parametrize(
+        ("select", "expected"),
+        [
+            pytest.param(
+                {"bus": ["London", "Manchester", "Norwich"]},
+                {
+                    "Bus": ["London", "Norwich", "Manchester"],
+                    "Line": ["0", "1", "5"],
+                    "Link": [],
+                    "Generator": ["Manchester Wind", "Manchester Gas"],
+                    "Load": ["London", "Norwich", "Manchester"],
+                },
+                id="bus",
+            ),
+            pytest.param(
+                {"carrier": ["AC", "wind", "load"]},
+                {
+                    "Bus": [
+                        "London",
+                        "Norwich",
+                        "Manchester",
+                        "Bremen",
+                        "Frankfurt",
+                        "Norway",
+                    ],
+                    "Line": ["0", "1", "5", "6"],
+                    "Link": [],
+                    "Generator": ["Manchester Wind", "Norway Wind", "Frankfurt Wind"],
+                    "Carrier": ["wind", "load", "AC"],
+                },
+                id="carrier",
+            ),
+            pytest.param(
+                {"entity": ["Manchester Wind", "0"]},
+                {"Line": ["0"], "Generator": ["Manchester Wind"], "Load": []},
+                id="entity",
+            ),
+        ],
+    )
+    def test_a_selection_drops_every_label_referring_to_a_dropped_one(
+        self, single_revision, select, expected
+    ):
+        """A bus or entity of another carrier goes, and an entity attached to a dropped bus with it.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        built = PyPSA.build(single_revision.record, select=select)
+        held = {ctype: built.c[ctype].static.index.tolist() for ctype in expected}
+        assert held == expected
+        built.consistency_check(strict=["unknown_buses", "unknown_carriers"])
+
+    @_SNAPSHOT_SELECTIONS
+    def test_selected_snapshots_are_the_networks(
+        self, single_revision, ac_dc, value, hours
+    ):
+        """A snapshot is selected by timestamp and never squeezed: one is a one-snapshot network.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        built = PyPSA.build(single_revision.record, select={"snapshot": value})
+        assert list(built.snapshots) == list(ac_dc.snapshots[hours])
+        pd.testing.assert_frame_equal(
+            built.c.Generator.dynamic["p_max_pu"],
+            ac_dc.c.Generator.dynamic["p_max_pu"].iloc[hours],
+            check_index_type=False,
+            check_names=False,
+            check_like=True,
+        )
+
+    @_SNAPSHOT_SELECTIONS
+    def test_a_timestamp_selects_its_snapshot_in_every_period(
+        self, multiperiod, multiperiod_revision, ac_dc, value, hours
+    ):
+        """Over periods repeating their timesteps, a snapshot's label is a position and its timestamp names one in each period.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        built = PyPSA.build(multiperiod_revision.record, select={"snapshot": value})
+        timesteps = multiperiod.snapshots.get_level_values("timestep")
+        expected = multiperiod.snapshots[timesteps.isin(ac_dc.snapshots[hours])]
+        pd.testing.assert_index_equal(built.snapshots, expected, exact=False)
+
+    @pytest.mark.parametrize(
+        ("select", "hours"),
+        [
+            pytest.param({"snapshot": "2015-01-01 07:00"}, [7], id="timestamp"),
+            pytest.param(
+                {"snapshot": slice("2015-01-01 06", None)}, [6, 7, 8, 9], id="slice"
+            ),
+        ],
+    )
+    def test_one_period_takes_snapshots_by_timestamp(
+        self, multiperiod_revision, ac_dc, select, hours
+    ):
+        """A snapshot selected beside one period is one of that period's, named by its timestep."""
+        built = PyPSA.build(
+            multiperiod_revision.record, select={"period": 2040, **select}
+        )
+        assert list(built.snapshots) == list(ac_dc.snapshots[hours])
+
+    @pytest.mark.parametrize("layout", ["distinct"], indirect=True)
+    def test_a_selection_leaving_no_snapshot_is_refused(self, multiperiod_revision):
+        """Split between the periods, the first hour is 2030's alone."""
+        with pytest.raises(ValueError, match="leaves no snapshot"):
+            PyPSA.build(
+                multiperiod_revision.record,
+                select={"period": 2040, "snapshot": "2015-01-01 00:00"},
+            )
+
+    def test_dims_selected_together_combine(self, store, multiperiod):
+        """One period, one scenario and two carriers: a deterministic single-period network of the AC buses and their wind generators.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        n = multiperiod.copy()
+        n.set_scenarios({"lo": 0.2, "hi": 0.8})
+        record = export_network(n, store).record
+        select = {"period": 2030, "scenario": "hi", "carrier": ["AC", "wind"]}
+
+        assert not PyPSA.verify(record, select=select)
+        built = PyPSA.build(record, select=select)
+
+        assert not built.has_scenarios
+        assert not built.investment_periods.size
+        assert set(built.c.Bus.static["carrier"]) == {"AC"}
+        assert built.c.Generator.static.index.tolist() == [
+            "Manchester Wind",
+            "Norway Wind",
+            "Frankfurt Wind",
+        ]
+
+    def test_one_period_refuses_an_activity_varying_over_a_kept_dim(
+        self, store, multiperiod
+    ):
+        """Which generators are active in 2030 depends on the member, which the selection keeps."""
+        later = multiperiod.copy()
+        later.c.Generator.static.loc["Manchester Gas", "build_year"] = 2040
+        sweep = {"lo": multiperiod.copy(), "hi": later}
+        record = _collection(sweep, store, None, "sensitivity", results_only=False)
+        with pytest.raises(ValueError, match="`build_year` varies over"):
+            PyPSA.build(record, select={"period": 2030})
+        built = PyPSA.build(record, select={"period": 2030, "sensitivity": "hi"})
+        assert "Manchester Gas" not in built.c.Generator.static.index
+
+    def test_one_period_reads_activity_at_the_kept_labels_alone(
+        self, store, multiperiod
+    ):
+        """`build_year` is set at `hi` alone, which the selection drops, so it varies over none of the labels kept."""
+        sweep = {label: multiperiod.copy() for label in ("lo", "mid", "hi")}
+        sweep["hi"].c.Generator.static.loc["Manchester Gas", "build_year"] = 2040
+        record = _collection(sweep, store, None, "sensitivity", results_only=False)
+
+        built = PyPSA.build(
+            record, select={"period": 2030, "sensitivity": ["lo", "mid"]}
+        )
+
+        assert isinstance(built, pypsa.NetworkCollection)
+        assert list(built.index) == ["lo", "mid"]
+        for n in built.networks:
+            assert "Manchester Gas" in n.c.Generator.static.index, "active in 2030"
+
+    def test_a_null_carrier_refers_to_no_dropped_carrier(self, store, ac_dc):
+        """PyPSA's `""` carrier is NULL, so a load without one stays under any carrier selected."""
+        n = ac_dc.copy()
+        n.c.Load.static.loc["London", "carrier"] = ""
+        record = export_network(n, store).record
+        built = PyPSA.build(record, select={"carrier": ["AC"]})
+        assert built.c.Load.static.index.tolist() == ["London"]
+
+    @pytest.mark.parametrize("period", [2030, 2040])
+    def test_one_period_is_a_single_period_network_of_its_active_entities(
+        self, store, ac_dc, layout, period
+    ):
+        """Over one period the network is indexed by its timesteps, without the period weightings, holding the generators PyPSA holds active in it.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        n = _over_periods(ac_dc, layout)
+        n.c.Generator.static.loc["Manchester Gas", "build_year"] = 2040
+        n.c.Generator.static.loc["Norway Gas", ["build_year", "lifetime"]] = [2000, 35]
+        record = export_network(n, store).record
+
+        built = PyPSA.build(record, select={"period": period})
+
+        in_period = n.snapshots.get_level_values("period") == period
+        assert not built.investment_periods.size, "single-period"
+        assert list(built.snapshots) == list(
+            n.snapshots[in_period].get_level_values("timestep")
+        ), "indexed by the period's timesteps"
+        assert list(built.snapshot_weightings["objective"]) == list(
+            n.snapshot_weightings["objective"][in_period]
+        )
+        active = n.c.Generator.get_active_assets(period)
+        assert list(built.c.Generator.static.index) == list(active.index[active])
+
+    @pytest.mark.parametrize(
+        ("value", "expected"),
+        [
+            (2030, {"co2_limit": np.nan, "cap_2030": np.nan}),
+            (2040, {"co2_limit": np.nan, "cap_2040": np.nan}),
+            ([2040], {"co2_limit": np.nan, "cap_2040": 2040.0}),
+        ],
+        ids=str,
+    )
+    def test_selected_periods_keep_the_global_constraints_applying_in_them(
+        self, store, ac_dc, value, expected
+    ):
+        """A constraint for a period the selection drops goes; one period leaves the kept ones applying in every period, as a single-period network has no period to name.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        n = _over_periods(ac_dc, "repeated")
+        n.add(
+            "GlobalConstraint",
+            ["cap_2030", "cap_2040"],
+            investment_period=[2030, 2040],
+            carrier_attribute="co2_emissions",
+            sense="<=",
+            constant=1.0,
+        )
+        record = export_network(n, store).record
+
+        built = PyPSA.build(record, select={"period": value})
+
+        pd.testing.assert_series_equal(
+            built.c.GlobalConstraint.static["investment_period"].sort_index(),
+            pd.Series(expected, name="investment_period").sort_index(),
+            check_index_type=False,
+            check_names=False,
+        )
+
+    @pytest.mark.parametrize(
+        "value", [[2040], slice(2035, None), slice(2040, 2040)], ids=str
+    )
+    def test_periods_selected_keep_a_multi_period_network(
+        self, multiperiod, multiperiod_revision, value
+    ):
+        """A list or a slice of periods keeps the dim: their snapshots, weightings and every entity.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        built = PyPSA.build(multiperiod_revision.record, select={"period": value})
+        in_period = multiperiod.snapshots.get_level_values("period") == 2040
+        pd.testing.assert_index_equal(
+            built.snapshots, multiperiod.snapshots[in_period], exact=False
+        )
+        pd.testing.assert_frame_equal(
+            built.investment_period_weightings,
+            multiperiod.investment_period_weightings.loc[[2040]],
+            check_index_type=False,
+        )
+        pd.testing.assert_index_equal(
+            built.c.Generator.static.index, multiperiod.c.Generator.static.index
+        )
+
+    @pytest.fixture
+    def stochastic(self, store, ac_dc):
+        """`ac_dc` over three weighted scenarios, `hi` with a marginal cost of its own."""
+        n = ac_dc.copy()
+        n.set_scenarios({"lo": 0.2, "mid": 0.3, "hi": 0.5})
+        n.c.Generator.static.loc[("hi", "Norway Gas"), "marginal_cost"] = 99.0
+        return export_network(n, store)
+
+    def test_one_scenario_is_a_deterministic_network_of_its_values(self, stochastic):
+        built = PyPSA.build(stochastic.record, select={"scenario": "hi"})
+        assert not built.has_scenarios
+        assert built.c.Generator.static.loc["Norway Gas", "marginal_cost"] == 99.0
+
+    @pytest.mark.parametrize(
+        ("stored", "expected"),
+        [
+            pytest.param(
+                {"lo": 0.2, "mid": 0.3},
+                {"lo": 0.2 / 0.5, "mid": 0.3 / 0.5},
+                id="stored",
+            ),
+            pytest.param(
+                {"lo": 0.2},
+                {"lo": 0.2 / (0.2 + 1 / 3), "mid": (1 / 3) / (0.2 + 1 / 3)},
+                id="unstored",
+            ),
+        ],
+    )
+    def test_selected_scenarios_are_renormalised(self, stochastic, stored, expected):
+        """A scenario no `scenario_weight` row reaches takes its equal share of the whole axis before the kept weights are renormalised.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        path = Path(
+            stochastic.store.layer_dir(stochastic.id),
+            "attributes",
+            "scenario_weight.parquet",
+        )
+        rows = pd.read_parquet(path)
+        rows["value"] = rows["scenario"].map(stored)
+        rows.dropna(subset="value").to_parquet(path, index=False)
+
+        built = PyPSA.build(stochastic.record, select={"scenario": ["lo", "mid"]})
+
+        weights = built.scenario_weightings["weight"].to_dict()
+        assert weights == pytest.approx(expected)
+
+    def test_selected_scenarios_are_renormalised_per_member(self, store, ac_dc):
+        """Each member of a collection renormalises the kept scenarios' weights of its own."""
+        stored = {
+            "a": {"lo": 0.2, "mid": 0.3, "hi": 0.5},
+            "b": {"lo": 0.6, "mid": 0.2, "hi": 0.2},
+        }
+        members = {label: ac_dc.copy() for label in stored}
+        for label, n in members.items():
+            n.set_scenarios(stored[label])
+        record = _collection(members, store, None, "sensitivity", results_only=False)
+
+        built = PyPSA.build(record, select={"scenario": ["lo", "mid"]})
+
+        assert isinstance(built, pypsa.NetworkCollection)
+        weights = {
+            label: n.scenario_weightings["weight"].to_dict()
+            for label, n in zip(built.index, built.networks, strict=True)
+        }
+        assert weights == {
+            "a": pytest.approx({"lo": 0.4, "mid": 0.6}),
+            "b": pytest.approx({"lo": 0.75, "mid": 0.25}),
+        }
+
+    def test_selected_scenarios_weighing_nothing_are_refused(self, store, ac_dc):
+        n = ac_dc.copy()
+        n.set_scenarios({"lo": 0.0, "mid": 0.0, "hi": 1.0})
+        record = export_network(n, store).record
+        with pytest.raises(ValueError, match="weighing nothing"):
+            PyPSA.build(record, select={"scenario": ["lo", "mid"]})
+
+    @pytest.mark.parametrize(
+        "value", [2013, [2013], slice(2013, None)], ids=["scalar", "list", "slice"]
+    )
+    def test_a_dim_of_its_own_selected_is_a_network_or_a_collection(
+        self, store, sweep, value
+    ):
+        """One label of the record's own dim builds that member, a list or a slice of its numbers the collection of them.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        years = {2012: sweep["lo"], 2013: sweep["hi"]}
+        record = _collection(years, store, None, "weather_year", results_only=False)
+        built = PyPSA.build(record, select={"weather_year": value})
+        if not isinstance(value, int):
+            assert isinstance(built, pypsa.NetworkCollection)
+            assert list(built.index) == [2013]
+            (built,) = built.networks
+        assert isinstance(built, pypsa.Network)
+        _assert_results_equal(built, sweep["hi"], ("Generator", "p_max_pu"))
+
+    def test_a_dim_of_its_own_of_text_labels_takes_no_slice(
+        self, store, exported, sweep
+    ):
+        record = _collection(sweep, store, exported, "sensitivity", results_only=False)
+        with pytest.raises(ValueError, match="unordered"):
+            PyPSA.build(record, select={"sensitivity": slice("hi", "lo")})
+
+    @pytest.mark.parametrize(
+        ("select", "match"),
+        [
+            pytest.param({"role": "input"}, "takes labels of", id="role"),
+            pytest.param({"sub_network": "0"}, "takes labels of", id="sub_network"),
+            pytest.param({"ctype": "Generator"}, "takes labels of", id="ctype"),
+            pytest.param({"weather_year": 2020}, "takes labels of", id="undeclared"),
+            pytest.param({"bus": "Atlantis"}, "'Atlantis', a label", id="bus"),
+            pytest.param(
+                {"bus": ["Atlantis"]}, r"\['Atlantis'\] its axis lacks", id="list"
+            ),
+            pytest.param({"period": 2030}, "2030, a label", id="no-axis"),
+            pytest.param({"carrier": []}, "no label of `carrier`", id="empty"),
+            pytest.param(
+                {"snapshot": "2016-01-01"}, "'2016-01-01', a label", id="timestamp"
+            ),
+            pytest.param(
+                {"snapshot": slice(3, None)}, "cannot compare", id="slice-bound"
+            ),
+            pytest.param({"snapshot": slice(None, None, 2)}, "step", id="step"),
+            *(
+                pytest.param({dim: slice("A", "Z")}, "unordered", id=f"{dim}-slice")
+                for dim in ("bus", "entity", "carrier")
+            ),
+            pytest.param(
+                {"snapshot": slice("2016", None)}, "slices no label", id="slice-none"
+            ),
+        ],
+    )
+    @pytest.mark.parametrize(
+        "method", [PyPSA.build, PyPSA.verify], ids=["build", "verify"]
+    )
+    def test_a_selection_names_labels_of_a_selectable_dim(
+        self, single_revision, select, match, method
+    ):
+        with pytest.raises(ValueError, match=match):
+            method(single_revision.record, select=select)

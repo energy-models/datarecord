@@ -183,11 +183,17 @@ A framework's outputs are [attributes](../model/attributes.md).
 `build` copies every attribute the record holds into the network, a solved bus's `marginal_price` included.
 Only the tool knows which attributes are outputs, from PyPSA's registry status "Output".
 It reads that status on import alone, and the status decides only what `results_only` presents.
-A full export leaves out a result still at its default, so an unsolved network writes none.
+A full export leaves out a static value still at its default, so an unsolved network writes no result.
+
+A full export may take `base`, the record it is written over as a child.
+It then leaves out a static value only where it repeats what `base` resolves there: `base`'s value for that entity and scenario, else the default.
+A value back at its default over a `base` holding another is written, so `base`'s value does not show through.
+A value is compared exactly, and NULL repeats NULL.
+A collection is exported over nothing.
 
 With `results_only=True`, `to_datarecord` presents only what the solve produced.
 It is a thin layer written as a child of `base`, the record the model was built from.
-`base` is required with `results_only` and refused without it.
+`base` is required with `results_only`.
 
 ```python
 inputs = rev.child(w.edits)  # edited inputs are committed first
@@ -223,7 +229,7 @@ A solve of several networks writes them as one [collection](#a-collection).
 
 `to_datarecord` takes a `pypsa.NetworkCollection` with `collection_dim`, the dim whose labels its one index level holds.
 It is required with a collection and refused without one, since nothing in the collection says what its index means.
-A collection is written on either path: as a full export, or as results over `base`.
+A collection is written on either path: as a full export over nothing, or as results over `base`.
 A record the tool writes builds back, so what a member may hold is decided by the dim:
 
 - `period` is a myopic solve, one network per investment period.
@@ -287,6 +293,51 @@ Each member is the network a record of the rows at its label would build, a row 
 A record has at most one dim of its own: a `NetworkCollection` has one index, and collections do not nest.
 A collection over a new dim is refused over a `base` that has another, and `verify` reports each dim of its own of a record declaring more than one as an unsupported dim, so `build` refuses it.
 A re-solve over the same dim keeps the record buildable.
+
+## Selecting before a build
+
+`build(record, select={...})` builds from a selection of the record's labels, by dim, as xarray's `sel` takes them.
+The selection is the tool's view of the record, not a record of its own: nothing is written, and `verify(record, select=...)` checks the view `build` builds.
+
+`period`, `scenario` and the record's dim of its own squeeze at one label: the dim leaves the network.
+Each attribute's rows are those at the label and those NULL on the dim, settled by [the broadcast rule](../model/attributes.md#the-broadcast-rule), as a member of a collection is built.
+An attribute over squeezed dims alone, such as a weighting of the dim, goes with it, and so does a property referring to it, such as `snapshot.period`.
+A list of labels, one label in a list included, keeps the dim at those labels in axis order: an attribute row at another label is dropped, and one NULL on the dim kept.
+`snapshot`, `bus`, `entity` and `carrier` are never squeezed, so one label is a list of one.
+Any other dim, such as `role`, `ctype`, `sub_network` or `timestep`, is refused, as is a dim the record does not declare, a label its axis lacks, an empty list and a selection leaving no snapshot.
+
+A snapshot is selected by its timestamp: `snapshot.timestep` where declared, the label otherwise ([snapshots and weightings](#snapshots-and-weightings)).
+Over periods repeating their timesteps the label is a position, so a timestamp names its snapshot in every period.
+One key is matched as pandas' `.loc` matches it: a timestamp exactly, and a partial date string, such as `"2013-02"`, naming every label in its span and so keeping the dim, as xarray's `sel` does.
+A key in a list is matched exactly, read as `pd.Timestamp` reads it on a datetime axis.
+
+A slice, `slice(start, stop)`, selects along an ordered axis: `snapshot` by timestamp, `period`, and a dim of the record's own whose labels are numbers or datetimes.
+It is pandas' label slice: both ends inclusive, `None` an open end, and a partial date string covering its span, so `slice("2013-02", "2013-03")` is February and March.
+A slice keeps the dim at the labels it covers, even one, and never squeezes it.
+A slice with a step, one along any other dim, such as `bus`, `entity`, `carrier` or `scenario`, or an axis of text, one whose end the axis cannot compare and one covering no label are refused.
+
+| selected                               | one label                                                                   | a list or a slice                                   |
+| -------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------- |
+| `period`                               | a single-period network over the period's snapshots, of its active entities | a multi-period network over the periods' snapshots  |
+| `scenario`                             | a deterministic network of the scenario's values                            | a stochastic network, its weights renormalised to 1 |
+| a dim of its own                       | a `Network`                                                                 | a `NetworkCollection` over the labels               |
+| `snapshot`, `bus`, `entity`, `carrier` | a list of one                                                               | the dim at those labels                             |
+
+A label whose property refers to a selected dim stays only where its value is selected: a snapshot whose `snapshot.period` is a selected period, a bus, entity or SubNetwork whose `carrier`, its default applied, is a selected carrier.
+A NULL property names no label, so it refers to none the selection drops and stays: PyPSA's `""` carrier is NULL ([buses and carriers are dims](#buses-and-carriers-are-dims)).
+A period none of whose snapshots is selected goes, since PyPSA holds no period without one.
+An entity attached to a dropped bus goes, with its connections, so no component reaches the network with a dangling port.
+Selecting `entity` keeps those entities and their connections, every bus left in place.
+
+One period is a single-period network indexed by the period's timesteps, `snapshot.timestep` where declared and the label otherwise ([snapshots and weightings](#snapshots-and-weightings)), without the period weightings.
+It holds the entities PyPSA holds active in the period, `build_year <= period < build_year + lifetime`, each value resolved with its declared default and PyPSA's, `0` and infinity, where none is declared.
+An entity whose value of either varies over a dim the selection keeps, such as a collection's dim of its own, is refused.
+A list of periods keeps every entity, since PyPSA decides which are active in each.
+A `GlobalConstraint` whose `investment_period`, its declared default applied, names a period the selection drops goes, and one NULL on it, applying in every period, stays.
+One period drops `investment_period` too, since a single-period network has no period to name, and its value varying over a dim the selection keeps is refused, as `build_year` is.
+One scenario drops `scenario_weight`, and a list renormalises the kept scenarios' weights, a scenario no row reaches taking its equal share of the whole axis first, since PyPSA takes weights summing to 1; kept weights summing to 0 are refused.
+
+Several dims combine, so `select={"period": 2030, "scenario": "high", "carrier": ["AC", "wind"]}` builds one deterministic, single-period network of the AC buses and the wind generators at them.
 
 ## Geometry
 
