@@ -1,0 +1,2837 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-116/design/proposals/dep-0021-the-owner-map-holds-keys-as-written/">
+      
+      
+        <link rel="prev" href="../dep-0020-a-layer-restates-an-axis-whole/">
+      
+      
+        <link rel="next" href="../dep-0022-a-layer-restates-membership-whole/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>DEP 21: The owner map holds keys as written - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../../static/extras.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#dep-21-the-owner-map-holds-keys-as-written" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              DEP 21: The owner map holds keys as written
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Design
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../contributing/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Contributing
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../api/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  API Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../usage/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Design
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Design
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../model/dims/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The data model
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../layers/tree/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../use/reading/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Using a record
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../storage/format/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../tools/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Frameworks
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../package/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    The package
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../open-questions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4_9" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_4_9" id="__nav_4_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Enhancement proposals
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_4_9_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_4_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Enhancement proposals
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-NNNN-template/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Template
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0001-dims-groups-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 1: Dims, mappings, groups and traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0002-groups/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 2: Groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0003-trait-switches/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 3: Trait switches
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0004-staging-as-a-layer/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 4: Staging as a layer
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0005-one-record-over-a-node-cache/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 5: One Record over a NodeCache
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0006-a-member-file-holds-values/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 6: A member file holds values
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0007-staging-without-seq/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 7: Staging without _seq
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0008-one-interface-source-and-fold/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 8: One interface, source and fold
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0009-store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 9: A Workspace and a Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0010-a-group-is-a-struct-column/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 10: A group is one struct column
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0011-deletion-cascades-through-tombstones/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 11: Deletion cascades through tombstones
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0012-properties/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 12: Properties
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0013-buses-and-carriers-are-dims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 13: Buses and carriers are dims
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0014-combining-records/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 14: Combining a record with an extension
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0015-a-dim-is-flat/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 15: A dim is flat
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0016-remove-traits/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 16: Remove traits
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0017-results-are-attributes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 17: Results are attributes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0018-drop-narwhals/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 18: Drop narwhals
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0019-one-record-and-a-package-layout/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 19: One Record and a package layout
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0020-a-layer-restates-an-axis-whole/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 20: A layer restates an axis whole
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 21: The owner map holds keys as written
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 21: The owner map holds keys as written
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#abstract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abstract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Motivation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Specification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-owner-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The owner map
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#crossing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-fold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-dim-outside-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A dim outside partial
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The read
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reach
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-and-shared-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files and shared tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-change-to-dep-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The change to DEP 20
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rationale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rationale
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rejected-ideas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rejected Ideas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open Issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0022-a-layer-restates-membership-whole/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 22: A layer restates membership whole
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0023-multi-dims/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 23: Multi-dims replace groups
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0024-categories-are-enum-dimensions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 24: Categories are enum dimensions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0025-a-source-vouches-for-unique-coordinates/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 25: A source vouches for unique coordinates
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../contributing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Contributing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#abstract" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Abstract
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#motivation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Motivation
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#specification" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Specification
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Specification">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-owner-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The owner map
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#crossing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-fold" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The fold
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-dim-outside-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A dim outside partial
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-read" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The read
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#reach" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reach
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        flags
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#files-and-shared-tables" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Files and shared tables
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-change-to-dep-20" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The change to DEP 20
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rationale" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rationale
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#usage" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Usage
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#implementation-notes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Implementation notes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rejected-ideas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Rejected Ideas
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#open-issues" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open Issues
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="dep-21-the-owner-map-holds-keys-as-written">DEP 21: the owner map holds keys as written<a class="headerlink" href="#dep-21-the-owner-map-holds-keys-as-written" title="Permanent link">&para;</a></h1>
+<table>
+<thead>
+<tr>
+<th>DEP</th>
+<th>21</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Title</td>
+<td>the owner map holds keys as written</td>
+</tr>
+<tr>
+<td>Author</td>
+<td>Jonas Hoersch</td>
+</tr>
+<tr>
+<td>Status</td>
+<td>Implemented (2026-10-25)</td>
+</tr>
+<tr>
+<td>Requires</td>
+<td><a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a></td>
+</tr>
+<tr>
+<td>Created</td>
+<td>2026-10-21</td>
+</tr>
+<tr>
+<td>Version</td>
+<td>Unreleased</td>
+</tr>
+<tr>
+<td>Replaces</td>
+<td><a href="../dep-0001-dims-groups-traits/">DEP 1</a> (flags aggregated from expanded rows), <a href="../dep-0008-one-interface-source-and-fold/">DEP 8</a> (a fold that expands a broadcast against the resolved axes), <a href="../dep-0010-a-group-is-a-struct-column/">DEP 10</a> (a NULL struct expanded in the fold), <a href="../dep-0011-deletion-cascades-through-tombstones/">DEP 11</a> (a re-added label starts fresh), <a href="../dep-0016-remove-traits/">DEP 16</a> (a NULL row expanded over every label in the owner map), <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a> (a keyed label's broadcasts staying gone after it is added again)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
+<p>The owner map holds each layer's attribute keys as the layer wrote them. Where a deeper layer's row crosses a parent row, that is where the two cover a common key and neither names every dim the other names, the parent row stays as written and the fold adds one overlap row, owned by the deeper layer, naming every label either row names. The fold thus reads no axis, and the persisted map grows with the rows layers write and the pairs that cross, not with the labels a broadcast reaches: 0.63 times today's rows on the first benchmark below, 0.01 times on the realistic case at five <code>partial</code> dims. A read returns the owned rows as written, NULL included, and a consumer settles each coordinate by <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a> alone, the more specific row winning, with no depth and no list of <code>partial</code> dims. Every broadcast therefore reaches every label the record holds, and materialising a node no longer changes an answer.</p>
+<h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">&para;</a></h2>
+<p><code>fold_attributes</code> expands each row that leaves a <code>partial</code> coordinate NULL against the axis or group resolved over the whole path, and keeps one owner-map row per label. The owner map thus grows with the labels a broadcast reaches, not with the rows a layer writes: one broadcast over 60,000 entities and two scenarios takes 120,000 rows. A materialised node persists that expansion, and the frozen prefix of a <code>WorkingRecord</code> keeps it as a shared table.</p>
+<p>A fold seeded from either does not expand again, so a broadcast also misses every label added after the seed.</p>
+<p>A node holding <code>q = 0.9</code> for every entity, with a child adding the entity <code>n</code>, reads <code>n</code> as 0.9 while the node is unmaterialised and as nothing once it is materialised. A label staged in a <code>WorkingRecord</code> over the node reads as nothing in both cases. Over 210 random six-layer records, materialising or staging changes one of today's answers in 95 to 128 records, depending on where. <a href="../../layers/resolution/#materialised-node-caches">Materialised node caches</a> promises that materialising changes no answer, and <a href="../../open-questions/">open questions</a> lists the first two cases.</p>
+<p>The expansion settles one thing only: which layer owns a key that rows of two layers cover. Within a layer the more specific row wins, and across layers the deeper one does. The two rules disagree only where two rows of different layers cross, and there a single row at their overlap, owned by the deeper layer, makes them agree. Everywhere else the rows can stay as written and the broadcast rule alone gives every answer.</p>
+<h2 id="specification">Specification<a class="headerlink" href="#specification" title="Permanent link">&para;</a></h2>
+<h3 id="the-owner-map">The owner map<a class="headerlink" href="#the-owner-map" title="Permanent link">&para;</a></h3>
+<p>The owner map holds one row per layer and per distinct key, with a NULL key column left NULL, and no depth:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a># owner map
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>&lt;partial dims&gt;   -- the key: exactly the partial dims and groups, NULL included
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>attribute
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>layer_uuid
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>varies      STRUCT(&lt;coordinate&gt;: BOOLEAN, ...)
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>broadcast   STRUCT(&lt;coordinate&gt;: BOOLEAN, ...)
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>breakpoints BOOLEAN
+</code></pre></div>
+<p>A row is either a key a layer wrote or an overlap row. An overlap row names labels on dims where the owning layer's key holds NULL and carries that layer's <code>varies</code> and <code>broadcast</code>, so the layer's value row finds it by one NULL-safe hash join on the key as stored and takes the overlap row's labels.</p>
+<h3 id="crossing">Crossing<a class="headerlink" href="#crossing" title="Permanent link">&para;</a></h3>
+<p>A row names a <code>partial</code> dim where its key holds a label, and any other dim where it varies along it, so a series over <code>snapshot</code> names <code>snapshot</code>. Only the dims the attribute uses count: its <code>dims</code> and the dims of its groups. Two rows cover a common key where, on each <code>partial</code> coordinate, they hold the same label or one of them holds NULL. They cross where they cover a common key and neither names every dim the other names.</p>
+<h3 id="the-fold">The fold<a class="headerlink" href="#the-fold" title="Permanent link">&para;</a></h3>
+<p>A layer is folded onto its parent's map in four steps, none of which reads an axis:</p>
+<ol>
+<li>The parent rows naming a label or tuple that the layer removes by <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a>'s diff are dropped, and a row NULL there never is.</li>
+<li>A parent row is dropped where a row of the layer covers it and names no <code>partial</code> dim the parent row leaves NULL.</li>
+<li>For each pair of a parent row and a layer's row crossing on <code>partial</code> dims, found by one equi-join per pair of named sets over the dims both name, the layer gains an overlap row naming every label either names. A parent row naming strictly fewer dims than the layer's row it overlaps stays as written, as does a crossed parent row.</li>
+<li>The layer's rows and its overlap rows are added.</li>
+</ol>
+<p>An overlap row is an ordinary row to every later fold, which drops, crosses or removes it like any other.</p>
+<p>With <code>partial = {entity, scenario}</code>, a root writing <code>(gas, NULL) = 50</code> and <code>(wind, NULL) = 100</code> and a child writing <code>(NULL, high) = 999</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a># today's owner map, one row per label
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>(gas,  low)  root    (gas,  high) child
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>(wind, low)  root    (wind, high) child
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a># this DEP
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>(gas,  NULL) root    # as written
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>(wind, NULL) root
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>(NULL, high) child   # as written
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>(gas,  high) child   # overlap rows, naming both dims
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a>(wind, high) child
+</code></pre></div>
+<p>A child writing <code>(gas, NULL) = 60</code> instead names no more than the root's <code>(gas, NULL)</code> and drops it. A child writing <code>(gas, high) = 70</code> names more and leaves the root's rows as written, and the broadcast rule gives <code>(gas, high)</code> to the child.</p>
+<h3 id="a-dim-outside-partial">A dim outside <code>partial</code><a class="headerlink" href="#a-dim-outside-partial" title="Permanent link">&para;</a></h3>
+<p>An overlap row cannot settle a crossing on a dim outside <code>partial</code>, since the key has no column to name its labels. A <code>WorkingRecord</code> therefore settles it as it stages: a staged row leaving such a dim NULL, over a base row naming it, is also written out along the base row's labels there, with the staged value. With <code>partial = {entity}</code>, a root writing a series over <code>snapshot</code> for every entity and a child writing <code>(wind, NULL) = 0.9</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a># root:  (NULL, 0) = 0.2   (NULL, 1) = 0.5
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a># child as staged: (wind, NULL) = 0.9
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a># child as written: (wind, NULL) = 0.9, (wind, 0) = 0.9, (wind, 1) = 0.9
+</code></pre></div>
+<p>The child's rows at <code>wind</code> name <code>entity</code> and <code>snapshot</code>, a strict superset of the root's, so nothing crosses and the root's series stays as written. This extends the completion a <code>WorkingRecord</code> already makes, which carries the base rows a staged key reaches so that a layer holds a key's whole extent along every dim outside <code>partial</code>. The fold refuses a layer written otherwise that leaves such a crossing, naming the attribute, the dim and the key.</p>
+<h3 id="the-read">The read<a class="headerlink" href="#the-read" title="Permanent link">&para;</a></h3>
+<p>A read of an attribute joins the value rows of the owning layers to the owner map's rows, as today, and returns the owned rows as written: a key NULL on a dim stays NULL, and an overlap row reads its labels. It expands no NULL and drops no row by depth. The anti-join against dead labels follows as today, and the row order stays unspecified.</p>
+<p>A consumer settles a coordinate by <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a> over the full coordinates, <code>partial</code> or not: a row's value applies to every combination of its NULL dims, and at each coordinate the row naming a strict superset of every other row reaching it wins. Wherever two rows cross, the fold or the staging has written a row naming both, so the rule finds one winner wherever a row reaches, and a consumer needs neither depth nor the list of <code>partial</code> dims.</p>
+<h3 id="reach">Reach<a class="headerlink" href="#reach" title="Permanent link">&para;</a></h3>
+<p>A NULL on a <code>partial</code> coordinate reaches every label of that coordinate's axis, or every tuple of its group, as resolved at the node read, since the read leaves it NULL and no row is split. A label added below a materialised node is reached, as is a label staged in a <code>WorkingRecord</code> and the first label of an axis empty when the broadcast was written. Adding the scenario <code>mid</code> below the child of the first example reads <code>(gas, mid)</code> as 50, and adding the entity <code>solar</code> below the child of the series example reads the root's series for it.</p>
+<p>A row reaches every coordinate no more specific row covers, whichever layer wrote it. A deeper layer thus owns only the coordinates its rows reach, not the whole extent of a key along a dim outside <code>partial</code>. With <code>partial = {entity, scenario}</code> and <code>x</code> also over <code>snapshot</code>, a root writing <code>(gas, NULL, 1) = 1.0</code> and a child writing <code>(NULL, high, 0) = 2.0</code>, <code>(gas, high, 1)</code> reads 1.0 from the root, where today it reads nothing. Likewise a root writing <code>x = 1.0</code> with every coordinate NULL and a child writing <code>(gas, NULL, 0) = 2.0</code> reads <code>(gas, low, 1)</code> as 1.0, where today it reads nothing.</p>
+<p>A label removed and added again takes every broadcast covering it, whether written before or after the removal, and never a row that named it below the removal.</p>
+<p>Materialising a node changes no answer, since its persisted map is the fold's result and the read expands nothing against the axes of the node read. A map persisted for another set of <code>partial</code> dims holds NULL in a column for a row varying along it, so the read ignores it and folds the node from its layers again.</p>
+<h3 id="flags"><code>flags</code><a class="headerlink" href="#flags" title="Permanent link">&para;</a></h3>
+<p><code>flags()</code> is today's aggregate run over the owner map's rows: per attribute, <code>bool_or</code> over each field of <code>varies</code> and <code>broadcast</code> and over <code>breakpoints</code>. Both structs report only the dims the attribute uses, so <code>ctype</code> no longer reads true in <code>broadcast</code> for an attribute not over it. <code>flags()</code> describes the dims used by the rows the fold keeps, and a broadcast that deeper layers shadow on every label still counts. In probe P7, a child of the root sets <code>s = 0.9</code> with every coordinate NULL and its child sets <code>s</code> over <code>snapshot</code> for every entity, and <code>flags()["s"].broadcast</code> holds <code>entity</code>, where today it lacks it.</p>
+<p><code>flags(**categories)</code> aggregates the same way over the rows reaching the category, as today.</p>
+<h3 id="files-and-shared-tables">Files and shared tables<a class="headerlink" href="#files-and-shared-tables" title="Permanent link">&para;</a></h3>
+<p>The frozen prefix keeps its owner map as the shared table <code>owner_map_&lt;key&gt;_&lt;rev&gt;</code>, <code>&lt;key&gt;</code> the hash of its key columns (<a href="../../storage/concurrency/#a-cursor-per-thread">a cursor per thread</a>), onto which a <code>WorkingRecord</code> folds its staged layer per read. A materialised node writes its owner map as <code>resolved/owner_map.parquet</code>, last, which marks the node as materialised as today. An owner map written by an earlier release is unsupported and not detected, the project being pre-alpha.</p>
+<h3 id="the-change-to-dep-20">The change to DEP 20<a class="headerlink" href="#the-change-to-dep-20" title="Permanent link">&para;</a></h3>
+<p>On implementing this DEP, these sentences of <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a> change:</p>
+<table>
+<thead>
+<tr>
+<th>DEP 20, the sentence</th>
+<th>becomes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>"In every case probed on a prototype, …"</td>
+<td>In every case probed on a prototype, the rule gives today's answers, except that a label added again takes every broadcast covering it.</td>
+</tr>
+<tr>
+<td>"A keyed label's values from below its removal stay gone …"</td>
+<td>A keyed label's named values from below its removal stay gone after it is added again, while every broadcast covering it reaches it again. An unkeyed coordinate's values come back, as <a href="../dep-0011-deletion-cascades-through-tombstones/">DEP 11</a> accepted.</td>
+</tr>
+</tbody>
+</table>
+<h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
+<p>The fold settles ownership across layers, so the map needs no depth and the read no anti-join. A depth would let the read or the consumer settle it instead, by taking the deepest covering layer first and the most specific row within it, but every way of doing so measured below costs each read more than the fold costs once, and a consumer would have to know about layers.</p>
+<p>An overlap row settles a crossing without an axis. Its labels come from the two rows, so a later label reaches the crossed parent row unchanged, and its value from the deeper layer, whose value rows hold the dims the overlap row's key leaves NULL. Any parent row more specific than the overlap within the deeper row's reach is one that deeper row covers, and step 2 has dropped it.</p>
+<p>Crossing is judged over every dim the attribute uses, not over <code>partial</code> alone, because the broadcast rule a consumer applies runs over the full coordinates. Left as written, the series example holds the root's <code>(NULL, 0)</code> beside the child's <code>(wind, NULL)</code>, and at <code>(wind, 0)</code> the rule finds two rows, one naming <code>snapshot</code> and one naming <code>entity</code>, neither the winner. The key holds no <code>snapshot</code>, so that crossing is settled where the labels are, as the layer is staged.</p>
+<p>A parent row that a deeper, more specific row covers stays as written, since there the two rules agree.</p>
+<p>On a prototype on DEP 20, against today, each figure the median of three interleaved rounds run alone. The first benchmark holds 60,000 entities, 100 attributes and two scenarios over ten layers, with a materialised leaf and a child adding one entity, and the second a materialised child broadcasting 20 of 40 attributes. The scaling benchmark varies the number <code>k</code> of <code>partial</code> dims: <code>entity</code> with 20,000 labels and <code>k - 1</code> further dims of three labels each, every attribute being over all of them. Its realistic case (R) holds nine layers and ten attributes, with at most four sets of named dims per attribute. Its worst case (W) holds <code>2^k</code> layers, each naming the dims of its own set, in counting order, so most layers cross the ones below them. Its series case (S) holds 20,000 entities, two scenarios and 8,760 snapshots.</p>
+<table>
+<thead>
+<tr>
+<th>case</th>
+<th>map rows, today</th>
+<th>map rows</th>
+<th>first read, today</th>
+<th>first read</th>
+<th>repeated read, today</th>
+<th>repeated read</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>12.0 M</td>
+<td>7.50 M</td>
+<td>2.60 s</td>
+<td>2.98 s</td>
+<td>0.036 s</td>
+<td>0.025 s</td>
+</tr>
+<tr>
+<td>2</td>
+<td>4.80 M</td>
+<td>1.20 M</td>
+<td>0.77 s</td>
+<td>0.24 s</td>
+<td>0.018 s</td>
+<td>0.007 s</td>
+</tr>
+<tr>
+<td>R k3</td>
+<td>1.80 M</td>
+<td>223 k</td>
+<td>0.70 s</td>
+<td>0.69 s</td>
+<td>0.019 s</td>
+<td>0.013 s</td>
+</tr>
+<tr>
+<td>R k4</td>
+<td>5.40 M</td>
+<td>223 k</td>
+<td>1.85 s</td>
+<td>0.75 s</td>
+<td>0.049 s</td>
+<td>0.015 s</td>
+</tr>
+<tr>
+<td>R k5</td>
+<td>16.2 M</td>
+<td>223 k</td>
+<td>6.25 s</td>
+<td>0.81 s</td>
+<td>0.147 s</td>
+<td>0.017 s</td>
+</tr>
+<tr>
+<td>W k3</td>
+<td>720 k</td>
+<td>8.8 k</td>
+<td>0.70 s</td>
+<td>0.56 s</td>
+<td>0.028 s</td>
+<td>0.020 s</td>
+</tr>
+<tr>
+<td>W k4</td>
+<td>2.16 M</td>
+<td>35 k</td>
+<td>2.30 s</td>
+<td>3.02 s</td>
+<td>0.107 s</td>
+<td>0.049 s</td>
+</tr>
+<tr>
+<td>W k5</td>
+<td>6.48 M</td>
+<td>163 k</td>
+<td>13.7 s</td>
+<td>20.1 s</td>
+<td>0.315 s</td>
+<td>0.160 s</td>
+</tr>
+<tr>
+<td>S k2</td>
+<td>120 k</td>
+<td>124</td>
+<td>materialise 25.7 s</td>
+<td>0.22 s</td>
+<td></td>
+<td></td>
+</tr>
+</tbody>
+</table>
+<p>The first read folds, and materialising follows it. The read returns rows as written, so its times leave out the consumer's expansion. A read of a record with two entities set in a staged layer over the materialised node takes 1.0 to 2.8 times today in the scaling benchmark, 0.11 times in the series case.</p>
+<p>The first read is slowest in the worst case, at 1.3 to 1.5 times today for <code>k = 4</code> and 5, since pairs of sets neither naming the other grow from 1 at <code>k = 2</code> to 55 at <code>k = 4</code> and 285 at <code>k = 5</code>, and the fold joins along each pair a parent row and a layer's row hold. This DEP accepts that cost: a record overriding one attribute along ever different sets of dims in a dozen layers is not one a workflow builds.</p>
+<p>Over all 210 fuzzed records of six edit layers, with <code>entity</code>, <code>scenario</code> and the group <code>connection</code> as <code>partial</code> coordinates, reads and <code>flags</code> agree in all five ways: plain, materialised at depth 1 and 3, staged, and staged over a materialised parent. The plain read equals a plain-Python oracle of the broadcast rule over full coordinates, every row reaching the final axes, on 197 records. The 13 others hit the oracle's limits: 3 a group emptied of tuples, where the read keeps the NULL row; 2 a connection removed and added again within one layer, where DEP 20's diff sees no removal; and 5 a label new or added again in the layer writing a row over <code>snapshot</code> at it, where the shallower row reaches the other snapshot, as <a href="#reach">Reach</a> accepts. A layer writing a full broadcast and a named row at once reads as the fold's step 2 gives, which an earlier oracle got wrong. Every probe reads the same materialised or not, staged or committed, and no fuzzed record triggers the refusal of a layer written without <code>WorkingRecord</code>.</p>
+<h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
+<p>A read returns the rows as written, overlap rows included:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"x"</span><span class="p">,</span> <span class="mf">50.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"gas"</span><span class="p">)</span>  <span class="c1"># the root</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"x"</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">v</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"x"</span><span class="p">,</span> <span class="mf">999.0</span><span class="p">,</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># its child</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">child</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"x"</span><span class="p">]</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="c1"># (gas, NULL) 50, (wind, NULL) 100, (NULL, high) 999, (gas, high) 999, (wind, high) 999</span>
+</code></pre></div>
+<p>A broadcast reaches a label added below a materialised node, committed or staged:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">c</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># w.set("p_max_pu", 0.9)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">c</span><span class="o">.</span><span class="n">materialise</span><span class="p">()</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"n"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">w</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>  <span class="c1"># (NULL) 0.9, which n takes by the broadcast rule</span>
+</code></pre></div>
+<p>A constant override of a broadcast series is written out along the series' snapshots:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="p">[</span><span class="mf">0.2</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">],</span> <span class="n">snapshot</span><span class="o">=</span><span class="p">[</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">])</span>  <span class="c1"># the root, every entity</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">v</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>  <span class="c1"># its child</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="c1"># the child holds (wind, NULL), (wind, 0) and (wind, 1) at 0.9</span>
+</code></pre></div>
+<h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
+<p>Paths are under <code>src/datarecord/</code>.</p>
+<ol>
+<li><code>resolve/owner_map.py</code>: <code>fold_attributes</code> drops the covered parent rows by <code>_masks</code> and <code>_exactly</code>, pairs crossing rows by <code>_pair</code> and adds the overlap rows by <code>_overlaps</code>, and refuses an unsettled crossing outside <code>partial</code> by <code>_refuse_unfilled</code>. It takes no axes.</li>
+<li><code>resolve/record.py</code>: <code>_as_stored</code> returns the owned rows as written and reads the labels of an overlap row, and <code>_owners</code> returns each attribute's rows.</li>
+<li><code>resolve/fold.py</code> folds without axes, and <code>resolve/coords.py</code> loses <code>Coords.expand_dims</code>.</li>
+<li><code>mutable.py</code>: <code>_complete_owned_whole</code> also writes a staged row out along the base rows' labels on dims outside <code>partial</code> (<code>_spread</code>), and a staged layer folds onto the prefix's map the same way.</li>
+<li>Consumers: <code>tools/pypsa.py</code>'s attribute and series reads, <code>tools/base.py</code>'s <code>Attr.resolve</code>, and <code>store/write.py</code>'s refusal of a pair neither more specific when it flattens a record into one layer apply the broadcast rule over rows as written.</li>
+<li>Tests asserting per-label reads assert rows as written instead. New tests and probes pin a deeper entity winning over a series it crosses, a broadcast reaching a label added below a crossing, a series reaching an entity added below an override, and the two coordinates a shallower row now reaches.</li>
+<li><code>CHANGELOG.md</code> under <code>[Unreleased]</code>: a read returns rows as written, a broadcast reaches every label, a deeper layer owns only the coordinates its rows reach, a re-added label takes broadcasts again, and <code>flags</code> counts a shadowed broadcast and reports only an attribute's dims.</li>
+<li>On landing, update <a href="../../layers/resolution/">resolution</a>, <a href="../../layers/tree/">the layer tree</a>, <a href="../../use/reading/">reading</a>, <a href="../../use/writing/">writing</a>, <a href="../../use/editing/">editing</a>, <a href="../../model/schema/">the schema</a>, <a href="../../storage/format/">the format</a>, <a href="../../tools/">tools</a>, <a href="../../">the index</a>, <a href="../../package/">module layout</a> and the usage page on <a href="../../../usage/layers/">layers</a> where they describe the owner map, its expansion or what a layer owns. In <a href="../../open-questions/">open questions</a>, close the item on a broadcast surviving materialisation.</li>
+</ol>
+<p>Checks: every probe reads the same materialised or not, staged or committed, and the 210 fuzzed records read the same in all five ways: plain, materialised at two depths, staged, and staged over a materialised parent.</p>
+<h2 id="rejected-ideas">Rejected Ideas<a class="headerlink" href="#rejected-ideas" title="Permanent link">&para;</a></h2>
+<p>Keeping keys as written with their depth and settling ownership at every read, by expanding the NULLs and one anti-join per named mask, reads at 1.55 to 2.1 times today in the realistic case from <code>k = 2</code> on and at 31 times today in the worst case at <code>k = 5</code>, and runs out of memory at 24.6 GiB for <code>k = 6</code>. Caching each attribute's settled rows in a session file restores repeated reads to 0.15 to 0.90 times today, but moves the cost to the first read of each attribute in every session: a first sweep over the realistic case takes 2.5 to 3.6 times today, and 31 times in the worst case at <code>k = 5</code>. Picking the owner by a window, <code>arg_max(depth)</code>, brings a repeated read of the worst case at <code>k = 5</code> from 31 to 5.5 times today but takes the realistic case to 3.3 times. Building the file root to leaf halves the worst case's first read at <code>k = 5</code> but slows the realistic case's by half, and disabling DuckDB's <code>build_side_probe_side</code> optimizer during a build takes it to 3.9 s against 9.3 s but holds for every concurrent cursor. A cache shared across sessions would pay the first pass once per revision, but needs a key covering the <code>partial</code> dims and a size cap, and keeps a per-label file per attribute.</p>
+<p>Splitting a crossed parent row instead of adding an overlap row, expanding it along the dims the deeper row names against the axis as the crossing layer resolves it and dropping the pieces a deeper row reaches, reads the same as this DEP wherever no label is added below a crossing. Its pieces name the labels of that axis only, so a label added later reaches none of them: adding <code>mid</code> below the child of the first example reads <code>(gas, mid)</code> as nothing, and in 8 of the first 70 fuzzed records a label added below a crossing reads differently from the oracle. Its first read takes 65 s against 20 s for the worst case at <code>k = 5</code>, and its map holds 2.01 million rows against 163,000. Splitting every parent row a deeper row names a dim of, more specific or not, splits where the two rules agree as well, and dropping at the read the rows a deeper one shadows by an <code>arg_max</code> window over a depth reads at 2 to 8 times that.</p>
+<p>Judging a crossing over the <code>partial</code> dims alone leaves the series example's rows crossing on <code>snapshot</code>, which the broadcast rule cannot order.</p>
+<p>Keeping the per-label owner map, with a map of keys as written beside it to derive the labels it lacks, needs a delta over every seed and three kinds of shared table, and materialising took 2.5 times today in its own round, 8.5 s against 3.4 s.</p>
+<p>Deciding <code>flags</code> per label, counting a row only where some label it covers has no deeper covering row, keeps today's <code>flags</code> exactly. On a <code>flags</code> benchmark of the first benchmark's size it took 3 to 24 times today, 1.016 s against 0.043 s for a repeated <code>flags()</code> at the materialised leaf.</p>
+<p>Letting the more specific row win across layers keeps an earlier named value under a later broadcast, which the fold then cannot drop, so every read of its attribute expands it against the named rows, 0.045 s against 0.023 s on the second benchmark.</p>
+<h2 id="open-issues">Open Issues<a class="headerlink" href="#open-issues" title="Permanent link">&para;</a></h2>
+<p>The tools settle rows by one helper, <code>settle(rel, labels, flags)</code>, which expands a NULL only on a coordinate in <code>broadcast</code> and picks a row only where a coordinate is also in <code>varies</code>; <code>Attr.resolve</code> and <code>Schema.resolve</code> take <code>labels</code> and <code>flags</code>. <code>write_layer</code> accepts two crossing rows where a row naming both is there, so a record of several layers flattens into one. The read of a staged layer refuses two rows crossing with no row naming both, as <code>write_layer</code> refuses them on commit.</p>
+<p>No fuzzed record holds a series over more than one <code>partial</code> dim.</p>
+<p>The worst case's first read stays at 1.3 to 1.5 times today for <code>k = 4</code> and 5, which <a href="#rationale">Rationale</a> accepts.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../dep-0020-a-layer-restates-an-axis-whole/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 20: A layer restates an axis whole">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                DEP 20: A layer restates an axis whole
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../dep-0022-a-layer-restates-membership-whole/" class="md-footer__link md-footer__link--next" aria-label="Next: DEP 22: A layer restates membership whole">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                DEP 22: A layer restates membership whole
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
