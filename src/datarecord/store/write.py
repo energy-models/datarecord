@@ -28,7 +28,7 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, fn, null_safe, write_parquet
-from datarecord.protocols import LayerData, RecordLike, Relations
+from datarecord.protocols import LayerData, RecordLike, Relations, UniqueCoordinates
 from datarecord.resolve.coords import (
     refuse_one_of_file,
     refuse_twice,
@@ -118,7 +118,8 @@ def write_layer(
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
-        same dims, or each names a dim the other leaves NULL, naming the
+        same dims, unless `data` vouches the attribute's rows unique
+        (`UniqueCoordinates`), or each names a dim the other leaves NULL, naming the
         attribute and the coordinate.
         If an axis file holds one label twice, naming it, or orders
         its parent's labels otherwise than the parent, naming the first label
@@ -134,6 +135,7 @@ def write_layer(
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
     - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
     """
     local = "://" not in base
@@ -177,7 +179,10 @@ def write_layer(
                 written = workspace.con.read_parquet(uri)
                 file = f"{kind}/{key}.parquet"
                 if kind == "attributes":
-                    _refuse_unordered(written, key, schema)
+                    vouched = isinstance(data, UniqueCoordinates) and data.is_unique(
+                        key
+                    )
+                    _refuse_unordered(written, key, schema, vouched=vouched)
                     coordinates = schema.coordinates_of(key)
                     refuse_unheld(
                         written, schema, coordinates, final, file, staged=False
@@ -254,7 +259,9 @@ def _write_frame(
     return uri
 
 
-def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
+def _refuse_unordered(
+    rel: DuckDBPyRelation, attribute: str, schema: Schema, *, vouched: bool
+) -> None:
     """Refuse two rows of `attribute` covering one coordinate where neither is more specific.
 
     Two rows cover one coordinate where they agree on every dim both name. A
@@ -267,8 +274,14 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     row, so the rows of one curve are no such pair.
 
     Rows naming the same dims are found by `refuse_twice` over the coordinates,
-    crossing ones by `unsettled`. `rel` is the file as written, so the source
-    is built only once, and only its dims and `breakpoint` are read.
+    which `vouched` skips, crossing ones by `unsettled`. `rel` is the file as
+    written, so the source is built only once, and only its dims and
+    `breakpoint` are read.
+
+    Parameters
+    ----------
+    vouched
+        Whether the source vouches the attribute's rows unique (`UniqueCoordinates`).
 
     Raises
     ------
@@ -278,15 +291,17 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
     """
     dims = schema.coordinates_of(attribute)
-    refuse_twice(
-        rel,
-        [*dims, "breakpoint"],
-        f"attributes/{attribute}.parquet",
-        "they name the same dims, so neither is the more specific there. Keep "
-        "one of them (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)",
-    )
+    if not vouched:
+        refuse_twice(
+            rel,
+            [*dims, "breakpoint"],
+            f"attributes/{attribute}.parquet",
+            "they name the same dims, so neither is the more specific there. Keep "
+            "one of them (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)",
+        )
     for a, b, meets in unsettled(rel, dims):
         rows = meets.limit(1).fetchall()
         if not rows:
@@ -664,3 +679,9 @@ class _RecordLikeAsLayerData:
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         return self._read(self._attributes, name)
+
+    def is_unique(self, attribute: str) -> bool:
+        """The source's own `UniqueCoordinates` answer, False where it has none."""
+        return isinstance(self._source, UniqueCoordinates) and self._source.is_unique(
+            attribute
+        )

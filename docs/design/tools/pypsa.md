@@ -154,6 +154,31 @@ PyPSA's weighting frames become `scenario_weight` over `scenario`, `snapshot_wei
 The tool writes them for each axis the network holds, and a multi-period network's snapshot weightings are over its flat `snapshot` like any other.
 `build` sets them back, and a label that no row reaches keeps PyPSA's own default, an equal share for a scenario.
 
+## Unique coordinates
+
+The tool's source [vouches](../use/writing.md#uniquecoordinates) for an attribute's rows where every pandas index they are built from is unique, and on a stochastic network only for an attribute over `scenario`, which it reads off the network in milliseconds, before a row is melted.
+The writer then skips its check for two rows naming the same dims at one coordinate there, the costliest check of an hourly network's write.
+The answer is per attribute: one type's repeated name spoils only the attributes that type contributes to.
+Names are compared as strings, as the check on names shared across entity types compares them.
+
+`is_unique(a)` is True where all of the following hold, for every type contributing rows to `a`:
+
+1. **The snapshot labels are unique**, for a dynamic frame and a snapshot weighting. A time series is melted by position and each label looked up, so two equal labels put two rows of one entity at one snapshot. A multi-period network whose timesteps repeat is labelled by position and always passes.
+2. **The type's static index is unique**, `(scenario, name)` on a stochastic network. A static value is one row per index entry, and a per-port value joins the port's bus column once per repeat of a name.
+3. **Each contributing dynamic frame's columns are unique and name members of the type**, a `(scenario, name)` pair each on a stochastic network. A column naming another type's member lands two types' rows on one entity, which the check on shared names misses, since it reads static indexes alone.
+4. **No entity attaches one bus at two ports**, for a per-port attribute, whose rows are keyed by `(entity, bus)`. The `connection` axis refuses such a pair on a deterministic network, but a stochastic network's connections collapse it to one tuple.
+5. **No scenario or name holds `\x1f`** in a stochastic network's dynamic frame, the separator its columns are melted through.
+6. **A weighting's axis labels are unique**: the snapshot labels, `investment_period_weightings.index` or `scenario_weightings.index`.
+7. **An attribute other than a weighting is declared over `scenario`**, on a stochastic network. One that is not, a static input among them, keeps an entity's row of each scenario where its values differ, and its rows carry no `scenario` column, so they land at one coordinate.
+
+Two things need no condition.
+An entity's static and series rows never meet: the static value of a name that the dynamic frame has a column for is left out, and a static row's `snapshot` is NULL where a melted row's is a label.
+Names shared across entity types are refused before `to_datarecord` returns a source.
+
+A results layer vouches by the same conditions over the solve's outputs, for a result that `base` holds no rows of.
+For one it does, `base`'s rows restated as NULL are those the solve does not write again, so they never meet its rows, and they are twin-free where `base`'s are.
+There it vouches where `base` does too, which a `Record` always does.
+
 ## Writing results
 
 A framework's outputs are [attributes](../model/attributes.md).

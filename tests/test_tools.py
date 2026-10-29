@@ -10,8 +10,10 @@ Notes
 """
 
 import shutil
+from collections.abc import Callable
 from pathlib import Path
 from types import SimpleNamespace
+from typing import TYPE_CHECKING, NamedTuple
 
 import duckdb
 import numpy as np
@@ -20,6 +22,8 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord import Workspace
+from datarecord.protocols import UniqueCoordinates
+from datarecord.resolve import coords
 from datarecord.schema.categories import matching
 from datarecord.store.manifest import read_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
@@ -35,6 +39,7 @@ from tests.fixtures import (
     empty_child,
     export_network,
     relation,
+    rename_components,
     schema,
     unpacked,
     write_attribute,
@@ -42,6 +47,9 @@ from tests.fixtures import (
     write_schema,
 )
 from tests.test_roundtrip import assert_networks_equal
+
+if TYPE_CHECKING:
+    import pypsa
 
 
 @pytest.fixture(scope="module")
@@ -1617,3 +1625,204 @@ def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
         series.where(~changed, 0.5),
         check_index_type=False,
     )
+
+
+# -- unique coordinates (https://energy-models.github.io/datarecord/design/tools/pypsa/#unique-coordinates) --
+
+
+def _vouched_twin_free(source, revision) -> list[str]:
+    """Run `refuse_twice`, which a write skips where `source` vouches, on each such file `revision` holds; return those attributes."""
+    vouched = [a for a in source.attributes if source.is_unique(a)]
+    for attribute in vouched:
+        file = f"attributes/{attribute}.parquet"
+        rows = revision.record.con.read_parquet(
+            revision.store.layer_dir(revision.id) + file
+        )
+        keys = [*source.schema.coordinates_of(attribute), "breakpoint"]
+        coords.refuse_twice(rows, keys, file)
+    return vouched
+
+
+@pytest.mark.parametrize("network", ["ac_dc", "solved"])
+def test_every_attribute_pypsa_vouches_for_holds_no_twin(request, store, network):
+    """A claim of unique coordinates is held against the check it skips.
+
+    Notes
+    -----
+    - [unique coordinates](https://energy-models.github.io/datarecord/design/tools/pypsa/#unique-coordinates)
+    """
+    n = request.getfixturevalue(network)
+    source = PyPSA.to_datarecord(n, store.workspace.con)
+    vouched = _vouched_twin_free(source, store.root(source))
+    assert vouched == list(source.attributes), "a fixture network vouches everywhere"
+
+
+def test_a_stochastic_network_vouches_only_over_scenario(store, stochastic):
+    """An attribute not over `scenario` keeps a row per scenario where its values differ.
+
+    Notes
+    -----
+    - [unique coordinates](https://energy-models.github.io/datarecord/design/tools/pypsa/#unique-coordinates)
+    """
+    source = PyPSA.to_datarecord(stochastic, store.workspace.con)
+    vouched = _vouched_twin_free(source, store.root(source))
+    assert {"p_max_pu", "scenario_weight"} <= set(vouched), "over scenario vouches"
+    assert "capital_cost" not in vouched, "a static input not over scenario does not"
+
+
+def test_every_multi_period_attribute_pypsa_vouches_for_holds_no_twin(
+    multiperiod, multiperiod_revision
+):
+    """Positional snapshots and the period weightings vouch as a single period does."""
+    source = PyPSA.to_datarecord(multiperiod, multiperiod_revision.record.con)
+    vouched = _vouched_twin_free(source, multiperiod_revision)
+    assert vouched == list(source.attributes), "a fixture network vouches everywhere"
+
+
+def test_every_result_pypsa_vouches_for_holds_no_twin(exported, solved):
+    """A re-solve's rows and `base`'s restated as NULL vouch together, `base` being a `Record`.
+
+    Notes
+    -----
+    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+    """
+    base = _results_over(exported, solved)
+    layer = PyPSA.to_datarecord(
+        solved, base.record.con, results_only=True, base=base.record
+    )
+    vouched = _vouched_twin_free(layer, base.child(layer))
+    assert vouched == list(layer.attributes), "every result vouches over a record"
+
+
+def _repeated_column(n) -> None:
+    wide = n.c["Generator"].dynamic["p_max_pu"]
+    n.c["Generator"].dynamic["p_max_pu"] = pd.concat([wide, wide.iloc[:, :1]], axis=1)
+
+
+def _repeated_snapshot(n) -> None:
+    n.set_snapshots([*n.snapshots, n.snapshots[0]])
+
+
+def _repeated_member(n) -> None:
+    static = n.c["Generator"].static
+    n.c["Generator"].static = pd.concat([static, static.iloc[:1]])
+
+
+def _another_types_column(n) -> None:
+    n.c["Generator"].dynamic["p_max_pu"]["London"] = 0.5
+
+
+def _one_bus_at_two_ports(n) -> None:
+    n.c["Link"].static.loc["DC link", "bus1"] = "London"
+
+
+def _a_separator_in_a_name(n) -> None:
+    rename_components(n, "Generator", "\x1f")
+
+
+def _a_per_scenario_value(n) -> None:
+    static = n.c["Generator"].static
+    first = static.index.get_level_values("scenario") == n.scenarios[0]
+    static.loc[first, "capital_cost"] += 1.0
+
+
+class _Broken(NamedTuple):
+    network: str
+    breaking: Callable[["pypsa.Network"], None]
+    touched: list[str]
+    untouched: str
+    refusal: str | None
+
+
+_BROKEN = {
+    "a-repeated-column": _Broken(
+        "ac_dc",
+        _repeated_column,
+        touched=["p_max_pu"],
+        untouched="p_nom",
+        refusal=r"attributes/p_max_pu\.parquet holds 2 rows",
+    ),
+    "a-repeated-snapshot": _Broken(
+        "ac_dc",
+        _repeated_snapshot,
+        touched=["p_max_pu", "snapshot_weighting_objective"],
+        untouched="p_nom",
+        refusal=r"dims/snapshot\.parquet holds 2 rows",
+    ),
+    "a-repeated-member": _Broken(
+        "ac_dc",
+        _repeated_member,
+        touched=["p_nom", "p_max_pu"],
+        untouched="x",
+        refusal=r"dims/entity\.parquet holds \d+ rows",
+    ),
+    "another-types-column": _Broken(
+        "ac_dc",
+        _another_types_column,
+        touched=["p_max_pu"],
+        untouched="p_nom",
+        refusal=None,
+    ),
+    "one-bus-at-two-ports": _Broken(
+        "ac_dc",
+        _one_bus_at_two_ports,
+        touched=["efficiency"],
+        untouched="p_nom",
+        refusal=r"dims/connection\.parquet holds \d+ rows",
+    ),
+    "a-separator-in-a-name": _Broken(
+        "stochastic",
+        _a_separator_in_a_name,
+        touched=["p_max_pu"],
+        untouched="p_set",
+        refusal=r"names 'entity' labels \['solar Gen', 'wind Gen'\]",
+    ),
+    "a-per-scenario-value": _Broken(
+        "stochastic",
+        _a_per_scenario_value,
+        touched=["capital_cost"],
+        untouched="p_max_pu",
+        refusal=r"attributes/capital_cost\.parquet holds \d+ rows",
+    ),
+}
+
+
+def _broken(request, case: _Broken) -> "pypsa.Network":
+    """The network of `case` with its condition broken."""
+    n = request.getfixturevalue(case.network).copy()
+    case.breaking(n)
+    return n
+
+
+@pytest.mark.parametrize("case", _BROKEN.values(), ids=list(_BROKEN))
+def test_a_broken_condition_spoils_only_the_attributes_it_touches(
+    request, workspace, case
+):
+    """The answer is per attribute, so the check is skipped wherever else the network holds.
+
+    Notes
+    -----
+    - [unique coordinates](https://energy-models.github.io/datarecord/design/tools/pypsa/#unique-coordinates)
+    """
+    source = PyPSA.to_datarecord(_broken(request, case), workspace.con)
+    assert isinstance(source, UniqueCoordinates), "the PyPSA source vouches by shape"
+    assert [source.is_unique(a) for a in case.touched] == [False] * len(case.touched)
+    assert source.is_unique(case.untouched), (
+        "an attribute the break misses still vouches"
+    )
+
+
+@pytest.mark.parametrize(
+    "case",
+    [pytest.param(case, id=k) for k, case in _BROKEN.items() if case.refusal],
+)
+def test_a_network_pypsa_does_not_vouch_for_is_refused_as_before(request, store, case):
+    """Where no claim is made, the writer's own checks find the twin.
+
+    Notes
+    -----
+    - [Shape](https://energy-models.github.io/datarecord/design/use/writing/#shape)
+    """
+    n = _broken(request, case)
+    with pytest.raises(ValueError, match=case.refusal):
+        store.root(PyPSA.to_datarecord(n, store.workspace.con))

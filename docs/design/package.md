@@ -14,7 +14,7 @@ Each framework lives in one tool module under `datarecord/tools/`, which a calle
 datarecord/
 ├── __init__.py        # every public name; where a user imports from
 ├── duck.py            # relation helpers
-├── protocols.py       # RecordLike, LayerData, Relations, LazyRelations, EMPTY, Flags
+├── protocols.py       # RecordLike, LayerData, UniqueCoordinates, Relations, LazyRelations, EMPTY, Flags
 ├── schema/
 │   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec
 │   ├── dtypes.py      # DUCK_TYPES, enum_type, enum_labels, takes

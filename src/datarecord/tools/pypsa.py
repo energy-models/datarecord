@@ -21,7 +21,7 @@ from __future__ import annotations
 import math
 import re
 import warnings
-from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from functools import cache, cached_property
 from typing import TYPE_CHECKING, Any, ClassVar
@@ -41,7 +41,13 @@ from duckdb import (
 from duckdb import StarExpression as star
 
 from datarecord.duck import empty_relation, ex_all, fn, null_safe, struct_of
-from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
+from datarecord.protocols import (
+    Flags,
+    LazyRelations,
+    RecordLike,
+    Relations,
+    UniqueCoordinates,
+)
 from datarecord.resolve.owner_map import cast_declared
 from datarecord.resolve.record import Record
 from datarecord.schema.categories import matching, with_defaults
@@ -646,6 +652,14 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
             if seen.setdefault(name, c.name) != c.name:
                 clashing.add(name)
     return frozenset(clashing)
+
+
+def _names(index: pd.Index) -> pd.Index:
+    """`index` with every label as a string, level by level, as `_colliding_names` compares names."""
+    if isinstance(index, pd.MultiIndex):
+        levels = [index.get_level_values(i).astype(str) for i in range(index.nlevels)]
+        return pd.MultiIndex.from_arrays(levels)
+    return index.astype(str)
 
 
 def _custom_names(c: pypsa.Components) -> list[str]:
@@ -2418,6 +2432,87 @@ class _NetworkSource:
         """
         return {}
 
+    # -- unique coordinates --------------------------------------------------------
+
+    def is_unique(self, attribute: str) -> bool:
+        """Whether every pandas index `attribute`'s rows are built from is unique.
+
+        Read off the network in milliseconds, before a row is melted; False
+        where one condition falls short, for the attributes it touches, and
+        on a stochastic network for an attribute not declared over `scenario`,
+        whose rows keep one per scenario where its values differ.
+
+        Notes
+        -----
+        - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
+        - [unique coordinates](https://energy-models.github.io/datarecord/design/tools/pypsa/#unique-coordinates)
+        """
+        if attribute in _WEIGHTINGS:
+            weighting = _WEIGHTINGS[attribute]
+            return self._weighting_table(weighting.dim).index.is_unique
+        if self.n.has_scenarios and SCENARIO not in self.schema.coordinates_of(
+            attribute
+        ):
+            return False
+        columns = (
+            self._output_columns(attribute, self._output_names[attribute])
+            if attribute in self._result_rels
+            else self._input_columns(attribute, self._attribute_names[attribute])
+        )
+        return all(
+            self._column_unique(c, column, per_port=port is not None)
+            for c, column, port in columns
+        )
+
+    def _column_unique(
+        self, c: pypsa.Components, column: str, *, per_port: bool
+    ) -> bool:
+        """Whether `column` of `c` gives no two rows at one coordinate.
+
+        Its type's members are unique, and, where it is per port, attach no bus
+        at two ports. Its dynamic frame, where it has one, is over unique
+        snapshots and its columns name members of the type once each, none
+        holding the separator `_melt_dynamic` splits a stochastic column on.
+
+        Notes
+        -----
+        - [unique coordinates](https://energy-models.github.io/datarecord/design/tools/pypsa/#unique-coordinates)
+        """
+        members = self._member_names[c.name]
+        if not members.is_unique or (per_port and c.name in self._shared_buses):
+            return False
+        if column not in c.dynamic or c.dynamic[column].empty:
+            return True
+        wide = c.dynamic[column].columns
+        if isinstance(wide, pd.MultiIndex) and any(
+            level.astype(str).str.contains("\x1f", regex=False).any()
+            for level in wide.levels
+        ):
+            return False
+        names = _names(wide)
+        return (
+            self._snapshot_labels.is_unique
+            and names.is_unique
+            and bool(names.isin(members).all())
+        )
+
+    @cached_property
+    def _member_names(self) -> dict[str, pd.Index]:
+        """Each exported type's static index as `_names` reads it, `(scenario, name)` on a stochastic network."""
+        return {
+            c.name: _names(c.static.index) for c in self.n.components if _exported(c)
+        }
+
+    @cached_property
+    def _shared_buses(self) -> frozenset[str]:
+        """The exported types on which a member attaches one bus at two ports, in one scenario."""
+        return frozenset(
+            c.name
+            for c in self.n.components
+            if _exported(c)
+            and _connection_rows(c).drop(columns="role").astype(str).duplicated().any()
+        )
+
     # -- key sets -----------------------------------------------------------
 
     def _record_attributes(self, c: pypsa.Components) -> list[str]:
@@ -2536,36 +2631,68 @@ class _NetworkSource:
             return self._weighting_frame(attribute)
         columns = list(self.schema.long_columns_for(attribute))
         rels = []
-        for ctype in ctypes:
-            c = self.n.c[ctype]
-            if attribute in self._port_stems(c).values():
-                rels.extend(self._per_port_long_rels(c, attribute))
-            elif attribute in c.defaults.index or attribute in c.static.columns:
-                rel = self._tagged_long_rel(c, attribute, attribute, drop_defaults=True)
-                if rel is not None:
-                    rels.append(rel)
+        for c, column, port in self._input_columns(attribute, ctypes):
+            rel = self._column_long_rel(
+                c, attribute, column, port, drop_defaults=port is None
+            )
+            if rel is not None:
+                rels.append(rel)
         return self._union_select(rels, columns)
 
-    def _per_port_long_rels(
-        self, c: pypsa.Components, stem: str
-    ) -> list[DuckDBPyRelation]:
-        """A per-connection attribute's long relations, one per port.
+    def _input_columns(
+        self, attribute: str, ctypes: list[str]
+    ) -> Iterator[tuple[pypsa.Components, str, str | None]]:
+        """Each PyPSA column an input's rows are melted from, with its type and its port, `None` off a port.
 
-        The inverse of the positional collapse: `efficiency`/`efficiency2` become
-        one attribute whose rows carry the connection each port is.
+        A per-connection attribute is melted from each port's column, so
+        `efficiency`/`efficiency2` become one attribute whose rows carry the
+        connection each port is.
 
         Notes
         -----
         - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
         """
-        rels = []
-        for column, (of, port) in _port_names(c).items():
-            if of != stem:
-                continue
-            rel = self._port_long_rel(c, stem, column, port, drop_defaults=False)
-            if rel is not None:
-                rels.append(rel)
-        return rels
+        for ctype in ctypes:
+            c = self.n.c[ctype]
+            if attribute in self._port_stems(c).values():
+                for column, (of, port) in _port_names(c).items():
+                    if of == attribute:
+                        yield c, column, port
+            elif attribute in c.defaults.index or attribute in c.static.columns:
+                yield c, attribute, None
+
+    def _output_columns(
+        self, attribute: str, ctypes: list[str]
+    ) -> Iterator[tuple[pypsa.Components, str, str | None]]:
+        """Each PyPSA output `_result_attributes` lands in `attribute`, with its type and its port, `None` off a port.
+
+        Every port's `p0`, `p1`, ... under `p`, or a single entity-level one,
+        possibly renamed (`Link.p` as `p_internal`).
+        """
+        for ctype in ctypes:
+            c = self.n.c[ctype]
+            ports = _port_names(c)
+            for column, name in sorted(self._results[ctype].items()):
+                if name == attribute:
+                    yield c, column, ports[column][1] if column in ports else None
+
+    def _column_long_rel(
+        self,
+        c: pypsa.Components,
+        attribute: str,
+        column: str,
+        port: str | None,
+        *,
+        drop_defaults: bool,
+    ) -> DuckDBPyRelation | None:
+        """`column`'s long relation tagged `attribute`, keyed by connection at a `port`, else by entity."""
+        if port is None:
+            return self._tagged_long_rel(
+                c, attribute, column, drop_defaults=drop_defaults
+            )
+        return self._port_long_rel(
+            c, attribute, column, port, drop_defaults=drop_defaults
+        )
 
     def _port_long_rel(
         self,
@@ -2622,33 +2749,17 @@ class _NetworkSource:
         return self._union_rel(rels, list(self.schema.long_columns_for(attribute)))
 
     def _output_rels(self, attribute: str, ctypes: list[str]) -> list[DuckDBPyRelation]:
-        """One result attribute's per-type long relations, empties dropped.
-
-        Each type contributes the PyPSA outputs `_result_attributes` lands in
-        `attribute`: every port's `p0`, `p1`, ... under `p` with its bus, or a
-        single entity-level one, possibly renamed (`Link.p` as `p_internal`).
-        """
+        """One result attribute's per-type long relations, empties dropped."""
         rels = []
-        for ctype in ctypes:
-            c = self.n.c[ctype]
-            ports = _port_names(c)
-            for column, name in sorted(self._results[ctype].items()):
-                if name != attribute:
-                    continue
-                drop = self._DROP_RESULT_DEFAULTS
-                try:
-                    rel = (
-                        self._port_long_rel(
-                            c, name, column, ports[column][1], drop_defaults=drop
-                        )
-                        if column in ports
-                        else self._tagged_long_rel(c, name, column, drop_defaults=drop)
-                    )
-                except (AttributeError, KeyError):
-                    # Not every registry output has a container on every network.
-                    continue
-                if rel is None:
-                    continue
+        for c, column, port in self._output_columns(attribute, ctypes):
+            try:
+                rel = self._column_long_rel(
+                    c, attribute, column, port, drop_defaults=self._DROP_RESULT_DEFAULTS
+                )
+            except (AttributeError, KeyError):
+                # Not every registry output has a container on every network.
+                continue
+            if rel is not None:
                 rels.append(rel)
         return rels
 
@@ -2779,6 +2890,23 @@ class _ResultsSource(_NetworkSource):
             rows = stale.project(*map(col, keys), null.alias("value"))
             restated[attr] = rows if attr not in written else written[attr].union(rows)
         return restated
+
+    def is_unique(self, attribute: str) -> bool:
+        """This solve's rows as `_NetworkSource.unique` answers, and `base`'s restated as NULL as `base` does.
+
+        The two never meet, since the restated rows are those this solve does
+        not write again.
+
+        Notes
+        -----
+        - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
+        - [unique coordinates](https://energy-models.github.io/datarecord/design/tools/pypsa/#unique-coordinates)
+        """
+        solved = attribute not in self._result_rels or super().is_unique(attribute)
+        restated = attribute not in self.base.attributes or (
+            isinstance(self.base, UniqueCoordinates) and self.base.is_unique(attribute)
+        )
+        return solved and restated
 
 
 def _required_attributes(ctype: str) -> frozenset[str]:
@@ -3011,7 +3139,7 @@ def _port_columns(
 ) -> dict[str, DuckDBPyRelation]:
     """A per-connection attribute's rows split into PyPSA's port columns.
 
-    The inverse of `_NetworkSource._per_port_long_rels`: `efficiency` on a
+    The inverse of `_NetworkSource._input_columns`: `efficiency` on a
     Link's bus1 connection is `efficiency`, on its bus2 connection
     `efficiency2`. A row takes the port `_ordered_connections` numbered its
     `(entity, bus)` with, the numbering `_collapse_connections` names

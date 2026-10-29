@@ -20,7 +20,7 @@ import pytest
 
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
-from datarecord.protocols import EMPTY, LazyRelations
+from datarecord.protocols import EMPTY, LazyRelations, UniqueCoordinates
 from datarecord.resolve import coords
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
@@ -95,6 +95,23 @@ class _Source:
 
     def flags(self, **categories):
         return {}
+
+
+class _Vouching(_Source):
+    """A `_Source` vouching every attribute it hands over unique, rightly or not."""
+
+    def is_unique(self, attribute: str) -> bool:
+        return True
+
+
+class _Doubting(_Source):
+    """A `_Source` vouching for no attribute."""
+
+    def is_unique(self, attribute: str) -> bool:
+        return False
+
+
+_SOURCES = {"write_layer": _Source, "vouched": _Vouching, "doubted": _Doubting}
 
 
 def _named_multi_dims(schema, attributes) -> dict[str, pd.DataFrame]:
@@ -887,10 +904,15 @@ def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
     staged.add("connection", list(tuples))
     base = base.child(staged.edits)
     staged = WorkingRecord(base.record)
+    _set_rows(staged, rows, attribute)
+    return base, staged
+
+
+def _set_rows(staged: WorkingRecord, rows: list[dict], attribute: str) -> None:
+    """Stage each of `rows` of `attribute` by `set`, a `connection` by its fields."""
     for row in rows:
         coords = {c: v for c, v in row.items() if c not in ("value", "connection")}
         staged.set(attribute, row["value"], **coords, **row.get("connection", {}))
-    return base, staged
 
 
 def _rows_layer(
@@ -898,7 +920,8 @@ def _rows_layer(
 ):
     """Return a revision whose top layer holds `rows` of `attribute`, written `via` `set` or a source.
 
-    A coordinate a row leaves out is NULL there.
+    A source is one of `_SOURCES`, by whether it vouches for its rows. A
+    coordinate a row leaves out is NULL there.
     """
     if via == "set":
         base, staged = _rows_staged(store, rows, attribute, tuples)
@@ -909,7 +932,7 @@ def _rows_layer(
         ignore_index=True,
     )
     return store.root(
-        _Source(
+        _SOURCES[via](
             _SCHEMA,
             attributes={attribute: frame},
             connections={"connection": pd.DataFrame({"connection": list(tuples)})},
@@ -1215,7 +1238,62 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override,
     assert _read(lower.child(staged.edits)) == read
 
 
-@pytest.mark.parametrize("via", ["set", "write_layer"])
+_BOTH = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
+_BOTH_WAYS = [{"value": 2.0}, {"scenario": "x", "value": 1.0}]
+
+
+@pytest.mark.parametrize("committed", [False, True], ids=["staged", "committed"])
+@pytest.mark.parametrize(
+    ("lower", "overrides"),
+    [
+        (_BOTH, [{"scenario": "x", "value": 5.0}]),
+        (_BOTH, [{"entity": "a", "scenario": "x", "value": 5.0}]),
+        (
+            _BOTH,
+            [
+                {"scenario": "x", "value": 5.0},
+                {"entity": "a", "scenario": "x", "value": 6.0},
+            ],
+        ),
+        (_BOTH_WAYS, [{"scenario": "y", "value": 5.0}]),
+        (_BOTH_WAYS, [{"entity": "b", "scenario": "x", "value": 5.0}]),
+    ],
+    ids=[
+        "crossing",
+        "one-key",
+        "crossing-where-it-names-both",
+        "beside-a-key-both-ways",
+        "into-a-key-both-ways",
+    ],
+)
+def test_a_record_of_layers_vouches_rightly(
+    store, tmp_path, lower, overrides, committed
+):
+    """The resolved read joins each row once per key it owns, so a flattened write holds no twin.
+
+    `entity` and `scenario` are in `partial`. An override by `scenario` over a
+    row by `entity` crosses it, owning the key naming both; one holding a row
+    there too holds that key twice in its owner map. A lower layer holding
+    `scenario=x` and NULL holds that key both as a label and as NULL.
+
+    Notes
+    -----
+    - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
+    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
+    """
+    base = _rows_layer(store, lower, "write_layer")
+    staged = WorkingRecord(base.record)
+    _set_rows(staged, overrides, "p_nom")
+    record = base.child(staged.edits).record if committed else staged
+    assert isinstance(record, UniqueCoordinates) and record.is_unique("p_nom")
+    out = str(tmp_path / "flat")
+    store.workspace.write(record, out)
+    file = "attributes/p_nom.parquet"
+    rows = store.workspace.con.read_parquet(f"{out}/{file}")
+    coords.refuse_twice(rows, [*_SCHEMA.coordinates_of("p_nom"), "breakpoint"], file)
+
+
+@pytest.mark.parametrize("via", ["set", "write_layer", "vouched"])
 @pytest.mark.parametrize(
     ("rows", "coordinate"),
     [
@@ -1331,18 +1409,37 @@ def test_a_staged_pair_neither_more_specific_fails_the_read(store):
     ],
     ids=["broadcast", "one-label", "beside-a-default", "one-breakpoint"],
 )
+@pytest.mark.parametrize("via", ["write_layer", "doubted"])
 @pytest.mark.usefixtures("split_passes")
-def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(store, rows, coordinate):
+def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(
+    store, rows, coordinate, via
+):
     """Two rows naming the same labels are equally specific, so no rule picks one.
+
+    A source vouching for none of its attributes is checked as one that says nothing.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
     """
     with pytest.raises(
         ValueError, match=rf"p_nom\.parquet holds 2 rows at {coordinate};"
     ):
-        _rows_layer(store, rows, "write_layer")
+        _rows_layer(store, rows, via)
+
+
+def test_a_source_vouching_wrongly_writes_its_twin(store):
+    """The writer trusts the claim and skips the check, so the twin reaches the file.
+
+    Notes
+    -----
+    - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
+    """
+    rows = [{"entity": "a", "value": 1.0}, {"entity": "a", "value": 2.0}]
+    revision = _rows_layer(store, rows, "vouched")
+    values = relation(revision, "p_nom").df()["value"]
+    assert sorted(values) == [1.0, 2.0], "both rows written, unchecked"
 
 
 def test_a_curve_is_no_pair_of_rows(store):
