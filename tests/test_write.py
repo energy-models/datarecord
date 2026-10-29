@@ -21,6 +21,7 @@ import pytest
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.protocols import EMPTY, LazyRelations
+from datarecord.resolve import coords
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
@@ -763,6 +764,14 @@ def _read_axis(store, frame):
     root.record.dims["scenario"].fetchall()
 
 
+@pytest.fixture(params=[False, True], ids=["one-pass", "a-pass-per-row"])
+def split_passes(request, monkeypatch):
+    """Find a row held twice in one pass over the file, and across one pass per row."""
+    if request.param:
+        monkeypatch.setattr(coords, "_ROWS_PER_PASS", 1)
+
+
+@pytest.mark.usefixtures("split_passes")
 @pytest.mark.parametrize("by", [_written_axis, _read_axis], ids=["write", "read"])
 def test_an_axis_file_holding_a_label_twice_is_refused(store, by):
     """A label held twice has no one row.
@@ -1322,6 +1331,7 @@ def test_a_staged_pair_neither_more_specific_fails_the_read(store):
     ],
     ids=["broadcast", "one-label", "beside-a-default", "one-breakpoint"],
 )
+@pytest.mark.usefixtures("split_passes")
 def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(store, rows, coordinate):
     """Two rows naming the same labels are equally specific, so no rule picks one.
 

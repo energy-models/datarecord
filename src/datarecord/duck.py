@@ -54,6 +54,26 @@ class _Functions:
 
 fn = _Functions()
 
+#: The options of every parquet file datarecord writes. Format v2 delta-encodes a
+#: series' snapshots and byte-stream-splits its values; the dictionary limit keeps
+#: a row group's few entity names in a dictionary but not 8760 timestamps.
+_PARQUET_OPTIONS = (
+    "FORMAT parquet, COMPRESSION zstd, PARQUET_VERSION v2, DICTIONARY_SIZE_LIMIT 4096"
+)
+
+
+def write_parquet(
+    rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection, *, ordered: bool
+) -> None:
+    """Write `rel` to the parquet file `uri`, keeping its row order where `ordered`.
+
+    Leave `ordered` off where the row order carries no meaning: an
+    order-preserving write buffers every batch a parallel scan finishes early,
+    which spills tens of GB for a series melted into hundreds of millions of rows.
+    """
+    order = "" if ordered else ", PRESERVE_ORDER false"
+    con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
+
 
 def try_read_parquet(
     uri: str, con: DuckDBPyConnection, **kwargs: object

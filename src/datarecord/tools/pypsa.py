@@ -2624,8 +2624,14 @@ class _NetworkSource:
     def _melt_dynamic(self, c: pypsa.Components, attr: str) -> DuckDBPyRelation | None:
         """Melt one varying attribute's wide dynamic frame to long rows, `None` where it has no columns.
 
-        A column is melted by position and aliased back to its name as a
-        string literal, so a name never becomes an SQL identifier.
+        The frame is transposed before the melt, so the rows come out entity by
+        entity: a parquet row group then holds a handful of entity names, which
+        its dictionary encodes, where snapshot-major rows put every name in
+        each row group and leave them unencoded.
+
+        The snapshots are melted by position and looked up in a typed list of
+        the labels, so a label never becomes an SQL identifier and keeps its
+        dtype.
         """
         con = self.con
         wide = c.dynamic[attr]
@@ -2635,32 +2641,30 @@ class _NetworkSource:
             if stochastic
             else list(wide.columns)
         )
-        if not valcols:
+        if not valcols or wide.empty:
             return None
-        positional = [f"v{i}" for i in range(len(valcols))]
+        positional = [f"s{i}" for i in range(len(wide.index))]
         w = (
-            wide.set_axis(positional, axis=1)
-            .set_axis(self._snapshot_labels)
+            wide.T.set_axis(positional, axis=1)
+            .set_axis(pd.Index(valcols, name="colname"))
             .reset_index()
         )
         wide_rel = con.from_df(w)  # noqa: F841 - bound by name for the query below
-        inlist = ", ".join(
-            f"{p} AS {lit(str(name))}"
-            for p, name in zip(positional, valcols, strict=True)
-        )
+        inlist = ", ".join(f"{p} AS {lit(str(i))}" for i, p in enumerate(positional))
         # Two steps: the replacement scan does not compose through a subquery.
         melted = con.sql(  # noqa: F841 - bound by name for the query below
-            "SELECT snapshot, colname, value FROM wide_rel "
-            f"UNPIVOT INCLUDE NULLS (value FOR colname IN ({inlist}))"
+            "SELECT colname, CAST(pos AS INTEGER) AS pos, value FROM wide_rel "
+            f"UNPIVOT INCLUDE NULLS (value FOR pos IN ({inlist}))"
         )
         if stochastic:
             entity = "split_part(colname, chr(31), 2)"
             scenario = "split_part(colname, chr(31), 1)"
         else:
             entity, scenario = "colname", "CAST(NULL AS VARCHAR)"
+        labels = lit(self._snapshot_labels.tolist())
         return con.sql(
-            f"SELECT {entity} AS entity, snapshot, {scenario} AS scenario, "
-            "value FROM melted"
+            f"SELECT {entity} AS entity, ({labels})[pos + 1] AS {SNAPSHOT}, "
+            f"{scenario} AS scenario, value FROM melted"
         )
 
     def _scalar_rel(
