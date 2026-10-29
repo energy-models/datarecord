@@ -96,7 +96,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-  "slow: long-running checks (large fixtures); deselect with -m \"not slow\"",
+  "slow: long-running checks, skipped by `pixi run test`; `pixi run test-all` runs them",
   "benchmark: timing checks, run with `pixi run bench`",
 ]
 addopts = '-m "not slow and not benchmark"'
