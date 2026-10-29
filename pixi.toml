@@ -35,14 +35,16 @@ python-duckdb = "0d"
 [feature.test.dependencies]
 pytest = "*"
 pytest-cov = "*"
+pytest-xdist = "*"
 mypy = "*"
 pandas = "*"
 pyarrow = "*"
 pypsa = ">=1.4"
 boto3 = ">=1.35.69"
 [feature.test.tasks]
-test = "pytest"
-test-coverage = "pytest --cov=datarecord --cov-report=xml --cov-report=term-missing"
+test = "pytest -n auto"
+test-all = "pytest -n auto -m ''"
+test-coverage = "pytest -n auto -m '' --cov=datarecord --cov-report=xml --cov-report=term-missing"
 
 # `datarecord.tools.pypsa` is an optional extra (no tool import may leak into
 # core datarecord); kept as its own feature/environment too, as a model

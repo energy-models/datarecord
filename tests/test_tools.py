@@ -30,6 +30,7 @@ from datarecord.tools.pypsa import (
     PyPSA,
     _colliding_names,
     _registry,
+    _select,
     _weightings,
 )
 from tests.fixtures import (
@@ -164,6 +165,70 @@ def _north():
     return n
 
 
+def _shaped():
+    """`_north` and a bus `south`, each with onshore shapes, `country` shapes beside and a generator's site.
+
+    `north` also has an offshore shape, and `DE` one; a custom `Bus.country`
+    names each bus's country.
+    """
+    import shapely
+
+    n = _north()
+    n.to_crs("EPSG:3035")
+    n.add("Bus", "south")
+    n.c.Bus.static["country"] = ["DE", "FR"]
+    n.add(
+        "Shape",
+        ["north onshore", "north offshore", "south onshore"],
+        geometry=[
+            shapely.box(0, 0, 1, 1),
+            shapely.Point(2, 3),
+            shapely.box(1, 1, 2, 2),
+        ],
+        idx=["north", "north", "south"],
+        component="Bus",
+        type=["onshore", "offshore", "onshore"],
+    )
+    n.add(
+        "Shape",
+        ["DE country", "FR country", "DE offshore"],
+        geometry=[
+            shapely.box(0, 0, 3, 3),
+            shapely.box(3, 3, 4, 4),
+            shapely.Point(5, 5),
+        ],
+        idx=["DE", "FR", "DE"],
+        component="country",
+        type=["country", "country", "offshore"],
+    )
+    n.add(
+        "Shape",
+        ["gen site"],
+        geometry=[shapely.Point(0.5, 0.5)],
+        idx="gen",
+        component="Generator",
+        type="site",
+    )
+    return n
+
+
+def _add_shape(n, **attrs) -> None:
+    """Add the shape `extra`, a point, with `attrs`."""
+    import shapely
+
+    n.add("Shape", ["extra"], geometry=[shapely.Point(0, 0)], **attrs)
+
+
+def _with_bus_column(n, name: str, value) -> None:
+    """Set the custom column `name` of every bus to `value`."""
+    n.c.Bus.static[name] = value
+
+
+def _shapes(n) -> pd.DataFrame:
+    """`n.shapes` keyed by the label each outlines and its `type`, not by name."""
+    return n.c.Shape.static.set_index(["component", "idx", "type"]).sort_index()
+
+
 def _three_port_link():
     import pypsa
 
@@ -258,6 +323,74 @@ def _myopic(n) -> dict[int, pypsa.Network]:
         p: n.copy(snapshots=n.snapshots[periods == p], investment_periods=[p])
         for p in n.investment_periods
     }
+
+
+def _staggered(layout: str) -> pypsa.Network:
+    """Three periods of four hours over one bus, a generator built in each, the first retiring before the second period.
+
+    `repeated` runs the same hours in every period; `distinct` moves them into
+    the period's year.
+    """
+    periods = [2030, 2040, 2050]
+    hours = pd.date_range("2030-01-01", periods=4, freq="h")
+    moved = layout == "distinct"
+    n = pypsa.Network()
+    n.set_snapshots(
+        pd.MultiIndex.from_tuples(
+            [(p, t.replace(year=p) if moved else t) for p in periods for t in hours],
+            names=["period", "timestep"],
+        )
+    )
+    n.investment_periods = periods
+    n.add("Bus", "bus")
+    n.add("Carrier", "gas")
+    n.add(
+        "Generator",
+        [f"gen-{p}" for p in periods],
+        bus="bus",
+        carrier="gas",
+        p_nom_extendable=True,
+        build_year=periods,
+        lifetime=[10, 30, 30],
+        capital_cost=[1.0, 100.0, 200.0],
+        marginal_cost=10.0,
+    )
+    load = pd.Series(np.repeat([50.0, 50.0, 100.0], len(hours)), index=n.snapshots)
+    n.add("Load", "load", bus="bus", p_set=load)
+    return n
+
+
+@pytest.fixture(scope="module")
+def staggered_revision(tmp_path_factory, layout):
+    """`_staggered` exported once for the module."""
+    workspace = Workspace()
+    yield export_network(
+        _staggered(layout), workspace.store(str(tmp_path_factory.mktemp("staggered")))
+    )
+    workspace.close()
+
+
+def _solve(n):
+    """`n` solved, over its periods at once where it has any, its solver model dropped."""
+    n.optimize(
+        solver_name="highs", multi_investment_periods=bool(n.investment_periods.size)
+    )
+    n.model.solver_model = None
+    return n
+
+
+def _assert_dispatch_at(built, n, period: int) -> None:
+    """`built` dispatches `n`'s generators as `n` does at its snapshots, those of `period` where `n` has no period."""
+    p = built.c.Generator.dynamic["p"]
+    at = p if n.investment_periods.size else p.loc[period]
+    pd.testing.assert_frame_equal(
+        at.loc[n.snapshots, n.c.Generator.static.index],
+        n.c.Generator.dynamic["p"],
+        check_names=False,
+        check_index_type=False,
+        check_freq=False,
+        obj=f"dispatch of {period}",
+    )
 
 
 def _ordered(record) -> dict[str, pd.DataFrame]:
@@ -374,8 +507,20 @@ def _reordered_buses(members):
     return members
 
 
+def _with_region_shapes(members):
+    for n in members.values():
+        _add_shape(n, idx="north", component="region", type="area")
+    return members
+
+
 def _with_custom_column(members):
     members["hi"].c.Generator.static["score"] = 1.0
+    return members
+
+
+def _with_custom_column_on_other_types(members):
+    members["lo"].c.Generator.static["score"] = 1.0
+    members["hi"].c.Load.static["score"] = 1.0
     return members
 
 
@@ -644,6 +789,7 @@ class TestPyPSA:
         with pytest.raises(ValueError, match="entity.carrier"):
             w.remove("carrier", ["gas"])
 
+    @pytest.mark.slow
     def test_a_value_its_type_does_not_take_is_reported_and_left_out(
         self, single_revision
     ):
@@ -915,25 +1061,35 @@ class TestPyPSA:
             PyPSA.build(revision.record)
 
     @pytest.mark.parametrize(
-        ("ctype", "branch", "standard", "changed", "extra"),
+        ("ctype", "dim", "branch", "standard", "changed", "extra"),
         [
             (
                 "LineType",
+                "line_type",
                 "Line",
                 "Al/St 240/40 4-bundle 380.0",
                 {"x_per_length": 0.5},
                 {"length": 10.0},
             ),
-            ("TransformerType", "Transformer", "160 MVA 380/110 kV", {"vsc": 20.0}, {}),
+            (
+                "TransformerType",
+                "transformer_type",
+                "Transformer",
+                "160 MVA 380/110 kV",
+                {"vsc": 20.0},
+                {"s_nom": [10.0, 20.0], "phase_shift": [1.0, 2.0], "tap_side": 1},
+            ),
         ],
     )
     def test_a_networks_own_type_round_trips(
-        self, store, ctype, branch, standard, changed, extra
+        self, store, ctype, dim, branch, standard, changed, extra
     ):
-        """A type the network adds to PyPSA's library is an entity of its `ctype`, and the library is not written.
+        """A type the network adds to PyPSA's library is a label of its own dim, its columns properties, and the library is not written.
 
-        A branch of each type builds back with the same `r` and `x`, and a
-        results layer over the record neither writes nor refuses the type.
+        The branch typed by it shares its name, and a Transformer carries its
+        own `s_nom`, `phase_shift` and `tap_side` beside the type's, none of
+        which clash. Each branch builds back with the same `r` and `x`, and a
+        results layer over the record writes no type.
 
         Notes
         -----
@@ -953,7 +1109,7 @@ class TestPyPSA:
         )
         n.add(
             branch,
-            ["std", "own"],
+            ["std", "own type"],
             bus0="a",
             bus1="b",
             type=[standard, "own type"],
@@ -961,12 +1117,18 @@ class TestPyPSA:
         )
 
         root = export_network(n, store)
-        written = _ctypes_written(root)
-        assert list(written[written == ctype].index) == ["own type"], (
+        record = root.record
+        assert record.dims[dim].df()[dim].tolist() == ["own type"], (
             "only the type the library lacks is written"
         )
+        assert set(record.schema.properties[dim]) == set(n.c[ctype].static), (
+            "every column of a type is a property of its dim"
+        )
+        held = record.properties[dim].df().set_index(dim).loc["own type"]
+        assert held[list(changed)].to_dict() == changed
+        assert set(_ctypes_written(root)) == {branch}, "a type is no entity"
 
-        built = PyPSA.build(root.record)
+        built = PyPSA.build(record)
         assert_networks_equal(built, n)
         built.calculate_dependent_values()
         n.calculate_dependent_values()
@@ -975,20 +1137,19 @@ class TestPyPSA:
         )
 
         child = _results_over(root, built)
-        assert not (
-            Path(store.layer_dir(child.id)) / "dims" / "entity.parquet"
-        ).exists()
-        assert _ctypes_written(child).equals(written)
+        layer = Path(store.layer_dir(child.id)) / "dims"
+        assert not (layer / "entity.parquet").exists()
+        assert not (layer / f"{dim}.parquet").exists(), "a results layer writes no type"
 
     def test_a_network_of_library_types_writes_none(self, single_revision):
-        """`ac_dc` holds PyPSA's standard types alone, so no entity is a `LineType` or `TransformerType`.
+        """`ac_dc` holds PyPSA's standard types alone, so the record holds no type axis.
 
         Notes
         -----
         - [standard types](https://energy-models.github.io/datarecord/design/tools/pypsa/#standard-types)
         """
-        written = set(_ctypes_written(single_revision))
-        assert not written & {"LineType", "TransformerType"}
+        held = set(single_revision.record.dims)
+        assert not held & {"line_type", "transformer_type"}
 
     def test_to_datarecord_rejects_a_cross_type_name_collision(self, workspace):
         """PyPSA scopes names per type; a record scopes them across every entity type.
@@ -1084,40 +1245,231 @@ class TestPyPSA:
         with pytest.raises(ValueError, match="`country` is a property of `entity`"):
             PyPSA.to_datarecord(n, workspace.con)
 
-    def test_shapes_round_trip_in_their_crs(self, store):
-        """A geometry is stored as WKT, its CRS in the schema's `meta`.
+    @pytest.mark.parametrize("name", ["scenario", "period", "entity"])
+    def test_a_custom_column_named_like_a_key_is_refused(self, workspace, name):
+        """A key of the record's rows names no property or attribute, text or not.
+
+        Notes
+        -----
+        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        """
+        n = _north()
+        _with_bus_column(n, name, "x")
+        with pytest.raises(ValueError, match="key a record's rows"):
+            PyPSA.to_datarecord(n, workspace.con)
+
+    @pytest.mark.parametrize(
+        ("ctype", "values", "dtype", "kept"),
+        [
+            ("Bus", [True, None], "bool", [True, None]),
+            ("Bus", [3, None], "int", [3, None]),
+            ("Bus", [np.int64(3), np.nan], "int", [3, None]),
+            ("Bus", [1, 2.5], "float", [1.0, 2.5]),
+            ("Generator", [1.5, None], "float", [1.5, None]),
+            ("Generator", [False, True], "bool", [False, True]),
+            ("Generator", [np.bool_(True), np.nan], "bool", [True, None]),
+            ("Generator", [np.int64(3), np.int64(4)], "int", [3, 4]),
+            ("Generator", ["a", None], "str", ["a", None]),
+            ("Generator", [True, 2], "str", ["True", "2"]),
+            ("Generator", [None, None], "str", [None, None]),
+        ],
+    )
+    def test_a_custom_object_column_is_typed_by_its_values(
+        self, store, ctype, values, dtype, kept
+    ):
+        """A custom column of dtype `object`, as a NaN leaves a column of bools or ints, is declared as its non-null values say, and written as declared: one of mixed types as text."""
+        n = _north()
+        n.add("Bus", "south")
+        n.add("Generator", "south gen", bus="south")
+        static = n.c[ctype].static
+        static["extra"] = pd.Series(values, index=static.index, dtype=object)
+
+        record = export_network(n, store).record
+        dim = "bus" if ctype == "Bus" else "entity"
+        spec = record.schema.properties[dim].get("extra")
+        declared = record.schema.attributes["extra"] if spec is None else spec
+        assert declared.dtype == dtype
+        built = PyPSA.build(record).c[ctype].static["extra"]
+        held = [None if pd.isna(value) else value for value in built]
+        assert held == kept, "the values round-trip as declared"
+
+    def test_a_shape_is_a_property_of_the_label_it_outlines(self, store):
+        """A shape is `{dim}.shape_{type}` as WKT, a `component` that is no PyPSA type a dim of its own, its CRS in the schema's `meta`.
+
+        A custom `bus.country` refers to the `country` dim the shapes make, and
+        a results layer writes none of it.
+
+        Notes
+        -----
+        - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
+        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        """
+        from geopandas.testing import assert_geodataframe_equal
+
+        n = _shaped()
+        revision = export_network(n, store)
+        record = revision.record
+        schema = record.schema
+        assert schema.meta["crs"] == "EPSG:3035"
+        assert "geometry" not in schema.attributes
+        assert "Shape" not in set(_ctypes_written(revision)), "a shape is no entity"
+        assert record.dims["country"].df()["country"].tolist() == ["DE", "FR"], (
+            "a shape-made dim's labels are the shapes' `idx` in network order"
+        )
+        assert schema.properties["bus"]["country"].one_of == "country"
+        bus = record.properties["bus"].df().set_index("bus")
+        assert bus.loc["north", "shape_onshore"] == (
+            "POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))"
+        )
+        assert set(schema.properties["country"]) == {"shape_country", "shape_offshore"}
+        assert "shape_site" in schema.properties["entity"]
+
+        built = PyPSA.build(record)
+        assert built.crs == n.crs
+        assert "country DE offshore" in built.c.Shape.static.index, (
+            "a built shape is named `{component} {idx} {type}`"
+        )
+        expected = _shapes(n)
+        assert_geodataframe_equal(_shapes(built), expected, check_like=True)
+
+        child = _results_over(revision, built)
+        layer = Path(store.layer_dir(child.id)) / "dims"
+        assert not (layer / "country.parquet").exists(), (
+            "a results layer writes no shape"
+        )
+        rebuilt = PyPSA.build(child.record)
+        assert_geodataframe_equal(_shapes(rebuilt), expected, check_like=True)
+
+        for network in (built, n):
+            network.remove("Shape", network.c.Shape.static.index)
+        assert_networks_equal(built, n)
+
+    def test_two_components_outline_one_idx_with_one_type(self, store):
+        """A `Bus` and a `country` both labelled `north` each keep their `onshore` shape, the component naming them apart.
 
         Notes
         -----
         - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
         """
-        import pypsa
-        import shapely
-        from geopandas.testing import assert_geodataframe_equal
-
-        n = pypsa.Network()
-        n.to_crs("EPSG:3035")
-        n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
-        n.add("Bus", "north")
-        n.add(
-            "Shape",
-            ["north onshore", "north offshore"],
-            geometry=[shapely.box(0, 0, 1, 1), shapely.Point(2, 3)],
-            idx="north",
-            component="Bus",
-            type=["onshore", "offshore"],
+        n = _shaped()
+        _add_shape(n, idx="north", component="country", type="onshore")
+        built = PyPSA.build(export_network(n, store).record)
+        assert {"Bus north onshore", "country north onshore"} <= set(
+            built.c.Shape.static.index
         )
 
-        record = export_network(n, store).record
-        assert record.schema.meta["crs"] == "EPSG:3035"
-        stored = record.attributes["geometry"].df()
-        assert sorted(stored["value"]) == [
-            "POINT (2 3)",
-            "POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))",
-        ]
+    @pytest.mark.parametrize(
+        ("edit", "match"),
+        [
+            pytest.param(
+                lambda n: _add_shape(n, idx="north", component="Bus", type="onshore"),
+                r"share a `\(component, idx, type\)`",
+                id="duplicate",
+            ),
+            pytest.param(
+                lambda n: _add_shape(n, idx="north", type="onshore"),
+                "lack a `component`, `idx` or `type`",
+                id="no-component",
+            ),
+            pytest.param(
+                lambda n: _add_shape(n, idx="north", component="Bus"),
+                "lack a `component`, `idx` or `type`",
+                id="no-type",
+            ),
+            pytest.param(
+                lambda n: _add_shape(n, component="country", type="area"),
+                "lack a `component`, `idx` or `type`",
+                id="no-idx",
+            ),
+            pytest.param(
+                lambda n: _add_shape(
+                    n, idx="Atlantis", component="Bus", type="onshore"
+                ),
+                r"name \['Atlantis'\], no Bus",
+                id="not-a-label",
+            ),
+            pytest.param(
+                lambda n: _add_shape(n, idx="north", component="bus", type="onshore"),
+                "a dim PyPSA's schema declares",
+                id="pypsa-dim",
+            ),
+            pytest.param(
+                lambda n: _with_bus_column(n, "shape_own", "x"),
+                "no place",
+                id="custom-shape-column",
+            ),
+            pytest.param(
+                lambda n: _with_bus_column(n, "country", ["DE", "XX"]),
+                r"names \['XX'\], no label of `country`",
+                id="unknown-country",
+            ),
+        ],
+    )
+    def test_a_shape_naming_no_label_is_refused(self, workspace, edit, match):
+        """A shape is one value of a property of one label, so `to_datarecord` refuses one that names none.
+
+        Notes
+        -----
+        - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
+        """
+        n = _shaped()
+        edit(n)
+        with pytest.raises(ValueError, match=match):
+            PyPSA.to_datarecord(n, workspace.con)
+
+    def test_a_shape_made_dim_is_no_dim_of_its_own(self, store):
+        """A collection over a dim of its own beside the `country` shapes make builds back as a collection over that dim alone.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        members = {2013: _shaped(), 2014: _shaped()}
+        members[2014].c.Generator.static["p_nom"] = 2.0
+        layer = PyPSA.to_datarecord(
+            pypsa.NetworkCollection(members),
+            store.workspace.con,
+            collection_dim="weather_year",
+        )
+        record = store.root(layer).record
+        assert not PyPSA.verify(record), "`country` is not a second dim of its own"
         built = PyPSA.build(record)
-        assert built.crs == n.crs
-        assert_geodataframe_equal(built.c.Shape.static, n.c.Shape.static)
+        assert isinstance(built, pypsa.NetworkCollection)
+        assert built.index.name == "weather_year"
+
+    def test_a_stochastic_network_holds_its_shapes_per_scenario(self, store):
+        """A stochastic network's shapes are indexed by `(scenario, name)`, as its other components are.
+
+        Notes
+        -----
+        - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
+        """
+        from geopandas.testing import assert_geodataframe_equal
+
+        n = _shaped()
+        n.set_scenarios(["a", "b"])
+        built = PyPSA.build(export_network(n, store).record)
+        assert built.c.Shape.static.index.names == ["scenario", "name"]
+        assert_geodataframe_equal(_shapes(built), _shapes(n), check_like=True)
+
+    def test_a_bus_selection_keeps_every_label_a_shape_made(self, store):
+        """`country` is no dim `select` takes, so selecting buses keeps every country shape, though `bus.country` refers to it, and drops the other bus's.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        record = export_network(_shaped(), store).record
+        built = PyPSA.build(record, select={"bus": ["north"]})
+        outlined = _shapes(built).index.droplevel("type").unique().tolist()
+        assert outlined == [
+            ("Bus", "north"),
+            ("Generator", "gen"),
+            ("country", "DE"),
+            ("country", "FR"),
+        ]
+        with pytest.raises(ValueError, match="takes labels of"):
+            PyPSA.build(record, select={"country": "DE"})
 
     def test_sub_networks_are_labels_of_their_own_dim(self, store, ac_dc):
         """PyPSA numbers SubNetworks `0`, `1`, ... as it numbers Lines, which a dim of their own keeps apart.
@@ -1315,6 +1667,7 @@ class TestPyPSA:
             check_index_type=False,
         )
 
+    @pytest.mark.slow
     def test_a_child_reads_its_parents_results_and_the_latest_wins(
         self, exported, solved
     ):
@@ -1333,6 +1686,7 @@ class TestPyPSA:
         resolved = _results_over(revision, n)
         pd.testing.assert_frame_equal(_prices(empty_child(resolved)), expected * 2)
 
+    @pytest.mark.slow
     def test_a_re_solve_leaves_no_stale_sub_network(self, exported, solved):
         """A results layer replaces `base`'s SubNetworks rather than adding to them.
 
@@ -1357,8 +1711,10 @@ class TestPyPSA:
 
     @pytest.mark.parametrize(
         ("over_solved", "listed"),
-        [(False, None), (True, [])],
-        ids=["unsolved", "solved"],
+        [
+            pytest.param(False, None, id="unsolved"),
+            pytest.param(True, [], id="solved", marks=pytest.mark.slow),
+        ],
     )
     def test_results_without_sub_networks_list_none(
         self, exported, solved, over_solved, listed
@@ -1382,6 +1738,7 @@ class TestPyPSA:
         slack = record.attributes.get("slack_bus")
         assert slack is None or slack.df().empty, "no stale SubNetwork keeps a result"
 
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         ("ctype", "attr"), [("Line", "mu_upper"), ("Bus", "marginal_price")]
     )
@@ -1422,6 +1779,138 @@ class TestPyPSA:
         )
         pd.testing.assert_frame_equal(read(resolved, "p_nom"), read(base, "p_nom"))
 
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "select",
+        [
+            pytest.param({"bus": ["London", "Norwich"]}, id="bus"),
+            pytest.param({"entity": ["Manchester Wind", "0"]}, id="entity"),
+        ],
+    )
+    def test_a_re_solve_of_a_selection_restates_only_what_it_holds(
+        self, exported, solved, select
+    ):
+        """A selection's results replace `base`'s at the labels it holds, and leave every other label's, and the SubNetworks it numbers over itself alone, to `base`.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        base = _results_over(exported, solved)
+        n = PyPSA.build(base.record, select=select)
+        n.determine_network_topology()
+        n.c.Bus.dynamic["marginal_price"] += 1.0
+        resolved = _results_over(base, n)
+
+        before, after = (PyPSA.build(r.record) for r in (base, resolved))
+        topology = (r.c.SubNetwork.static.drop(columns="obj") for r in (after, before))
+        pd.testing.assert_frame_equal(*topology)
+        pd.testing.assert_series_equal(
+            after.c.Line.static["sub_network"], before.c.Line.static["sub_network"]
+        )
+        for ctype, attr in (
+            ("Bus", "marginal_price"),
+            ("Generator", "p"),
+            ("Line", "p0"),
+        ):
+            got, was = after.c[ctype].dynamic[attr], before.c[ctype].dynamic[attr]
+            held = n.c[ctype].dynamic[attr]
+            inside = pd.DataFrame(False, index=got.index, columns=got.columns)
+            inside.loc[held.index, held.columns] = True
+            pd.testing.assert_frame_equal(got.mask(inside), was.mask(inside), obj=attr)
+            pd.testing.assert_frame_equal(
+                got.loc[held.index, held.columns],
+                held,
+                check_names=False,
+                check_freq=False,
+                obj=attr,
+            )
+
+    @pytest.mark.slow
+    def test_a_re_solve_of_some_snapshots_keeps_bases_series_elsewhere(
+        self, exported, solved
+    ):
+        """Over a single-period `base`, a re-solve of some snapshots takes them and leaves `base`'s dispatch at the rest; one of snapshots `base` lacks is refused at the call.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        base = _results_over(exported, solved)
+        n = PyPSA.build(base.record, select={"snapshot": list(solved.snapshots[:2])})
+        n.c.Generator.dynamic["p"] += 100.0
+        built = PyPSA.build(_results_over(base, n).record).c.Generator.dynamic["p"]
+        expected = solved.c.Generator.dynamic["p"].copy()
+        expected.loc[n.snapshots] = n.c.Generator.dynamic["p"]
+        pd.testing.assert_frame_equal(
+            built[expected.columns], expected, check_names=False, check_freq=False
+        )
+        n.set_snapshots(n.snapshots + pd.DateOffset(years=100))
+        with pytest.raises(ValueError, match="snapshot labels `base` lacks"):
+            PyPSA.to_datarecord(n, base.record.con, results_only=True, base=base.record)
+
+    @pytest.mark.slow
+    def test_a_re_solve_of_a_scenario_in_a_list_keeps_the_others(self, stochastic):
+        """A network of one scenario kept in a list writes its results over `scenario` at that scenario alone, and one over no `scenario` for every scenario.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        n = PyPSA.build(stochastic.record)
+        buses = n.c.Bus.static.index
+        n.c.Bus.dynamic["marginal_price"] = pd.DataFrame(
+            1.0, index=n.snapshots, columns=buses
+        )
+        base = _results_over(stochastic, n)
+        m = PyPSA.build(base.record, select={"scenario": ["hi"]})
+        m.c.Bus.dynamic["marginal_price"] += 1.0
+        m.c.Generator.static["p_nom_opt"] = 9.0
+        built = PyPSA.build(_results_over(base, m).record)
+        prices = built.c.Bus.dynamic["marginal_price"]
+        assert (prices["hi"] == 2.0).all().all(), "the re-solved scenario's"
+        assert (prices[["lo", "mid"]] == 1.0).all().all(), "the others' kept"
+        assert (built.c.Generator.static["p_nom_opt"] == 9.0).all(), (
+            "a first-stage result is one value across every scenario"
+        )
+
+    @pytest.fixture
+    def swept(self, exported, sweep):
+        """`exported` with `sweep`'s results over the dim of its own `sensitivity`."""
+        return _results_over(exported, pypsa.NetworkCollection(sweep), "sensitivity")
+
+    @pytest.mark.parametrize(
+        ("base", "select", "match"),
+        [
+            pytest.param(
+                "stochastic",
+                {"scenario": "hi"},
+                "with the scenario in a list",
+                id="scenario",
+            ),
+            pytest.param(
+                "swept",
+                {"sensitivity": "lo"},
+                "the collection `build` gives",
+                id="own",
+                marks=pytest.mark.slow,
+            ),
+        ],
+    )
+    def test_a_network_of_one_label_is_refused_over_the_whole_dim(
+        self, request, base, select, match
+    ):
+        """A network built at one label of `scenario` or of a dim of its own writes results NULL on it, which would reach every label of `base`.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        revision = request.getfixturevalue(base)
+        n = PyPSA.build(revision.record, select=select)
+        with pytest.raises(ValueError, match=match):
+            _results_over(revision, n)
+
     def test_results_only_takes_base(self, single_revision, solved):
         """A results layer is written over the record it was built from.
 
@@ -1443,6 +1932,7 @@ class TestPyPSA:
                 collection_dim="sensitivity",
             )
 
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         ("attr", "value"), [("p_nom_extendable", False), ("marginal_cost", 0.0)]
     )
@@ -1462,6 +1952,7 @@ class TestPyPSA:
         child = PyPSA.build(exported.child(layer).record)
         assert child.c.Generator.static.at["Manchester Wind", attr] == value
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("attr", ["p_nom_extendable", "marginal_cost", "p_nom_min"])
     @pytest.mark.parametrize(
         "entity",
@@ -1854,31 +2345,25 @@ class TestPyPSA:
     def test_a_multi_period_snapshot_is_one_flat_axis(
         self, multiperiod, multiperiod_revision
     ):
-        """A repeated timestep makes the labels positions; a distinct one is the label.
+        """A multi-period snapshot is labelled by its position, its timesteps repeating or not.
 
         Notes
         -----
         - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
         """
         schema = multiperiod_revision.record.schema
         timesteps = multiperiod.snapshots.get_level_values("timestep")
-        repeated = not timesteps.is_unique
         labels = multiperiod_revision.record.dims["snapshot"].df()["snapshot"]
-        expected = list(range(len(timesteps))) if repeated else list(timesteps)
-        assert labels.tolist() == expected
-        assert schema.dimensions["snapshot"].dtype == (
-            "int" if repeated else "datetime"
-        )
-        assert set(schema.properties["snapshot"]) == (
-            {"period", "timestep"} if repeated else {"period"}
-        ), "a timestep property only where the label is a position"
+        assert labels.tolist() == list(range(len(timesteps)))
+        assert schema.dimensions["snapshot"].dtype == "int"
+        assert set(schema.properties["snapshot"]) == {"period", "timestep"}
         assert schema.properties["snapshot"]["period"].one_of == "period"
-        if repeated:
-            assert schema.properties["snapshot"]["timestep"].one_of == "timestep", (
-                "a timestep is a label of the `timestep` dim"
-            )
-            steps = multiperiod_revision.record.dims["timestep"].df()["timestep"]
-            assert steps.tolist() == list(timesteps.unique()), "each timestep once"
+        assert schema.properties["snapshot"]["timestep"].one_of == "timestep", (
+            "a timestep is a label of the `timestep` dim"
+        )
+        steps = multiperiod_revision.record.dims["timestep"].df()["timestep"]
+        assert steps.tolist() == list(timesteps.unique()), "each timestep once"
         assert schema.attributes["p_max_pu"].dims == {
             "entity",
             "snapshot",
@@ -1940,6 +2425,7 @@ class TestPyPSA:
             check_index_type=False,
         )
 
+    @pytest.mark.slow
     def test_a_myopic_solve_writes_the_results_of_one_solve(
         self, multiperiod_revision, multiperiod_solved
     ):
@@ -1974,7 +2460,9 @@ class TestPyPSA:
             ),
             pytest.param(_relabelled, "has investment periods", id="period"),
             pytest.param(
-                _with_newcomer, r"Generator `base` lacks: \['Newcomer'\]", id="entity"
+                _with_newcomer,
+                r"entity labels `base` lacks: \['Newcomer'\]",
+                id="entity",
             ),
             pytest.param(_stochastic, "is stochastic", id="stochastic"),
         ],
@@ -1999,6 +2487,7 @@ class TestPyPSA:
                 collection_dim="period",
             )
 
+    @pytest.mark.slow
     def test_a_myopic_solve_exports_the_network_of_one_solve(
         self, store, multiperiod_solved
     ):
@@ -2018,6 +2507,296 @@ class TestPyPSA:
         for name, frame in expected.items():
             pd.testing.assert_frame_equal(actual[name], frame, obj=name)
 
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        ("periods", "period", "results_only"),
+        [
+            pytest.param("both", 2030, True, id="both-results-first"),
+            pytest.param("both", 2040, True, id="both-results-second"),
+            pytest.param("one", 2030, True, id="one-results"),
+            pytest.param("one", 2030, False, id="one-export"),
+        ],
+    )
+    def test_a_network_of_one_period_writes_over_a_multi_period_base(
+        self,
+        store,
+        multiperiod,
+        multiperiod_revision,
+        multiperiod_solved,
+        periods,
+        period,
+        results_only,
+    ):
+        """A network carrying one of `base`'s investment periods writes its results at that period.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        member = _myopic(multiperiod_solved)[period]
+        base = (
+            multiperiod_revision
+            if periods == "both"
+            else store.root(
+                PyPSA.to_datarecord(
+                    pypsa.NetworkCollection({period: _myopic(multiperiod)[period]}),
+                    store.workspace.con,
+                    collection_dim="period",
+                )
+            )
+        )
+        layer = PyPSA.to_datarecord(
+            member, base.record.con, results_only=results_only, base=base.record
+        )
+        built = PyPSA.build(base.child(layer).record, select={"period": [period]})
+        _assert_results_equal(built, member)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("period", [2030, 2040])
+    def test_a_period_built_as_a_list_solves_and_writes_back(
+        self, multiperiod_revision, period
+    ):
+        """A period selected as a list keeps its investment period, so its solve writes back over `base` as is.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        base = multiperiod_revision
+        select = {"period": [period]}
+        n = PyPSA.build(base.record, select=select)
+        n.optimize(solver_name="highs", multi_investment_periods=True)
+        n.model.solver_model = None
+        layer = PyPSA.to_datarecord(
+            n, base.record.con, results_only=True, base=base.record
+        )
+        _assert_results_equal(PyPSA.build(base.child(layer).record, select=select), n)
+
+    @pytest.mark.slow
+    def test_results_of_selected_snapshots_land_on_them(self, multiperiod_revision):
+        """A network of some snapshots of every period writes its results at `base`'s labels of them, and one of snapshots `base` lacks is refused at the call.
+
+        Notes
+        -----
+        - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
+        """
+        base = multiperiod_revision
+        n = PyPSA.build(
+            base.record,
+            select={"snapshot": slice("2015-01-01 02:00", "2015-01-01 03:00")},
+        )
+        held = n.c.Generator.static.index
+        p = pd.DataFrame(
+            np.arange(len(n.snapshots) * len(held), dtype=float).reshape(-1, len(held))
+            + 1,
+            index=n.snapshots,
+            columns=held,
+        )
+        n.c.Generator.dynamic["p"] = p
+        layer = PyPSA.to_datarecord(
+            n, base.record.con, results_only=True, base=base.record
+        )
+        built = PyPSA.build(base.child(layer).record).c.Generator.dynamic["p"]
+        pd.testing.assert_frame_equal(
+            built.loc[p.index, p.columns], p, check_names=False, check_freq=False
+        )
+        others = built.drop(index=p.index).fillna(0)
+        assert (others == 0).all().all(), "no other snapshot holds one"
+        periods, timesteps = (n.snapshots.get_level_values(i) for i in range(2))
+        n.set_snapshots(
+            pd.MultiIndex.from_arrays([periods, timesteps + pd.DateOffset(years=100)])
+        )
+        with pytest.raises(ValueError, match="snapshots `base` lacks"):
+            PyPSA.to_datarecord(n, base.record.con, results_only=True, base=base.record)
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("listed", [True, False], ids=["list", "label"])
+    def test_per_period_solves_written_in_turn_keep_each_others_results(
+        self, staggered_revision, listed
+    ):
+        """Each period built alone, solved and written over the last leaves the other periods' dispatch and the idle generators' capacities standing.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        revision, solves = staggered_revision, {}
+        for period in (2030, 2040, 2050):
+            select = {"period": [period] if listed else period}
+            solves[period] = _solve(PyPSA.build(revision.record, select=select))
+            revision = _results_over(revision, solves[period])
+        built = PyPSA.build(revision.record)
+        for period, n in solves.items():
+            _assert_dispatch_at(built, n, period)
+        capacities = [n.c.Generator.static["p_nom_opt"] for n in solves.values()]
+        latest = pd.concat(capacities).groupby(level=0).last()
+        assert latest["gen-2030"] > 0, "the first period's solve builds its generator"
+        pd.testing.assert_series_equal(
+            built.c.Generator.static["p_nom_opt"],
+            latest,
+            check_names=False,
+            check_index_type=False,
+        )
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize(
+        "select",
+        [{"period": [2040, 2050]}, {"period": [2040]}, {"period": 2040}],
+        ids=str,
+    )
+    def test_a_solve_of_some_periods_leaves_the_rest_to_base(
+        self, staggered_revision, select
+    ):
+        """Re-solved at double the load, the selected periods take the re-solve's results; the other periods' dispatch and the capacities of generators idle in the selected ones are `base`'s.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        whole = _solve(PyPSA.build(staggered_revision.record))
+        base = _results_over(staggered_revision, whole)
+        n = PyPSA.build(base.record, select=select)
+        n.c.Load.dynamic["p_set"] *= 2
+        built = PyPSA.build(_results_over(base, _solve(n)).record)
+
+        _assert_dispatch_at(built, n, 2040)
+        periods = n.investment_periods if n.investment_periods.size else [2040]
+        p = built.c.Generator.dynamic["p"]
+        others = ~p.index.get_level_values("period").isin(periods)
+        pd.testing.assert_frame_equal(
+            p[others], whole.c.Generator.dynamic["p"][others], check_names=False
+        )
+        expected = whole.c.Generator.static["p_nom_opt"].copy()
+        held = n.c.Generator.static["p_nom_opt"]
+        expected[held.index] = held
+        pd.testing.assert_series_equal(
+            built.c.Generator.static["p_nom_opt"],
+            expected,
+            check_names=False,
+            check_index_type=False,
+        )
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("source", ["built", "split"])
+    def test_a_period_collection_agrees_on_the_entities_active_in_each_period(
+        self, staggered_revision, source
+    ):
+        """Members built at their period hold its active generators alone; members split off one solve hold every one, an idle generator's capacity, here zeroed, counting for no member.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        record = staggered_revision.record
+        if source == "built":
+            members = {}
+            for p in (2030, 2040, 2050):
+                m = PyPSA.build(record, select={"period": [p]})
+                m.c.Generator.static["p_nom_extendable"] = False
+                m.c.Generator.static["p_nom"] = 100.0
+                members[p] = _solve(m)
+        else:
+            members = _myopic(_solve(PyPSA.build(record)))
+            for p in (2040, 2050):
+                members[p].c.Generator.static.loc["gen-2030", "p_nom_opt"] = 0.0
+        layer = _results_over(
+            staggered_revision, pypsa.NetworkCollection(members), "period"
+        )
+        built = PyPSA.build(layer.record)
+
+        for p, m in members.items():
+            _assert_dispatch_at(built, m, p)
+        active = [
+            m.c.Generator.static["p_nom_opt"][m.get_active_assets("Generator", p)]
+            for p, m in members.items()
+        ]
+        expected = pd.concat(active).groupby(level=0).first()
+        assert expected["gen-2030"] > 0, "built in its own period"
+        pd.testing.assert_series_equal(
+            built.c.Generator.static["p_nom_opt"],
+            expected,
+            check_names=False,
+            check_index_type=False,
+        )
+
+    @pytest.mark.parametrize(
+        ("period", "held"),
+        [
+            (2040, ["gen-2040"]),
+            ([2040], ["gen-2040"]),
+            ([2030, 2040], ["gen-2030", "gen-2040"]),
+            (slice(2040, None), ["gen-2040", "gen-2050"]),
+        ],
+        ids=str,
+    )
+    def test_selected_periods_hold_the_entities_active_in_them(
+        self, staggered_revision, period, held
+    ):
+        """A list or slice of periods drops a generator active in none of them, as one period squeezed does.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        built = PyPSA.build(staggered_revision.record, select={"period": period})
+        assert built.c.Generator.static.index.tolist() == held
+
+    def test_a_child_whose_timesteps_repeat_otherwise_builds_back(
+        self, staggered_revision, layout
+    ):
+        """Snapshots are positions whether timesteps repeat or not, so a child moving them restates `snapshot.timestep` alone.
+
+        Notes
+        -----
+        - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
+        """
+        other = _staggered("distinct" if layout == "repeated" else "repeated")
+        record = staggered_revision.record
+        child = staggered_revision.child(
+            PyPSA.to_datarecord(other, record.con, base=record)
+        )
+        pd.testing.assert_index_equal(
+            PyPSA.build(child.record).snapshots, other.snapshots, exact=False
+        )
+
+    @pytest.mark.parametrize(
+        ("network", "results_only", "match"),
+        [
+            pytest.param(
+                "plain", False, "with `results_only=True` only", id="no-period-export"
+            ),
+            pytest.param(
+                "plain",
+                True,
+                "carries investment periods of it",
+                id="no-period-results",
+            ),
+            pytest.param(
+                "member", False, "with `results_only=True` only", id="one-period-export"
+            ),
+        ],
+    )
+    def test_a_network_over_a_multi_period_base_names_its_periods(
+        self,
+        multiperiod_revision,
+        multiperiod_solved,
+        solved,
+        network,
+        results_only,
+        match,
+    ):
+        """A network not carrying all of `base`'s periods carries some, or was built at one, and is written as results, refused at the call.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        n = solved if network == "plain" else _myopic(multiperiod_solved)[2030]
+        record = multiperiod_revision.record
+        with pytest.raises(ValueError, match=match):
+            PyPSA.to_datarecord(n, record.con, results_only=results_only, base=record)
+
     @pytest.mark.parametrize("collection", [True, False], ids=["collection", "network"])
     def test_collection_dim_is_given_exactly_for_a_collection(self, ac_dc, collection):
         model = pypsa.NetworkCollection({2030: ac_dc}) if collection else ac_dc
@@ -2025,6 +2804,7 @@ class TestPyPSA:
         with pytest.raises(ValueError, match="`collection_dim` exactly when"):
             PyPSA.to_datarecord(model, duckdb.connect(), collection_dim=dim)
 
+    @pytest.mark.slow
     @pytest.mark.parametrize("results_only", [False, True], ids=["export", "results"])
     def test_a_collection_over_a_dim_of_its_own_builds_back(
         self, store, exported, sweep, results_only
@@ -2119,25 +2899,16 @@ class TestPyPSA:
         record = store.root(layer).record
         assert ("sensitivity" in record.schema.attributes[attr].dims) == varies
 
-    @pytest.mark.parametrize("collection", [True, False], ids=["collection", "network"])
-    def test_a_re_solve_writes_once_what_agrees_over_the_dim(
-        self, exported, sweep, solved, collection
-    ):
+    @pytest.mark.slow
+    def test_a_re_solve_writes_once_what_agrees_over_the_dim(self, swept, solved):
         """Results over a `base` whose result varies over the collection's dim are written without it where they agree, reaching every label.
 
         Notes
         -----
         - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
         """
-        swept = _results_over(exported, pypsa.NetworkCollection(sweep), "sensitivity")
-        if collection:
-            model, dim = (
-                pypsa.NetworkCollection({"lo": solved, "hi": solved.copy()}),
-                "sensitivity",
-            )
-        else:
-            model, dim = solved, None
-        record = _results_over(swept, model, dim).record
+        model = pypsa.NetworkCollection({"lo": solved, "hi": solved.copy()})
+        record = _results_over(swept, model, "sensitivity").record
         assert "sensitivity" in record.schema.attributes["p_nom_opt"].dims
         rows = record.attributes["p_nom_opt"].df()
         assert rows["sensitivity"].isna().all(), "written once, at every label"
@@ -2158,6 +2929,18 @@ class TestPyPSA:
             pytest.param(_reordered_buses, "sensitivity", "orders `bus`", id="order"),
             pytest.param(
                 _with_custom_column, "scenario", "declares other", id="schema"
+            ),
+            pytest.param(
+                _with_custom_column_on_other_types,
+                "sensitivity",
+                "declares other",
+                id="custom-columns",
+            ),
+            pytest.param(
+                _with_region_shapes,
+                "region",
+                "names a dim the members' shapes make",
+                id="shape-made-dim",
             ),
             pytest.param(
                 _with_newcomer,
@@ -2289,6 +3072,16 @@ class TestPyPSA:
         assert held == expected
         built.consistency_check(strict=["unknown_buses", "unknown_carriers"])
 
+    def test_a_selection_keeps_rows_in_their_order(self, single_revision):
+        """The rows a selection keeps are in their relation's order, however many DuckDB filters in parallel."""
+        record = single_revision.record
+        ids = np.arange(1_000_000)
+        buses = np.array(["London", "Norwich", "Bremen"])[ids % 3]
+        rel = record.con.from_df(pd.DataFrame({"id": ids, "bus": buses}))
+        kept = _select(record, {"bus": ["London", "Bremen"]})._kept(rel)
+        held = kept.project("id").fetchnumpy()["id"]
+        np.testing.assert_array_equal(held, ids[buses != "Norwich"])
+
     @_SNAPSHOT_SELECTIONS
     def test_selected_snapshots_are_the_networks(
         self, single_revision, ac_dc, value, hours
@@ -2313,7 +3106,7 @@ class TestPyPSA:
     def test_a_timestamp_selects_its_snapshot_in_every_period(
         self, multiperiod, multiperiod_revision, ac_dc, value, hours
     ):
-        """Over periods repeating their timesteps, a snapshot's label is a position and its timestamp names one in each period.
+        """A multi-period snapshot's label is a position, and its timestamp names one in each period holding it.
 
         Notes
         -----
@@ -2343,12 +3136,15 @@ class TestPyPSA:
         assert list(built.snapshots) == list(ac_dc.snapshots[hours])
 
     @pytest.mark.parametrize("layout", ["distinct"], indirect=True)
-    def test_a_selection_leaving_no_snapshot_is_refused(self, multiperiod_revision):
+    @pytest.mark.parametrize("period", [2040, [2040]], ids=["label", "list"])
+    def test_a_selection_leaving_no_snapshot_is_refused(
+        self, multiperiod_revision, period
+    ):
         """Split between the periods, the first hour is 2030's alone."""
         with pytest.raises(ValueError, match="leaves no snapshot"):
             PyPSA.build(
                 multiperiod_revision.record,
-                select={"period": 2040, "snapshot": "2015-01-01 00:00"},
+                select={"period": period, "snapshot": "2015-01-01 00:00"},
             )
 
     def test_dims_selected_together_combine(self, store, multiperiod):
@@ -2388,6 +3184,7 @@ class TestPyPSA:
         built = PyPSA.build(record, select={"period": 2030, "sensitivity": "hi"})
         assert "Manchester Gas" not in built.c.Generator.static.index
 
+    @pytest.mark.slow
     def test_one_period_reads_activity_at_the_kept_labels_alone(
         self, store, multiperiod
     ):
@@ -2554,6 +3351,7 @@ class TestPyPSA:
         weights = built.scenario_weightings["weight"].to_dict()
         assert weights == pytest.approx(expected)
 
+    @pytest.mark.slow
     def test_selected_scenarios_are_renormalised_per_member(self, store, ac_dc):
         """Each member of a collection renormalises the kept scenarios' weights of its own."""
         stored = {
@@ -2585,7 +3383,12 @@ class TestPyPSA:
             PyPSA.build(record, select={"scenario": ["lo", "mid"]})
 
     @pytest.mark.parametrize(
-        "value", [2013, [2013], slice(2013, None)], ids=["scalar", "list", "slice"]
+        "value",
+        [
+            pytest.param(2013, id="scalar", marks=pytest.mark.slow),
+            pytest.param([2013], id="list"),
+            pytest.param(slice(2013, None), id="slice"),
+        ],
     )
     def test_a_dim_of_its_own_selected_is_a_network_or_a_collection(
         self, store, sweep, value
@@ -2617,7 +3420,10 @@ class TestPyPSA:
         ("select", "match"),
         [
             pytest.param({"role": "input"}, "takes labels of", id="role"),
-            pytest.param({"sub_network": "0"}, "takes labels of", id="sub_network"),
+            *(
+                pytest.param({dim: "x"}, "takes labels of", id=dim)
+                for dim in ("sub_network", "line_type", "transformer_type")
+            ),
             pytest.param({"ctype": "Generator"}, "takes labels of", id="ctype"),
             pytest.param({"weather_year": 2020}, "takes labels of", id="undeclared"),
             pytest.param({"bus": "Atlantis"}, "'Atlantis', a label", id="bus"),
