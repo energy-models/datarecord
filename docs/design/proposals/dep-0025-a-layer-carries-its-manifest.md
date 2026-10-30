@@ -96,7 +96,18 @@ A layer with a manifest is never deleted. An id that is not pending is refused, 
 
 ### Listing and the cache
 
-`revisions()` lists `layers/` once and reads the manifest of each layer the workspace's `revisions` table lacks. `revisions(meta={...})` returns those whose `meta` holds every pair given, as one query over the table. `claims()` lists the pending ones from their claim files. The table caches `(location, id, parent, meta)` and only committed revisions, since a pending one can still commit.
+The workspace caches each committed manifest whole, since none ever changes:
+
+```sql
+revisions(location VARCHAR, id UUID, parent UUID, meta JSON,
+          files STRUCT(dims VARCHAR[], attributes VARCHAR[]), schema VARCHAR,
+          PRIMARY KEY (location, id))
+schemas(hash VARCHAR PRIMARY KEY, schema JSON)
+```
+
+A revision's `schema` is the hash of its schema's JSON, and `schemas` holds each distinct schema once, so a chain that repeats its parent's schema stores it once. On a warm cache, building a `Record` reads no file. `meta` is JSON so that its values keep their types.
+
+`revisions()` lists `layers/` once and reads the manifest of each layer the table lacks; `revision(id)` reads that manifest and each parent's the table lacks. `revisions(meta={...})` returns those whose `meta` holds every pair given, as one query over the table. Rows are only ever added, as today. `claims()` reads the claim files each time and caches nothing, since a pending layer can still commit, and `cleanup` deletes only pending layers, so it never invalidates a row.
 
 ### `Files`
 
@@ -148,7 +159,7 @@ store.cleanup(older_than=timedelta(days=14))
 1. `Manifest` and `claim.json`; `Schema.id` goes.
 2. The write path: claim, data into `layers/<id>/`, check against the parent's schema, manifest create-only. `store.claim`, `claim.commit` and `store.commit` replace `store.root` and `rev.child`; the staging rename and `reconcile_schema` go.
 3. The read path: a layer's schema and files from its manifest; `ws.at` and `store.layer` share it; no glob into a layer.
-4. `revisions()`, `revision()` and `ancestry()` read manifests; the `revisions` table gains `meta`.
+4. `revisions()`, `revision()` and `ancestry()` read manifests; the `revisions` table caches them whole, beside the `schemas` table.
 5. `Claim` and its serialisation, `claims()`, `revisions(meta=...)` and `cleanup`; `Files.delete`; `Files`' `Version` goes.
 6. Pages: [store](../storage/store.md), [concurrency](../storage/concurrency.md), [format](../storage/format.md), [schema](../model/schema.md#one-schema-per-record), [resolution](../layers/resolution.md#materialised-node-caches), [tree](../layers/tree.md#a-layers-data-is-write-once), [writing](../use/writing.md).
 
