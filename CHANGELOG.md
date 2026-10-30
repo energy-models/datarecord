@@ -339,6 +339,9 @@ All notable changes to datarecord are documented here. The format follows
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
   the same for one relation, dropping rows that name a label outside `labels`.
+- A `NetworkCollection` over a dim of its own or `scenario` checks its
+  members' axes and properties before any attribute, so differing SubNetworks
+  are refused before the attributes are compared.
 
 ### Removed
 

@@ -3790,7 +3790,8 @@ class _StackedSource:
     ) -> _StackedSource:
         """`members`, each source by its label of `dim`, as one record, checked whole.
 
-        Their axes and properties are one union (`_axis_union`). An attribute
+        Their axes and properties are one union (`_axis_union`), checked
+        before any attribute. An attribute
         whose rows differ across the members (`_difference`) is over `dim`,
         each member's rows at its label; any other is held once. A
         `scenario` collection's scenarios weigh equally.
@@ -3823,6 +3824,17 @@ class _StackedSource:
                 "collection's index is `period`, `scenario` or a dim of its own"
             )
             raise ValueError(msg)
+        held_dims = {label: m.dims for label, m in members.items()}
+        dims = {
+            d: _axis_union(schema, d, _held(held_dims, d), dim, con)
+            for d in _keys(held_dims)
+            if d != dim
+        }
+        held_properties = {label: m.properties for label, m in members.items()}
+        properties = {
+            s: _axis_union(schema, s, _held(held_properties, s), dim, con)
+            for s in _keys(held_properties)
+        }
         labels = list(members)
         attributes = {label: m.attributes for label, m in members.items()}
         differences = {
@@ -3840,19 +3852,8 @@ class _StackedSource:
                     )
                     raise ValueError(msg)
         schema = _widened(schema, dim, labels, differing)
-        held_dims = {label: m.dims for label, m in members.items()}
-        dims = {
-            d: _axis_union(schema, d, _held(held_dims, d), dim, con)
-            for d in _keys(held_dims)
-            if d != dim
-        }
         axis = con.from_df(pd.DataFrame({dim: labels}))
         dims[dim] = cast_declared(schema, axis, dim)
-        held_properties = {label: m.properties for label, m in members.items()}
-        properties = {
-            s: _axis_union(schema, s, _held(held_properties, s), dim, con)
-            for s in _keys(held_properties)
-        }
         rows = {}
         for attr in _keys(attributes):
             held = _held(attributes, attr)

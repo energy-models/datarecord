@@ -502,6 +502,11 @@ def _moved_bus(members):
     return members
 
 
+def _moved_bus_and_capacity(members):
+    members["hi"].c.Generator.static.loc["Norway Gas", "p_nom"] += 1.0
+    return _moved_bus(members)
+
+
 def _reordered_buses(members):
     members["hi"].c.Bus.static = members["hi"].c.Bus.static.iloc[::-1]
     return members
@@ -2926,6 +2931,12 @@ class TestPyPSA:
             pytest.param(dict, "bus", "names a dim the PyPSA schema", id="pypsa-dim"),
             pytest.param(_stochastic, "scenario", "is stochastic", id="stochastic"),
             pytest.param(_moved_bus, "sensitivity", "'London' has `x`", id="property"),
+            pytest.param(
+                _moved_bus_and_capacity,
+                "scenario",
+                "'London' has `x`",
+                id="axes-before-attributes",
+            ),
             pytest.param(_reordered_buses, "sensitivity", "orders `bus`", id="order"),
             pytest.param(
                 _with_custom_column, "scenario", "declares other", id="schema"

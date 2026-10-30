@@ -286,6 +286,7 @@ solved = inputs.child(
 Each member is written as a network on its own would be.
 An attribute whose values agree across the members is written once, as declared, without the dim.
 One whose values differ, a member holding a value another lacks included, holds each member's values at its label.
+The members' axes and properties are checked before any attribute, so members that cannot be one union are refused before their attributes are compared.
 A member holds the components the first one does, and one holding others is refused: the record holds a component at every label, so one a member lacked would read its defaults at that member's label.
 
 The collection's axis holds its labels in order, restated whole on either path.
