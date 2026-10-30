@@ -15,6 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import reduce
+from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
@@ -24,7 +25,7 @@ from duckdb.sqltypes import VARCHAR
 from datarecord.duck import fn, values_relation
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.sources import LayerSource
-from datarecord.schema.schema import Schema
+from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
 
 
 def _fold_axis(
@@ -375,6 +376,7 @@ def resolve_coords(
     keep = mortal(schema)
     axes: dict[str, DuckDBPyRelation] = {}
     dead: dict[str, DuckDBPyRelation] = {}
+    dim_owners: dict[str, UUID] = {}
     for name in schema.dimensions:
         if name in schema.one_of_dims:
             axes[name] = one_of_axis(schema, name, con)
@@ -389,6 +391,10 @@ def resolve_coords(
         if rel is None:
             continue
         axes[name] = rel
+        if files:
+            dim_owners[name] = files[-1][0].layer_id
+        elif base is not None:
+            dim_owners[name] = base.dim_owners[name]
         if name not in keep:
             continue
         before = None if base is None else base.dead.get(name)
@@ -397,7 +403,7 @@ def resolve_coords(
             before = _dead_keys(held, rel, name)
         if before is not None:
             dead[name] = before
-    return Coords(schema=schema, axes=axes, dead=dead)
+    return Coords(schema=schema, axes=axes, dead=dead, dim_owners=dim_owners)
 
 
 def resolve_one(
@@ -464,6 +470,9 @@ class Coords:
         column alone - its properties ride along; a multi-dim's is keyed by
         its struct column. A dim with no rows anywhere is absent rather than
         present-and-empty.
+    dim_owners : dict of str to UUID
+        Each folded axis's owner: the layer whose `dims/<dim>.parquet` it
+        resolved to. A dim with `one_of` has none, its axis being the schema's.
     dead : dict of str to DuckDBPyRelation
         Each `mortal` coordinate's dead labels, keyed as its axis.
 
@@ -476,4 +485,27 @@ class Coords:
 
     schema: Schema
     axes: dict[str, DuckDBPyRelation]
+    dim_owners: dict[str, UUID]
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
+
+    def owners(self, con: DuckDBPyConnection) -> DuckDBPyRelation:
+        """Return `(dim, layer_uuid, has_dead)`, one row per `dim_owners` entry.
+
+        `has_dead` says whether the dim has dead labels; every dim with dead
+        labels has an axis, so none is left out.
+
+        Notes
+        -----
+        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        """
+        return con.sql(
+            "SELECT unnest($dims::VARCHAR[]) AS dim, "
+            f"unnest($layers::VARCHAR[])::{LAYER_UUID_TYPE} AS {LAYER_COLUMN}, "
+            "unnest($dead::BOOLEAN[]) AS has_dead",
+            params={
+                "dims": list(self.dim_owners),
+                "layers": [str(u) for u in self.dim_owners.values()],
+                "dead": [d in self.dead for d in self.dim_owners],
+            },
+        )

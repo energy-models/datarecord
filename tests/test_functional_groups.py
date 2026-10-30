@@ -409,8 +409,8 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(store):
     """A node cache is an optimisation, so a fold without one answers the same.
 
     `ancestry_to_read` keeps an unmaterialised ancestor in the ancestry, so the
-    dirs it is folded over must name that layer's raw `dims/` and not only the
-    `resolved/dims/` it has never written.
+    dirs it is folded over must name that layer's raw `dims/` and not only a
+    cache it has never written.
     """
     revision = empty_root(store)
     write_schema(_budget_schema(), store)

@@ -60,7 +60,7 @@ v.set("p_max_pu", 0.9, entity="wind")  # its child
 
 ## Materialising
 
-`materialise()` writes a revision's owner map and resolved axes under `layers/<id>/resolved/`.
+`materialise()` writes a revision's owner map, and which layer holds each resolved axis, under `layers/<id>/resolved/`.
 A descendant's read then stops there and walks no further towards the root.
 Materialising is a policy that you apply when you choose.
 It changes no answer, only how many layers a read touches ([design](../design/layers/resolution.md#materialised-node-caches)):
