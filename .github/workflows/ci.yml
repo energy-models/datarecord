@@ -56,4 +56,4 @@ jobs:
         with:
           environments: ${{ matrix.environment }}
       - name: Run pytest
-        run: pixi run -e ${{ matrix.environment }} test-coverage --color=yes
+        run: pixi run -e ${{ matrix.environment }} ${{ runner.os == 'Windows' && 'test-all' || 'test-coverage' }} --color=yes
