@@ -49,7 +49,7 @@ Each layer carries its own `manifest.json`: its id, its parent, the full schema 
 ### The layer manifest
 
 ```python
-class LayerManifest(BaseModel):
+class Manifest(BaseModel):
     id: UUID
     parent: UUID | None
     schema: Schema  # full, not a delta
@@ -158,7 +158,7 @@ store.cleanup(older_than=timedelta(days=14))
 
 ## Implementation notes
 
-1. `LayerManifest` and `claim.json`; `Schema.id` goes.
+1. `Manifest` and `claim.json`; `Schema.id` goes.
 2. The write path: claim, data into `layers/<id>/`, check against the parent's schema, manifest create-only. `store.claim`, `claim.commit` and `store.commit` replace `store.root` and `rev.child`; the staging rename and `reconcile_schema` go.
 3. The read path: a layer's schema and files from its manifest; `ws.at` and `store.layer` share it; no glob into a layer.
 4. `revisions()`, `revision()` and `ancestry()` read manifests; the `revisions` table gains `meta`.
