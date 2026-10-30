@@ -339,6 +339,15 @@ All notable changes to datarecord are documented here. The format follows
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
   the same for one relation, dropping rows that name a label outside `labels`.
+- A `NetworkCollection` over a dim of its own or `scenario` compares its
+  members in DuckDB rather than in pandas, and checks their axes and
+  properties before any attribute, so differing SubNetworks are refused before
+  the attributes are compared. An attribute whose values differ is written at
+  each label only for the owner keys, such as an entity, where the members
+  differ; the rest is written once, NULL on the dim. An owner key's whole
+  extent along `snapshot` and every other dim outside `partial` is written
+  one way or the other, never split. Members' values now agree within the
+  tolerance across all of them at once rather than each against the first.
 
 ### Removed
 

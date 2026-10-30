@@ -481,13 +481,33 @@ def _without_a_series(members):
     return members
 
 
-def _costing(lo: float, hi: float):
+def _costing(*costs: float):
     def edit(members):
-        members["lo"].c.Generator.static.loc["Norway Gas", "marginal_cost"] = lo
-        members["hi"].c.Generator.static.loc["Norway Gas", "marginal_cost"] = hi
-        return members
+        extra = {f"m{i}": members["lo"].copy() for i in range(len(members), len(costs))}
+        costed = {**members, **extra}
+        for n, cost in zip(costed.values(), costs, strict=True):
+            n.c.Generator.static.loc["Norway Gas", "marginal_cost"] = cost
+        return costed
 
     return edit
+
+
+def _member_values(built, label, values):
+    """`values` of `built`'s member at `label`, a collection's network or a stochastic network's scenario."""
+    if isinstance(built, pypsa.NetworkCollection):
+        return values(built.networks[label])
+    got = values(built)
+    return got.xs(label, axis=int(isinstance(got, pd.DataFrame)), level="scenario")
+
+
+def _a_series_halved(members):
+    members["hi"].c.Generator.dynamic["p_max_pu"]["Norway Wind"] *= 0.5
+    return members
+
+
+def _moved_bus_and_capacity(members):
+    members["hi"].c.Generator.static.loc["Norway Gas", "p_nom"] += 1.0
+    return _moved_bus(members)
 
 
 def _two_levels(members):
@@ -2879,12 +2899,31 @@ class TestPyPSA:
                 _costing(np.inf, -np.inf), "marginal_cost", True, id="inf-sign"
             ),
             pytest.param(_costing(np.inf, np.inf), "marginal_cost", False, id="inf"),
+            pytest.param(
+                _costing(1.0, 1.0 + 1e-7), "marginal_cost", False, id="within-tol"
+            ),
+            pytest.param(
+                _costing(1.0, 1.0 + 1e-4), "marginal_cost", True, id="beyond-tol"
+            ),
+            pytest.param(_costing(-1e9, 1e9), "marginal_cost", True, id="sign"),
+            pytest.param(
+                _costing(1.0, 1.0 + 4e-6, 1.0 + 8e-6),
+                "marginal_cost",
+                False,
+                id="three-within-tol",
+            ),
+            pytest.param(
+                _costing(1.0, 1.0 + 9e-6, 1.0 - 9e-6),
+                "marginal_cost",
+                True,
+                id="three-spread-beyond-tol",
+            ),
         ],
     )
     def test_a_collection_varies_what_a_member_holds_otherwise(
         self, store, ac_dc, edit, attr, varies
     ):
-        """A member holding an attribute at its defaults alone, lacking a row another holds, or an infinity of another sign or a finite value, differs.
+        """A member holding an attribute at its defaults alone, lacking a row another holds, a value beyond the tolerance of all members at once, or an infinity of another sign or a finite value, differs.
 
         Notes
         -----
@@ -2898,6 +2937,76 @@ class TestPyPSA:
         )
         record = store.root(layer).record
         assert ("sensitivity" in record.schema.attributes[attr].dims) == varies
+
+    @pytest.mark.parametrize("dim", ["sensitivity", "scenario"])
+    @pytest.mark.parametrize(
+        ("edit", "attr", "entity", "values"),
+        [
+            pytest.param(
+                _a_series_halved,
+                "p_max_pu",
+                "Norway Wind",
+                lambda n: n.c.Generator.dynamic["p_max_pu"],
+                id="series",
+            ),
+            pytest.param(
+                _without_a_series,
+                "p_max_pu",
+                "Norway Wind",
+                lambda n: n.c.Generator.dynamic["p_max_pu"],
+                id="series-held-by-some",
+            ),
+            pytest.param(
+                _costing(10.0, 20.0),
+                "marginal_cost",
+                "Norway Gas",
+                lambda n: n.c.Generator.static["marginal_cost"],
+                id="static",
+            ),
+        ],
+    )
+    def test_a_collection_writes_once_the_entities_its_members_agree_on(
+        self, store, ac_dc, edit, attr, entity, values, dim
+    ):
+        """Only the entity whose values differ is written at each label holding it, its whole extent there; the others once, NULL on the dim, and each member reads back.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        """
+        members = edit({"lo": ac_dc.copy(), "hi": ac_dc.copy()})
+        record = _collection(members, store, None, dim, results_only=False)
+        rows = record.attributes[attr].df()
+        once = rows[rows[dim].isna()]
+        labelled = rows.dropna(subset=dim)
+        assert set(labelled["entity"]) == {entity}, "only the differing entity"
+        assert entity not in set(once["entity"]), "an owner key is never split"
+        assert not once.empty, "the agreeing entities are written once"
+        extents = {
+            label: np.size(values(n)[entity])
+            for label, n in members.items()
+            if entity in values(n)
+        }
+        assert labelled.groupby(dim).size().to_dict() == extents, (
+            "the whole extent at each label holding it"
+        )
+        built = PyPSA.build(record)
+        for label, member in members.items():
+            expected = values(member)
+            assert_equal = (
+                pd.testing.assert_frame_equal
+                if isinstance(expected, pd.DataFrame)
+                else pd.testing.assert_series_equal
+            )
+            assert_equal(
+                _member_values(built, label, values).reindex_like(expected),
+                expected,
+                check_names=False,
+                check_index_type=False,
+                check_dtype=False,
+                obj=label,
+            )
 
     @pytest.mark.slow
     def test_a_re_solve_writes_once_what_agrees_over_the_dim(self, swept, solved):
@@ -2926,6 +3035,12 @@ class TestPyPSA:
             pytest.param(dict, "bus", "names a dim the PyPSA schema", id="pypsa-dim"),
             pytest.param(_stochastic, "scenario", "is stochastic", id="stochastic"),
             pytest.param(_moved_bus, "sensitivity", "'London' has `x`", id="property"),
+            pytest.param(
+                _moved_bus_and_capacity,
+                "scenario",
+                "'London' has `x`",
+                id="axes-before-attributes",
+            ),
             pytest.param(_reordered_buses, "sensitivity", "orders `bus`", id="order"),
             pytest.param(
                 _with_custom_column, "scenario", "declares other", id="schema"
