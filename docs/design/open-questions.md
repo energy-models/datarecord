@@ -78,10 +78,6 @@ mathspec spells it as a mathspec relation, `carrier_of: { key: generator, values
 
 PyPSA's `partial` gains `bus` so a layer patches one bus's `v_nom`, and every `partial` coordinate is paid for by every read ([keep it small](layers/tree.md#partial-the-granularity-of-an-override)). Measuring it on a pypsa-eur-sized record would settle it.
 
-### Whether a custom bus column can be a property
-
-It is an attribute over `bus` today, so custom `Bus.country` beside custom `Generator.country` is [one attribute over two dims](tools/pypsa.md#custom-columns) and refused. Placing it as `bus.country` would dissolve the one remaining custom-column clash, but needs a rule telling a custom property from a custom attribute.
-
 ### Whether selector keywords need a qualified form
 
 A bare [selector](use/editing.md#set) naming a property of two dims one attribute reaches is refused. The only way to say which is meant is setting per dim.
