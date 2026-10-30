@@ -492,6 +492,9 @@ All notable changes to datarecord are documented here. The format follows
   the same for one relation, dropping rows that name a label outside `labels`.
 - A failed write, local or remote, leaves its files in the pending layer
   rather than staging them locally and renaming the directory into place.
+- A `NetworkCollection` over a dim of its own or `scenario` checks its
+  members' axes and properties before any attribute, so differing SubNetworks
+  are refused before the attributes are compared.
 
 ### Removed
 
