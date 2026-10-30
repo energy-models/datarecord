@@ -1945,6 +1945,7 @@ A record the tool writes builds back, so what a member may hold is decided by th
 A name the PyPSA schema declares otherwise, such as <code>bus</code> or <code>snapshot</code>, is refused.
 The record's network attributes, <code>meta</code> and CRS are the first member's.
 Every check runs when <code>to_datarecord</code> is called, on the members in memory, so a collection that does not fit is refused before anything is written.
+The members' axes and properties are checked before any attribute, so members that cannot be one union are refused before their attributes are compared.
 Two values agree where a float is within <code>numpy.isclose</code>'s default tolerance and any other value is equal, which decides both what must agree and what differs, and where the record holds one value it is the first member's.</p>
 <h3 id="over-period">Over <code>period</code><a class="headerlink" href="#over-period" title="Permanent link">&para;</a></h3>
 <p>A myopic solve is written as the one multi-period network holding every member's period, so a myopic and a perfect-foresight solve of one record are read the same way.
@@ -1966,7 +1967,8 @@ A single network over a multi-period <code>base</code> may carry any of its inve
 <h3 id="over-scenario-or-a-dim-of-its-own">Over <code>scenario</code> or a dim of its own<a class="headerlink" href="#over-scenario-or-a-dim-of-its-own" title="Permanent link">&para;</a></h3>
 <p>Each member is written as a network on its own would be.
 An attribute whose values agree across the members is written once, as declared, without the dim.
-One whose values differ, a member holding a value another lacks included, holds each member's values at its label.
+One whose values differ, a member holding a value another lacks included, is over the dim, its members compared per owner key: its dims in <code>partial</code> but the collection's (<a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a>).
+An owner key every member holds with values that agree along every other dim is written once, NULL on the dim, and any other is written whole at each member's label, so one entity's differing series puts that entity alone at every label.
 A member holds the components the first one does, and one holding others is refused: the record holds a component at every label, so one a member lacked would read its defaults at that member's label.</p>
 <p>The collection's axis holds its labels in order, restated whole on either path.
 The members' axes are one union, in the first member's order with each later member's new labels after it, and a member that orders shared labels otherwise is refused (<a href="../../model/dims/#axis-order">axis order</a>).

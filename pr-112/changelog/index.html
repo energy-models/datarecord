@@ -1293,6 +1293,15 @@ SPDX-License-Identifier: CC-BY-4.0
   each source by the broadcast rule over <code>labels</code> before a rename or a
   computation. <code>settle(rel, labels, flags)</code>, exported from <code>datarecord</code>, does
   the same for one relation, dropping rows that name a label outside <code>labels</code>.</li>
+<li>A <code>NetworkCollection</code> over a dim of its own or <code>scenario</code> compares its
+  members in DuckDB rather than in pandas, and checks their axes and
+  properties before any attribute, so differing SubNetworks are refused before
+  the attributes are compared. An attribute whose values differ is written at
+  each label only for the owner keys, such as an entity, where the members
+  differ; the rest is written once, NULL on the dim. An owner key's whole
+  extent along <code>snapshot</code> and every other dim outside <code>partial</code> is written
+  one way or the other, never split. Members' values now agree within the
+  tolerance across all of them at once rather than each against the first.</li>
 </ul>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
 <ul>
