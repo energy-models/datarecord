@@ -258,7 +258,6 @@ A record the tool writes builds back, so what a member may hold is decided by th
 A name the PyPSA schema declares otherwise, such as `bus` or `snapshot`, is refused.
 The record's network attributes, `meta` and CRS are the first member's.
 Every check runs when `to_datarecord` is called, on the members in memory, so a collection that does not fit is refused before anything is written.
-The members' axes and properties are checked before any attribute, so members that cannot be one union are refused before their attributes are compared.
 Two values agree where a float is within `numpy.isclose`'s default tolerance and any other value is equal, which decides both what must agree and what differs, and where the record holds one value it is the first member's.
 
 ### Over `period`
@@ -286,8 +285,7 @@ solved = inputs.child(
 
 Each member is written as a network on its own would be.
 An attribute whose values agree across the members is written once, as declared, without the dim.
-One whose values differ, a member holding a value another lacks included, is over the dim, its members compared per owner key: its dims in `partial` but the collection's ([`partial`](../layers/tree.md#partial-the-granularity-of-an-override)).
-An owner key every member holds with values that agree along every other dim is written once, NULL on the dim, and any other is written whole at each member's label, so one entity's differing series puts that entity alone at every label.
+One whose values differ, a member holding a value another lacks included, holds each member's values at its label.
 A member holds the components the first one does, and one holding others is refused: the record holds a component at every label, so one a member lacked would read its defaults at that member's label.
 
 The collection's axis holds its labels in order, restated whole on either path.

@@ -3648,143 +3648,39 @@ def _keys(relations: Mapping[Any, Relations]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(k for rels in relations.values() for k in rels))
 
 
-_APART = "_apart"
-
-
 def _difference(
-    schema: RecordSchema,
-    attr: str,
-    held: Mapping[Any, DuckDBPyRelation],
-    labels: Sequence[Any],
-    by: str,
-    con: DuckDBPyConnection,
-) -> DuckDBPyRelation | None:
-    """The owner keys of `attr` at which the members' `labels` of `by` differ; None where they agree throughout.
+    attr: str, held: Mapping[Any, DuckDBPyRelation], labels: Sequence[Any], by: str
+) -> str | None:
+    """Where `attr`'s rows, `held` by each member holding it, first differ across the members' `labels` of `by`; None where they agree.
 
-    An owner key is a coordinate of `attr`'s dims in `partial`, but `by`. The
-    members agree at it only where each holds every row under it along the
-    other dims and the values agree as `_clashing` says, compared in DuckDB
-    (`_clash`). The keys are fetched once, being few beside the rows they
-    own, so the comparison is not rerun by each join `_collected` makes; the
-    relation holds them typed as declared, one row and no owner column where
-    `attr` has no owner key.
-
-    Notes
-    -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-    - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+    A row held by one of two members differs, one held by both as `_clashing`
+    says. Each member is compared with the first alone, to hold two in memory.
     """
-    owner = _owner_keys(schema, attr, by)
-    flags = _row_clashes(schema, attr, held, len(labels)).aggregate(
-        ", ".join([*map(str, map(col, owner)), f"bool_or({_APART}) AS {_APART}"])
-    )
-    apart = flags.filter(col(_APART)).df()
-    return (
-        None
-        if apart.empty
-        else cast_declared(schema, con.from_df(apart), attribute=attr)
-    )
-
-
-def _first_difference(
-    schema: RecordSchema,
-    attr: str,
-    held: Mapping[Any, DuckDBPyRelation],
-    labels: Sequence[Any],
-    by: str,
-) -> str:
-    """Where `attr`'s rows first differ across the members' `labels` of `by`, with each holding member's value there."""
     lacking = [label for label in labels if label not in held]
     if lacking:
         return f"`{attr}` is held by {by} {list(held)} and not by {lacking}"
-    keys = _row_keys(schema, attr)
-    first = (
-        _row_clashes(schema, attr, held, len(labels))
-        .filter(col(_APART))
-        .project(*map(col, keys))
-        .order(", ".join(map(str, map(col, keys))))
-        .limit(1)
-        .set_alias("f")
-    )
-    held_by = {
-        label: value
-        for label, rel in held.items()
-        for (value,) in _typed_rows(schema, attr, rel)
-        .set_alias("r")
-        .join(first, null_safe("r", "f", keys), how="semi")
-        .project(col("value"))
-        .df()
-        .itertuples(index=False)
-    }
-    coordinates = _unpack_connection(first).df().iloc[0]
-    where = ", ".join(
-        f"{name} {value!r}"
-        for name, value in coordinates.items()
-        if name not in ("attribute", "breakpoint") and not pd.isna(value)
-    )
-    return f"{where} has `{attr}` {held_by} by {by}"
+    (first, rel), *rest = held.items()
+    reference = _values(rel)
+    for label, other in rest:
+        long = pd.concat({first: reference, label: _values(other)}, names=[by])
+        keys = list(range(1, long.index.nlevels))
+        grouped = long.groupby(level=keys, sort=False, dropna=False)
+        apart = (grouped.transform("size") < 2) | _clashing(long, keys)
+        if apart.any():
+            coordinates, held_by = _first_apart(long, apart)
+            where = ", ".join(
+                f"{name} {value!r}"
+                for name, value in zip(long.index.names[1:], coordinates, strict=True)
+                if name not in ("attribute", "breakpoint") and not pd.isna(value)
+            )
+            return f"{where} has `{attr}` {held_by} by {by}"
+    return None
 
 
-def _row_keys(schema: RecordSchema, attr: str) -> list[str]:
-    """`attr`'s long columns but `value`: one row's key."""
-    return [c for c in schema.long_columns_for(attr) if c != "value"]
-
-
-def _owner_keys(schema: RecordSchema, attr: str, by: str) -> list[str]:
-    """`attr`'s columns in `partial`, but `by`: the coordinates a layer owns it per.
-
-    A collection writes an owner key's rows once or at every label, never
-    split, as a layer restates the whole extent along a dim outside `partial`.
-
-    Notes
-    -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-    """
-    partial = schema.partial or frozenset()
-    return [c for c in _row_keys(schema, attr) if c in partial and c != by]
-
-
-def _typed_rows(
-    schema: RecordSchema, attr: str, rel: DuckDBPyRelation
-) -> DuckDBPyRelation:
-    """`rel`, a member's rows of `attr`, in its long columns typed as declared."""
-    columns = schema.long_columns_for(attr)
-    return cast_declared(schema, rel.select(*map(col, columns)), attribute=attr)
-
-
-def _row_clashes(
-    schema: RecordSchema,
-    attr: str,
-    held: Mapping[Any, DuckDBPyRelation],
-    members: int,
-) -> DuckDBPyRelation:
-    """Per row key of `attr` any of `members` holds, whether they clash there (`_clash`), as column `_APART`."""
-    keys = map(str, map(col, _row_keys(schema, attr)))
-    clash = _clash("value", schema.attributes[attr].dtype == "float", members)
-    typed = (_typed_rows(schema, attr, rel) for rel in held.values())
-    stacked = reduce(DuckDBPyRelation.union, typed)
-    return stacked.aggregate(", ".join([*keys, f"{clash} AS {_APART}"]))
-
-
-def _clash(value: str, floating: bool, members: int) -> str:
-    """An aggregate over one key's rows, true where `members` of them do not agree, as `_clashing` decides.
-
-    A key some member lacks clashes. A NaN is missing, as in pandas. An
-    infinity guards the spread, since `inf - inf` is NaN and DuckDB orders NaN
-    above every number.
-    """
-    v = col(value)
-    held = f"({v} IS NOT NULL AND NOT isnan({v}))" if floating else f"({v} IS NOT NULL)"
-    distinct = f"count(DISTINCT {v}) FILTER (WHERE {held}) > 1"
-    clashing = f"count(*) < {members} OR (bool_or({held}) AND NOT bool_and({held}))"
-    if not floating:
-        return f"({clashing} OR {distinct})"
-    spread = (
-        f"max({v}) FILTER (WHERE {held}) - min({v}) FILTER (WHERE {held}) > "
-        f"{_ATOL!r} + {_RTOL!r} * max(abs({v})) FILTER (WHERE {held})"
-    )
-    unequal = f"CASE WHEN bool_or(isinf({v})) THEN {distinct} ELSE {spread} END"
-    return f"coalesce({clashing} OR {unequal}, false)"
+def _values(rel: DuckDBPyRelation) -> pd.Series:
+    """One attribute's long rows as its values by their key columns."""
+    frame = _unpack_connection(rel).df()
+    return frame.set_index([c for c in frame.columns if c != "value"])["value"]
 
 
 def _widened(
@@ -3854,37 +3750,6 @@ def _labelled(
     return reduce(DuckDBPyRelation.union, (at(*item) for item in held.items()))
 
 
-def _collected(
-    schema: RecordSchema,
-    attr: str,
-    held: Mapping[Any, DuckDBPyRelation],
-    dim: str,
-    apart: DuckDBPyRelation,
-) -> DuckDBPyRelation:
-    """`attr`'s rows, an attribute over `dim`: each member's at its label under an owner key `apart` holds, the first member's once, NULL on `dim`, under any other.
-
-    `apart` is `_difference`'s. An owner key is written whole either way, as a
-    layer owns its whole extent along a dim outside `partial`.
-
-    Notes
-    -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-    - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
-    """
-    labelled = _labelled(schema, attr, held, dim)
-    owner = _owner_keys(schema, attr, dim)
-    if not owner:
-        return labelled
-    once = _labelled(schema, attr, {None: next(iter(held.values()))}, dim)
-    on = null_safe("r", "a", owner)
-    at = apart.set_alias("a")
-    return (
-        labelled.set_alias("r")
-        .join(at, on, how="semi")
-        .union(once.set_alias("r").join(at, on, how="anti"))
-    )
-
-
 def _equal_weights(
     schema: RecordSchema, labels: Sequence[Any], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
@@ -3925,12 +3790,10 @@ class _StackedSource:
     ) -> _StackedSource:
         """`members`, each source by its label of `dim`, as one record, checked whole.
 
-        Their axes and properties are one union (`_axis_union`), checked
-        before any attribute. An attribute whose rows differ across the
-        members at some owner key (`_difference`) is over `dim`, each
-        member's rows at its label under such a key and the rest held once
-        (`_collected`); any other is held once. A `scenario` collection's
-        scenarios weigh equally.
+        Their axes and properties are one union (`_axis_union`). An attribute
+        whose rows differ across the members (`_difference`) is over `dim`,
+        each member's rows at its label; any other is held once. A
+        `scenario` collection's scenarios weigh equally.
 
         Raises
         ------
@@ -3960,45 +3823,42 @@ class _StackedSource:
                 "collection's index is `period`, `scenario` or a dim of its own"
             )
             raise ValueError(msg)
+        labels = list(members)
+        attributes = {label: m.attributes for label, m in members.items()}
+        differences = {
+            attr: _difference(attr, _held(attributes, attr), labels, dim)
+            for attr in _keys(attributes)
+        }
+        differing = {attr for attr, found in differences.items() if found}
+        if dim in _registry().schema.dimensions:
+            for attr in sorted(differing):
+                if dim not in schema.attributes[attr].dims:
+                    msg = (
+                        f"{differences[attr]}, which PyPSA does not vary over "
+                        f"`{dim}`: name a dim of your own, such as `weather_year`, "
+                        "for members whose values of it differ"
+                    )
+                    raise ValueError(msg)
+        schema = _widened(schema, dim, labels, differing)
         held_dims = {label: m.dims for label, m in members.items()}
         dims = {
             d: _axis_union(schema, d, _held(held_dims, d), dim, con)
             for d in _keys(held_dims)
             if d != dim
         }
+        axis = con.from_df(pd.DataFrame({dim: labels}))
+        dims[dim] = cast_declared(schema, axis, dim)
         held_properties = {label: m.properties for label, m in members.items()}
         properties = {
             s: _axis_union(schema, s, _held(held_properties, s), dim, con)
             for s in _keys(held_properties)
         }
-        labels = list(members)
-        attributes = {label: m.attributes for label, m in members.items()}
-        apart = {}
-        for attr in _keys(attributes):
-            held = _held(attributes, attr)
-            found = _difference(schema, attr, held, labels, dim, con)
-            if found is None:
-                continue
-            if dim in _registry().schema.dimensions and dim not in (
-                schema.attributes[attr].dims
-            ):
-                msg = (
-                    f"{_first_difference(schema, attr, held, labels, dim)}, which "
-                    f"PyPSA does not vary over `{dim}`: name a dim of your own, "
-                    "such as `weather_year`, for members whose values of it differ"
-                )
-                raise ValueError(msg)
-            apart[attr] = found
-        schema = _widened(schema, dim, labels, apart)
-        axis = con.from_df(pd.DataFrame({dim: labels}))
-        dims[dim] = cast_declared(schema, axis, dim)
         rows = {}
         for attr in _keys(attributes):
             held = _held(attributes, attr)
+            agreed = next(iter(held.values()))
             rows[attr] = (
-                _collected(schema, attr, held, dim, apart[attr])
-                if attr in apart
-                else next(iter(held.values()))
+                _labelled(schema, attr, held, dim) if attr in differing else agreed
             )
         if dim == SCENARIO:
             rows[SCENARIO_WEIGHT] = _equal_weights(schema, labels, con)
