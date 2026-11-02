@@ -169,14 +169,12 @@ def test_resolved_reads_same_as_unresolved(store, parent):
             return None
 
     full = lineage(store, grandchild.id)
-    schema = full[-1].schema
     workspace = store.workspace
-    truncated = Record(grandchild.id, sources_to_read(full, store), workspace, schema)
+    truncated = Record(grandchild.id, sources_to_read(full, store), workspace)
     unresolved = Record(
         grandchild.id,
         [_Unmaterialised(manifest, store) for manifest in full],
         workspace,
-        schema,
     )
 
     def ownership(record):

@@ -47,6 +47,7 @@ from datarecord.resolve.owner_map import (
     _frozen_coords,
     _table,
     frozen_prefix,
+    owned_rows,
     source_for,
     unsettled,
     with_columns,
@@ -302,8 +303,6 @@ class Record:
         staged rows are one more source on the end.
     workspace
         Where the calling thread's cursor comes from.
-    schema
-        The schema the record is read under: its last layer's.
 
     Notes
     -----
@@ -317,7 +316,11 @@ class Record:
     revision_id: UUID
     sources: list[LayerSource]
     workspace: Workspace
-    schema: Schema
+
+    @property
+    def schema(self) -> Schema:
+        """The schema the record is read under: its last source's."""
+        return self.sources[-1].schema
 
     @property
     def con(self) -> DuckDBPyConnection:
@@ -393,7 +396,7 @@ class Record:
         if self.frozen:
             return prefix
         above = self.sources[frozen_prefix(self.sources) :]
-        return resolve_coords(self.schema, self.sources, self.con, (prefix, above))
+        return resolve_coords(self.sources, self.con, (prefix, above))
 
     @property
     def _prefix(self) -> Coords:
@@ -430,7 +433,7 @@ class Record:
         Plain data, which any thread computes the same.
         """
         prefix = self.sources[: frozen_prefix(self.sources)]
-        return _frozen_coords(self.revision_id, prefix, self.con, self.schema)
+        return _frozen_coords(self.revision_id, prefix, self.con)
 
     @property
     def _fold(self) -> Fold:
@@ -445,9 +448,7 @@ class Record:
             schema=self.schema,
             axes=coords.axes,
             dim_owners=coords.dim_owners,
-            owner_map=_table(
-                self.revision_id, self.sources, self.con, self.schema, self._prefix
-            ),
+            owner_map=_table(self.revision_id, self.sources, self.con, self._prefix),
             dead=coords.dead,
         )
 
@@ -475,6 +476,8 @@ class Record:
         KeyError
             If no layer owns a row of `attribute`. Only a key set read before
             `rollback()` and used after it asks for such an attribute.
+        ValueError
+            If a frozen layer the owner map names holds no file of `attribute`.
         duckdb.Error
             When fetched, where one layer holds two rows covering a key and
             neither is the more specific there (`_most_specific`), or a staged
@@ -507,7 +510,7 @@ class Record:
         crossed: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
             source = self._source_for(layer_uuid)
-            rel = source.attribute(attribute)
+            rel = owned_rows(source, attribute)
             if rel is None:
                 continue
             rel = with_columns(schema, rel, *columns)

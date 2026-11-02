@@ -24,7 +24,6 @@ from datarecord.resolve.coords import resolve_coords
 from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
-from datarecord.schema.schema import Schema
 
 if TYPE_CHECKING:
     from datarecord.store.manifest import Manifest
@@ -87,7 +86,7 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
 
 
 def materialise(
-    revision_id: UUID, sources: Sequence[LayerSource], store: Store, schema: Schema
+    revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
     """Write `revision_id`'s node caches: owner map, dim owners and dead labels.
 
@@ -109,7 +108,7 @@ def materialise(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
-    _materialise_dims(revision_id, sources, store, schema)
+    _materialise_dims(revision_id, sources, store)
     with _checkpointed(sources, con) as owner_map:
         _to_parquet(owner_map, store.owner_map_uri(revision_id), con)
 
@@ -130,10 +129,7 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection) -> Non
 
 
 def _materialise_dims(
-    revision_id: UUID,
-    sources: Sequence[LayerSource],
-    store: Store,
-    schema: Schema,
+    revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
     """Write this node's dim owners and dead labels into its node cache, not its layer.
 
@@ -142,7 +138,7 @@ def _materialise_dims(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
-    coords = resolve_coords(schema, sources, con)
+    coords = resolve_coords(sources, con)
     dead = f"{store.resolved_dir(revision_id)}dead/"
     ensure_local_dir(dead if coords.dead else store.resolved_dir(revision_id))
     for name, rel in coords.dead.items():

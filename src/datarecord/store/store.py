@@ -1074,9 +1074,8 @@ class Revision(_OfStore):
         """
         if self._record is None:
             manifests = lineage(self.store, self.id)
-            schema = manifests[-1].schema
             sources = sources_to_read(manifests, self.store)
-            self._record = Record(self.id, sources, self.store.workspace, schema)
+            self._record = Record(self.id, sources, self.store.workspace)
         return self._record
 
     @property
@@ -1119,7 +1118,7 @@ class Revision(_OfStore):
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
-        materialise(self.id, self.record.sources, self.store, self.record.schema)
+        materialise(self.id, self.record.sources, self.store)
         self._record = None
 
     # -- read ---------------------------------------------------------------
@@ -1149,7 +1148,7 @@ def _one_layer(
     - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     source = DirectorySource(base, manifest, workspace, layer_id)
-    return Record(layer_id, [source], workspace, manifest.schema)
+    return Record(layer_id, [source], workspace)
 
 
 def _process_store(uri: str) -> Store:

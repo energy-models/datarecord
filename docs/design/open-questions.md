@@ -96,7 +96,7 @@ A layer that restates a key along such a dim and omits a label its parent held t
 
 ### Whether a layer may remove a dim from `partial`
 
-[Versioning](model/schema.md#versioning) refuses it. Allowing it, the layer would restate, as resolved, every key of its own `partial` at which a parent map row names a label of the dim; the fold would then project the dim out of the parent's map, [step 2 of the fold](layers/resolution.md#crossing-rows) dropping every row that named it, and refuse a layer leaving one uncovered. `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
+[Versioning](model/schema.md#versioning) refuses it. Allowing it, the layer would restate, as resolved, every key of its own `partial` at which a parent map row names a label of the dim; the fold would then project the dim out of the parent's map, [step 3 of the fold](layers/resolution.md#crossing-rows) dropping every row that named it, and refuse a layer leaving one uncovered. `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
 
 ### What PyPSA#1474 lands as
 

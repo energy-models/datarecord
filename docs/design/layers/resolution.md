@@ -68,13 +68,14 @@ Only the dims the attribute uses count: its `dims` and the coordinates' dims of 
 Two rows cover a common key where, on each `partial` coordinate, they hold the same label or one of them holds NULL.
 They cross where they cover a common key and neither names every dim the other names.
 
-A layer folds onto its parent's map in four steps, none of which reads an axis:
+A layer folds onto its parent's map in five steps:
 
-1. The parent rows naming a label or tuple that the layer removes are dropped, and a row NULL there never is.
-2. A parent row is dropped where a row of the layer covers it and names no `partial` dim the parent row leaves NULL.
-3. For each parent row and row of the layer that cross on `partial` dims, the layer gains an overlap row naming every label either names.
+1. Where the layer's schema is wider than the parent's, the parent's map is [extended to it](#extending-the-map-to-a-wider-schema).
+2. The parent rows naming a label or tuple that the layer removes are dropped, and a row NULL there never is.
+3. A parent row is dropped where a row of the layer covers it and names no `partial` dim the parent row leaves NULL.
+4. For each parent row and row of the layer that cross on `partial` dims, the layer gains an overlap row naming every label either names.
    The crossed parent row stays as written, as does a parent row naming strictly fewer dims than a row of the layer covering it.
-4. The layer's rows and its overlap rows are added.
+5. The layer's rows and its overlap rows are added.
 
 An overlap row carries the owning layer's `varies` and `broadcast`, so the layer's value row finds it by the same NULL-safe join as its own key and reads the overlap row's labels.
 To a later fold it is an ordinary row, which that fold drops, crosses or removes like any other.
@@ -113,7 +114,7 @@ wind    high      p_nom      child   wind    high      999
 ```
 
 At `(wind, high)` the overlap row names every dim the other two name, so the broadcast rule gives 999.
-A child writing `(gas, NULL) = 60` instead names no more than the root's `(gas, NULL)`, and step 2 drops the root's row.
+A child writing `(gas, NULL) = 60` instead names no more than the root's `(gas, NULL)`, and step 3 drops the root's row.
 A child writing `(gas, high) = 70` names more and leaves the root's rows as written, and the broadcast rule gives `(gas, high)` to the child.
 
 The map grows with the rows layers write and the pairs that cross, not with the labels a broadcast reaches.
