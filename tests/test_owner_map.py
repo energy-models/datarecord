@@ -33,11 +33,13 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     export_network,
+    restate,
     schema,
     write_attribute,
     write_axis,
     write_component,
     write_connections,
+    write_periods,
     write_scenarios,
 )
 
@@ -77,12 +79,10 @@ def test_union_all_by_name_folds_every_relation(store):
 def test_union_all_by_name_fills_a_missing_column_with_null(store):
     """By *name*, so an arm lacking a column reads NULL there.
 
-    What lets a layer written before `bus`/`breakpoint` existed still resolve,
-    and a persisted owner map survive a newly declared dim.
+    What lets a layer written before `bus`/`breakpoint` existed still resolve.
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     rels = [
@@ -479,7 +479,7 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
     record = root.store.commit(staged).record
 
     for plan in (
-        _fold_map(record.sources, record.con, record.schema).explain().upper(),
+        _fold_map(record.sources, record.con).explain().upper(),
         record.attributes["weight"].explain().upper(),
     ):
         assert "HASH JOIN" in plan, "it joins at all"
@@ -713,3 +713,196 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
         assert broadcast(record, "x", "entity", "period", "snapshot") == expected, (
             f"the set reaches every {null} at {named}=1, the root keeps the rest"
         )
+
+
+_NARROW = schema(partial={"connection"})
+_WIDE = schema()
+
+
+def _scenario_root(store, *, materialised):
+    """A root under `_NARROW`, `scenario` outside `partial`, writing `p_max_pu` along it."""
+    layer = empty_root(store, _NARROW)
+    write_component(layer, "Generator", [{"entity": "gas"}, {"entity": "wind"}])
+    write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
+    write_attribute(
+        layer,
+        "p_max_pu",
+        [
+            {"entity": "gas", "scenario": "low", "value": 1.0},
+            {"entity": "gas", "scenario": "high", "value": 2.0},
+            {"entity": "wind", "value": 5.0},
+        ],
+    )
+    root = layer.commit()
+    if materialised:
+        root.materialise()
+    return root
+
+
+def _p_max_pu(revision):
+    return broadcast(revision.record, "p_max_pu", "entity", "scenario")
+
+
+@pytest.mark.parametrize("materialised", [False, True])
+def test_a_widening_child_splits_its_parents_rows_by_their_labels(store, materialised):
+    """`scenario` joins `partial` in a child writing `(gas, high) 3` over a root writing it along `scenario`.
+
+    Notes
+    -----
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    """
+    root = _scenario_root(store, materialised=materialised)
+    before = _p_max_pu(root)
+    layer = empty_child(root, _WIDE)
+    write_attribute(
+        layer, "p_max_pu", [{"entity": "gas", "scenario": "high", "value": 3.0}]
+    )
+    child = layer.commit()
+
+    assert _p_max_pu(child) == {
+        ("gas", "low"): 1.0,
+        ("gas", "high"): 3.0,
+        ("wind", "low"): 5.0,
+        ("wind", "high"): 5.0,
+    }, "the root owns (gas, low), the child (gas, high)"
+    assert _p_max_pu(store.revision(root.id)) == before, (
+        "the root reads as it did before its child widened the schema"
+    )
+    fresh = Workspace()
+    try:
+        again = fresh.store(store.uri)
+        assert _p_max_pu(again.revision(root.id)) == before
+        assert _p_max_pu(again.revision(child.id)) == _p_max_pu(child)
+    finally:
+        fresh.close()
+    tables = store.workspace.con.sql(
+        "SELECT table_name FROM duckdb_tables() WHERE starts_with(table_name, 'owner_map_')"
+    ).fetchall()
+    folded = [child] if materialised else [root, child]
+    assert sorted(t for (t,) in tables) == sorted(
+        f"owner_map_{n.id.hex}" for n in folded
+    ), "one fold table per node folded, whatever schema reads it"
+
+
+@pytest.mark.parametrize("materialised", [False, True])
+def test_a_node_reads_the_same_whichever_descendant_widens(store, materialised):
+    """A middle node reads alike before and after a leaf brings `scenario` into `partial`.
+
+    The middle crosses the root on `(entity, period)`, so it owns overlap rows,
+    and the root writes `solar` both along `scenario` and NULL there.
+
+    Notes
+    -----
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
+    """
+    narrow = schema(partial={"period", "connection"})
+    layer = empty_root(store, narrow)
+    write_component(layer, "Generator", [{"entity": e} for e in ("gas", "solar")])
+    write_periods(layer, [{"period": 2030}, {"period": 2040}])
+    write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
+    write_attribute(
+        layer,
+        "p_max_pu",
+        [
+            {"entity": "gas", "scenario": "low", "value": 1.0},
+            {"entity": "gas", "scenario": "high", "value": 2.0},
+            {"entity": "solar", "value": 4.0},
+            {"entity": "solar", "scenario": "high", "value": 6.0},
+        ],
+    )
+    layer = empty_child(layer.commit())
+    write_attribute(
+        layer,
+        "p_max_pu",
+        [
+            {"period": 2030, "scenario": "low", "value": 10.0},
+            {"period": 2030, "scenario": "high", "value": 20.0},
+        ],
+    )
+    middle = layer.commit()
+    if materialised:
+        middle.materialise()
+
+    def read(revision):
+        return broadcast(revision.record, "p_max_pu", "entity", "period", "scenario")
+
+    before = read(middle)
+    assert before[("gas", 2040, "low")] == 1.0
+    assert before[("solar", 2040, "low")] == 4.0
+    assert before[("solar", 2030, "high")] == 20.0
+    leaf = empty_child(middle, schema(partial={"period", "scenario", "connection"}))
+    assert read(leaf.commit()) == before, (
+        "a widening that writes nothing changes no value"
+    )
+    assert read(store.revision(middle.id)) == before
+
+
+@pytest.mark.parametrize("materialised", [False, True])
+@pytest.mark.parametrize("partial", [{"entity"}, {"entity", "scenario"}])
+def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
+    store, partial, materialised
+):
+    """`q` over `entity` gains `scenario`; its row from before reads NULL there, a broadcast.
+
+    Notes
+    -----
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    """
+
+    def q_over(*dims):
+        return Schema(
+            dimensions={"entity": {"dtype": "str"}, "scenario": {"dtype": "str"}},
+            attributes={"q": {"dtype": "float", "dims": list(dims)}},
+            partial=frozenset(partial),
+        )
+
+    layer = empty_root(store, q_over("entity"))
+    write_axis(layer, "entity", [{"entity": "gas"}])
+    write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
+    write_attribute(layer, "q", [{"entity": "gas", "value": 1.0}])
+    root = layer.commit()
+    if materialised:
+        root.materialise()
+    child = empty_child(root, q_over("entity", "scenario")).commit()
+
+    rows = child.record.attributes["q"].project("entity, scenario, value").fetchall()
+    assert rows == [("gas", None, 1.0)], "the row from before, NULL along scenario"
+    flags = child.record.flags()["q"]
+    assert flags.broadcast == {"scenario"}, "it broadcasts along scenario"
+    assert flags.varies == {"entity"}
+    assert store.revision(root.id).record.flags()["q"].broadcast == set(), (
+        "the root, under its own schema, has q over entity alone"
+    )
+
+
+@pytest.mark.parametrize("materialised", [False, True])
+@pytest.mark.parametrize("remover", ["parent", "widening child"])
+def test_a_label_removed_along_a_dim_joining_partial_names_no_row(
+    store, remover, materialised
+):
+    """`low` removed while `scenario` is outside `partial`, or by the layer bringing it in, stays gone.
+
+    Notes
+    -----
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    """
+    node = _scenario_root(store, materialised=False)
+    if remover == "parent":
+        layer = empty_child(node)
+        restate(layer, "dims", "scenario", [], drop=["low"])
+        node = layer.commit()
+    if materialised:
+        node.materialise()
+    layer = empty_child(node, _WIDE)
+    if remover == "widening child":
+        restate(layer, "dims", "scenario", [], drop=["low"])
+    child = layer.commit()
+
+    rows = child.record.attributes["p_max_pu"].project("entity, scenario").fetchall()
+    assert sorted(rows, key=str) == [("gas", "high"), ("wind", None)], (
+        "no row names the removed label"
+    )
+    assert child.record.dims["scenario"].fetchall() == [("high",)]

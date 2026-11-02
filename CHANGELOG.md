@@ -309,8 +309,13 @@ All notable changes to datarecord are documented here. The format follows
   where a row naming both is there, so `ws.write(w, uri)` writes a record of
   several layers. The read of a `WorkingRecord` refuses two staged rows that
   cross with no staged row naming both.
-- A materialised owner map keyed on another `partial` set than the schema's
-  is ignored, and the read folds that node from its layers.
+- The fold reads each layer under the schema in its own manifest. Where a
+  deeper layer's schema is wider, the map folded so far, materialised or not,
+  is extended to it, so a materialised node keeps counting after a descendant
+  adds a dim to `partial`, and a workspace holds one fold table per node,
+  `owner_map_<id>`. A layer that restates a key along a dim outside `partial`
+  and omits a label its parent held there deletes that value, and a later
+  widening of `partial` no longer brings it back.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
@@ -399,6 +404,9 @@ All notable changes to datarecord are documented here. The format follows
   a temporary name, so a node reads as materialised only when its cache is
   complete.
 - A map materialised under a parent's schema reads under a child's wider one.
+- An attribute whose `dims` gained a dim reads its earlier rows, NULL along
+  it, where that dim is in `partial` too, and `flags()` reports them as
+  broadcast along it.
 - Reading an attribute over a `partial` dim scales linearly with the length of
   that dim. Folding the owner map no longer compares every row with every
   label of the dim's axis, so the first read of a record with long series is
