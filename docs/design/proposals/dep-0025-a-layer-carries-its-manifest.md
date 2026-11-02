@@ -20,7 +20,7 @@ Each layer carries its own `manifest.json`: its id, its parent, the full schema 
 
 ## Motivation
 
-Layers and revision files are write-once, but the store's `manifest.json` is not. Every write that widens the schema races on it through a [bounded compare-and-swap](../storage/concurrency.md#the-manifests-compare-and-swap), a writer can lose that race after its layer is written, and a credential that cannot read the manifest fails every write. Because the store has one schema, adding an attribute [amends the root schema](../model/schema.md#one-schema-per-record), so one branch's experiment widens its siblings.
+Layers and revision files are write-once, but the store's `manifest.json` is not. Every write that widens the schema races on it through a [bounded compare-and-swap](../storage/concurrency.md#writers-never-share-a-file), a writer can lose that race after its layer is written, and a credential that cannot read the manifest fails every write. Because the store has one schema, adding an attribute [amends the root schema](../model/schema.md#one-schema-per-record), so one branch's experiment widens its siblings.
 
 A workflow that writes one revision per run has nowhere to put the run's id beside the revision, and keeps the mapping outside the store. A run that takes days writes its layer files long before the [revision file](../storage/store.md#a-revision-exists-only-by-its-file) makes them reachable; until then they look like the leftovers of a failed write, and a cleanup cannot tell the two apart.
 
