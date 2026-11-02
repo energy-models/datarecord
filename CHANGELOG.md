@@ -246,13 +246,14 @@ All notable changes to datarecord are documented here. The format follows
   `Schema.input_key` is `Schema.owner_map_key`, `Schema.input_columns` is
   `Schema.owner_map_columns`, and `Requirements.unsupported_keys` reports
   `"owner_map_key"`.
-- A `Record` is constructed from `revision_id`, `sources`, `workspace` and
-  `schema`. A caller reads it through its mappings: `rev.record.sources`,
-  `dims[dim]`, `properties[dim]` and `attributes[name]`.
-  `attributes[name]` raises `KeyError` for an undeclared attribute.
+- A `Record` is constructed from `revision_id`, `sources` and `workspace`, and
+  reads under its last source's schema. A caller reads it through its
+  mappings: `rev.record.sources`, `dims[dim]`, `properties[dim]` and
+  `attributes[name]`. `attributes[name]` raises `KeyError` for an undeclared
+  attribute.
 - `PyPSA.build` raises `TypeError` for a `RecordLike` that is not a `Record`.
-  `Schema.long_columns_for` raises `KeyError` for an attribute that the schema
-  does not declare.
+  `Schema.long_columns_for` and `Schema.coordinates_of` raise `KeyError` for an
+  attribute that the schema does not declare.
 - `LayerData` declares no `frozen`, and its `axes()`, `groups()` and
   `attributes()` return `set[str]`. A whole `Record` reaches the writer
   through the adapter for a `RecordLike`.
@@ -298,6 +299,9 @@ All notable changes to datarecord are documented here. The format follows
   out along the labels a parent row names there. The fold refuses a layer
   written otherwise that leaves such a crossing, naming the layer, the
   attribute, the dim and the key.
+- The writer refuses a `dims/` file of a dim that the schema does not declare,
+  as it refuses an undeclared attribute. A descendant declaring the dim would
+  read its labels.
 - The writer accepts two rows that each name a dim the other leaves NULL
   where a row naming both is there, so `ws.write(w, uri)` writes a record of
   several layers. The read of a `WorkingRecord` refuses two staged rows that
@@ -398,8 +402,9 @@ All notable changes to datarecord are documented here. The format follows
   complete.
 - A map materialised under a parent's schema reads under a child's wider one.
 - An attribute whose `dims` gained a dim reads its earlier rows, NULL along
-  it, where that dim is in `partial` too, and `flags()` reports them as
-  broadcast along it.
+  it, where that dim is in `partial` too. `flags()` reports such rows as
+  broadcast along the gained dim, whether it is in `partial` or not, and
+  whether or not the schema declared it before.
 - Reading an attribute over a `partial` dim scales linearly with the length of
   that dim. Folding the owner map no longer compares every row with every
   label of the dim's axis, so the first read of a record with long series is

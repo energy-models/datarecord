@@ -12,6 +12,7 @@ Notes
 """
 
 import json
+from dataclasses import replace
 from itertools import product
 from pathlib import Path
 from uuid import uuid4
@@ -25,6 +26,7 @@ from datarecord.resolve.fold import read_dim_owners
 from datarecord.resolve.owner_map import _fold_map
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
+from datarecord.schema.specs import AttributeSpec
 from datarecord.store.manifest import LayerFiles, Manifest
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
@@ -373,6 +375,27 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     assert source.uri("attributes/p_nom.parquet") == (
         store.layer_dir(revision_id) + "attributes/p_nom.parquet"
     )
+
+
+def test_a_read_refuses_an_owner_map_naming_a_file_the_layer_lacks(store, tmp_path):
+    """A materialised owner map outliving its layer's attribute file is a corrupt store.
+
+    The manifest is rewritten without `p_nom` after the node materialised, so
+    the read finds an owner with nothing to own rather than an empty attribute.
+    """
+    layer = empty_root(store, schema())
+    write_component(layer, "Generator", [{"entity": "gas"}])
+    write_attribute(layer, "p_nom", [{"entity": "gas", "value": 1.0}])
+    root = layer.commit()
+    root.materialise()
+    manifest = root.manifest
+    Path(store.manifest_uri(root.id)).unlink()
+    stripped = replace(manifest, files=LayerFiles(dims=manifest.files.dims))
+    stripped.write(store.files, store.manifest_uri(root.id))
+
+    reread = Workspace().store(str(tmp_path)).revision(root.id)
+    with pytest.raises(ValueError, match="holds no file of"):
+        reread.record.attributes["p_nom"]
 
 
 def _largest_intermediate(store, rel):
@@ -733,10 +756,7 @@ def _scenario_root(store, *, materialised):
             {"entity": "wind", "value": 5.0},
         ],
     )
-    root = layer.commit()
-    if materialised:
-        root.materialise()
-    return root
+    return _committed(layer, materialised=materialised)
 
 
 def _p_max_pu(revision):
@@ -839,7 +859,7 @@ def test_a_node_reads_the_same_whichever_descendant_widens(store, materialised):
 
 
 @pytest.mark.parametrize("materialised", [False, True])
-@pytest.mark.parametrize("partial", [{"entity"}, {"entity", "scenario"}])
+@pytest.mark.parametrize("partial", [set(), {"scenario"}])
 def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
     store, partial, materialised
 ):
@@ -852,14 +872,11 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
     """
 
     def q_over(*dims):
-        return Schema(
-            dimensions={"entity": {"dtype": "str"}, "scenario": {"dtype": "str"}},
-            attributes={"q": {"dtype": "float", "dims": list(dims)}},
-            partial=frozenset(partial),
-        )
+        q = AttributeSpec(dtype="float", dims=set(dims))
+        return schema(partial=partial, attributes={"Generator": {"q": q}})
 
     layer = empty_root(store, q_over("entity"))
-    write_axis(layer, "entity", [{"entity": "gas"}])
+    write_component(layer, "Generator", [{"entity": "gas"}])
     write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
     write_attribute(layer, "q", [{"entity": "gas", "value": 1.0}])
     root = layer.commit()
@@ -906,3 +923,132 @@ def test_a_label_removed_along_a_dim_joining_partial_names_no_row(
         "no row names the removed label"
     )
     assert child.record.dims["scenario"].fetchall() == [("high",)]
+
+
+def _committed(layer, *, materialised):
+    revision = layer.commit()
+    if materialised:
+        revision.materialise()
+    return revision
+
+
+def _restated_then_widened(store, *, materialised):
+    """A child restates `(gas, high)` along `scenario` outside `partial`; a leaf widens."""
+    layer = empty_child(_scenario_root(store, materialised=materialised))
+    write_attribute(
+        layer, "p_max_pu", [{"entity": "gas", "scenario": "high", "value": 3.0}]
+    )
+    leaf = empty_child(_committed(layer, materialised=materialised), _WIDE).commit()
+    expected = {("gas", "high"): 3.0, ("wind", "low"): 5.0, ("wind", "high"): 5.0}
+    return _p_max_pu(leaf), expected
+
+
+def _removed_widened_re_added(store, *, materialised):
+    """`low` is removed outside `partial`, `scenario` joins it, then `low` is re-added."""
+    layer = empty_child(_scenario_root(store, materialised=materialised))
+    restate(layer, "dims", "scenario", [], drop=["low"])
+    widening = empty_child(_committed(layer, materialised=materialised), _WIDE)
+    layer = empty_child(_committed(widening, materialised=materialised))
+    restate(layer, "dims", "scenario", [{"scenario": "low"}])
+    expected = {("gas", "high"): 2.0, ("wind", "low"): 5.0, ("wind", "high"): 5.0}
+    return _p_max_pu(layer.commit()), expected
+
+
+def _two_dims_joining(store, *, materialised):
+    """`period` and `scenario` join `partial` in one child writing `(gas, 2040, high)`."""
+    layer = empty_root(store, _NARROW)
+    write_component(layer, "Generator", [{"entity": "gas"}])
+    write_periods(layer, [{"period": 2030}, {"period": 2040}])
+    write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
+    keys = list(product([2030, 2040], ["low", "high"]))
+    write_attribute(
+        layer,
+        "p_max_pu",
+        [
+            {"entity": "gas", "period": p, "scenario": s, "value": float(i)}
+            for i, (p, s) in enumerate(keys)
+        ],
+    )
+    wide = schema(partial={"period", "scenario", "connection"})
+    layer = empty_child(_committed(layer, materialised=materialised), wide)
+    write_attribute(
+        layer,
+        "p_max_pu",
+        [{"entity": "gas", "period": 2040, "scenario": "high", "value": 9.0}],
+    )
+    expected = {("gas", p, s): float(i) for i, (p, s) in enumerate(keys)}
+    expected["gas", 2040, "high"] = 9.0
+    record = layer.commit().record
+    return broadcast(record, "p_max_pu", "entity", "period", "scenario"), expected
+
+
+def _connection_joining(store, *, materialised):
+    """The multi-dim `connection` joins `partial` in a child writing `(gas, south)`."""
+    layer = empty_root(store, schema(partial=set()))
+    write_component(layer, "Generator", [{"entity": "gas"}])
+    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
+    write_connections(layer, [{"entity": "gas", "bus": b} for b in ("north", "south")])
+    write_attribute(
+        layer,
+        "efficiency",
+        [
+            {"entity": "gas", "bus": "north", "value": 0.4},
+            {"entity": "gas", "bus": "south", "value": 0.5},
+        ],
+    )
+    layer = empty_child(_committed(layer, materialised=materialised), _WIDE)
+    write_attribute(
+        layer, "efficiency", [{"entity": "gas", "bus": "south", "value": 0.9}]
+    )
+    expected = {(("gas", "north"),): 0.4, (("gas", "south"),): 0.9}
+    return broadcast(layer.commit().record, "efficiency", "connection"), expected
+
+
+@pytest.mark.parametrize("materialised", [False, True])
+@pytest.mark.parametrize(
+    "build",
+    [
+        _restated_then_widened,
+        _removed_widened_re_added,
+        _two_dims_joining,
+        _connection_joining,
+    ],
+)
+def test_a_widening_of_partial_reads_what_the_narrower_layers_wrote(
+    store, build, materialised
+):
+    """Each shape of `partial` widening under layers written narrower reads as `build` says.
+
+    Notes
+    -----
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    """
+    read, expected = build(store, materialised=materialised)
+    assert read == expected, build.__doc__
+
+
+def test_a_layer_leaving_a_dim_outside_partial_unfilled_is_refused(store):
+    """A child writing `period=2030` leaves `scenario` NULL over the root's `(gas, low)`.
+
+    Notes
+    -----
+    - [a dim outside partial](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
+    """
+    layer = empty_root(store, schema(partial={"period", "connection"}))
+    write_component(layer, "Generator", [{"entity": "gas"}])
+    write_periods(layer, [{"period": 2030}])
+    write_scenarios(layer, [{"scenario": "low"}])
+    write_attribute(
+        layer, "p_max_pu", [{"entity": "gas", "scenario": "low", "value": 1.0}]
+    )
+    layer = empty_child(layer.commit())
+    write_attribute(layer, "p_max_pu", [{"period": 2030, "value": 2.0}])
+    child = layer.commit()
+
+    with pytest.raises(
+        ValueError,
+        match=r"leaves 'scenario' NULL for 'p_max_pu' at \{'entity': 'gas', "
+        r"'period': '2030'\} where a parent row names it",
+    ):
+        child.record.attributes["p_max_pu"].fetchall()

@@ -335,17 +335,14 @@ def _base_and_above(
 
 
 def resolve_coords(
-    schema: Schema,
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
     split: tuple[Fold | Coords | None, list[LayerSource]] | None = None,
 ) -> Coords:
-    """Resolve every dim `schema` declares and the dead labels.
+    """Resolve every dim the last source's schema declares and the dead labels.
 
     Parameters
     ----------
-    schema
-        The record's schema, which declares the dims and their keys.
     sources : sequence of LayerSource
         Root first, ending in the layer being resolved.
     con : DuckDBPyConnection
@@ -369,6 +366,7 @@ def resolve_coords(
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
+    schema = sources[-1].schema
     base, above = split or _base_and_above(sources, con)
     held_files = [source.axes() for source in above]
     for source, names in zip(above, held_files, strict=True):

@@ -55,6 +55,7 @@ if TYPE_CHECKING:
 
     from duckdb import DuckDBPyConnection
 
+    from datarecord.resolve.sources import ParquetLayer
     from datarecord.schema.schema import Schema
     from datarecord.store.store import Store
 
@@ -74,8 +75,7 @@ def flags_from_rows(
     over covers every attribute, so a dim one attribute is addressed by reads
     NULL for the rows of one that is not, and reporting that NULL as "every row
     broadcasts over it" would tell a consumer to build a container along an axis
-    the attribute has no values on. An attribute the schema does not declare
-    keeps every dim, its shape not being the schema's to say.
+    the attribute has no values on.
 
     Parameters
     ----------
@@ -88,8 +88,8 @@ def flags_from_rows(
     """
 
     def scope(attribute: str) -> tuple[str, ...]:
-        own = set(schema.coordinates_of(attribute))
-        return tuple(d for d in dims if d in own) if own else dims
+        own = schema.coordinates_of(attribute)
+        return tuple(d for d in dims if d in own)
 
     return {
         attribute: Flags(
@@ -258,14 +258,8 @@ class Fold:
         ).fetchall()
 
     @classmethod
-    def read(
-        cls,
-        revision_id: UUID,
-        con: DuckDBPyConnection,
-        schema: Schema,
-        store: Store,
-    ) -> Fold | None:
-        """This node's `Fold` under `schema`, its own, or `None` if it is not materialised.
+    def read(cls, layer: ParquetLayer, con: DuckDBPyConnection) -> Fold | None:
+        """`layer`'s node's `Fold` under its own schema, `None` if it is not materialised.
 
         The owner map is the presence marker: the map is written last
         (`cache.materialise`), so if it is absent the node reads as having no
@@ -277,13 +271,14 @@ class Fold:
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
+        revision_id, store = layer.layer_id, layer.store
         owner_map = read_owner_map(revision_id, con, store)
         if owner_map is None:
             return None
         rows = read_dim_owners(revision_id, con, store)
         dead = f"{store.resolved_dir(revision_id)}dead/"
         return cls(
-            schema=schema,
+            schema=layer.schema,
             axes={
                 dim: con.read_parquet(store.axis_uri(layer, dim))
                 for dim, layer, _ in rows

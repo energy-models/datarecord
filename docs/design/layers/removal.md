@@ -40,7 +40,6 @@ Removing a label is one cascade, the same for every dim but one with `one_of`, w
 The tuples' values go with them.
 Re-adding a label or tuple in `partial` brings back the label and no value that named it below the removal.
 Every broadcast covering it, written before or after the removal, [reaches it](resolution.md#what-a-row-reaches) again.
-Re-adding one outside `partial` brings back its values, since the read only hid them.
 
 ## What the writer checks
 

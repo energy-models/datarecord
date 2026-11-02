@@ -65,9 +65,7 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     if isinstance(source, LayerData):
         return source
     if isinstance(source, Record) and not source.frozen:
-        source = PinnedRecord(
-            source.revision_id, source.sources, source.workspace, source.schema
-        )
+        source = PinnedRecord(source.revision_id, source.sources, source.workspace)
     return _RecordLikeAsLayerData(source, con)
 
 
@@ -104,8 +102,9 @@ def write_layer(
         If a multi-dim's tuple or a property that refers to a dim names
         a label dead after the layer, in a subject the layer restates or whose
         rows name a label the layer removes.
-        If `data` hands over the axis of a dim with `one_of`, whose axis is
-        the schema's list.
+        If `data` hands over an attribute or an axis the schema does not
+        declare, or the axis of a dim with `one_of`, whose axis is the
+        schema's list.
         If a column's type does not fit its dtype, naming the attribute,
         property or dim that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
@@ -387,7 +386,7 @@ def _require_living_references(
             killed[dim] = gone
     if not whole and not killed:
         return
-    coords = resolve_coords(schema, [*parents, layer], con)
+    coords = resolve_coords([*parents, layer], con)
     problems = []
     for subject, column, label, dim, restated in references:
         dead = coords.dead.get(dim)
@@ -477,9 +476,12 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         return
 
     if kind == "dims":
-        # A source may hand over an axis the schema does not name.
         if key not in schema.dimensions:
-            return
+            msg = (
+                f"dims/{key}.parquet is not a declared dim; a descendant "
+                f"declaring it would read these labels (https://energy-models.github.io/datarecord/design/use/writing/#shape)"
+            )
+            raise ValueError(msg)
         if key not in columns:
             msg = f"dims/{key}.parquet is missing its key column {key!r} (https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)"
             raise ValueError(msg)
