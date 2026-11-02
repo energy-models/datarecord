@@ -21,7 +21,6 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord.duck import ensure_local_dir, write_parquet
 from datarecord.resolve.coords import resolve_coords
-from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 
@@ -45,7 +44,7 @@ def materialised(revision_id: UUID, store: Store) -> bool:
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    return read_owner_map(revision_id, store.workspace.con, store) is not None
+    return store.files.exists(store.owner_map_uri(revision_id))
 
 
 def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
