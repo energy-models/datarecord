@@ -476,8 +476,8 @@ class Record:
         # A layer the map names but the source list does not hold: the map was
         # materialised over a longer ancestry than this node reads, so the
         # winning row is still in that layer's own directory, in the same store.
-        store = next(s.store for s in self.sources if isinstance(s, ParquetLayer))
-        return ParquetLayer(store.revision(layer_uuid).manifest, store)
+        layer = next(s for s in self.sources if isinstance(s, ParquetLayer))
+        return layer.sibling(layer_uuid)
 
     def _relation(self, attribute: str) -> DuckDBPyRelation:
         """Return the resolved long relation of one attribute, folded over every layer.
