@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 ## Workspaces and stores
 
 A `Workspace` holds the DuckDB database and reaches files.
-A `Store` is one location with its [schema](../design/model/schema.md#one-schema-per-record), its revisions and its layers.
+A `Store` is one location with its layers, each carrying the [manifest](../design/storage/store.md#the-layers) that makes it a revision.
 Several stores share one workspace, so their records join ([design](../design/storage/store.md#the-store)).
 
 ```python
@@ -49,7 +49,7 @@ The server has to honour conditional writes, as AWS S3 does and SeaweedFS does f
 `ws.con` is the calling thread's DuckDB cursor, so one workspace serves every thread.
 A relation belongs to the thread that built it ([design](../design/storage/concurrency.md#a-cursor-per-thread)).
 
-A `Revision` serialises as its id, its parent and its store's location, and pickles the same way.
+A `Revision` or a `Claim` serialises as its id and its store's location, and pickles the same way.
 In a fresh process it loads back onto `Workspace.process()` ([design](../design/storage/concurrency.md#crossing-a-process-boundary)):
 
 ```python

@@ -153,7 +153,7 @@ The fold resolves the rest from the parent.
 `w` itself is the resolved result, what is staged plus what the record already reads.
 A standalone directory needs that, since it has no parent to resolve against.
 
-The edits are a delta against the revision `w` was built over, so `child` raises if you write them under another one.
+The edits are a delta against the revision `w` was built over, so `claim.commit(w)` raises if the claim's parent is another one.
 Layers are write-once, so the layer lands in the new child ([design](../design/layers/tree.md#a-layers-data-is-write-once)).
 The returned revision reads the edits back:
 

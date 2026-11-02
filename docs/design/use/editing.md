@@ -234,29 +234,27 @@ It holds two things that the [writers](writing.md) take:
 ```python
 w = WorkingRecord(rev.record)
 w.set("p_nom", 100.0, entity=["gen1"])
-edited = rev.child(w.edits)  # the delta, as a child layer
+edited = store.commit(w)  # the edits, as a child of rev
 ws.write(w, "out/")  # base plus edits, flattened
 w.rollback()
 ```
 
 - `w.edits` is the staged layer alone, the [`LayerData`](writing.md#layerdata) it already is.
-  Written as a child of the revision `w` was built over, it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
+  `store.commit(w)` writes it as a child of the revision `w` was built over, so it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
   The fold resolves the rest from the parent.
-  The layer lands in the child, so the revision that `child` returns reads the edits back.
+  The layer lands in the child, so the revision that `commit` returns reads the edits back.
 - `w` itself is what is staged plus what the record already reads: the whole resolved record.
-  It is written as a standalone directory, where there is no parent to resolve against.
+  `ws.write(w, uri)` writes it as a standalone directory, where there is no parent to resolve against.
 
 The writer has one contract for both: enumerate what the source holds and hand each part over.
-The caller chooses the rows to write, `w.edits` or `w`.
-The caller names the parent, which is the revision `w` was built from.
+The destination chooses the rows: a store takes `w.edits`, and a standalone directory takes `w`.
+`w` brings its parent, the revision it was built over, so the caller names none.
 `rollback()` clears the staging area.
 A write clears nothing, so a `WorkingRecord` that still holds its edits reads exactly what it did before.
 
-`other.child(w.edits)`, with `w` built over a different revision, would write a delta computed against the wrong parent, since an axis edit restates its base's whole axis.
-`child` therefore compares the edits' base revision with its own id and raises on a mismatch.
-Edits over a directory have no revision as their base, so they are a child of none.
-`rev.child(w)` writes the whole resolved record as a child layer.
-That layer reads back correctly and is larger than the delta, so `edits` is the name to use.
+Edits written as a child of any other revision would be a delta computed against the wrong parent, since an axis edit restates its base's whole axis.
+`store.commit(w)` therefore takes no `parent`, and `claim.commit(w)` refuses a claim whose parent is not `w`'s base.
+Edits over a standalone directory or another store's revision have no revision of the store as their base, so `store.commit(w)` refuses them, naming `ws.write(w, uri)`, which writes `w` whole.
 
 An edited axis, a multi-dim's included, is restated whole, whatever [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) says.
 The layer holds every label the axis has with the edits applied, with its properties, in [axis order](../model/dims.md#axis-order).

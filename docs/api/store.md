@@ -10,4 +10,8 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ::: datarecord.store.store.Store
 
+::: datarecord.store.store.Claim
+
 ::: datarecord.store.store.Revision
+
+::: datarecord.store.manifest.Manifest

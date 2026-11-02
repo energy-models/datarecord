@@ -17,15 +17,19 @@ Along any other dim, it restates the whole extent of each key it touches.
 ```python
 class Revision(BaseModel):
     id: UUID
-    parent: UUID | None  # None for a root
     store: Store  # serialised as its location
+
+    @property
+    def manifest(self) -> Manifest: ...  # its parent, schema, files and meta
 ```
+
+`rev.parent`, `None` for a root, and `rev.meta` are its manifest's.
 
 A revision's layer sits at `<location>/layers/<id>/`.
 The path derives from the id and the revision's [store](../storage/store.md#the-store), so the revision stores no path.
 Branching is several revisions sharing one parent.
 The children point at the parent, so they share its layer and all further ancestry.
-Each revision's `(id, parent)` is a file [beside the layers](../storage/store.md#the-tree-beside-the-layers), so the location alone resolves a revision id to its ancestry and its layers.
+Each revision's manifest names its parent and sits in its [layer](../storage/store.md#the-layers), so the location alone resolves a revision id to its ancestry and its layers.
 
 The fold reads the layers in ancestry order along the path from the root, and the revision's own layer comes last.
 [Resolution](resolution.md) is how it settles each key, and [removing labels](removal.md) is a restatement of the axis without them.
@@ -33,16 +37,15 @@ The fold reads the layers in ancestry order along the path from the root, and th
 ## A layer's data is write-once
 
 A revision has no mutable state.
-One act creates a layer's data: [`store.root` or `rev.child`](../use/writing.md).
-`rev.child` is also how a `WorkingRecord`'s [edits](../use/editing.md#edits) become a layer.
-The write refuses an existing directory and stages into a sibling path, so a layer is complete when it first becomes visible.
-Its [revision file is written last](../storage/store.md#a-revision-exists-only-by-its-file), and that file makes the layer reachable.
+One act creates a layer's data: [`claim.commit`](../use/writing.md), which `store.commit` wraps.
+`store.commit(w)` is also how a `WorkingRecord`'s [edits](../use/editing.md#edits) become a layer.
+The id is claimed once, the data goes into the layer's own directory, and the [manifest is written last](../storage/store.md#a-revision-exists-only-by-its-file), create-only, which makes the layer reachable.
 Editing needs no mutable layer: edits accumulate in [the staging area](../use/editing.md#staging) until they are written as a child.
 
 After that act, the only thing written into a layer directory is its [`resolved/` cache](resolution.md#materialised-node-caches), so the invariant covers the layer's data.
 A cache derives from immutable layers, so writing one changes no answer, and no read takes it for data.
-Every glob the read path issues into a layer is single-level: `attributes/*.parquet` and `dims/*.parquet`.
-No glob reaches `resolved/`, so a reader pointed at a layer directory sees exactly what that layer wrote.
+The read path globs nothing in a layer: it opens the files the manifest lists.
+A reader pointed at a layer directory therefore sees exactly what that layer committed, and reads neither `resolved/` nor a file that a failed attempt left behind.
 
 Two things follow.
 Any revision may be a parent, since an immutable base cannot shift under its descendants.

@@ -168,12 +168,11 @@ It is a thin layer written as a child of `base`, the record the model was built 
 `base` is required with `results_only` and refused without it.
 
 ```python
-inputs = rev.child(w.edits)  # edited inputs are committed first
+inputs = store.commit(w)  # edited inputs are committed first
 n = PyPSA.build(inputs.record)
 n.optimize()
-solved = inputs.child(
-    PyPSA.to_datarecord(n, ws.con, results_only=True, base=inputs.record)
-)
+results = PyPSA.to_datarecord(n, ws.con, results_only=True, base=inputs.record)
+solved = store.commit(results, parent=inputs)
 ```
 
 The results layer goes straight to a write, and no `WorkingRecord` stages it.
