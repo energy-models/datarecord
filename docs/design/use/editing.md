@@ -284,9 +284,9 @@ Three interactions go beyond replacing by coordinate:
   Its tuples stay removed.
 - `set` on a label this record also added: the attribute rows live in `attributes/`, and a property patches the staged row.
 
-Along an axis outside `partial`, a layer must carry a label's whole extent.
-So a `set` of one value along such an axis reads the resolved series for that key and stages the untouched coordinates beside the edit.
-That is the one read of parent data an edit makes.
+Along an axis outside `partial`, a layer that restates a key and omits a label its parent held there deletes that value, and a later widening of `partial` does not bring it back.
+So an edit carries a label's whole extent: a `set` of one value along such an axis reads the resolved series for that key and stages the untouched coordinates beside the edit.
+That is the fill's contract rather than a rule every layer must meet, and the one read of parent data an edit makes.
 It happens when the rows are staged, so the staging table already holds what the layer will hold, and a write of `edits` has no completion step.
 
 The fill covers the key the edit named.

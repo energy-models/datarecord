@@ -39,7 +39,6 @@ from duckdb import DuckDBPyRelation, Expression
 from datarecord.duck import (
     distinct_values,
     fn,
-    struct_field,
     struct_of,
     try_read_parquet,
 )
@@ -81,8 +80,7 @@ def flags_from_rows(
     Parameters
     ----------
     dims
-        The broadcast dims the two mappings have an entry per; a dim missing
-        from one - declared after a persisted map was written - reads as unset.
+        The broadcast dims the two mappings have an entry per.
 
     Notes
     -----
@@ -95,8 +93,8 @@ def flags_from_rows(
 
     return {
         attribute: Flags(
-            frozenset(d for d in scope(attribute) if varies.get(d)),
-            frozenset(d for d in scope(attribute) if broadcast.get(d)),
+            frozenset(d for d in scope(attribute) if varies[d]),
+            frozenset(d for d in scope(attribute) if broadcast[d]),
             bool(breakpoints),
         )
         for attribute, varies, broadcast, breakpoints in rows
@@ -246,7 +244,7 @@ class Fold:
         """`rel`'s flag columns, aggregated per attribute."""
         flag = {
             c: struct_of(
-                {d: fn.bool_or(struct_field(rel, c, d, lit(False))) for d in dims}
+                {d: fn.bool_or(fn.struct_extract(col(c), lit(d))) for d in dims}
             ).alias(c)
             for c in ("varies", "broadcast")
         }
@@ -267,19 +265,19 @@ class Fold:
         schema: Schema,
         store: Store,
     ) -> Fold | None:
-        """This node's `Fold`, or `None` if it is not materialised under `schema`.
+        """This node's `Fold` under `schema`, its own, or `None` if it is not materialised.
 
         The owner map is the presence marker: the map is written last
-        (`cache.materialise`), so if it is absent or stale (`read_owner_map`)
-        the node reads as having no cache at all. Each axis is read from the
-        layer `dim_owners.parquet` names for it, and a dim's dead labels only
-        where it says the dim has any.
+        (`cache.materialise`), so if it is absent the node reads as having no
+        cache at all. Each axis is read from the layer `dim_owners.parquet`
+        names for it, and a dim's dead labels only where it says the dim has
+        any.
 
         Notes
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
-        owner_map = read_owner_map(revision_id, con, schema, store)
+        owner_map = read_owner_map(revision_id, con, store)
         if owner_map is None:
             return None
         rows = read_dim_owners(revision_id, con, store)
@@ -307,19 +305,15 @@ def _path(alias: str, column: str, field: str | None) -> Expression:
 
 
 def read_owner_map(
-    revision_id: UUID, con: DuckDBPyConnection, schema: Schema, store: Store
+    revision_id: UUID, con: DuckDBPyConnection, store: Store
 ) -> DuckDBPyRelation | None:
-    """`revision_id`'s persisted owner map, `None` where it is absent or keyed otherwise than `schema` keys one.
+    """`revision_id`'s persisted owner map, keyed by its own schema, `None` where it is absent.
 
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
-    rel = try_read_parquet(store.owner_map_uri(revision_id), con)
-    if rel is None or set(rel.columns) != set(schema.owner_map_columns):
-        return None
-    return rel
+    return try_read_parquet(store.owner_map_uri(revision_id), con)
 
 
 def read_dim_owners(

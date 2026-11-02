@@ -89,7 +89,7 @@ class LayerSource(Protocol):
         """
         ...
 
-    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
         """This layer's resolved `Fold` if it is materialised, else `None`.
 
         A filesystem fact, distinct from `frozen`: `frozen` says the rows cannot
@@ -218,7 +218,7 @@ class _FileLayer:
             return None
         return self._read("attributes", list(self.files.attributes))
 
-    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
         """No cache by default: only a `ParquetLayer` has a revision to key one by."""
         return None
 
@@ -287,9 +287,9 @@ class ParquetLayer(_FileLayer):
     def uri(self, path: str = "") -> str:
         return self.store.layer_dir(self.layer_id) + path
 
-    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self.layer_id, con, schema, self.store)
+        return Fold.read(self.layer_id, con, self.schema, self.store)
 
     def sibling(self, layer_id: UUID) -> ParquetLayer:
         """Layer `layer_id` of this layer's store."""
