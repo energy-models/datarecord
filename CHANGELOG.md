@@ -68,8 +68,7 @@ All notable changes to datarecord are documented here. The format follows
   the revisions whose `meta` holds every pair given.
 - `store.cleanup(ids=[...])` and `store.cleanup(older_than=timedelta(...))`
   delete pending layers, and refuse an id that is not pending. Nothing else
-  deletes. `Files.delete(prefix)` removes everything under a prefix, locally
-  or on S3.
+  deletes.
 - A store or standalone directory on `s3://`, through boto3 behind the
   `datarecord[remote]` extra and configured by the AWS environment. Claims and
   manifests are written create-only, and each writer checks its schema
