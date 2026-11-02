@@ -103,3 +103,4 @@ Checks that hold once built:
 ## Open Issues
 
 - Whether `WorkingRecord` gets an explicit way to delete one value along a dim outside `partial`; today only a hand-written layer can.
+- Whether a layer may remove a dim `d` from `partial`. It would restate, as resolved, every key of its own `partial` at which a parent map row names a label of `d`; the fold would then project `d` out of the parent's map, step 2 dropping every row that named it, and refuse a layer leaving one uncovered. `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
