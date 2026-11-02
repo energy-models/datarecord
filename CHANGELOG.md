@@ -59,6 +59,15 @@ meta=)` hands out a layer id by a create-only `claim.json` before any data
   and refuses one built over anything else, naming `ws.write(w, uri)`, which
   writes the flattened record. No file in a store is written twice, node
   caches aside.
+- A `Claim` serialises and pickles as its store's location and id, and reads
+  its parent, `meta` and claim time back from its `claim.json`, so a job in
+  another process commits it. `store.claims()` lists the pending layers,
+  oldest first, with their `meta`, and `store.revisions(meta={...})` returns
+  the revisions whose `meta` holds every pair given.
+- `store.cleanup(ids=[...])` and `store.cleanup(older_than=timedelta(...))`
+  delete pending layers, and refuse an id that is not pending. Nothing else
+  deletes, and a committed layer is never deleted. `Files.delete(prefix)`
+  removes everything under a prefix, locally or on S3.
 - A store or standalone directory on `s3://`, through boto3 behind the
   `datarecord[remote]` extra and configured by the AWS environment. Claims and
   manifests are written create-only, and each writer checks its schema
@@ -331,6 +340,8 @@ meta=)` hands out a layer id by a create-only `claim.json` before any data
   with its compare-and-swap, and the `revisions/` tree are gone, as is the
   local staging directory of a write. A store written before has no layer
   manifests, so it is unreadable and is written again.
+- `Files`' `Version` precondition is gone: `read_text` returns the text alone,
+  and `write_text` takes `expect=Absent()` or `None` and returns nothing.
 
 ### Fixed
 

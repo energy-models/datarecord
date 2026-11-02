@@ -10,22 +10,24 @@ Notes
 - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
 """
 
+import json
 import pickle
 import threading
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
+from datetime import timedelta
 from pathlib import Path
+from uuid import uuid4
 
 import duckdb
 import pandas as pd
 import pytest
 
-from datarecord import Revision, Workspace
+from datarecord import Claim, Revision, Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.specs import Dimension
 from datarecord.store import write
 from datarecord.store.files import PreconditionFailedError
-from datarecord.store.manifest import write_claim
 from tests.fixtures import (
     broadcast,
     empty_child,
@@ -194,12 +196,13 @@ def test_a_second_claim_of_an_id_fails(store, committed):
         claim.commit(_p_nom())
         with pytest.raises(ValueError, match="committed already"):
             claim.commit(_p_nom())
+    uri = store.claim_uri(claim.id)
     with pytest.raises(PreconditionFailedError):
-        write_claim(store.files, store.claim_uri(claim.id), claim.id, None, {})
+        store._read_claim(claim.id).write(store.files, uri)
 
 
 def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
-    """A layer holding a claim and data but no manifest is no revision.
+    """A layer holding a claim and data but no manifest is no revision, but a claim.
 
     Its commit failed after writing its axis, so its files are there.
 
@@ -213,7 +216,7 @@ def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
         attributes={"p_nom": _long(entity="ghost")},
         dims={"entity": pd.DataFrame({"entity": ["steel_dri"]})},
     )
-    claim = store.claim(parent=root)
+    claim = store.claim(parent=root, meta={"run": "a"})
     with pytest.raises(ValueError, match="ghost"):
         claim.commit(unheld)
     assert Path(store.axis_uri(claim.id, "entity")).exists(), "its data is written"
@@ -223,6 +226,9 @@ def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
     try:
         for reader in (store, fresh.store(store.uri)):
             assert [r.id for r in reader.revisions()] == [root.id]
+            assert [(c.id, c.parent, c.meta) for c in reader.claims()] == [
+                (claim.id, root.id, {"run": "a"})
+            ], "listed by `claims()`, with its parent and meta"
             with pytest.raises(KeyError):
                 reader.revision(claim.id)
             with pytest.raises(KeyError):
@@ -233,6 +239,159 @@ def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
                 reader.workspace.at(store.layer_dir(claim.id))
     finally:
         fresh.close()
+
+
+@pytest.mark.parametrize(
+    "by",
+    [lambda claim: {"ids": [claim.id]}, lambda _: {"older_than": timedelta(0)}],
+    ids=["ids", "age"],
+)
+def test_cleanup_deletes_a_pending_layer_and_no_committed_one(store, by):
+    """Named by id, or claimed at least `older_than` ago, which `timedelta(0)` reaches.
+
+    Notes
+    -----
+    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    claim = store.claim(parent=root)
+    assert store.cleanup(**by(claim)) == [claim.id]
+    assert not Path(store.layer_dir(claim.id)).exists()
+    assert store.claims() == []
+    assert [r.id for r in store.revisions()] == [root.id]
+    assert root.record.attributes["p_nom"].df()["value"].tolist() == [1.0]
+
+
+def test_cleanup_refuses_a_committed_layer_and_spares_a_young_one(store):
+    """Nothing is deleted unless asked, and a committed layer never.
+
+    Notes
+    -----
+    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    claim = store.claim(parent=root)
+    with pytest.raises(ValueError, match=str(root.id)):
+        store.cleanup(ids=[claim.id, root.id])
+    assert store.cleanup(older_than=timedelta(days=14)) == [], "claimed just now"
+    with pytest.raises(TypeError, match="exactly one"):
+        store.cleanup()
+    assert [c.id for c in store.claims()] == [claim.id], "nothing was deleted"
+    assert [r.id for r in store.revisions()] == [root.id]
+
+
+@pytest.mark.parametrize("when", ["before", "during"])
+def test_a_cleaned_up_claim_commits_no_more(store, monkeypatch, when):
+    """Refused before its data is written, or after it and before the manifest.
+
+    A cleanup racing the write leaves the files written after it, which no
+    read reaches. Each write recreates its directory, as an object store
+    needs none.
+
+    Notes
+    -----
+    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    claim = store.claim(parent=root)
+    if when == "before":
+        store.cleanup(ids=[claim.id])
+    else:
+        parquet = write.write_parquet
+
+        def cleaned_up(rel, uri, con, **kwargs):
+            if Path(store.claim_uri(claim.id)).exists():
+                store.cleanup(ids=[claim.id])
+            Path(uri).parent.mkdir(parents=True, exist_ok=True)
+            return parquet(rel, uri, con, **kwargs)
+
+        monkeypatch.setattr(write, "write_parquet", cleaned_up)
+    with pytest.raises(ValueError, match="was cleaned up"):
+        claim.commit(_p_nom(2.0))
+    assert not Path(store.manifest_uri(claim.id)).exists()
+    assert [r.id for r in store.revisions()] == [root.id]
+    assert store.claims() == []
+
+
+def test_a_layer_directory_without_a_claim_is_no_claim(store):
+    """A claim mid-write, or a cleanup's leftovers: neither listed nor aged.
+
+    Notes
+    -----
+    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    """
+    claim = store.claim(parent=None)
+    stray = Path(store.layer_dir(uuid4()))
+    stray.mkdir()
+    (stray / ".claim.json.abc123").write_text("{}")
+    assert [c.id for c in store.claims()] == [claim.id]
+    assert store.cleanup(older_than=timedelta(0)) == [claim.id]
+    assert stray.exists(), "only a claimed layer is aged"
+
+
+@pytest.mark.parametrize(
+    ("meta", "found"),
+    [
+        ({}, {"a", "b", "c"}),
+        ({"run": "a"}, {"a"}),
+        ({"n": 1}, {"a", "b"}),
+        ({"run": "a", "n": 1}, {"a"}),
+        ({"run": "a", "n": 2}, set()),
+        ({"n": 1.0}, set()),
+        ({"ok": True}, {"c"}),
+    ],
+    ids=["none", "one", "shared", "both", "one-off", "other-type", "bool"],
+)
+def test_revisions_filter_by_meta(store, meta, found):
+    """A revision is listed when its `meta` holds every pair given; a pending layer never.
+
+    Notes
+    -----
+    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
+    """
+    metas = {
+        "a": {"run": "a", "n": 1},
+        "b": {"run": "b", "n": 1},
+        "c": {"run": "c", "ok": True},
+    }
+    names = {
+        store.commit(_p_nom(), parent=None, meta=m).id: name
+        for name, m in metas.items()
+    }
+    store.claim(parent=None, meta={"run": "a", "n": 1})
+    fresh = Workspace()
+    try:
+        for reader in (store, fresh.store(store.uri)):
+            listed = {names[r.id] for r in reader.revisions(meta=meta)}
+            assert listed == found, "the same from the cache as from the manifests"
+    finally:
+        fresh.close()
+
+
+def test_a_claim_crosses_a_process_boundary(store):
+    """Serialised as its store's location and id, the rest read back from its claim file.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    claim = store.claim(parent=root, meta={"run": "a"})
+    dumped = claim.model_dump_json()
+    assert json.loads(dumped) == {"id": str(claim.id), "store": store.uri}
+
+    for back in (Claim.model_validate_json(dumped), pickle.loads(pickle.dumps(claim))):
+        assert back.store is Workspace.process().store(store.uri)
+        assert (back.id, back.parent, back.meta, back.created) == (
+            claim.id,
+            root.id,
+            {"run": "a"},
+            claim.created,
+        )
+    done = pickle.loads(pickle.dumps(claim)).commit(_p_nom(2.0), meta={"ok": True})
+    assert store.revision(done.id).meta == {"run": "a", "ok": True}
+    with pytest.raises(KeyError, match="No claim"):
+        Claim.model_validate({"id": str(uuid4()), "store": store.uri})
 
 
 @pytest.mark.parametrize(
@@ -335,21 +494,6 @@ def test_a_parent_of_another_store_is_refused(workspace, store, tmp_path):
         store.commit(_p_nom(), parent=root)
     with pytest.raises(TypeError, match="needs a `parent=`"):
         store.commit(_p_nom())  # type: ignore[call-overload]
-
-
-def test_a_stale_version_is_refused(store):
-    """A `Version` write holds only while the file is as it was read.
-
-    Notes
-    -----
-    - [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
-    """
-    uri = f"{store.uri}/note.txt"
-    read = store.files.write_text(uri, "first", expect=None)
-    store.files.write_text(uri, "second", expect=read)
-    with pytest.raises(PreconditionFailedError):
-        store.files.write_text(uri, "third", expect=read)
-    assert store.files.read_text(uri)[0] == "second", "the refused write left no trace"
 
 
 def test_a_revision_crosses_a_process_boundary(workspace, tree):

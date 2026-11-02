@@ -26,14 +26,14 @@ Notes
 import os
 import threading
 from concurrent.futures import ThreadPoolExecutor
-from uuid import uuid4
+from datetime import timedelta
+from uuid import UUID, uuid4
 
 import pandas as pd
 import pytest
 
 from datarecord import Workspace
 from datarecord.store.files import PreconditionFailedError, RemoteFiles
-from datarecord.store.manifest import write_claim
 from tests.fixtures import relation, widened
 from tests.test_write import _SCHEMA, _long, _Source
 
@@ -92,8 +92,9 @@ def test_a_standalone_directory_writes_and_reads_its_manifest(workspace, bucket)
 def test_a_claim_and_a_manifest_are_written_once(workspace, bucket):
     store = workspace.store(f"{bucket}/record")
     root = store.commit(_Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None)
+    uri = store.claim_uri(root.id)
     with pytest.raises(PreconditionFailedError):
-        write_claim(store.files, store.claim_uri(root.id), root.id, None, {})
+        store._read_claim(root.id).write(store.files, uri)
     with pytest.raises(PreconditionFailedError):
         root.manifest.write(store.files, store.manifest_uri(root.id))
 
@@ -120,7 +121,7 @@ def test_two_writers_widening_at_once_both_land(workspace, bucket):
     assert root.manifest.schema == _SCHEMA, "the parent is never widened"
 
 
-def test_a_write_failing_part_way_leaves_no_revision(workspace, bucket):
+def test_a_write_failing_part_way_leaves_a_pending_layer_to_clean_up(workspace, bucket):
     store = workspace.store(f"{bucket}/record")
     short = _long().drop(columns=["breakpoint"])
     source = _Source(
@@ -135,6 +136,10 @@ def test_a_write_failing_part_way_leaves_no_revision(workspace, bucket):
     assert store.files.exists(store.claim_uri(pending)), "the layer is claimed"
     assert not store.files.exists(store.manifest_uri(pending)), "and pending"
     assert store.revisions() == [], "so no revision reaches it"
+    assert [str(c.id) for c in store.claims()] == [pending]
+
+    assert store.cleanup(older_than=timedelta(0)) == [UUID(pending)]
+    assert store.files.list(f"{store.uri}/layers/") == [], "every key under it went"
 
 
 def test_a_standalone_write_to_a_non_empty_uri_is_refused(workspace, bucket):

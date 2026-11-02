@@ -17,8 +17,7 @@ Notes
 from __future__ import annotations
 
 import hashlib
-import json
-from datetime import UTC, datetime
+from datetime import datetime
 from typing import TYPE_CHECKING
 from uuid import UUID
 
@@ -89,10 +88,46 @@ class Manifest:
     def read(cls, files: Files, uri: str) -> Manifest | None:
         """The manifest at `uri`, or `None` where there is none."""
         found = files.read_text(uri)
-        return None if found is None else _MANIFEST.validate_json(found[0])
+        return None if found is None else _MANIFEST.validate_json(found)
+
+
+@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+class ClaimFile:
+    """A layer's `claim.json`: written create-only when its id is handed out, and kept.
+
+    Attributes
+    ----------
+    meta
+        The revision's `meta` as claimed, which its commit may extend and
+        never change.
+    created
+        When the id was handed out, which an age-limited cleanup compares.
+    """
+
+    id: UUID
+    parent: UUID | None
+    meta: Meta
+    created: datetime
+
+    def write(self, files: Files, uri: str) -> None:
+        """Write this claim at `uri`, create-only, so an id is handed out once.
+
+        Raises
+        ------
+        PreconditionFailedError
+            If the id was claimed before.
+        """
+        files.write_text(uri, _CLAIM.dump_json(self).decode(), expect=Absent())
+
+    @classmethod
+    def read(cls, files: Files, uri: str) -> ClaimFile | None:
+        """The claim at `uri`, or `None` where there is none."""
+        found = files.read_text(uri)
+        return None if found is None else _CLAIM.validate_json(found)
 
 
 _MANIFEST = TypeAdapter(Manifest)
+_CLAIM = TypeAdapter(ClaimFile)
 _META = TypeAdapter(Meta)
 
 
@@ -110,25 +145,6 @@ def validate_meta(meta: Meta | None) -> Meta:
         For any other value.
     """
     return _META.validate_python(meta or {}, strict=True)
-
-
-def write_claim(
-    files: Files, uri: str, id: UUID, parent: UUID | None, meta: Meta
-) -> None:
-    """Write a layer's `claim.json`, create-only, so an id is handed out once.
-
-    Raises
-    ------
-    PreconditionFailedError
-        If `id` was claimed before.
-    """
-    body = {
-        "id": str(id),
-        "parent": None if parent is None else str(parent),
-        "meta": meta,
-        "created": datetime.now(UTC).isoformat(),
-    }
-    files.write_text(uri, json.dumps(body), expect=Absent())
 
 
 def merge_meta(claimed: Meta, given: Meta) -> Meta:
