@@ -14,14 +14,16 @@ from datarecord import Workspace
 
 store = Workspace().store("/data/my-record")
 
-root = store.root(source)  # a new revision, with `source` as its layer
-child = root.child(patch)  # branch off it, with `patch` as its layer
+root = store.commit(source, parent=None)  # a new revision, with `source` as its layer
+child = store.commit(patch, parent=root)  # branch off it, with `patch` as its layer
 record = child.record  # the resolved tree, as a `Record`
+child.manifest.schema  # the full schema `patch` was written under
 ```
 
 A revision exists only by writing its layer, so there is no empty revision.
 
-Each revision is a file under `revisions/` beside `layers/`, so a location alone is enough to find the tree.
+Each revision is its layer's `manifest.json` under `layers/`, holding its id, its parent, the full schema it was written under, the files it wrote and its own `meta`, so a location alone is enough to find the tree.
+A layer claimed with `store.claim` and not yet committed is pending, and no read reaches it.
 A `Revision` serialises as its id, its parent and its store's location ([design](../design/storage/store.md#the-tree-beside-the-layers)).
 
 A layer's data is write-once, so any revision may be a parent and no cache needs invalidating ([design](../design/layers/tree.md#a-layers-data-is-write-once)).
@@ -43,7 +45,7 @@ child.record.attributes["x"]
 A broadcast reaches every label the record holds, including one added below a materialised revision or staged in a `WorkingRecord`:
 
 ```python
-c = rev.child(w.edits)  # w.set("p_max_pu", 0.9)
+c = store.commit(w)  # w.set("p_max_pu", 0.9)
 c.materialise()
 w = WorkingRecord(c.record)
 w.add("entity", ["n"], ctype="Generator")
@@ -81,9 +83,12 @@ store.layer(uuid)  # one layer read alone
 ## Writing a whole record
 
 ```python
-root = store.root(source)  # a new root revision with this layer
-child = root.child(source)  # a new child of root with this layer
+root = store.commit(source, parent=None)  # a new root revision with this layer
+child = store.commit(source, parent=root, meta={"run": "a"})  # a new child of root
 record = ws.write(source, "out/")  # a standalone directory, read back
+
+claim = store.claim(parent=root, meta={"run": "b"})  # the id, before any data
+rev = claim.commit(source, meta={"status": "done"})  # data, then the manifest
 ```
 
 `source` is a `LayerData` or anything satisfying `RecordLike`, including a framework object that presents itself as a record.

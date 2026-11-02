@@ -20,7 +20,7 @@ store = ws.store("/data/my-record")  # absolute; never empty
 record = ws.at("out/")  # a standalone directory
 ```
 
-A revision's file is written after its layer and the manifest, so a write that fails leaves no revision behind ([design](../design/storage/store.md#a-revision-exists-only-by-its-file)).
+A layer's manifest is written after its data, so a write that fails leaves a pending layer, which no read reaches, and no revision ([design](../design/storage/store.md#the-store)).
 
 ## A standalone directory
 
