@@ -16,7 +16,7 @@ from duckdb import DuckDBPyRelation
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from tests.fixtures import empty_root, write_schema
+from tests.fixtures import empty_root
 
 
 @pytest.fixture
@@ -62,8 +62,7 @@ def schema():
 @pytest.fixture
 def revision(store, schema):
     """A generator and a load, each connected to one bus; the generator's `p_max_pu` and the load's `p_set` set."""
-    write_schema(schema, store)
-    root = empty_root(store)
+    root = empty_root(store, schema).commit()
     staged = WorkingRecord(root.record)
     staged.add("entity", ["g1"], ctype="Generator", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load")
