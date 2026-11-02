@@ -60,7 +60,7 @@ from datarecord import WorkingRecord
 
 w = WorkingRecord(revision.record)
 w.set("p_nom", 150.0, entity=["wind1", "wind2"])
-child = revision.child(w.edits)
+child = store.commit(w)  # a child of `revision`, holding the edits
 ```
 
 See [Usage](https://energy-models.github.io/datarecord/usage/) for the rest.

@@ -143,7 +143,7 @@ A `WorkingRecord` does not write.
 The record stays unchanged until you hand its edits to a writer ([design](../design/use/editing.md#edits)):
 
 ```python
-new = root.child(w.edits)  # a patch layer under a new child of the base
+new = store.commit(w)  # a patch layer under a new child of the base
 ws.write(w, "out/")  # a standalone record, flattened
 w.rollback()  # clear the staging area, if you are done
 ```
