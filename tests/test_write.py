@@ -599,20 +599,29 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
 # -- validation -------------------------------------------------------------
 
 
-def test_a_write_rejects_an_undeclared_attribute(store):
-    """An attribute with no spec has no shape, so there is nothing to write it as.
+@pytest.mark.parametrize(
+    ("source", "match"),
+    [
+        (_Source(_SCHEMA, attributes={"not_declared": _long()}), "attribute"),
+        (
+            _Source(_SCHEMA, dims={"region": pd.DataFrame({"region": ["north"]})}),
+            "dim",
+        ),
+    ],
+    ids=["attribute", "dim"],
+)
+def test_a_write_rejects_an_undeclared_attribute_or_dim(store, source, match):
+    """A file the schema does not declare is refused rather than listed.
 
-    Its `dims` are what say which columns the file carries, so writing one the
-    schema does not declare would put a file in `attributes/` whose column set no
-    reader could derive.
+    An attribute with no spec has no shape to write it in, and an axis no dim
+    declares would be read by a descendant declaring that dim.
 
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
+    - [shape](https://energy-models.github.io/datarecord/design/use/writing/#shape)
     """
-    source = _Source(_SCHEMA, attributes={"not_declared": _long()})
-
-    with pytest.raises(ValueError, match="not a declared attribute"):
+    with pytest.raises(ValueError, match=f"not a declared {match}"):
         store.commit(source, parent=None)
 
 

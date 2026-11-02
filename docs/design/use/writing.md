@@ -66,6 +66,7 @@ Two rows of one attribute that cover one coordinate are refused when both name t
 A record holding rows of several layers, written whole by `ws.write(w, uri)`, passes: wherever two of its rows cross, it holds the row naming both ([crossing rows](../layers/resolution.md#crossing-rows)).
 A child layer that leaves a dim outside `partial` NULL over a parent row naming it, with no row naming the dim there, is refused by the fold rather than the writer ([a dim outside `partial`](../layers/resolution.md#a-dim-outside-partial)).
 
+A `dims/` file of a dim that the schema does not declare is refused, since a descendant declaring the dim would read its labels.
 A `dims/` file of a declared dim must carry the dim's key column, the struct column named for it for a multi-dim.
 
 ## Axes and labels

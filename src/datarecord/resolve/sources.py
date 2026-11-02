@@ -289,7 +289,7 @@ class ParquetLayer(_FileLayer):
 
     def materialised(self, con: DuckDBPyConnection) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self.layer_id, con, self.schema, self.store)
+        return Fold.read(self, con)
 
     def sibling(self, layer_id: UUID) -> ParquetLayer:
         """Layer `layer_id` of this layer's store."""

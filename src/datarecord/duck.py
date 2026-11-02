@@ -21,7 +21,6 @@ Notes
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import partial, reduce
-from glob import glob
 from pathlib import Path
 from typing import Any
 
@@ -73,56 +72,32 @@ def write_parquet(
     con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
 
 
-def try_read_parquet(
-    uri: str, con: DuckDBPyConnection, **kwargs: object
-) -> DuckDBPyRelation | None:
-    """`con.read_parquet(uri)`, or `None` if `uri` (possibly a glob) matches nothing.
-
-    Parameters
-    ----------
-    uri
-        Path or glob to read, local or remote.
-    con
-        Connection to read with.
-    **kwargs
-        Forwarded to `con.read_parquet`.
-
-    Returns
-    -------
-    DuckDBPyRelation | None
-        The relation, or `None` if `uri` matches no files.
+def try_read_parquet(uri: str, con: DuckDBPyConnection) -> DuckDBPyRelation | None:
+    """`con.read_parquet(uri)`, or `None` if the file `uri` is absent, local or remote.
 
     Raises
     ------
     duckdb.Error
         If the read fails for any reason other than a local or remote miss
         (e.g. DNS/TLS/timeout) - a connection failure should not be mistaken
-        for a missing layer.
+        for a missing file.
 
     Notes
     -----
     A local miss is answered without asking DuckDB at all. Inside a transaction
     a failed read *aborts* it, and catching the exception here does not undo
     that - every later statement on the connection would fail until a rollback,
-    which would discard whatever the transaction had staged. A missing kind is
-    ordinary (an attribute a layer never wrote), so it must not depend on being
-    outside one.
+    which would discard whatever the transaction had staged.
     """
-    if "://" not in uri and not (
-        glob(uri) if any(c in uri for c in "*?[") else Path(uri).exists()
-    ):
+    if "://" not in uri and not Path(uri).exists():
         return None
     try:
-        return con.read_parquet(uri, **kwargs)  # type: ignore[arg-type]
+        return con.read_parquet(uri)
     except duckdb.HTTPException as e:
         # This duckdb build exposes no status code, only the message ("HTTP
         # Error: ... (HTTP 404 Not Found)"). 403 also counts as a miss: S3
         # signals a missing key that way when the caller lacks ListBucket.
         if "HTTP 404" in str(e) or "HTTP 403" in str(e):
-            return None
-        raise
-    except duckdb.IOException as e:
-        if "No files found" in str(e):
             return None
         raise
 
