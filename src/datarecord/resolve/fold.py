@@ -115,7 +115,7 @@ class Fold:
     Attributes
     ----------
     schema
-        The record's one schema, which says which broadcast dims the flags carry.
+        The schema the record is read under, which says which broadcast dims the flags carry.
     axes
         Each resolved dim's axis relation, keyed by dim.
     dim_owners

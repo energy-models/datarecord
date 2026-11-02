@@ -23,9 +23,9 @@ from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from datarecord.store.manifest import read_schema
 from tests.fixtures import (
     broadcast,
+    empty_child,
     empty_root,
     export_network,
     schema,
@@ -77,7 +77,7 @@ def _small(store, **declared):
     staged.add("entity", ["Norway"], ctype="Bus")
     staged.add("bus", ["Norway"])
     staged.set("p_nom", [80.0, 100.0], entity=["Manchester Wind", "Norway Wind"])
-    return revision.child(staged.edits)
+    return revision.store.commit(staged)
 
 
 def _layer_rows(revision, attribute):
@@ -88,17 +88,13 @@ def _layer_rows(revision, attribute):
     one layer's file, not the resolved record, so `Store.layer` - which folds a
     source through the whole-tree machinery - is the wrong lens for it.
     """
-    rel = ParquetLayer(
-        revision.id, read_schema(revision.store), revision.store
-    ).attribute(attribute)
+    rel = ParquetLayer(revision.manifest, revision.store).attribute(attribute)
     return rel.to_df() if rel is not None else pd.DataFrame()
 
 
 def _layer_axis(revision, dim):
     """One committed layer's own `dims/<dim>.parquet`, as pandas - `_layer_rows` for an axis."""
-    rel = ParquetLayer(revision.id, read_schema(revision.store), revision.store).axis(
-        dim
-    )
+    rel = ParquetLayer(revision.manifest, revision.store).axis(dim)
     return rel.to_df() if rel is not None else pd.DataFrame()
 
 
@@ -246,7 +242,7 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, root):
 
 def test_set_over_several_names(staged, root):
     staged.set("p_nom", 150.0, entity=["Manchester Wind", "Norway Wind"])
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
 
     got = _entity_values(child.record, "p_nom")
     assert got["Manchester Wind"] == got["Norway Wind"] == 150.0
@@ -392,7 +388,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     staged.add("entity", ["NewSolar"], ctype=GEN)
     staged.set("p_nom", 7.0, entity=["NewSolar"])
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _entity_values(child.record, "p_nom")["NewSolar"] == 7.0
 
 
@@ -442,11 +438,11 @@ def test_set_with_no_names_over_a_non_partial_dim_stays_one_row(store):
     added = WorkingRecord(revision.record)
     added.add("entity", ["a", "b"])
     added.set("p_nom", {"a": 1.0, "b": 2.0})
-    root = revision.child(added.edits)
+    root = revision.store.commit(added)
 
     staged = WorkingRecord(root.record)
     staged.set("p_nom", 9.0)
-    rows = root.child(staged.edits).record.attributes["p_nom"].df()
+    rows = root.store.commit(staged).record.attributes["p_nom"].df()
     assert rows["entity"].isna().all(), "one broadcast row, not one per label"
     assert rows["value"].tolist() == [9.0]
 
@@ -525,7 +521,7 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
     assert p_nom("Manchester Wind") == [22.0]
     assert p_nom("Norway Wind") == [33.0]
 
-    committed = _entity_values(root.child(staged.edits).record, "p_nom")
+    committed = _entity_values(root.store.commit(staged).record, "p_nom")
     assert committed["Manchester Wind"] == 22.0, "the later edit to a key commits"
 
 
@@ -569,10 +565,10 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     first.add("snapshot", snapshots)
     first.set("p_max_pu", 0.5, entity="Norway Wind", snapshot=snapshots)
     first.remove("snapshot", snapshots[1:])
-    one = root.child(first.edits)
+    one = root.store.commit(first)
     second = WorkingRecord(one.record)
     second.remove("connection", [{"entity": "Norway Wind", "bus": "Norway"}])
-    base = one.child(second.edits)
+    base = one.store.commit(second)
     if materialised:
         {"root": root, "base": base}[materialised].materialise()
 
@@ -586,7 +582,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
         pd.DataFrame({"entity": ["Solar", "Norway Wind"], "bus": ["Oslo", "Norway"]}),
     )
     w.set("p_nom", 5.0, entity=["Solar"])
-    child = base.child(w.edits)
+    child = base.store.commit(w)
 
     def read(record):
         return (
@@ -613,7 +609,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     folded = read(child.record)
     assert read(w) == folded, "the seeded fold reads as the fold over every layer"
     base.materialise()
-    assert read(base.child(w.edits).record) == folded, (
+    assert read(base.store.commit(w).record) == folded, (
         "materialising the base changes nothing a child of it reads"
     )
 
@@ -628,18 +624,20 @@ def test_a_non_float_attribute_stages_and_commits(store):
     text and casts to the declared dtype where the attribute is known - which
     is the point at which `attributes/<attr>.parquet` is per-attribute.
 
-    The schema is amended before the `WorkingRecord` is built: a record carries
-    the schema its base was resolved under, so a widening has to be in force
-    when the record is constructed, not slipped in before a later commit.
+    The schema is widened by a child, before the `WorkingRecord` is built: a
+    record carries the schema of the revision it was built over, so a widening
+    has to be in force when the record is constructed, not slipped in before a
+    later commit.
 
     Notes
     -----
     - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
-    root = _small(store)
-    amended = read_schema(store)
+    small = _small(store)
+    amended = small.manifest.schema.model_copy(deep=True)
     amended.attributes["fuel"] = AttributeSpec(dtype="str", dims={"entity", "scenario"})
     write_schema(amended, store)
+    root = empty_child(small)
 
     staged = WorkingRecord(root.record)
     staged.set("fuel", "solar", entity=["Manchester Wind"])
@@ -651,7 +649,7 @@ def test_a_non_float_attribute_stages_and_commits(store):
         "the cast is per attribute, so a DOUBLE one is not turned into text"
     )
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     got = child.record.attributes["fuel"].df()
     assert got[got["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
 
@@ -683,7 +681,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
     staged.set("p_max_pu", first)
     staged.set("p_max_pu", second)
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     rows = _layer_rows(child, "p_max_pu")
     got = rows[rows["entity"] == "Manchester Wind"].sort_values("snapshot")
 
@@ -718,7 +716,7 @@ def test_add_then_commit_makes_a_label_exist(staged, root):
     staged.add("entity", ["NewSolar"], ctype=GEN)
     assert "NewSolar" in _entity_axis(staged).index, "it reads back before commit"
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _entity_axis(child.record).loc["NewSolar", "ctype"] == GEN
 
 
@@ -889,7 +887,7 @@ def test_a_property_keyword_selects_the_labels_there_are_now(units):
 def test_set_of_a_category_survives_a_commit(staged, root):
     staged.set("entity.ctype", "Load", entity="Manchester Wind")
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     axis = _entity_axis(child.record)
     assert axis.loc["Manchester Wind", "ctype"] == "Load"
     assert (
@@ -916,7 +914,7 @@ def test_re_adding_a_label_replaces_its_row(staged, root):
     assert len(rows) == 1, "one label, one row"
     assert list(rows["ctype"]) == ["Load"], "the later op wins"
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _entity_axis(child.record).loc["Manchester Wind", "ctype"] == "Load"
 
 
@@ -965,7 +963,7 @@ def test_a_staged_axis_is_the_whole_axis_in_order(staged, root, edits, appended)
             staged.remove("entity", [label])
     assert staged.edits.axis("entity").df()["entity"].tolist() == labels
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     written = _layer_axis(child, "entity")["entity"].tolist()
     assert written == labels, "the layer restates the axis whole, in that order"
     kept = _entity_values(child.record, "p_nom")["Norway Gas"]
@@ -978,7 +976,7 @@ def test_remove_needs_no_attribute_enumerated(staged, root):
     staged.remove("entity", ["Norway Gas"])
     assert "Norway Gas" not in _entity_axis(staged).index, "it reads back at once"
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert "Norway Gas" not in set(child.record.dims["entity"].df()["entity"])
 
 
@@ -992,7 +990,7 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     staged.set("p_nom", 99.0, entity=["Norway Gas"])
     staged.remove("entity", ["Norway Gas"])
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
@@ -1015,7 +1013,7 @@ def test_remove_stages_a_multi_dim_without_the_tuple(staged, root, form):
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     rows = unpacked(child.record.dims["connection"])
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
@@ -1047,7 +1045,7 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     ]
     assert _efficiency(staged)["Manchester"] == 0.5
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _efficiency(child.record)["Manchester"] == 0.5
 
 
@@ -1220,7 +1218,7 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
 
     monkeypatch.setattr(write, "resolve_coords", unwanted)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    root.child(staged.edits)
+    root.store.commit(staged)
 
 
 def test_remove_of_no_labels_stages_nothing(staged):
@@ -1240,7 +1238,7 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
     staged.remove("entity", ["Manchester Wind"])
     staged.add("entity", ["Manchester Wind"], ctype=GEN)
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _entity_axis(child.record).loc["Manchester Wind", "ctype"] == GEN
     assert _efficiency(child.record) == {}, "its connections are re-added by hand"
 
@@ -1466,7 +1464,7 @@ def _with_roles(store):
         [{"entity": "l1", "bus": "b0"}, {"entity": "l1", "bus": "b1"}],
         role=["in", "out"],
     )
-    return root.child(staged.edits)
+    return root.store.commit(staged)
 
 
 def _roles(record):
@@ -1490,7 +1488,7 @@ def test_a_multi_dim_property_is_a_column_of_its_axis_file(store):
     staged.set("connection.role", "both", entity="l1", bus="b1")
     assert _roles(staged) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _roles(child.record) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
     patch = pd.read_parquet(f"{store.layer_dir(child.id)}dims/connection.parquet")
     assert patch["role"].tolist() == ["in", "both"], (
@@ -1579,16 +1577,16 @@ def test_writing_the_edits_clears_nothing(staged, root):
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    first = root.child(staged.edits)
+    first = root.store.commit(staged)
     still = _entity_values(staged, "p_nom")["Manchester Wind"]
     assert still == 150.0, "still staged"
 
-    again = root.child(staged.edits)
+    again = root.store.commit(staged)
     assert list(_layer_rows(again, "p_nom")["entity"]) == ["Manchester Wind"]
     assert list(_layer_rows(first, "p_nom")["entity"]) == ["Manchester Wind"]
 
     staged.rollback()
-    emptied = root.child(staged.edits)
+    emptied = root.store.commit(staged)
     assert _layer_rows(emptied, "p_nom").empty
 
 
@@ -1619,7 +1617,7 @@ def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root):
     assert len(mine) > 1, "a one-snapshot series would not distinguish the two scopes"
 
     staged.set("p_max_pu", one)
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
 
     rows = _layer_rows(child, "p_max_pu")
     assert set(rows["entity"]) == {"Manchester Wind"}, (
@@ -1647,10 +1645,10 @@ def test_edits_are_written_only_under_their_base(store):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
     with pytest.raises(ValueError, match="delta against"):
-        other.child(staged.edits)
-    assert root.child(staged.edits).parent == root.id
-    # The record itself is the flattened whole, which any revision may take.
-    assert other.child(staged).parent == other.id
+        store.claim(parent=other).commit(staged)
+    with pytest.raises(ValueError, match="delta against"):
+        store.commit(staged.edits, parent=other)
+    assert store.commit(staged).parent == root.id
 
 
 def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root):
@@ -1663,7 +1661,7 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root):
     """
     before = _entity_values(root.record, "p_nom")["Manchester Wind"]
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
 
     assert _entity_values(child.record, "p_nom")["Manchester Wind"] == 150.0
     assert _entity_values(root.record, "p_nom")["Manchester Wind"] == before
@@ -1720,8 +1718,10 @@ def test_edits_over_a_directory_are_no_revisions_delta(store, written_directory)
     revision = empty_root(store)
     over_a_directory = WorkingRecord(store.workspace.at(written_directory))
 
+    with pytest.raises(ValueError, match=r"`ws\.write\(w, uri\)`"):
+        store.commit(over_a_directory)
     with pytest.raises(ValueError, match="delta against"):
-        revision.child(over_a_directory.edits)
+        store.commit(over_a_directory.edits, parent=revision)
 
 
 def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
@@ -1780,7 +1780,7 @@ def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
     record = root.store.workspace.write(staged, out)
-    assert record.schema == staged.schema.model_copy(update={"id": record.schema.id})
+    assert record.schema == staged.schema
     members = _entity_axis(record)
     assert _entity_values(record, "p_nom")["Manchester Wind"] == 150.0
     # Flattened: every component is present, not left to a parent to supply.

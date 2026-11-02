@@ -25,6 +25,7 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     relation,
+    relist,
     schema,
     unpacked,
     write_attribute,
@@ -331,6 +332,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
                'efficiency' AS attribute, NULL::DOUBLE AS breakpoint, 0.5 AS value
         """
     ).to_parquet(str(target / "efficiency.parquet"))
+    relist(target.parent)
     assert _efficiencies(child) == {"h2_north": 0.5, "iron_ore": 0.5, "dri": 0.5}
 
 
@@ -382,7 +384,7 @@ def test_remove_drops_the_tuples_naming_the_entity(store):
     other.add("entity", ["blast_furnace"], ctype=PROCESS)
     other.add("connection", _connection("blast_furnace", "iron_ore"))
     other.set("efficiency", 3.0, entity=["blast_furnace"], bus="iron_ore")
-    root = base.child(other.edits)
+    root = base.store.commit(other)
 
     staged = WorkingRecord(root.record)
     staged.set("efficiency", 0.5, entity=["steel_dri"], bus="dri")
@@ -394,7 +396,7 @@ def test_remove_drops_the_tuples_naming_the_entity(store):
         "neither the base's nor the staged values, and another entity keeps its own"
     )
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert set(unpacked(child.record.dims["connection"])["entity"]) == {"blast_furnace"}
     assert _efficiency_rows(child.record) == {("blast_furnace", "iron_ore"): 3.0}
 
@@ -409,7 +411,7 @@ def test_add_refuses_a_tuple_naming_a_removed_entity(store):
     root = _root(store)
     staged = WorkingRecord(root.record)
     staged.remove("entity", ["steel_dri"])
-    removed = root.child(staged.edits)
+    removed = root.store.commit(staged)
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
@@ -462,7 +464,7 @@ def test_a_tuple_an_ancestor_left_dangling_fails_the_next_restatement(
     staged = WorkingRecord(dangling.record)
     edit(staged)
     with outcome:
-        dangling.child(staged.edits)
+        dangling.store.commit(staged)
 
 
 def test_set_requires_every_party_to_exist(store):
@@ -493,7 +495,7 @@ def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
 
     staged = WorkingRecord(root.record)
     staged.remove("entity", ["steel_dri"])
-    removed = root.child(staged.edits)
+    removed = root.store.commit(staged)
     removed.materialise()
     assert Path(store.resolved_dir(removed.id), "dead", "connection.parquet").exists()
 
@@ -512,13 +514,13 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
     write_schema(schema(partial={"scenario"}), store)
     staged = WorkingRecord(root.record)
     staged.remove("entity", ["steel_dri"])
-    removed = root.child(staged.edits)
+    removed = root.store.commit(staged)
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
     revived.add("entity", ["steel_dri"], ctype=PROCESS)
     revived.add("connection", _connection("steel_dri", "dri"))
-    assert _efficiencies(removed.child(revived.edits)) == {"dri": 1.0}
+    assert _efficiencies(removed.store.commit(revived)) == {"dri": 1.0}
 
 
 # -- a multi-dim drawing twice on `entity` ----------------------------------
@@ -565,6 +567,7 @@ def _contract_root(store) -> Revision:
         FROM (VALUES ('mill', 10.0), ('smelter', 20.0)) t(c, v)
         """
     ).to_parquet(str(Path(layer, "attributes", "price.parquet")))
+    relist(layer)
     return revision
 
 
@@ -592,7 +595,7 @@ def test_remove_reaches_a_multi_dims_second_entity_before_and_after_commit(store
     staged.remove("entity", ["mill"])
     assert _prices(staged) == {"smelter": 20.0}, "neither the base's nor the staged"
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
     contracts = child.record.dims["contract"]
     assert len(contracts) == 1, "its tuple went with it"

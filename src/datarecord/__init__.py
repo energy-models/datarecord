@@ -37,13 +37,15 @@ from datarecord.schema import (
     Schema,
 )
 from datarecord.settle import settle
-from datarecord.store import Revision, Store, Workspace
+from datarecord.store import Claim, Manifest, Revision, Store, Workspace
 
 __all__ = [
     "AttributeSpec",
+    "Claim",
     "Dimension",
     "Flags",
     "LazyRelations",
+    "Manifest",
     "PropertySpec",
     "Record",
     "RecordLike",

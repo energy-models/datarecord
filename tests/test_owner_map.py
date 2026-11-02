@@ -25,6 +25,7 @@ from datarecord.resolve.fold import read_dim_owners
 from datarecord.resolve.owner_map import _fold_map
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
+from datarecord.store.manifest import LayerFiles, Manifest
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -364,7 +365,10 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     revision_id = uuid4()
-    source = ParquetLayer(revision_id, Schema(), store)
+    manifest = Manifest(
+        id=revision_id, parent=None, schema=Schema(), files=LayerFiles()
+    )
+    source = ParquetLayer(manifest, store)
     assert isinstance(source, LayerSource), (
         "structural, so no import is needed to be one"
     )
@@ -373,8 +377,6 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     assert source.uri("attributes/p_nom.parquet") == (
         store.layer_dir(revision_id) + "attributes/p_nom.parquet"
     )
-    # A glob is a path like any other: the source neither parses nor validates.
-    assert source.uri("attributes/*.parquet").endswith("attributes/*.parquet")
 
 
 def _largest_intermediate(store, rel):
@@ -434,7 +436,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
             }
         ),
     )
-    revision = base.child(staged.edits)
+    revision = base.store.commit(staged)
 
     rel = revision.record.attributes["p_max_pu"]
     stored = len(names) * snapshots
@@ -476,11 +478,11 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
     staged.add("snapshot", [0, 1])
     staged.set("weight", 1.0)
     staged.set("p_max_pu", 0.5, entity="wind")
-    root = base.child(staged.edits)
+    root = base.store.commit(staged)
     staged = WorkingRecord(root.record)
     staged.set("weight", 2.0, snapshot=1)
     staged.set("p_max_pu", 0.7, snapshot=1)
-    record = root.child(staged.edits).record
+    record = root.store.commit(staged).record
 
     for plan in (
         _fold_map(record.sources, record.con, record.schema).explain().upper(),
@@ -561,7 +563,7 @@ def test_a_broadcast_reaches_every_label_a_named_row_leaves(
     w.set("p_max_pu", 0.9)
     w.set("p_max_pu", [0.2, 0.7, 0.4, 0.6], entity="wind", snapshot=[0, 1, 2, 3])
 
-    for record in (w, base.child(w.edits).record):
+    for record in (w, base.store.commit(w).record):
         assert broadcast(record, "p_nom", "entity") == {
             ("wind",): 100.0,
             ("house",): 100.0,
@@ -619,7 +621,7 @@ def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
     root.set("p_nom", 50.0, entity="gas")
     staged = WorkingRecord(root)
     staged.set("p_nom", 999.0, scenario="high")
-    committed = base.child(root.edits)
+    committed = base.store.commit(root)
     child = WorkingRecord(committed.record)
     child.set("p_nom", 999.0, scenario="high")
 
@@ -629,7 +631,7 @@ def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
         ("wind", "high"): 999.0,
         ("wind", "low"): 100.0,
     }
-    for record in (staged, child, committed.child(child.edits).record):
+    for record in (staged, child, committed.store.commit(child).record):
         assert broadcast(record, "p_nom", "entity", "scenario") == expected
 
 
@@ -654,7 +656,7 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
     root.set("p_max_pu", [0.2, 0.5, 0.8], snapshot=[0, 1, 2])
     staged = WorkingRecord(root)
     staged.set("p_max_pu", 0.9, entity="wind")
-    committed = base.child(root.edits)
+    committed = base.store.commit(root)
     child = WorkingRecord(committed.record)
     child.set("p_max_pu", 0.9, entity="wind")
 
@@ -666,7 +668,7 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
         ("gas", 1): 0.5,
         ("gas", 2): 0.8,
     }
-    for record in (staged, child, committed.child(child.edits).record):
+    for record in (staged, child, committed.store.commit(child).record):
         assert broadcast(record, "p_max_pu", "entity", "snapshot") == expected
 
 
@@ -707,7 +709,7 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
     root.add("snapshot", [0, 1])
     for p, s in product([1, 2], [0, 1]):
         root.set("x", 10.0 * p + s, entity="a", period=p, snapshot=s)
-    committed = base.child(root.edits)
+    committed = base.store.commit(root)
     if materialised:
         committed.materialise()
     child = WorkingRecord(committed.record)
@@ -717,7 +719,7 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
         ("a", p, s): 99.0 if {"period": p, "snapshot": s}[named] == 1 else 10.0 * p + s
         for p, s in product([1, 2], [0, 1])
     }
-    for record in (child, committed.child(child.edits).record):
+    for record in (child, committed.store.commit(child).record):
         assert broadcast(record, "x", "entity", "period", "snapshot") == expected, (
             f"the set reaches every {null} at {named}=1, the root keeps the rest"
         )

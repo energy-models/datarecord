@@ -4,6 +4,11 @@
 
 """Hand-built layers, written beside the write path rather than through it.
 
+A hand-built layer has no claim, and its manifest is rewritten with each file
+a helper adds, to list the layer's files. Until its first read it takes the
+schema `write_schema` last declared for its store; a read caches the manifest,
+so every file of a layer is written before then, and it keeps that schema.
+
 Notes
 -----
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
@@ -14,13 +19,15 @@ from collections.abc import Sequence
 from itertools import product
 from pathlib import Path
 from typing import Any
+from uuid import UUID, uuid4
 
 import duckdb
 import pandas as pd
 
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from datarecord.store.files import Files, Version
+from datarecord.store.files import LocalFiles
+from datarecord.store.manifest import LayerFiles, Manifest
 from datarecord.store.store import Revision, Store
 
 TYPES = (
@@ -100,6 +107,7 @@ def write_attribute(
             "{'entity': entity, 'bus': bus} AS connection, * EXCLUDE (entity, bus)"
         )
     rel.to_parquet(str(target / f"{attribute}.parquet"))
+    relist(Path(layer))
 
 
 def _hashable(value: Any) -> Any:
@@ -164,6 +172,7 @@ def restate(
     target = Path(revision.store.layer_dir(revision.id), kind)
     target.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(target / f"{name}.parquet", index=False)
+    relist(target.parent)
 
 
 def write_multi_dim(revision: Revision, multi: str, rows: list[dict]) -> None:
@@ -317,26 +326,84 @@ def rename_components(n, ctype: str, suffix: str) -> None:
         frame.rename(columns=renamed, inplace=True)
 
 
+_LOCAL = LocalFiles()
+
+
+def _declared(store_dir: Path, otherwise: Schema) -> Schema:
+    """The schema `write_schema` last declared for the store at `store_dir`, else `otherwise`."""
+    path = store_dir / "schema.json"
+    return Schema.model_validate_json(path.read_text()) if path.exists() else otherwise
+
+
+def relist(layer: str | Path, schema: Schema | None = None) -> None:
+    """Rewrite a hand-built layer's manifest to list its files, under `schema` if given.
+
+    What a test writing a file into a layer directly calls after it. A layer
+    committed through the write path holds a claim and is left alone.
+    """
+    layer = Path(layer)
+    if (layer / "claim.json").exists():
+        return
+    old = Manifest.read(_LOCAL, str(layer / "manifest.json"))
+    assert old is not None, f"{layer} is no hand-built layer"
+    files = LayerFiles(
+        dims=tuple(sorted(p.stem for p in layer.glob("dims/*.parquet"))),
+        attributes=tuple(sorted(p.stem for p in layer.glob("attributes/*.parquet"))),
+    )
+    manifest = Manifest(
+        id=old.id,
+        parent=old.parent,
+        schema=old.schema if schema is None else schema,
+        files=files,
+    )
+    (layer / "manifest.json").write_text(manifest.json())
+
+
+def _read(store: Store, id: UUID) -> bool:
+    """Whether `store`'s workspace holds the manifest of `id`, as a first read leaves it."""
+    held = store.workspace.con.execute(
+        "SELECT 1 FROM revisions WHERE location = ? AND id = ?", [store.uri, id]
+    ).fetchall()
+    return bool(held)
+
+
+def _hand_built(store: Store, parent: Revision | None) -> Revision:
+    """An empty layer under the declared schema, else its parent's, else none."""
+    id = uuid4()
+    layer = Path(store.layer_dir(id))
+    layer.mkdir(parents=True)
+    inherited = Schema() if parent is None else parent.manifest.schema
+    parent_id = None if parent is None else parent.id
+    manifest = Manifest(
+        id=id,
+        parent=parent_id,
+        schema=_declared(layer.parents[1], inherited),
+        files=LayerFiles(),
+    )
+    (layer / "manifest.json").write_text(manifest.json())
+    return Revision(id=id, parent=parent_id, store=store)
+
+
 def empty_root(store: Store) -> Revision:
     """A new root revision, for a test to hand-write its layer into.
 
-    No public API makes an empty revision; this is the store's private
-    revision-file write. Its layer holds nothing, the axis of a dim with `one_of`
+    No public API makes an empty revision; this writes its manifest beside the
+    write path. Its layer holds nothing, the axis of a dim with `one_of`
     included: a label a property names is one a test adds.
 
     Write every file of a layer before its first read: a read freezes the
     layer for its workspace, as a layer is write-once.
     """
-    return store._create(None)
+    return _hand_built(store, None)
 
 
 def empty_child(parent: Revision) -> Revision:
-    """A new child of `parent` with no layer, like `empty_root`.
+    """A new child of `parent` with no layer, like `empty_root`, under its schema.
 
     Write every file of a layer before its first read: a read freezes the
     layer for its workspace, as a layer is write-once.
     """
-    return parent.store._create(parent.id)
+    return _hand_built(parent.store, parent)
 
 
 def export_network(n, store: Store) -> Revision:
@@ -344,30 +411,27 @@ def export_network(n, store: Store) -> Revision:
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
     which is a different vocabulary from the schema a record declares.
-    Going through `store.root` means a test record is written exactly as
+    Going through `store.commit` means a test record is written exactly as
     `blocks` writes one.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     from datarecord.tools.pypsa import PyPSA
 
-    return store.root(PyPSA.to_datarecord(n, store.workspace.con))
+    return store.commit(PyPSA.to_datarecord(n, store.workspace.con), parent=None)
 
 
 def write_schema(schema: Schema, store: Store) -> None:
-    """Declare the record's one schema, beside the layers.
+    """Declare the schema hand-built layers of `store` are written under.
 
-    Not per layer: a layer holds only data, so this writes the record-level
-    `manifest.json` that every layer in the tree is read under.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    Each hand-built layer `store`'s workspace has not read yet is rewritten
+    under it, and each one built after takes it. A layer already read keeps
+    the schema it was read under, on disk as in the workspace.
     """
-    tree = schema.model_copy(update={"id": None})
-    store.files.write_text(store.manifest_uri, tree.model_dump_json(), expect=None)
+    root = Path(store.uri)
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "schema.json").write_text(schema.model_dump_json())
+    for layer in root.glob("layers/*"):
+        if not _read(store, UUID(layer.name)):
+            relist(layer, schema)
 
 
 def widened(base: Schema, attribute: str) -> Schema:
@@ -378,34 +442,6 @@ def widened(base: Schema, attribute: str) -> Schema:
             "attributes": {**base.attributes, attribute: base.attributes["p_nom"]},
         }
     )
-
-
-class RivalWrite:
-    """`Files` where a rival replaces `uri` right after this writer reads it.
-
-    Two writers racing on the manifest, made deterministic: the read hands back
-    a version the rival's write has already made stale, once.
-
-    Notes
-    -----
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
-    """
-
-    def __init__(self, inner: Files, uri: str, text: str) -> None:
-        self._inner = inner
-        self._uri = uri
-        self._text = text
-        self.raced = False
-
-    def __getattr__(self, name: str):
-        return getattr(self._inner, name)
-
-    def read_text(self, uri: str) -> tuple[str, Version] | None:
-        found = self._inner.read_text(uri)
-        if uri == self._uri and not self.raced:
-            self.raced = True
-            self._inner.write_text(uri, self._text, expect=None)
-        return found
 
 
 def _default_attributes(dims: dict[str, Any], multi_dims: dict[str, dict[str, str]]):

@@ -18,7 +18,6 @@ Notes
 - [module layout](https://energy-models.github.io/datarecord/design/package/)
 """
 
-import os
 import sys
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from functools import partial, reduce
@@ -127,19 +126,6 @@ def try_read_parquet(
         if "No files found" in str(e):
             return None
         raise
-
-
-def parquet_names(dir_uri: str, con: DuckDBPyConnection) -> set[str]:
-    """Basenames of the `*.parquet` files directly under `dir_uri`.
-
-    One listing regardless of how many files exist there, local or remote -
-    what a caller otherwise probing one filename at a time (`try_read_parquet`
-    per candidate) should glob instead.
-    """
-    rows = con.sql(
-        "SELECT file FROM glob(?)", params=[f"{dir_uri}*.parquet"]
-    ).fetchall()
-    return {os.path.basename(row[0]) for row in rows}
 
 
 def union_all_by_name(

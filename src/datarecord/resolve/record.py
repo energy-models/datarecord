@@ -308,7 +308,7 @@ class Record:
     workspace
         Where the calling thread's cursor comes from.
     schema
-        The record's one manifest, which every source carries too.
+        The schema the record is read under: its last layer's.
 
     Notes
     -----
@@ -477,7 +477,7 @@ class Record:
         # materialised over a longer ancestry than this node reads, so the
         # winning row is still in that layer's own directory, in the same store.
         store = next(s.store for s in self.sources if isinstance(s, ParquetLayer))
-        return ParquetLayer(layer_uuid, self.schema, store)
+        return ParquetLayer(store.revision(layer_uuid).manifest, store)
 
     def _relation(self, attribute: str) -> DuckDBPyRelation:
         """Return the resolved long relation of one attribute, folded over every layer.

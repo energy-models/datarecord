@@ -2,11 +2,12 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Keep a record: `Workspace`, `Store` and `Revision` write and read layers.
+"""Keep a record: `Workspace`, `Store`, `Claim` and `Revision` write and read layers.
 
 A `Workspace` holds the DuckDB database and opens stores and standalone
-records. A `Store` holds one location with its manifest and revision tree.
-A `Revision` is one node of that tree and reads back as a `Record`.
+records. A `Store` holds one location, its layers each carrying its manifest.
+A `Claim` is a layer pending its commit, and a `Revision` one committed node
+of the tree, which reads back as a `Record`.
 
 Notes
 -----
@@ -17,6 +18,7 @@ Notes
 - [the package](https://energy-models.github.io/datarecord/design/package/)
 """
 
-from datarecord.store.store import Revision, Store, Workspace
+from datarecord.store.manifest import Manifest
+from datarecord.store.store import Claim, Revision, Store, Workspace
 
-__all__ = ["Revision", "Store", "Workspace"]
+__all__ = ["Claim", "Manifest", "Revision", "Store", "Workspace"]

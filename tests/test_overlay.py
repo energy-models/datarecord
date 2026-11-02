@@ -10,6 +10,8 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -18,8 +20,7 @@ from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.specs import AttributeSpec
 from datarecord.store.cache import sources_to_read
-from datarecord.store.manifest import read_schema
-from datarecord.store.store import ancestry
+from datarecord.store.store import lineage
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
@@ -187,15 +188,15 @@ def test_resolved_reads_same_as_unresolved(store, parent):
         def materialised(self, con, schema):  # noqa: ARG002
             return None
 
-    schema = read_schema(store)
-    full = ancestry(store, grandchild.id)
+    full = lineage(store, grandchild.id)
+    schema = full[-1].schema
     workspace = store.workspace
     truncated = Record(
         grandchild.id, sources_to_read(full, store, schema), workspace, schema
     )
     unresolved = Record(
         grandchild.id,
-        [_Unmaterialised(uid, schema, store) for uid in full],
+        [_Unmaterialised(manifest, store) for manifest in full],
         workspace,
         schema,
     )
@@ -228,39 +229,32 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     )
 
 
-def test_a_new_attribute_is_a_schema_amendment(store, network):
-    """Adding an attribute amends the record's one schema, not a layer's.
+def test_a_child_widens_the_schema_with_a_new_attribute(store, network):
+    """A child declares an attribute its parent's schema lacks, in its own manifest.
 
-    A schema is not layered data: folding it would let a layer redefine what
-    an attribute means, and make the schema unknowable without walking the
-    ancestry. So the amendment lands beside the layers, and every layer in the
-    tree - including ones already written - is read under it.
+    The child's manifest holds the full schema, so the record is read under it,
+    and the parent's layers stay as they were written.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    amended = read_schema(store)
-    amended.attributes["p_min_pu"] = AttributeSpec(
-        dtype="float", dims={"entity", "snapshot"}, default=0.25
-    )
+    amended = network.manifest.schema.model_copy(deep=True)
+    amended.attributes["site_quality"] = AttributeSpec(dtype="float", dims={"entity"})
     write_schema(amended, store)
-
-    # Adding an attribute is compatible, so the layers written before the
-    # amendment stay readable (https://energy-models.github.io/datarecord/design/model/schema/#versioning).
-    assert amended.compatible_with(read_schema(store)) == []
+    assert amended.compatible_with(network.manifest.schema) == []
 
     child = empty_child(network)
     write_attribute(
         store.layer_dir(child.id),
-        "p_min_pu",
+        "site_quality",
         [{"entity": "Norway Gas", "value": 0.1}],
     )
-    n = PyPSA.build(child.record)
-    assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
-    # And the amendment is visible from the record, not just from the layer
-    # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes
+    assert relation(child, "site_quality").df()["value"].tolist() == [0.1]
+    assert "site_quality" in child.record.schema.attributes
+    assert "site_quality" not in network.record.schema.attributes, (
+        "the parent reads as written"
+    )
 
 
 def test_a_schema_narrowing_is_refused(store, parent):
@@ -268,10 +262,9 @@ def test_a_schema_narrowing_is_refused(store, parent):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    narrowed = read_schema(store)
+    narrowed = parent.manifest.schema.model_copy(deep=True)
     narrowed.attributes["p_max_pu"] = AttributeSpec(dtype="float", dims=frozenset())
 
     class _Narrowed:
@@ -284,10 +277,10 @@ def test_a_schema_narrowing_is_refused(store, parent):
         def flags(self):
             return {}
 
-    before = read_schema(store)
+    claim = store.claim(parent=parent)
     with pytest.raises(ValueError, match="no longer varies over"):
-        parent.child(_Narrowed())
-    assert read_schema(store) == before, "the manifest is never narrowed"
+        claim.commit(_Narrowed())
     assert [r.id for r in store.revisions()] == [parent.id], (
-        "the layer was written, but without its revision file nothing reaches it"
+        "the layer is claimed, but without its manifest nothing reaches it"
     )
+    assert not Path(store.manifest_uri(claim.id)).exists()
