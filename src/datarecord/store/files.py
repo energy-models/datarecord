@@ -4,7 +4,7 @@
 
 """The small files a store coordinates through, local or remote.
 
-Tables go through DuckDB; everything else - the manifest, the revision files,
+Tables go through DuckDB; everything else - the manifests, the claims,
 listing them, whether a layer exists - goes through a `Files`, picked by the
 URI's scheme.
 

@@ -19,9 +19,9 @@ import pandas as pd
 import pytest
 from duckdb import DuckDBPyRelation
 
-from datarecord import Workspace
+from datarecord import Revision, Workspace
 from datarecord.schema.categories import matching
-from datarecord.store.manifest import read_schema
+from datarecord.store.manifest import Manifest
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     CTYPE,
@@ -62,11 +62,16 @@ def solved(single_revision):
 
 @pytest.fixture
 def exported(single_revision, workspace, tmp_path):
-    """A copy of `single_revision`'s store, for a test to rewrite its files or schema."""
+    """A copy of `single_revision`'s store, for a test to rewrite its files or schema.
+
+    Its claim is dropped, which makes the layer hand-built, and it is not read
+    yet, so `write_schema` and the writing helpers rewrite its manifest.
+    """
     uri = str(tmp_path / "ac_dc")
     shutil.copytree(single_revision.store.uri, uri)
-    (revision,) = workspace.store(uri).revisions()
-    return revision
+    store = workspace.store(uri)
+    Path(store.claim_uri(single_revision.id)).unlink()
+    return Revision(id=single_revision.id, parent=None, store=store)
 
 
 def _results_over(revision, n):
@@ -74,7 +79,7 @@ def _results_over(revision, n):
     layer = PyPSA.to_datarecord(
         n, revision.record.con, results_only=True, base=revision.record
     )
-    return revision.child(layer)
+    return revision.store.commit(layer, parent=revision)
 
 
 def _sub_networks(revision) -> list[str]:
@@ -376,7 +381,7 @@ def test_a_build_settles_rows_of_several_layers_by_the_broadcast_rule(
     for edit in layers:
         w = WorkingRecord(revision.record)
         edit(w)
-        revision = revision.child(w.edits)
+        revision = revision.store.commit(w)
 
     static = PyPSA.build(revision.record).c.Generator.static
     assert static["p_max_pu"].to_dict() == built
@@ -443,10 +448,10 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
     - [entity types](https://energy-models.github.io/datarecord/design/model/properties/#categories)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision, store = exported, exported.store
+    revision = exported
     # Declared alongside PyPSA's own types, since the `one_of` labels pin the
     # vocabulary.
-    declared = read_schema(store)
+    declared = _unread_schema(revision)
     assert declared.categorizing("entity") == (CTYPE,)
     dim = declared.dimensions[CTYPE]
     assert dim.one_of is not None, "PyPSA lists its types on the dim"
@@ -478,6 +483,15 @@ _DIMS = {
 }
 
 
+def _unread_schema(revision):
+    """`revision`'s schema from its manifest on disk, leaving it unread by the workspace."""
+    manifest = Manifest.read(
+        revision.store.files, revision.store.manifest_uri(revision.id)
+    )
+    assert manifest is not None
+    return manifest.schema
+
+
 def _with_schema(revision, **kwargs) -> None:
     """Redeclare the record's schema, keeping the attributes it already declares.
 
@@ -489,7 +503,7 @@ def _with_schema(revision, **kwargs) -> None:
     -----
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    was = read_schema(revision.store)
+    was = _unread_schema(revision)
     now = schema(**kwargs)
     labelled = {d: spec for d, spec in was.dimensions.items() if d not in _DIMS}
     redeclared = {d: s for d, s in now.dimensions.items() if d not in labelled}
@@ -1348,7 +1362,7 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
         [{"entity": e, "bus": "b"} for e in ("l1", "su1")],
         role="attached",
     )
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
 
     inputs = Path(store.layer_dir(child.id)) / "attributes"
     written = {p.stem for p in inputs.glob("*.parquet")} if inputs.exists() else set()
@@ -1443,7 +1457,7 @@ def test_a_name_is_never_an_identifier_in_the_melt_or_pivot(store):
     )
     n.c["Generator"].dynamic["p_max_pu"] = series
 
-    revision = store.root(PyPSA.to_datarecord(n, store.workspace.con))
+    revision = store.commit(PyPSA.to_datarecord(n, store.workspace.con), parent=None)
     rows = revision.record.attributes["p_max_pu"]
     assert sorted(rows.project("entity, value").fetchall()) == sorted(
         (name, value) for name in names for value in series[name]
@@ -1654,7 +1668,7 @@ def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
     staged = WorkingRecord(record)
     staged.set("p_max_pu", 0.5, entity="Manchester Wind", **selector)
 
-    built = PyPSA.build(multiperiod_revision.child(staged.edits).record)
+    built = PyPSA.build(multiperiod_revision.store.commit(staged).record)
     series = multiperiod.c["Generator"].dynamic["p_max_pu"]["Manchester Wind"]
     pd.testing.assert_series_equal(
         built.c["Generator"].dynamic["p_max_pu"]["Manchester Wind"],

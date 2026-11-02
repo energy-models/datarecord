@@ -25,9 +25,9 @@ from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
-from datarecord.store.manifest import read_schema
 
 if TYPE_CHECKING:
+    from datarecord.store.manifest import Manifest
     from datarecord.store.store import Store
 
 
@@ -51,7 +51,7 @@ def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
 
 
 def sources_to_read(
-    ancestry: list[UUID], store: Store, schema: Schema
+    lineage: list[Manifest], store: Store, schema: Schema
 ) -> list[LayerSource]:
     """`ancestry` as the sources to fold, truncated at the deepest materialised node.
 
@@ -67,13 +67,10 @@ def sources_to_read(
 
     Parameters
     ----------
-    ancestry
-        Root-first, ending in the node being resolved (`store.ancestry`).
-    store
-        Where the layers are.
+    lineage
+        The manifests root first, ending in the node being resolved.
     schema
-        The record's one manifest, carried by every source so `write_layer`
-        can read it off the layer it is handed.
+        What the record is read under, which keys the caches it looks for.
 
     Returns
     -------
@@ -84,14 +81,19 @@ def sources_to_read(
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    for depth in range(len(ancestry) - 2, -1, -1):
-        if materialised(ancestry[depth], store, schema):
-            return [ParquetLayer(uid, schema, store) for uid in ancestry[depth:]]
-    return [ParquetLayer(uid, schema, store) for uid in ancestry]
+    start = next(
+        (
+            depth
+            for depth in range(len(lineage) - 2, -1, -1)
+            if materialised(lineage[depth].id, store, schema)
+        ),
+        0,
+    )
+    return [ParquetLayer(manifest, store) for manifest in lineage[start:]]
 
 
 def materialise(
-    revision_id: UUID, sources: Sequence[LayerSource], store: Store
+    revision_id: UUID, sources: Sequence[LayerSource], store: Store, schema: Schema
 ) -> None:
     """Write `revision_id`'s node caches: owner map, dim owners and dead labels.
 
@@ -112,7 +114,6 @@ def materialise(
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    schema = read_schema(store)
     con = store.workspace.con
     _materialise_dims(revision_id, sources, store, schema)
     with _checkpointed(sources, con, schema) as owner_map:

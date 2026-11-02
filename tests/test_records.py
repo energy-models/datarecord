@@ -154,7 +154,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
 
     # And the writer consumes it, which is the point of widening the type:
     # it iterates and looks up, both of which a `dict` answers.
-    revision = store.root(record)
+    revision = store.commit(record, parent=None)
     assert "p_nom" in store.layer(revision.id).attributes
 
 
@@ -167,7 +167,7 @@ def test_the_writer_refuses_timestamps_with_a_time_zone(store):
     """
     record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
     with pytest.raises(ValueError, match="carry timestamps with a time zone"):
-        store.root(record)
+        store.commit(record, parent=None)
 
 
 def test_constructions_agree_on_every_key_set(both):
@@ -398,7 +398,7 @@ def test_an_unsolved_network_has_no_results(both):
 
 
 def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
-    """A store's schema comes from *its* location, and so do its layers.
+    """A revision's schema comes from its own manifest, under *its* location.
 
     Two records on two locations disagree about their dims without either
     being wrong, while sharing one workspace.
@@ -423,8 +423,7 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
     assert a.broadcast_dims == ("entity", "bus", "scenario", "ctype", "connection")
     assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection")
 
-    # A layer read directly needs no schema supplied either: its own directory
-    # carries none (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record), so its store's answers.
+    # A layer read directly needs no schema supplied either: its manifest has it.
     assert store_b.layer(revision_b.id).schema.broadcast_dims == (
         "entity",
         "bus",
@@ -438,4 +437,4 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         assert (location / "layers" / str(revision.id)).is_dir(), (
             "each location's layers land under it"
         )
-        assert (location / "revisions" / f"{revision.id}.json").is_file()
+        assert (location / "layers" / str(revision.id) / "manifest.json").is_file()
