@@ -31,7 +31,6 @@ from tests.fixtures import (
     empty_root,
     write_axis,
     write_multi_dim,
-    write_schema,
 )
 from tests.test_write import _Source
 
@@ -202,17 +201,16 @@ def test_a_classified_axis_folds_as_an_ordinary_axis(store):
     Its own file is what gives it order and a place for `co2_budget`, which no
     bus column could hold.
     """
-    revision = empty_root(store)
-    write_schema(_budget_schema(), store)
-    write_axis(revision, "bus", [{"bus": "north"}])
-    write_axis(revision, "state", [{"state": "lower"}])
+    layer = empty_root(store, _budget_schema())
+    write_axis(layer, "bus", [{"bus": "north"}])
+    write_axis(layer, "state", [{"state": "lower"}])
     write_axis(
-        revision,
+        layer,
         "country",
         [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
     )
 
-    axes = revision.record.dims
+    axes = layer.commit().record.dims
     assert axes["country"].df()["country"].tolist() == ["NO", "DE", "FR"], (
         "axis order is the file's row order, classified or not"
     )
@@ -226,18 +224,18 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    revision = empty_root(store)
-    write_schema(_schema(), store)
-    write_axis(revision, "bus", [{"bus": "north"}, {"bus": "south"}])
-    write_axis(revision, "state", [{"state": "lower"}, {"state": "upper"}])
+    layer = empty_root(store, _schema())
+    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
+    write_axis(layer, "state", [{"state": "lower"}, {"state": "upper"}])
     write_multi_dim(
-        revision,
+        layer,
         "bus_state",
         [
             {"bus_state": {"bus": "north", "state": "lower"}},
             {"bus_state": {"bus": "south", "state": "upper"}},
         ],
     )
+    revision = layer.commit()
 
     staged = WorkingRecord(revision.record)
     staged.remove("bus", ["north"])
@@ -261,22 +259,20 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
     No `order_key` column - member order is the file's own row order
     (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis).
     """
-    schema = _budget_schema()
-    write_schema(schema, store)
-
-    root = empty_root(store)
+    root = empty_root(store, _budget_schema())
     write_multi_dim(
         root,
         "bus_state",
         [{"bus_state": {"bus": "north", "state": "lower"}}],
     )
 
-    child = empty_child(root)
+    child_layer = empty_child(root.commit())
     write_multi_dim(
-        child,
+        child_layer,
         "bus_state",
         [{"bus_state": {"bus": "south", "state": "upper"}}],
     )
+    child = child_layer.commit()
     child.materialise()
 
     grandchild = empty_child(child)
@@ -286,7 +282,7 @@ def test_member_order_survives_a_restate_through_a_materialised_parent(store):
         [{"bus_state": {"bus": "east", "state": "lower"}}],
     )
 
-    rows = grandchild.record.dims["bus_state"].to_arrow_table().to_pydict()
+    rows = grandchild.commit().record.dims["bus_state"].to_arrow_table().to_pydict()
     assert [r["bus"] for r in rows["bus_state"]] == ["north", "south", "east"], (
         "member order, seed first"
     )
@@ -299,14 +295,13 @@ def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
     An attribute addressed by `country` alone, `target`, is long rows of
     `attributes/target.parquet` instead: the section decides, not the shape.
     """
-    revision = empty_root(store)
-    schema = _budget_schema()
-    write_schema(schema, store)
+    layer = empty_root(store, _budget_schema())
     write_axis(
-        revision,
+        layer,
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
+    revision = layer.commit()
 
     axis = revision.record.properties["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 40.0, "FR": 55.0}
@@ -332,8 +327,8 @@ def test_setting_one_property_keeps_its_siblings_value(store):
     column *before* the fold sees it is what makes the two calls commute, and
     this is the assertion that fails if it stops.
     """
-    revision = empty_root(store)
-    write_schema(
+    layer = empty_root(
+        store,
         _schema(
             properties={
                 "country": {
@@ -343,15 +338,14 @@ def test_setting_one_property_keeps_its_siblings_value(store):
             },
             partial=frozenset({"country"}),
         ),
-        store,
     )
     write_axis(
-        revision,
+        layer,
         "country",
         [{"country": "DE", "co2_budget": 40.0, "population": 83.0}],
     )
 
-    staged = WorkingRecord(revision.record)
+    staged = WorkingRecord(layer.commit().record)
     staged.set("country.co2_budget", {"DE": 12.0})
 
     frame = staged.properties["country"].to_arrow_table()
@@ -379,14 +373,14 @@ def test_a_child_layer_restates_an_axis_whole(store, partial):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
-    revision = empty_root(store)
     properties = {"country": {"co2_budget": PropertySpec(dtype="float")}}
-    write_schema(_schema(properties=properties, partial=partial), store)
+    layer = empty_root(store, _schema(properties=properties, partial=partial))
     write_axis(
-        revision,
+        layer,
         "country",
         [{"country": "DE", "co2_budget": 40.0}, {"country": "FR", "co2_budget": 55.0}],
     )
+    revision = layer.commit()
 
     staged = WorkingRecord(revision.record)
     staged.set("country.co2_budget", {"DE": 12.0})
@@ -412,14 +406,13 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(store):
     dirs it is folded over must name that layer's raw `dims/` and not only a
     cache it has never written.
     """
-    revision = empty_root(store)
-    write_schema(_budget_schema(), store)
-    write_axis(revision, "country", [{"country": "DE"}, {"country": "FR"}])
+    layer = empty_root(store, _budget_schema())
+    write_axis(layer, "country", [{"country": "DE"}, {"country": "FR"}])
 
-    child = empty_child(revision)
+    child = empty_child(layer.commit())
     write_axis(child, "country", [{"country": "NO"}])
 
-    labels = child.record.dims["country"].df()["country"].tolist()
+    labels = child.commit().record.dims["country"].df()["country"].tolist()
     assert labels == ["DE", "FR", "NO"], (
         "the child restates the parent's labels in their order, then its own"
     )
@@ -427,9 +420,9 @@ def test_an_axis_resolves_over_an_unmaterialised_parent(store):
 
 def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
     """A property is a column of a label's row, so `add` makes the label first."""
-    revision = empty_root(store)
-    write_schema(_budget_schema(), store)
-    write_axis(revision, "country", [{"country": "DE", "co2_budget": 40.0}])
+    layer = empty_root(store, _budget_schema())
+    write_axis(layer, "country", [{"country": "DE", "co2_budget": 40.0}])
+    revision = layer.commit()
 
     staged = WorkingRecord(revision.record)
     with pytest.raises(KeyError, match="`add` them first"):
@@ -448,25 +441,24 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
 @pytest.fixture
 def classified(store) -> Revision:
     """North in lower, south in upper, both in DE, and the pair (north, lower) in DE."""
-    revision = empty_root(store)
-    write_schema(_schema(), store)
-    write_axis(revision, "country", [{"country": "DE"}, {"country": "NO"}])
+    layer = empty_root(store, _schema())
+    write_axis(layer, "country", [{"country": "DE"}, {"country": "NO"}])
     write_axis(
-        revision,
+        layer,
         "state",
         [{"state": "lower", "country": "DE"}, {"state": "upper", "country": "DE"}],
     )
     write_axis(
-        revision,
+        layer,
         "bus",
         [{"bus": "north", "state": "lower"}, {"bus": "south", "state": "upper"}],
     )
     write_multi_dim(
-        revision,
+        layer,
         "bus_state",
         [{"bus_state": {"bus": "north", "state": "lower"}, "country": "DE"}],
     )
-    return revision
+    return layer.commit()
 
 
 EDITS = [
@@ -521,9 +513,8 @@ def test_a_property_naming_a_dim_takes_null_or_a_label_added_first(
 
 def test_add_refuses_a_tuple_property_label_the_dim_does_not_list(store):
     """A label outside the list cannot be added, so the message does not say to."""
-    revision = empty_root(store)
     dimensions = {**_schema().dimensions, "country": Dimension(one_of=["DE", "NO"])}
-    write_schema(_schema(dimensions=dimensions), store)
+    revision = empty_root(store, _schema(dimensions=dimensions)).commit()
     staged = WorkingRecord(revision.record)
     with pytest.raises(
         KeyError, match=r"its `one_of`, \['DE', 'NO'\], does not hold; use one of"

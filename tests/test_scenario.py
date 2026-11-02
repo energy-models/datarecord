@@ -86,9 +86,9 @@ def test_a_read_is_scenario_expanded(store, parent, stochastic):
 def test_partial_scenario_override(store, parent, stochastic):
     """A child may replace one scenario and leave the others to the parent."""
     scenario = stochastic.scenarios[0]
-    child = empty_child(parent)
+    child_layer = empty_child(parent)
     write_attribute(
-        store.layer_dir(child.id),
+        child_layer,
         "p_max_pu",
         [
             {
@@ -98,6 +98,7 @@ def test_partial_scenario_override(store, parent, stochastic):
             }
         ],
     )
+    child = child_layer.commit()
 
     df = child.record._fold.owner_map.df()
     solar = df[
@@ -124,13 +125,13 @@ def test_child_adds_new_scenario(store, parent, stochastic):
     - [layered resolution](https://energy-models.github.io/datarecord/design/layers/tree/)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    child = empty_child(parent)
+    child_layer = empty_child(parent)
     write_scenarios(
-        child,
+        child_layer,
         [{"scenario": s} for s in ("high", "low", "med", "extra")],
     )
     write_attribute(
-        store.layer_dir(child.id),
+        child_layer,
         "scenario_weight",
         [
             {"scenario": s, "value": w}
@@ -138,7 +139,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
         ],
     )
     write_attribute(
-        store.layer_dir(child.id),
+        child_layer,
         "p_max_pu",
         [
             {
@@ -148,6 +149,7 @@ def test_child_adds_new_scenario(store, parent, stochastic):
             }
         ],
     )
+    child = child_layer.commit()
 
     n = PyPSA.build(child.record)
     assert set(n.scenarios) == set(stochastic.scenarios) | {"extra"}
@@ -172,9 +174,10 @@ def test_scenario_order_survives_a_chain_of_closed_layers(store, parent, stochas
     rec = parent
     added = []
     for i in range(5):
-        rec = empty_child(rec)
+        layer = empty_child(rec)
         name = f"extra{i}"
-        write_scenarios(rec, [{"scenario": name}])
+        write_scenarios(layer, [{"scenario": name}])
+        rec = layer.commit()
         rec.materialise()
         added.append(name)
 
@@ -189,7 +192,7 @@ def test_a_node_cache_points_at_the_scenario_layer(store, parent, stochastic):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    middle = empty_child(parent)
+    middle = empty_child(parent).commit()
     middle.materialise()
 
     owners = {
@@ -207,14 +210,13 @@ def test_scenario_axis_survives_closed_grandchild(store, parent, stochastic):
     row at `grandchild` reaches every scenario of the axis resolved from the
     true root, not just from the nearest closed ancestor.
     """
-    middle = empty_child(parent)
+    middle = empty_child(parent).commit()
     middle.materialise()
-    grandchild = empty_child(middle)
+    grandchild_layer = empty_child(middle)
     write_attribute(
-        store.layer_dir(grandchild.id),
-        "p_max_pu",
-        [{"entity": "solar Gen", "value": 0.88}],
+        grandchild_layer, "p_max_pu", [{"entity": "solar Gen", "value": 0.88}]
     )
+    grandchild = grandchild_layer.commit()
 
     dims = ("entity", "scenario", "snapshot")
     resolved = broadcast(grandchild.record, "p_max_pu", *dims)
