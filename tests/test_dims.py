@@ -20,13 +20,11 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     relation,
-    relist,
     restate,
     schema,
     write_attribute,
     write_component,
     write_periods,
-    write_schema,
 )
 
 
@@ -42,22 +40,23 @@ def test_removing_a_dim_coordinate_drops_the_attribute_rows_keyed_on_it(store):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    revision = empty_root(store)
-    write_schema(schema(partial={"period"}), store)
-    write_component(revision, "Generator", [{"entity": "Manchester Wind"}])
-    write_periods(revision, [{"period": 2020}, {"period": 2030}])
+    layer = empty_root(store, schema(partial={"period"}))
+    write_component(layer, "Generator", [{"entity": "Manchester Wind"}])
+    write_periods(layer, [{"period": 2020}, {"period": 2030}])
     write_attribute(
-        store.layer_dir(revision.id),
+        layer,
         "p_max_pu",
         [
             {"entity": "Manchester Wind", "period": 2020, "value": 0.2},
             {"entity": "Manchester Wind", "period": 2030, "value": 0.3},
         ],
     )
+    revision = layer.commit()
     revision.materialise()
 
-    child = empty_child(revision)
-    restate(child, "dims", "period", [], drop=[2030])
+    child_layer = empty_child(revision)
+    restate(child_layer, "dims", "period", [], drop=[2030])
+    child = child_layer.commit()
 
     rel = relation(child, "p_max_pu").df()
     wind = rel[rel["entity"] == "Manchester Wind"]
@@ -82,11 +81,10 @@ def test_the_fold_unions_maps_by_name(store):
     -----
     - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
-    revision = empty_root(store)
-    write_schema(schema(partial={"scenario", "period"}), store)
-    write_component(revision, "Generator", [{"entity": "Manchester Wind"}])
+    layer = empty_root(store, schema(partial={"scenario", "period"}))
+    write_component(layer, "Generator", [{"entity": "Manchester Wind"}])
     write_attribute(
-        store.layer_dir(revision.id),
+        layer,
         "p_max_pu",
         [
             {
@@ -97,11 +95,12 @@ def test_the_fold_unions_maps_by_name(store):
             }
         ],
     )
+    revision = layer.commit()
     revision.materialise()
 
-    child = empty_child(revision)
+    child_layer = empty_child(revision)
     write_attribute(
-        store.layer_dir(child.id),
+        child_layer,
         "p_max_pu",
         [
             {
@@ -112,6 +111,7 @@ def test_the_fold_unions_maps_by_name(store):
             }
         ],
     )
+    child = child_layer.commit()
 
     df = child.record._fold.owner_map.df()
     wind = df[(df["entity"] == "Manchester Wind") & (df["layer_uuid"] == child.id)]
@@ -130,14 +130,12 @@ def test_a_dim_names_its_own_file(store):
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
-    revision = empty_root(store)
-    write_schema(schema(dims={"bus": "str"}, partial=set()), store)
-    target = Path(store.layer_dir(revision.id), "dims")
+    layer = empty_root(store, schema(dims={"bus": "str"}, partial=set()))
+    target = Path(layer.dir, "dims")
     target.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(
         target / "bus.parquet", index=False
     )
-    relist(target.parent)
 
-    axis = revision.record.dims["bus"].df()
+    axis = layer.commit().record.dims["bus"].df()
     assert sorted(axis["bus"].tolist()) == ["north", "south"]

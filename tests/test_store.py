@@ -38,7 +38,6 @@ from tests.fixtures import (
     widened,
     write_attribute,
     write_component,
-    write_schema,
 )
 from tests.test_write import _SCHEMA, _long, _Source
 
@@ -46,12 +45,11 @@ from tests.test_write import _SCHEMA, _long, _Source
 @pytest.fixture
 def tree(store):
     """A root holding one generator with a `p_max_pu`, and a child of it."""
-    write_schema(schema(), store)
-    root = empty_root(store)
-    layer = store.layer_dir(root.id)
-    write_component(root, "Generator", [{"entity": "wind"}])
+    layer = empty_root(store, schema())
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
-    return root, empty_child(root)
+    root = layer.commit()
+    return root, empty_child(root).commit()
 
 
 def _in_threads(n, fn):
@@ -655,11 +653,10 @@ _NARROW = {"snapshot": "datetime", "period": "int"}
 
 def _materialised_then_widened(store, partial=frozenset()):
     """A child declaring `scenario`, over a root whose map on disk predates it."""
-    write_schema(schema(dims=_NARROW, partial=set(partial)), store)
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_component(revision, "Generator", [{"entity": "wind"}])
+    layer = empty_root(store, schema(dims=_NARROW, partial=set(partial)))
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
+    revision = layer.commit()
     before = revision.record._fold.owner_map
     assert "scenario" not in str(before.types[before.columns.index("varies")])
     revision.materialise()
@@ -670,8 +667,7 @@ def _materialised_then_widened(store, partial=frozenset()):
     )
 
     wide = {**_NARROW, "scenario": "str"}
-    write_schema(schema(dims=wide, partial=set(partial)), store)
-    child = empty_child(revision)
+    child = empty_child(revision, schema(dims=wide, partial=set(partial))).commit()
     assert "scenario" in child.record.schema.dimensions
     assert "scenario" not in revision.record.schema.dimensions, (
         "the root keeps the schema it was written under"
@@ -746,10 +742,8 @@ def test_a_dim_listing_labels_resolves_after_a_widening(store):
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     dims = {**_NARROW, "scenario": Dimension(one_of=["low", "high"])}
-    write_schema(schema(dims=dims), store)
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_component(revision, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
+    layer = empty_root(store, schema(dims=dims))
+    write_component(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_attribute(
         layer,
         "p_max_pu",
@@ -758,14 +752,14 @@ def test_a_dim_listing_labels_resolves_after_a_widening(store):
             {"entity": "gas", "scenario": "high", "value": 0.9},
         ],
     )
+    revision = layer.commit()
     expected = {("gas", "high"): 0.9, ("wind", "high"): 0.4, ("wind", "low"): 0.4}
 
     def resolved(revision):
         return broadcast(revision.record, "p_max_pu", "entity", "scenario")
 
     assert resolved(revision) == expected
-    write_schema(schema(dims={**dims, "region": "str"}), store)
-    after = empty_child(revision)
+    after = empty_child(revision, schema(dims={**dims, "region": "str"})).commit()
     assert resolved(after) == expected, "a child reads the root under the wider schema"
     labels = after.record.dims["scenario"].df()["scenario"].tolist()
     assert labels == ["low", "high"], "the axis is the list, in its order"

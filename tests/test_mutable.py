@@ -30,7 +30,6 @@ from tests.fixtures import (
     export_network,
     schema,
     unpacked,
-    write_schema,
 )
 
 GEN = "Generator"
@@ -70,8 +69,7 @@ def _small(store, **declared):
 
     `Norway` is both an entity and a `bus` label, as a load and its bus are in `ac_dc`.
     """
-    write_schema(schema(**declared), store)
-    revision = empty_root(store)
+    revision = empty_root(store, schema(**declared)).commit()
     staged = WorkingRecord(revision.record)
     staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
     staged.add("entity", ["Norway"], ctype="Bus")
@@ -426,15 +424,14 @@ def test_set_with_no_names_over_a_non_partial_dim_stays_one_row(store):
     The read does not expand the broadcast per label when `entity` is not
     `partial`.
     """
-    write_schema(
+    revision = empty_root(
+        store,
         Schema(
             dimensions={"entity": Dimension(dtype="str")},
             attributes={"p_nom": AttributeSpec(dtype="float", dims={"entity"})},
             partial=frozenset(),
         ),
-        store,
-    )
-    revision = empty_root(store)
+    ).commit()
     added = WorkingRecord(revision.record)
     added.add("entity", ["a", "b"])
     added.set("p_nom", {"a": 1.0, "b": 2.0})
@@ -636,8 +633,7 @@ def test_a_non_float_attribute_stages_and_commits(store):
     small = _small(store)
     amended = small.manifest.schema.model_copy(deep=True)
     amended.attributes["fuel"] = AttributeSpec(dtype="str", dims={"entity", "scenario"})
-    write_schema(amended, store)
-    root = empty_child(small)
+    root = empty_child(small, amended).commit()
 
     staged = WorkingRecord(root.record)
     staged.set("fuel", "solar", entity=["Manchester Wind"])
@@ -723,7 +719,8 @@ def test_add_then_commit_makes_a_label_exist(staged, root):
 @pytest.fixture
 def units(store):
     """An empty record over `unit` and `hour`, `unit` carrying a category and a site."""
-    write_schema(
+    root = empty_root(
+        store,
         Schema(
             dimensions={
                 "unit": Dimension(dtype="str"),
@@ -742,9 +739,8 @@ def units(store):
             },
             partial=frozenset({"unit"}),
         ),
-        store,
-    )
-    staged = WorkingRecord(empty_root(store).record)
+    ).commit()
+    staged = WorkingRecord(root.record)
     staged.add("hour", [0])
     staged.add(
         "unit",
@@ -1440,7 +1436,8 @@ def test_every_declared_multi_dim_reads_its_staged_rows(store):
 
 def _with_roles(store):
     """A root whose `l1` attaches to `b0` and `b1`, `role` a property of `connection`."""
-    write_schema(
+    root = empty_root(
+        store,
         Schema(
             dimensions={
                 "entity": Dimension(dtype="str"),
@@ -1453,9 +1450,7 @@ def _with_roles(store):
             },
             partial=frozenset({"entity", "connection"}),
         ),
-        store,
-    )
-    root = empty_root(store)
+    ).commit()
     staged = WorkingRecord(root.record)
     staged.add("entity", ["l1"])
     staged.add("bus", ["b0", "b1"])
@@ -1640,7 +1635,7 @@ def test_edits_are_written_only_under_their_base(store):
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
     root = _small(store)
-    other = empty_root(store)
+    other = empty_root(store, root.manifest.schema).commit()
     staged = WorkingRecord(root.record)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
@@ -1715,7 +1710,7 @@ def test_edits_over_a_directory_are_no_revisions_delta(store, written_directory)
     -----
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
-    revision = empty_root(store)
+    revision = empty_root(store, Schema()).commit()
     over_a_directory = WorkingRecord(store.workspace.at(written_directory))
 
     with pytest.raises(ValueError, match=r"`ws\.write\(w, uri\)`"):
@@ -1750,8 +1745,9 @@ def test_edits_read_under_the_base_records_schema(store, workspace, tmp_path):
 
     Which matters for a standalone base, whose schema is its own directory's
     rather than any store's: the staged layer is one more source over that
-    base, so the `WorkingRecord` has to carry the schema along. A store on the
-    same workspace declaring something else must not reach the edit.
+    base, so the `WorkingRecord` has to carry the schema along. A revision of
+    another store on the same workspace declaring something else must not
+    reach the edit.
 
     Notes
     -----
@@ -1760,7 +1756,7 @@ def test_edits_read_under_the_base_records_schema(store, workspace, tmp_path):
     out = str(tmp_path / "standalone")
     workspace.write(WorkingRecord(_small(store).record), out)
     unrelated = workspace.store(str(tmp_path / "unrelated"))
-    write_schema(Schema(), unrelated)
+    empty_root(unrelated, Schema()).commit()
 
     base = workspace.at(out)
     assert base.schema.dims, "the standalone record carries its own schema"

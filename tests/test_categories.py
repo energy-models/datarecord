@@ -15,7 +15,7 @@ import pytest
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from tests.fixtures import broadcast, empty_child, empty_root, write_schema
+from tests.fixtures import broadcast, empty_child, empty_root
 
 
 @pytest.fixture
@@ -45,8 +45,7 @@ def categorized():
 @pytest.fixture
 def root(store, categorized):
     """A root with a gas generator, a wind load, a gas load and a bus-category label."""
-    write_schema(categorized, store)
-    revision = empty_root(store)
+    revision = empty_root(store, categorized).commit()
     staged = WorkingRecord(revision.record)
     staged.add("entity", ["g1"], ctype="Generator", carrier="gas")
     staged.add("entity", ["w1"], ctype="Load", carrier="wind")
@@ -87,7 +86,8 @@ def test_a_null_reaches_a_label_added_in_an_unmaterialised_child(root):
 @pytest.fixture
 def buses(store):
     """Two AC buses and a DC one; `frequency` defaults by type."""
-    write_schema(
+    revision = empty_root(
+        store,
         Schema(
             dimensions={
                 "bus": Dimension(dtype="str"),
@@ -105,9 +105,7 @@ def buses(store):
             },
             partial=frozenset({"bus"}),
         ),
-        store,
-    )
-    revision = empty_root(store)
+    ).commit()
     staged = WorkingRecord(revision.record)
     staged.add("bus", ["ac1", "ac2"], bus_type="AC")
     staged.add("bus", ["dc1"], bus_type="DC")
@@ -140,7 +138,8 @@ def test_attributes_leave_a_default_by_unapplied(buses):
 @pytest.fixture
 def ports(store):
     """A link `l` taking from `a` and giving to `b`, and a generator `g` attached to `b`."""
-    write_schema(
+    revision = empty_root(
+        store,
         Schema(
             dimensions={
                 "entity": Dimension(dtype="str"),
@@ -171,9 +170,7 @@ def ports(store):
             },
             partial=frozenset({"entity", "bus", "connection"}),
         ),
-        store,
-    )
-    revision = empty_root(store)
+    ).commit()
     staged = WorkingRecord(revision.record)
     staged.add("entity", ["l", "g"], ctype=["Link", "Generator"])
     staged.add("bus", ["a", "b"])
@@ -292,7 +289,8 @@ def test_a_one_of_dim_a_child_declares_is_on_its_record(store, root, categorized
     """A parent read once keeps its fold; the `one_of` dim's axis comes from the child's schema."""
     assert set(root.record.dims) >= {"ctype", "carrier"}
     dimensions = {**categorized.dimensions, "sector": Dimension(one_of=["power"])}
-    write_schema(categorized.model_copy(update={"dimensions": dimensions}), store)
-    child = empty_child(root)
+    child = empty_child(
+        root, categorized.model_copy(update={"dimensions": dimensions})
+    ).commit()
     assert child.record.dims["sector"].df()["sector"].tolist() == ["power"]
     assert "sector" not in root.record.dims, "the parent keeps its own schema"

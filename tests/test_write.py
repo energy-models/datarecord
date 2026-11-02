@@ -33,11 +33,9 @@ from tests.fixtures import (
     empty_root,
     export_network,
     relation,
-    relist,
     schema,
     unpacked,
     write_axis,
-    write_schema,
 )
 
 
@@ -300,9 +298,9 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
         "neither the layer, its cache nor a record written whole holds the list"
     )
 
-    write_schema(_SCHEMA, store)
-    forged = empty_root(store)
-    write_axis(forged, "ctype", [{"ctype": "Process"}])
+    layer = empty_root(store, _SCHEMA)
+    write_axis(layer, "ctype", [{"ctype": "Process"}])
+    forged = layer.commit()
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
         store.commit(ParquetLayer(forged.manifest, store), parent=None)
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
@@ -750,10 +748,9 @@ def _write_junk(store):
 
 
 def _read_junk(store):
-    write_schema(_SCHEMA, store)
-    root = empty_root(store)
+    root = empty_root(store, _SCHEMA)
     write_axis(root, "scenario", [{"scenario": "high", "junk": 1}])
-    root.record.dims["scenario"].fetchall()
+    root.commit().record.dims["scenario"].fetchall()
 
 
 @pytest.mark.parametrize(
@@ -788,13 +785,11 @@ def _written_axis(store, frame):
 
 
 def _read_axis(store, frame):
-    write_schema(_SCHEMA, store)
-    root = empty_root(store)
-    target = Path(store.layer_dir(root.id), "dims")
+    root = empty_root(store, _SCHEMA)
+    target = root.dir / "dims"
     target.mkdir(parents=True)
     frame.to_parquet(target / "scenario.parquet", index=False)
-    relist(target.parent)
-    root.record.dims["scenario"].fetchall()
+    root.commit().record.dims["scenario"].fetchall()
 
 
 @pytest.fixture(params=[False, True], ids=["one-pass", "a-pass-per-row"])
@@ -880,7 +875,7 @@ def test_a_label_added_again_reads_in_one_order(store, materialised):
     staged.add("scenario", ["y"])
     readded = removed.store.commit(staged)
     readded.materialise()
-    reads = [staged, readded.record, empty_child(readded).record]
+    reads = [staged, readded.record, empty_child(readded).commit().record]
     assert [_scenarios(r) for r in reads] == [["x", "z", "y"]] * 3
 
 
@@ -911,8 +906,7 @@ def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
 
     A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
     """
-    write_schema(_SCHEMA, store)
-    base = empty_root(store)
+    base = empty_root(store, _SCHEMA).commit()
     staged = WorkingRecord(base.record)
     staged.add("entity", _ENTITIES, ctype="Generator")
     staged.add("bus", _BUSES)
@@ -1538,8 +1532,7 @@ def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
 
 def _plant_layer(store, schema: Schema, **columns):
     """A root holding `ctype` `Gen` and entities `g1` and `g2` with their `p_nom`, under `schema`."""
-    write_schema(schema, store)
-    root = empty_root(store)
+    root = empty_root(store, schema).commit()
     staged = WorkingRecord(root.record)
     staged.add("entity", ["g1", "g2"], **columns)
     staged.set("p_nom", {"g1": 1.0, "g2": 2.0})
@@ -1579,8 +1572,7 @@ def test_widening_a_single_dim_attribute_reads_old_rows_in_every_scenario(store)
 
     wide = _plant(frozenset({"entity", "scenario"}))
     assert wide.compatible_with(narrow) == []
-    write_schema(wide, store)
-    widened = empty_child(layer)
+    widened = empty_child(layer, wide).commit()
     staged = WorkingRecord(widened.record)
     staged.add("scenario", ["low", "high"])
     child = store.commit(staged)
