@@ -190,9 +190,7 @@ class _FileLayer:
         """The calling thread's cursor on the workspace this layer is read through."""
         raise NotImplementedError
 
-    def _read(self, kind: str, names: list[str]) -> DuckDBPyRelation | None:
-        if not names:
-            return None
+    def _read(self, kind: str, names: list[str]) -> DuckDBPyRelation:
         uris = [self.uri(f"{kind}/{name}.parquet") for name in names]
         return self._con.read_parquet(uris, union_by_name=True)
 
@@ -200,19 +198,24 @@ class _FileLayer:
         return set(self.files.dims)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        rel = self._read("dims", [dim] if dim in self.files.dims else [])
-        if rel is not None:
-            file = f"dims/{dim}.parquet"
-            refuse_foreign_columns(set(rel.columns), {dim}, self.schema, dim, file)
+        if dim not in self.files.dims:
+            return None
+        rel = self._read("dims", [dim])
+        file = f"dims/{dim}.parquet"
+        refuse_foreign_columns(set(rel.columns), {dim}, self.schema, dim, file)
         return rel
 
     def attributes(self) -> set[str]:
         return set(self.files.attributes)
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
-        return self._read("attributes", [name] if name in self.files.attributes else [])
+        if name not in self.files.attributes:
+            return None
+        return self._read("attributes", [name])
 
     def all_attributes(self) -> DuckDBPyRelation | None:
+        if not self.files.attributes:
+            return None
         return self._read("attributes", list(self.files.attributes))
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
