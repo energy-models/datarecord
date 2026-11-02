@@ -22,12 +22,8 @@ from pathlib import Path
 from typing import Any, Protocol
 
 
-class Absent:
-    """The precondition that nothing is at the URI yet: a create-only write."""
-
-
 class PreconditionFailedError(Exception):
-    """A conditional write found the object other than `expect` said."""
+    """A create-only write found something at its URI already."""
 
 
 class Files(Protocol):
@@ -42,18 +38,13 @@ class Files(Protocol):
         """The text at `uri`, or `None` on a miss."""
         ...
 
-    def write_text(self, uri: str, text: str, *, expect: Absent | None) -> None:
-        """Write `text` to `uri`, if `expect` holds.
-
-        Parameters
-        ----------
-        expect
-            `Absent` writes only if nothing is there, `None` unconditionally.
+    def create(self, uri: str, text: str) -> None:
+        """Write `text` to `uri`, only if nothing is there yet.
 
         Raises
         ------
         PreconditionFailedError
-            If `expect` does not hold.
+            If something is at `uri` already.
         """
         ...
 
@@ -77,8 +68,9 @@ class Files(Protocol):
 class LocalFiles:
     """`Files` on the local filesystem.
 
-    Every write lands under a temporary name and is renamed or linked into
-    place, so a reader sees a whole file or none.
+    Every write lands under a temporary name and is hard-linked into place,
+    which the OS refuses over an existing file, so a reader sees a whole file
+    or none.
     """
 
     def read_text(self, uri: str) -> str | None:
@@ -87,21 +79,18 @@ class LocalFiles:
         except FileNotFoundError:
             return None
 
-    def write_text(self, uri: str, text: str, *, expect: Absent | None) -> None:
+    def create(self, uri: str, text: str) -> None:
         path = Path(uri)
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
         try:
             with os.fdopen(fd, "w") as fh:
                 fh.write(text)
-            if isinstance(expect, Absent):
-                try:
-                    os.link(tmp, path)
-                except FileExistsError:
-                    msg = f"{uri} already exists"
-                    raise PreconditionFailedError(msg) from None
-            else:
-                os.replace(tmp, path)
+            try:
+                os.link(tmp, path)
+            except FileExistsError:
+                msg = f"{uri} already exists"
+                raise PreconditionFailedError(msg) from None
         finally:
             Path(tmp).unlink(missing_ok=True)
 
@@ -127,7 +116,7 @@ def _split(uri: str) -> tuple[str, str]:
 class RemoteFiles:
     """`Files` on S3, through boto3, configured by the AWS environment alone.
 
-    `Absent` maps to `put_object`'s conditional header `IfNoneMatch="*"`,
+    `create` is `put_object` with the conditional header `IfNoneMatch="*"`,
     which holds only as far as the server honours it.
 
     Raises
@@ -170,15 +159,16 @@ class RemoteFiles:
             raise
         return got["Body"].read().decode()
 
-    def write_text(self, uri: str, text: str, *, expect: Absent | None) -> None:
+    def create(self, uri: str, text: str) -> None:
         bucket, key = _split(uri)
-        condition = {"IfNoneMatch": "*"} if isinstance(expect, Absent) else {}
         try:
-            self._s3.put_object(Bucket=bucket, Key=key, Body=text.encode(), **condition)
+            self._s3.put_object(
+                Bucket=bucket, Key=key, Body=text.encode(), IfNoneMatch="*"
+            )
         except self._error as e:
             # 409 is a conditional write racing another on the same key.
             if self._status(e) in (409, 412):
-                msg = f"{uri} is not as `expect` said: {e}"
+                msg = f"{uri} already exists: {e}"
                 raise PreconditionFailedError(msg) from e
             raise
 

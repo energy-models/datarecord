@@ -145,7 +145,7 @@ def test_a_write_failing_part_way_leaves_a_pending_layer_to_clean_up(workspace, 
 def test_a_standalone_write_to_a_non_empty_uri_is_refused(workspace, bucket):
     out = f"{bucket}/out"
     files = workspace.files(out)
-    files.write_text(f"{out}/stray.txt", "x", expect=None)
+    files.create(f"{out}/stray.txt", "x")
 
     with pytest.raises(FileExistsError, match="does not exist yet"):
         workspace.write(_Source(_SCHEMA, attributes={"p_nom": _long()}), out)

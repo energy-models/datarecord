@@ -360,7 +360,8 @@ def relist(layer: str | Path, schema: Schema | None = None) -> None:
         schema=old.schema if schema is None else schema,
         files=files,
     )
-    (layer / "manifest.json").write_text(manifest.json())
+    (layer / "manifest.json").unlink()
+    manifest.write(_LOCAL, str(layer / "manifest.json"))
 
 
 def _read(store: Store, id: UUID) -> bool:
@@ -384,7 +385,7 @@ def _hand_built(store: Store, parent: Revision | None) -> Revision:
         schema=_declared(layer.parents[1], inherited),
         files=LayerFiles(),
     )
-    (layer / "manifest.json").write_text(manifest.json())
+    manifest.write(_LOCAL, str(layer / "manifest.json"))
     return Revision(id=id, store=store)
 
 

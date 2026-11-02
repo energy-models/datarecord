@@ -11,6 +11,7 @@ Notes
 """
 
 import json
+import math
 import pickle
 import threading
 from collections import Counter
@@ -22,12 +23,13 @@ from uuid import uuid4
 import duckdb
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from datarecord import Claim, Revision, Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.specs import Dimension
 from datarecord.store import write
-from datarecord.store.files import PreconditionFailedError
+from datarecord.store.files import LocalFiles, PreconditionFailedError
 from tests.fixtures import (
     broadcast,
     empty_child,
@@ -134,29 +136,27 @@ def _pending(store) -> list[str]:
     ]
 
 
-class _Recording:
-    """`Files` recording the URI of every write, delegating the rest."""
+class _Recording(LocalFiles):
+    """`LocalFiles` recording the URI of every file it creates."""
 
-    def __init__(self, inner):
-        self._inner = inner
+    def __init__(self):
         self.written: list[str] = []
 
-    def __getattr__(self, name):
-        return getattr(self._inner, name)
-
-    def write_text(self, uri, text, *, expect):
+    def create(self, uri, text):
         self.written.append(uri)
-        return self._inner.write_text(uri, text, expect=expect)
+        super().create(uri, text)
 
 
-def test_no_file_in_a_store_is_written_twice(workspace, store, monkeypatch):
-    """Claims, data and manifests are each written once; only node caches are not counted.
+def test_a_commit_writes_each_file_once(workspace, store, monkeypatch):
+    """A commit without a retry writes its claim, data and manifest once each.
+
+    Node caches are not counted.
 
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
     """
-    files = _Recording(workspace._local)
+    files = _Recording()
     monkeypatch.setattr(workspace, "_local", files)
     parquet = write.write_parquet
 
@@ -243,8 +243,12 @@ def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
 
 @pytest.mark.parametrize(
     "by",
-    [lambda claim: {"ids": [claim.id]}, lambda _: {"older_than": timedelta(0)}],
-    ids=["ids", "age"],
+    [
+        lambda claim: {"ids": [claim.id]},
+        lambda claim: {"ids": [claim.id, claim.id]},
+        lambda _: {"older_than": timedelta(0)},
+    ],
+    ids=["ids", "repeated-id", "age"],
 )
 def test_cleanup_deletes_a_pending_layer_and_no_committed_one(store, by):
     """Named by id, or claimed at least `older_than` ago, which `timedelta(0)` reaches.
@@ -366,6 +370,25 @@ def test_revisions_filter_by_meta(store, meta, found):
             assert listed == found, "the same from the cache as from the manifests"
     finally:
         fresh.close()
+
+
+@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
+def test_a_meta_float_is_finite(store, value):
+    """JSON has no NaN or infinity, so either would be read back as null.
+
+    Refused before the claim or the manifest is written.
+
+    Notes
+    -----
+    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
+    """
+    with pytest.raises(ValidationError, match="finite"):
+        store.claim(parent=None, meta={"x": value})
+    assert not Path(store.uri, "layers").exists(), "no claim is written"
+    claim = store.claim(parent=None)
+    with pytest.raises(ValidationError, match="finite"):
+        claim.commit(_p_nom(), meta={"x": value})
+    assert _pending(store) == [str(claim.id)], "no manifest is written"
 
 
 def test_a_claim_crosses_a_process_boundary(store):
@@ -571,6 +594,49 @@ def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
     first, second = _in_threads(2, fold)
     assert first == second
     assert first
+
+
+def test_a_revision_is_cached_only_after_its_parent(store):
+    """Threads reading one tree into a fresh workspace each read the leaf's whole ancestry.
+
+    Through `revisions()` or the leaf alone, a thread that finds the leaf
+    cached finds every ancestor cached too.
+
+    Notes
+    -----
+    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    child = store.commit(_p_nom(), parent=root)
+    leaf = store.commit(_p_nom(), parent=child)
+
+    def read(again, i):
+        if i % 2:
+            again.revisions()
+        return again.revision(leaf.id).ancestry()
+
+    for _ in range(10):
+        fresh = Workspace()
+        try:
+            again = fresh.store(store.uri)
+            chains = _in_threads(8, lambda i, again=again: read(again, i))
+            assert chains == [[root.id, child.id, leaf.id]] * 8
+        finally:
+            fresh.close()
+
+
+def test_a_cached_revision_without_its_parent_fails_its_ancestry(store):
+    """A cache cut short, as only a fault leaves it, fails rather than reads a short tree."""
+    root = store.commit(_p_nom(), parent=None)
+    child = store.commit(_p_nom(), parent=root)
+    fresh = Workspace()
+    try:
+        again = fresh.store(store.uri)
+        again._cache([child.manifest])
+        with pytest.raises(RuntimeError, match=f"without its parent {root.id}"):
+            again.revision(child.id).ancestry()
+    finally:
+        fresh.close()
 
 
 def test_two_threads_adding_one_revision_row_both_succeed(workspace, store, tree):

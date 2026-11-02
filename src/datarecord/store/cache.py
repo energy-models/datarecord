@@ -53,11 +53,10 @@ def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
 def sources_to_read(
     lineage: list[Manifest], store: Store, schema: Schema
 ) -> list[LayerSource]:
-    """`ancestry` as the sources to fold, truncated at the deepest materialised node.
+    """`lineage` as the sources to fold, truncated at the deepest materialised node.
 
     A materialised owner map is already folded over everything above it, so
-    nothing further up need be read: the truncation is *fewer sources* rather
-    than a shorter list of UUIDs. The node stopped at stays a plain
+    nothing further up need be read. The node stopped at stays a plain
     `ParquetLayer`; its `materialised(con)` yields the base `Fold` the live fold
     starts from, so the fold folds only the layers below it.
 
