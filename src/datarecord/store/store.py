@@ -18,11 +18,12 @@ Notes
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import threading
 import time
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
@@ -55,7 +56,6 @@ from datarecord.store.manifest import (
     Manifest,
     Meta,
     merge_meta,
-    schema_hash,
     validate_meta,
 )
 from datarecord.store.write import layer_data, write_layer
@@ -401,11 +401,11 @@ class Store:
         ValueError
             If `parent` is a revision of another store, naming both locations.
         pydantic.ValidationError
-            If `meta` is not flat, each value a string, number or boolean.
+            If `meta` is not flat, each value a string, finite number or boolean.
 
         Notes
         -----
-        - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+        - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
         """
         if parent is not None and parent.store.uri != self.uri:
             msg = (
@@ -497,11 +497,14 @@ class Store:
 
     # -- the tree ------------------------------------------------------------
 
-    def _cache(self, manifests: list[Manifest]) -> None:
-        """Add `manifests` to the workspace's `revisions` table, their schemas to `schemas`."""
+    def _cache(self, manifests: Iterable[Manifest]) -> None:
+        """Add `manifests` to the workspace's `revisions` table in order, their schemas to `schemas`.
+
+        Each schema row goes in before its revision row, which `lineage` joins it to.
+        """
         for manifest in manifests:
             text = manifest.schema.model_dump_json()
-            digest = schema_hash(text)
+            digest = hashlib.sha256(text.encode()).hexdigest()
             files = {
                 "dims": list(manifest.files.dims),
                 "attributes": list(manifest.files.attributes),
@@ -522,10 +525,10 @@ class Store:
     def _insert(self, query: str, params: list[Any]) -> None:
         """Run `query`, an `INSERT OR IGNORE` of a row that never changes once written.
 
-        Two cursors adding one at once write the same thing. The loser fails
-        with a duplicate key, at insert or at commit, once the winner's row is
-        there; with a conflict before that, so a conflict is retried until the
-        row is visible.
+        Two cursors adding one row at once write the same thing, so the loser
+        is done once it fails with a duplicate key, at insert or at commit. It
+        fails with a conflict while the winner's row is not yet visible, and
+        retries until it is.
 
         Raises
         ------
@@ -570,6 +573,30 @@ class Store:
             [self.uri, id],
         ).fetchone()
 
+    def _cache_upward(self, id: UUID, read: Mapping[UUID, Manifest | None]) -> None:
+        """Cache `id`'s manifest and each ancestor's not yet held, root first.
+
+        A row goes in only once its parent's is there, so no thread ever sees a
+        held revision whose ancestry `lineage` would cut short. A manifest
+        missing from `read`, or `None` there as read before it committed, is
+        read again.
+
+        Raises
+        ------
+        KeyError
+            If `id` or an ancestor has no manifest.
+        """
+        chain = []
+        next_id: UUID | None = id
+        while next_id is not None and self._held(next_id) is None:
+            found = read.get(next_id) or self._read_manifest(next_id)
+            if found is None:
+                msg = f"No revision {next_id} in {self.uri}"
+                raise KeyError(msg)
+            chain.append(found)
+            next_id = found.parent
+        self._cache(reversed(chain))
+
     def revision(self, id: UUID) -> Revision:
         """Look one revision up, reading its manifest and any parents' not yet held.
 
@@ -580,19 +607,9 @@ class Store:
 
         Notes
         -----
-        - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+        - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
         """
-        if self._held(id) is None:
-            read = []
-            next_id: UUID | None = id
-            while next_id is not None and self._held(next_id) is None:
-                found = self._read_manifest(next_id)
-                if found is None:
-                    msg = f"No revision {next_id} in {self.uri}"
-                    raise KeyError(msg)
-                read.append(found)
-                next_id = found.parent
-            self._cache(read)
+        self._cache_upward(id, {})
         return Revision(id=id, store=self)
 
     def _scan(self) -> set[UUID]:
@@ -608,7 +625,9 @@ class Store:
         }
         listed = {UUID(name) for name in self.files.list(f"{self.uri}/layers/")}
         read = {id: self._read_manifest(id) for id in listed - held}
-        self._cache([m for m in read.values() if m is not None])
+        for id, manifest in read.items():
+            if manifest is not None:
+                self._cache_upward(id, read)
         return {id for id, m in read.items() if m is None}
 
     def revisions(self, *, meta: Meta | None = None) -> list[Revision]:
@@ -621,11 +640,11 @@ class Store:
         Raises
         ------
         pydantic.ValidationError
-            If `meta` is not flat, each value a string, number or boolean.
+            If `meta` is not flat, each value a string, finite number or boolean.
 
         Notes
         -----
-        - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+        - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
         """
         wanted = json.dumps(validate_meta(meta))
         self._scan()
@@ -679,10 +698,10 @@ class Store:
     ) -> list[UUID]:
         """Delete pending layers: those in `ids`, or those claimed `older_than` ago or earlier.
 
-        Only a pending layer is deleted, never a committed one: a layer that
-        commits during the call is skipped. A job may hold its claim for days,
-        so nothing deletes but this call, and a layer whose job still runs must
-        be neither named nor young enough to match.
+        Only a pending layer is deleted: each layer's manifest is rechecked
+        right before its delete, without a lock. A job may hold its claim for
+        days, so nothing deletes but this call, and a layer whose job still
+        runs must be neither named nor young enough to match.
 
         Returns
         -------
@@ -706,7 +725,7 @@ class Store:
                 cutoff = datetime.now(UTC) - older_than
                 doomed = [c.id for c in self._claimed() if c.created <= cutoff]
             case Iterable(), None:
-                doomed = list(ids)
+                doomed = list(dict.fromkeys(ids))
                 pending = self._scan()
                 refused = [str(i) for i in doomed if i not in pending]
                 if refused:
@@ -744,7 +763,45 @@ class Store:
         )
 
 
-class Claim(BaseModel):
+class _OfStore(BaseModel):
+    """A layer of a store, one location and one id whatever it has read.
+
+    Serialises as them, and validates back through `Workspace.process()`.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
+    """
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    id: UUID
+    store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _attach(cls, data: Any) -> Any:
+        """A location and id from the serialised form, completed by `_complete`."""
+        if isinstance(data, dict) and isinstance(data.get("store"), str):
+            store = Workspace.process().store(data["store"])
+            data = cls._complete(store, UUID(str(data["id"])))
+        return data
+
+    @classmethod
+    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
+        """The fields of layer `id` of `store`, read from its files."""
+        raise NotImplementedError
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return (self.store.uri, self.id) == (other.store.uri, other.id)
+
+    def __hash__(self) -> int:
+        return hash((self.store.uri, self.id))
+
+
+class Claim(_OfStore):
     """A layer id handed out by `Store.claim`, whose layer is pending until `commit`.
 
     Serialises as its store's location and its id, and validates or unpickles
@@ -762,33 +819,24 @@ class Claim(BaseModel):
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
     - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    id: UUID
-    store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
     parent: UUID | None = Field(exclude=True)
     meta: Meta = Field(exclude=True)
     created: datetime = Field(exclude=True)
 
-    @model_validator(mode="before")
     @classmethod
-    def _attach(cls, data: Any) -> Any:
-        """A location and id from the serialised form, completed from the claim file.
+    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
+        """Completed from the claim file.
 
         Raises
         ------
         KeyError
             If the layer has no claim, as after a cleanup.
         """
-        if isinstance(data, dict) and isinstance(data.get("store"), str):
-            store = Workspace.process().store(data["store"])
-            claimed = store._read_claim(UUID(str(data["id"])))
-            data = {"store": store, **asdict(claimed)}
-        return data
+        return {"store": store, **asdict(store._read_claim(id))}
 
     def __reduce__(self) -> tuple[Any, ...]:
         return Claim.model_validate_json, (self.model_dump_json(),)
@@ -824,12 +872,23 @@ class Claim(BaseModel):
         Raises
         ------
         ValueError
-            If `meta` changes a key the claim set; if `source` is edits staged
-            over another revision than the claim's parent; if the source's
-            schema would make the parent's layers unreadable; if the layer is
-            committed already; or if `source` fails validation. The layer is
-            then left pending. Also if `Store.cleanup` deleted the layer,
-            before or while its data was written.
+            If `meta` changes a key the claim set, `source` is edits staged
+            over another revision than the claim's parent, the source's schema
+            would make the parent's layers unreadable, the layer is committed
+            already, or `source` fails validation. The layer is left pending.
+        ValueError
+            If `Store.cleanup` deleted the layer, before or while its data was
+            written.
+        PreconditionFailedError
+            If another commit of this claim wrote the manifest first.
+        KeyError
+            If the claim's parent is gone from the store.
+        pydantic.ValidationError
+            If `meta` is not flat, each value a string, finite number or boolean.
+
+        Notes
+        -----
+        - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
         """
         store = self.store
         meta = merge_meta(self.meta, validate_meta(meta))
@@ -886,15 +945,12 @@ WITH RECURSIVE ancestors(id, parent, depth) AS (
 )
 """
 
-_ANCESTRY = _ANCESTORS + "SELECT id FROM ancestors ORDER BY depth DESC"
-
 _LINEAGE = (
     _ANCESTORS
+    + _MANIFESTS
     + """
-SELECT r.id, r.parent, r.meta, r.files, s.schema
-FROM ancestors a
-JOIN revisions r ON r.location = $location AND r.id = a.id
-JOIN schemas s ON s.hash = r.schema
+JOIN ancestors a ON a.id = r.id
+WHERE r.location = $location
 ORDER BY a.depth DESC
 """
 )
@@ -907,24 +963,41 @@ def ancestry(store: Store, revision_id: UUID) -> list[UUID]:
     reader's business (`cache.sources_to_read`), since whether a node's
     caches exist is a fact about the filesystem rather than about the tree.
 
+    Raises
+    ------
+    RuntimeError
+        As `lineage` does.
+
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    store.revision(revision_id)
-    rows = store.workspace.con.execute(
-        _ANCESTRY, {"location": store.uri, "id": revision_id}
-    ).fetchall()
-    return [r[0] for r in rows]
+    return [manifest.id for manifest in lineage(store, revision_id)]
 
 
 def lineage(store: Store, revision_id: UUID) -> list[Manifest]:
-    """The manifests along the root->node path, root first, as `ancestry` orders them."""
+    """The manifests along the root->node path, root first, as `ancestry` orders them.
+
+    Raises
+    ------
+    RuntimeError
+        If the workspace holds an ancestor without its parent, which would
+        cut the path short.
+    """
     store.revision(revision_id)
     rows = store.workspace.con.execute(
         _LINEAGE, {"location": store.uri, "id": revision_id}
     ).fetchall()
-    return _manifests(rows)
+    manifests = _manifests(rows)
+    first = manifests[0]
+    if first.parent is not None:
+        msg = (
+            f"the workspace holds revision {first.id} of {store.uri} without its "
+            f"parent {first.parent}; delete the workspace's database, which "
+            f"holds only caches"
+        )
+        raise RuntimeError(msg)
+    return manifests
 
 
 def _manifests(rows: list[tuple[Any, ...]]) -> list[Manifest]:
@@ -946,7 +1019,7 @@ def _manifests(rows: list[tuple[Any, ...]]) -> list[Manifest]:
     return manifests
 
 
-class Revision(BaseModel):
+class Revision(_OfStore):
     """A node in the tree of layers.
 
     Each revision adds one parquet layer on top of its parent's; the record it
@@ -964,35 +1037,23 @@ class Revision(BaseModel):
     - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    id: UUID
-    store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
-
     _record: Record | None = PrivateAttr(default=None)
     _manifest: Manifest | None = PrivateAttr(default=None)
 
-    @model_validator(mode="before")
     @classmethod
-    def _attach(cls, data: Any) -> Any:
-        """A location from the serialised form, attached to the process workspace."""
-        if isinstance(data, dict) and isinstance(data.get("store"), str):
-            store = Workspace.process().store(data["store"])
-            store.revision(UUID(str(data["id"])))
-            data = {**data, "store": store}
-        return data
+    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
+        """Read with every parent's manifest the process does not yet hold.
+
+        Raises
+        ------
+        KeyError
+            If the store has no revision `id`.
+        """
+        store.revision(id)
+        return {"id": id, "store": store}
 
     def __reduce__(self) -> tuple[Any, ...]:
         return self.store.revision, (self.id,)
-
-    def __eq__(self, other: object) -> bool:
-        """The same revision: one store location and one id, whatever either has read."""
-        if not isinstance(other, Revision):
-            return NotImplemented
-        return (self.store.uri, self.id) == (other.store.uri, other.id)
-
-    def __hash__(self) -> int:
-        return hash((self.store.uri, self.id))
 
     @property
     def record(self) -> Record:
