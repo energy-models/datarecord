@@ -57,6 +57,9 @@ from datarecord.store.manifest import (
 )
 from datarecord.store.write import layer_data, write_layer
 
+#: Seconds `Store._insert` retries a write-write conflict before giving up.
+_INSERT_TIMEOUT = 10.0
+
 _SCHEMAS = """
 CREATE TABLE IF NOT EXISTS schemas (
   hash   VARCHAR PRIMARY KEY,
@@ -517,7 +520,13 @@ class Store:
         with a duplicate key, at insert or at commit, once the winner's row is
         there; with a conflict before that, so a conflict is retried until the
         row is visible.
+
+        Raises
+        ------
+        TimeoutError
+            If the conflict outlasts `_INSERT_TIMEOUT` seconds.
         """
+        deadline = time.monotonic() + _INSERT_TIMEOUT
         while True:
             try:
                 self.workspace.con.execute(query, params)
@@ -526,6 +535,9 @@ class Store:
                     return
                 if "conflict" not in str(e).lower():
                     raise
+                if time.monotonic() > deadline:
+                    msg = f"a write-write conflict on {params[:2]} outlasted {_INSERT_TIMEOUT}s"
+                    raise TimeoutError(msg) from e
                 time.sleep(0.001)
                 continue
             except duckdb.ConstraintException:
