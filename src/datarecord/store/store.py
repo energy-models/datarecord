@@ -22,7 +22,9 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
 from pathlib import Path
 from typing import Annotated, Any, overload
@@ -34,6 +36,7 @@ from duckdb import DuckDBPyConnection
 from pydantic import (
     BaseModel,
     ConfigDict,
+    Field,
     PlainSerializer,
     PrivateAttr,
     model_validator,
@@ -47,13 +50,13 @@ from datarecord.schema.schema import Schema
 from datarecord.store.cache import materialise, sources_to_read
 from datarecord.store.files import Files, LocalFiles, RemoteFiles
 from datarecord.store.manifest import (
+    ClaimFile,
     LayerFiles,
     Manifest,
     Meta,
     merge_meta,
     schema_hash,
     validate_meta,
-    write_claim,
 )
 from datarecord.store.write import layer_data, write_layer
 
@@ -132,8 +135,8 @@ class Workspace:
     def process(cls) -> Workspace:
         """The process's workspace, created on first use on `:memory:`.
 
-        What a deserialised `Revision` attaches to, having no workspace passed;
-        nothing else reaches it unless named.
+        What a deserialised `Revision` or `Claim` attaches to, having no
+        workspace passed; nothing else reaches it unless named.
 
         Notes
         -----
@@ -410,11 +413,14 @@ class Store:
                 f"it is no parent in the store at {self.uri}"
             )
             raise ValueError(msg)
-        meta = validate_meta(meta)
-        id = uuid4()
-        parent_id = None if parent is None else parent.id
-        write_claim(self.files, self.claim_uri(id), id, parent_id, meta)
-        return Claim(store=self, id=id, parent=parent_id, meta=meta)
+        claimed = ClaimFile(
+            id=uuid4(),
+            parent=None if parent is None else parent.id,
+            meta=validate_meta(meta),
+            created=datetime.now(UTC),
+        )
+        claimed.write(self.files, self.claim_uri(claimed.id))
+        return Claim(store=self, **asdict(claimed))
 
     @overload
     def commit(
@@ -589,15 +595,10 @@ class Store:
             self._cache(read)
         return Revision(id=id, store=self)
 
-    def revisions(self) -> list[Revision]:
-        """Every revision in this store, unordered; a pending layer is none.
+    def _scan(self) -> set[UUID]:
+        """List `layers/` once, cache each manifest not yet held, and return the pending ids.
 
-        One listing of `layers/`, reading only the manifests the workspace does
-        not already hold.
-
-        Notes
-        -----
-        - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+        A pending layer is one listed without a manifest.
         """
         held = {
             row[0]
@@ -606,17 +607,124 @@ class Store:
             ).fetchall()
         }
         listed = {UUID(name) for name in self.files.list(f"{self.uri}/layers/")}
-        self._cache(
-            [
-                manifest
-                for id in listed - held
-                if (manifest := self._read_manifest(id)) is not None
-            ]
-        )
+        read = {id: self._read_manifest(id) for id in listed - held}
+        self._cache([m for m in read.values() if m is not None])
+        return {id for id, m in read.items() if m is None}
+
+    def revisions(self, *, meta: Meta | None = None) -> list[Revision]:
+        """Every revision in this store whose `meta` holds each pair of `meta`, unordered.
+
+        A pending layer is none. One listing of `layers/`, reading only the
+        manifests the workspace does not already hold; a value matches only
+        one of its own type, so `1` matches neither `1.0` nor `True`.
+
+        Raises
+        ------
+        pydantic.ValidationError
+            If `meta` is not flat, each value a string, number or boolean.
+
+        Notes
+        -----
+        - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+        """
+        wanted = json.dumps(validate_meta(meta))
+        self._scan()
         rows = self.workspace.con.execute(
-            "SELECT id FROM revisions WHERE location = ?", [self.uri]
+            "SELECT id FROM revisions WHERE location = ? AND json_contains(meta, ?)",
+            [self.uri, wanted],
         ).fetchall()
         return [Revision(id=id, store=self) for (id,) in rows]
+
+    def _read_claim(self, id: UUID) -> ClaimFile:
+        """Layer `id`'s claim file.
+
+        Raises
+        ------
+        KeyError
+            If layer `id` has no claim.
+        """
+        claimed = ClaimFile.read(self.files, self.claim_uri(id))
+        if claimed is None:
+            msg = f"No claim {id} in {self.uri}"
+            raise KeyError(msg)
+        return claimed
+
+    def _claimed(self) -> list[ClaimFile]:
+        """The claim file of each pending layer, skipping a directory that holds none.
+
+        Such a directory is a claim still being written, or what a cleanup
+        under a running commit left behind.
+        """
+        read = (ClaimFile.read(self.files, self.claim_uri(id)) for id in self._scan())
+        return [c for c in read if c is not None]
+
+    def claims(self) -> list[Claim]:
+        """Every pending layer in this store, claimed and not committed, oldest first.
+
+        Read from the claim files on each call and never cached, since a
+        pending layer may commit at any time.
+
+        Notes
+        -----
+        - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+        """
+        claims = [Claim(store=self, **asdict(c)) for c in self._claimed()]
+        return sorted(claims, key=lambda c: c.created)
+
+    def cleanup(
+        self,
+        *,
+        ids: Iterable[UUID] | None = None,
+        older_than: timedelta | None = None,
+    ) -> list[UUID]:
+        """Delete pending layers: those in `ids`, or those claimed `older_than` ago or earlier.
+
+        Only a pending layer is deleted, never a committed one: a layer that
+        commits during the call is skipped. A job may hold its claim for days,
+        so nothing deletes but this call, and a layer whose job still runs must
+        be neither named nor young enough to match.
+
+        Returns
+        -------
+        list of UUID
+            The ids of the layers deleted.
+
+        Raises
+        ------
+        TypeError
+            Unless exactly one of `ids` and `older_than` is given.
+        ValueError
+            Naming each of `ids` that is no pending layer, before anything is
+            deleted.
+
+        Notes
+        -----
+        - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+        """
+        match ids, older_than:
+            case None, timedelta():
+                cutoff = datetime.now(UTC) - older_than
+                doomed = [c.id for c in self._claimed() if c.created <= cutoff]
+            case Iterable(), None:
+                doomed = list(ids)
+                pending = self._scan()
+                refused = [str(i) for i in doomed if i not in pending]
+                if refused:
+                    msg = (
+                        f"{refused} are no pending layers of {self.uri}; cleanup "
+                        f"deletes only a layer claimed and not committed"
+                    )
+                    raise ValueError(msg)
+            case _:
+                msg = "`cleanup` takes exactly one of `ids=` and `older_than=`"
+                raise TypeError(msg)
+        deleted = []
+        for id in doomed:
+            if self.files.exists(self.manifest_uri(id)):
+                continue
+            self.files.delete(self.layer_dir(id))
+            deleted.append(id)
+        return deleted
 
     def layer(self, id: UUID) -> Record:
         """Revision `id`'s layer read alone, as the one layer it is.
@@ -636,9 +744,12 @@ class Store:
         )
 
 
-@dataclass(frozen=True)
-class Claim:
+class Claim(BaseModel):
     """A layer id handed out by `Store.claim`, whose layer is pending until `commit`.
+
+    Serialises as its store's location and its id, and validates or unpickles
+    back through `Workspace.process()` by reading its claim file, so a job in
+    another process commits it.
 
     Attributes
     ----------
@@ -646,16 +757,59 @@ class Claim:
         The revision the layer will fold over, `None` for a root.
     meta
         The revision's meta as claimed, which the commit keeps.
+    created
+        When the id was handed out.
 
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
     """
 
-    store: Store
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     id: UUID
-    parent: UUID | None
-    meta: Meta
+    store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
+    parent: UUID | None = Field(exclude=True)
+    meta: Meta = Field(exclude=True)
+    created: datetime = Field(exclude=True)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _attach(cls, data: Any) -> Any:
+        """A location and id from the serialised form, completed from the claim file.
+
+        Raises
+        ------
+        KeyError
+            If the layer has no claim, as after a cleanup.
+        """
+        if isinstance(data, dict) and isinstance(data.get("store"), str):
+            store = Workspace.process().store(data["store"])
+            claimed = store._read_claim(UUID(str(data["id"])))
+            data = {"store": store, **asdict(claimed)}
+        return data
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        return Claim.model_validate_json, (self.model_dump_json(),)
+
+    def _refuse_cleaned_up(self) -> None:
+        """Raise once `Store.cleanup` deleted this claim's layer.
+
+        Checked before the data and again right before the manifest, which
+        narrows but cannot close the window a concurrent cleanup races in.
+
+        Raises
+        ------
+        ValueError
+            If the claim file is gone.
+        """
+        if not self.store.files.exists(self.store.claim_uri(self.id)):
+            msg = (
+                f"layer {self.id} was cleaned up, so its claim commits no "
+                f"more; claim a new layer"
+            )
+            raise ValueError(msg)
 
     def commit(
         self, source: LayerData | RecordLike, *, meta: Meta | None = None
@@ -674,7 +828,8 @@ class Claim:
             over another revision than the claim's parent; if the source's
             schema would make the parent's layers unreadable; if the layer is
             committed already; or if `source` fails validation. The layer is
-            then left pending.
+            then left pending. Also if `Store.cleanup` deleted the layer,
+            before or while its data was written.
         """
         store = self.store
         meta = merge_meta(self.meta, validate_meta(meta))
@@ -690,6 +845,7 @@ class Claim:
         if store.files.exists(store.manifest_uri(self.id)):
             msg = f"revision {self.id} is committed already; a claim commits once"
             raise ValueError(msg)
+        self._refuse_cleaned_up()
         parent = None if self.parent is None else store.revision(self.parent)
         data = layer_data(source, store.workspace.con)
         schema = data.schema
@@ -708,6 +864,7 @@ class Claim:
         manifest = Manifest(
             id=self.id, parent=self.parent, schema=schema, files=files, meta=meta
         )
+        self._refuse_cleaned_up()
         manifest.write(store.files, store.manifest_uri(self.id))
         store._cache([manifest])
         return Revision(id=self.id, store=store)
