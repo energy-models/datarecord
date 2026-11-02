@@ -16,22 +16,23 @@ Notes
 
 from __future__ import annotations
 
-import hashlib
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, TypeAdapter
 from pydantic.dataclasses import dataclass
 
 from datarecord.schema.schema import Schema
-from datarecord.store.files import Absent
 
 if TYPE_CHECKING:
     from datarecord.store.files import Files
 
-Meta = dict[str, str | int | float | bool]
-"""A revision's own `meta`: flat, set at its write, and not inherited."""
+Meta = dict[str, str | int | Annotated[float, Field(allow_inf_nan=False)] | bool]
+"""A revision's own `meta`: flat, set at its write, and not inherited.
+
+A float is finite, since JSON has no NaN or infinity to store it as.
+"""
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -71,9 +72,6 @@ class Manifest:
     files: LayerFiles
     meta: Meta = Field(default_factory=dict)
 
-    def json(self) -> str:
-        return _MANIFEST.dump_json(self).decode()
-
     def write(self, files: Files, uri: str) -> None:
         """Write this manifest at `uri`, create-only.
 
@@ -82,13 +80,12 @@ class Manifest:
         PreconditionFailedError
             If a manifest is already there.
         """
-        files.write_text(uri, self.json(), expect=Absent())
+        _create(files, uri, _MANIFEST, self)
 
     @classmethod
     def read(cls, files: Files, uri: str) -> Manifest | None:
         """The manifest at `uri`, or `None` where there is none."""
-        found = files.read_text(uri)
-        return None if found is None else _MANIFEST.validate_json(found)
+        return _read(files, uri, _MANIFEST)
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -117,13 +114,12 @@ class ClaimFile:
         PreconditionFailedError
             If the id was claimed before.
         """
-        files.write_text(uri, _CLAIM.dump_json(self).decode(), expect=Absent())
+        _create(files, uri, _CLAIM, self)
 
     @classmethod
     def read(cls, files: Files, uri: str) -> ClaimFile | None:
         """The claim at `uri`, or `None` where there is none."""
-        found = files.read_text(uri)
-        return None if found is None else _CLAIM.validate_json(found)
+        return _read(files, uri, _CLAIM)
 
 
 _MANIFEST = TypeAdapter(Manifest)
@@ -131,13 +127,17 @@ _CLAIM = TypeAdapter(ClaimFile)
 _META = TypeAdapter(Meta)
 
 
-def schema_hash(text: str) -> str:
-    """What keys a schema's JSON in the workspace's `schemas` table."""
-    return hashlib.sha256(text.encode()).hexdigest()
+def _create[T](files: Files, uri: str, adapter: TypeAdapter[T], value: T) -> None:
+    files.create(uri, adapter.dump_json(value).decode())
+
+
+def _read[T](files: Files, uri: str, adapter: TypeAdapter[T]) -> T | None:
+    found = files.read_text(uri)
+    return None if found is None else adapter.validate_json(found)
 
 
 def validate_meta(meta: Meta | None) -> Meta:
-    """`meta` checked flat, each value a string, number or boolean.
+    """`meta` checked flat, each value a string, finite number or boolean.
 
     Raises
     ------
