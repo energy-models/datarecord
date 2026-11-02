@@ -884,11 +884,6 @@ class Revision(BaseModel):
         return self.manifest.parent
 
     @property
-    def schema(self) -> Schema:  # type: ignore[override]  # shadows pydantic v1's deprecated JSON-schema classmethod
-        """The full schema this revision's layer was written under."""
-        return self.manifest.schema
-
-    @property
     def meta(self) -> Meta:
         """This revision's own `meta`, as its manifest holds it."""
         return self.manifest.meta
