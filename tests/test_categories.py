@@ -15,7 +15,7 @@ import pytest
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from tests.fixtures import broadcast, empty_root, write_schema
+from tests.fixtures import broadcast, empty_child, empty_root, write_schema
 
 
 @pytest.fixture
@@ -52,7 +52,7 @@ def root(store, categorized):
     staged.add("entity", ["w1"], ctype="Load", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load", carrier="gas")
     staged.add("entity", ["b1"], ctype="Bus")
-    return revision.child(staged.edits)
+    return revision.store.commit(staged)
 
 
 EVERY = {"g1", "w1", "l1", "b1"}
@@ -75,10 +75,10 @@ def test_a_null_reaches_a_label_added_in_the_same_staged_record(root):
 def test_a_null_reaches_a_label_added_in_an_unmaterialised_child(root):
     staged = WorkingRecord(root.record)
     staged.set("p_max_pu", 0.9)
-    layer = root.child(staged.edits)
+    layer = root.store.commit(staged)
     later = WorkingRecord(layer.record)
     later.add("entity", ["g2"], ctype="Generator", carrier="gas")
-    child = layer.child(later.edits)
+    child = layer.store.commit(later)
     assert _values(child.record, "p_max_pu") == dict.fromkeys(EVERY | {"g2"}, 0.9), (
         "a generator added below the broadcast is reached by it"
     )
@@ -111,14 +111,14 @@ def buses(store):
     staged = WorkingRecord(revision.record)
     staged.add("bus", ["ac1", "ac2"], bus_type="AC")
     staged.add("bus", ["dc1"], bus_type="DC")
-    return revision.child(staged.edits)
+    return revision.store.commit(staged)
 
 
 def test_a_category_keyword_scopes_a_value_on_another_dim_than_entity(buses):
     staged = WorkingRecord(buses.record)
     staged.set("frequency", 60.0, bus_type="AC")
     staged.set("v_nom", 380.0)
-    record = buses.child(staged.edits).record
+    record = buses.store.commit(staged).record
 
     assert _values(record, "frequency", "bus") == {"ac1": 60.0, "ac2": 60.0}
     assert set(_values(record, "v_nom", "bus")) == {"ac1", "ac2", "dc1"}, (
@@ -131,7 +131,7 @@ def test_a_category_keyword_scopes_a_value_on_another_dim_than_entity(buses):
 def test_attributes_leave_a_default_by_unapplied(buses):
     staged = WorkingRecord(buses.record)
     staged.set("frequency", 60.0, bus="ac1")
-    record = buses.child(staged.edits).record
+    record = buses.store.commit(staged).record
     assert _values(record, "frequency", "bus") == {"ac1": 60.0}, (
         "ac2 has no row, so it is absent rather than its default_by 50.0"
     )
@@ -184,7 +184,7 @@ def ports(store):
         {"entity": "g", "bus": "b"},
     ]
     staged.add("connection", tuples, role=["input", "output", "attached"])
-    return revision.child(staged.edits)
+    return revision.store.commit(staged)
 
 
 def test_a_multi_dim_is_categorized_by_its_property(ports):
@@ -198,7 +198,7 @@ def test_a_multi_dim_is_categorized_by_its_property(ports):
     staged.set("efficiency", 0.5, role="output", snapshot=[0])
     staged.set("efficiency", 0.8, role=["input", "attached"], bus="b")
     staged.set("p_nom", 1.0)
-    record = ports.child(staged.edits).record
+    record = ports.store.commit(staged).record
 
     assert broadcast(record, "efficiency", "connection", "snapshot") == {
         (("l", "b"), 0): 0.5,
@@ -225,7 +225,7 @@ def test_a_multi_dims_category_selects_only_for_an_attribute_over_it(ports):
 def test_a_multi_dims_category_combines_with_a_category_of_its_coordinate(ports):
     staged = WorkingRecord(ports.record)
     staged.set("efficiency", 0.5, role=["output", "attached"], ctype="Generator")
-    record = ports.child(staged.edits).record
+    record = ports.store.commit(staged).record
     assert broadcast(record, "efficiency", "connection", "snapshot") == {
         (("g", "b"), 0): 0.5,
         (("g", "b"), 1): 0.5,
@@ -285,14 +285,14 @@ def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
     """
     staged = WorkingRecord(ports.record)
     staged.set(f"{subject}.note", "x", **keywords)
-    assert _noted(ports.child(staged.edits).record, subject) == selected
+    assert _noted(ports.store.commit(staged).record, subject) == selected
 
 
-def test_a_one_of_dim_widened_in_is_on_a_record_read_before(store, root, categorized):
-    """A record read once keeps its fold; the `one_of` dim's axis comes from the schema in force."""
+def test_a_one_of_dim_a_child_declares_is_on_its_record(store, root, categorized):
+    """A parent read once keeps its fold; the `one_of` dim's axis comes from the child's schema."""
     assert set(root.record.dims) >= {"ctype", "carrier"}
     dimensions = {**categorized.dimensions, "sector": Dimension(one_of=["power"])}
     write_schema(categorized.model_copy(update={"dimensions": dimensions}), store)
-    assert store.revision(root.id).record.dims["sector"].df()["sector"].tolist() == [
-        "power"
-    ]
+    child = empty_child(root)
+    assert child.record.dims["sector"].df()["sector"].tolist() == ["power"]
+    assert "sector" not in root.record.dims, "the parent keeps its own schema"

@@ -123,7 +123,7 @@ class Flags:
 class RecordLike(Protocol):
     """What a record answers, however it is backed, as DuckDB relations.
 
-    Read-only: writing is `store.root(source)`, `rev.child(source)` or
+    Read-only: writing is `store.commit(source, parent=...)` or
     `ws.write(source, uri)`, whose writer reads a `LayerData` rather than this -
     a framework's own `RecordLike` reaches it through an adapter.
 

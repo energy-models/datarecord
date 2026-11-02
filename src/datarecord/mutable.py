@@ -191,7 +191,7 @@ class StagedSource:
         """This record's schema - the `LayerData` a write reads for one.
 
         A staging area is not a `LayerSource` a fold folds under a schema
-        someone else supplies; it is also what `rev.child(w.edits)` writes
+        someone else supplies; it is also what `store.commit(w)` writes
         directly, where it needs its own.
         """
         return self.record.schema
@@ -1878,11 +1878,10 @@ class WorkingRecord(Record):
     def edits(self) -> StagedSource:
         """The staged layer alone: the delta against the base, as a `LayerData`.
 
-        What `rev.child(w.edits)` writes, where `rev` is the revision this
-        record was built over - only the edits, the fold resolving the rest from
-        the parent. The record itself is the flattened whole, base plus edits,
-        which is what a standalone `ws.write(w, uri)` wants; `rev.child(w)`
-        would write that whole as a child, reading back right but larger.
+        What `store.commit(w)` writes, as a child of the revision this record
+        was built over - only the edits, the fold resolving the rest from the
+        parent. The record itself is the flattened whole, base plus edits,
+        which is what a standalone `ws.write(w, uri)` wants.
 
         Writing clears nothing: `rollback()` does, called or not.
 

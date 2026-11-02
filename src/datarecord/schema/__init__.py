@@ -5,7 +5,7 @@
 """Declare a record: `Schema` and the specs it holds.
 
 A `Schema` declares the dims, properties and attributes a record may
-hold, and loads from and dumps to a record's `manifest.json`.
+hold, and loads from and dumps to a layer's `manifest.json`.
 
 Notes
 -----

@@ -4,8 +4,7 @@
 
 """The schema: what a record's data is, and how a patch to it behaves.
 
-One schema per record, and `manifest.json` is how it is written down - the two
-words name the same thing, the file and the object.
+Each layer's `manifest.json` carries the full schema it was written under.
 
 Framework-independent. Dims, properties and attributes are names a schema
 declares, because those vocabularies belong to a modelling framework and this
@@ -24,7 +23,6 @@ import json
 import re
 from collections.abc import Iterable, Mapping
 from typing import Any, cast
-from uuid import UUID
 
 import duckdb
 from duckdb import ColumnExpression as col
@@ -40,6 +38,7 @@ from datarecord.schema.dtypes import DUCK_TYPES, enum_type, takes
 from datarecord.schema.specs import (
     AttributeSpec,
     Dimension,
+    Names,
     PropertySpec,
     _Declared,
     _ValueSpec,
@@ -155,10 +154,6 @@ class Schema(_Declared):
 
     Attributes
     ----------
-    id
-        A standalone record's id, which its `manifest.json` carries beside the
-        declarations and `Workspace.write` mints; `None` on a tree's schema,
-        and then left out of a dump.
     version
         Bumped by any change to the declarations. A reader meeting a
         version it was not written for should refuse rather than guess.
@@ -189,12 +184,11 @@ class Schema(_Declared):
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
 
-    id: UUID | None = Field(default=None, exclude_if=lambda id: id is None)
     version: int = 1
     dimensions: dict[str, Dimension] = Field(default_factory=dict)
     attributes: dict[str, AttributeSpec] = Field(default_factory=dict)
     properties: dict[str, dict[str, PropertySpec]] = Field(default_factory=dict)
-    partial: frozenset[str] | None = None
+    partial: Names | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")

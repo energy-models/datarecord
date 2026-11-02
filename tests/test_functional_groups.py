@@ -245,7 +245,7 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
         "the tuple naming the removed bus is dropped"
     )
 
-    child = revision.child(staged.edits)
+    child = revision.store.commit(staged)
     assert _tuples(child.record) == [{"bus": "south", "state": "upper"}]
 
 
@@ -316,7 +316,7 @@ def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
 
     staged = WorkingRecord(revision.record)
     staged.set("target", {"DE": 30.0})
-    child = revision.child(staged.edits)
+    child = revision.store.commit(staged)
     assert "target" not in child.record._coords.axes["country"].columns
     rows = child.record.attributes["target"].to_arrow_table().to_pydict()
     assert rows["country"] == ["DE"]
@@ -398,7 +398,7 @@ def test_a_child_layer_restates_an_axis_whole(store, partial):
         "the whole axis in order, not just the edited label"
     )
 
-    child = revision.child(staged.edits)
+    child = revision.store.commit(staged)
     axis = child.record.properties["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "FR": 55.0}, (
         "FR survives because this layer carried it"
@@ -437,7 +437,7 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
 
     staged.add("country", ["NO"])
     staged.set("country.co2_budget", {"DE": 12.0, "NO": 3.0})
-    child = revision.child(staged.edits)
+    child = revision.store.commit(staged)
     axis = child.record.properties["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "NO": 3.0}
 
@@ -516,7 +516,7 @@ def test_a_property_naming_a_dim_takes_null_or_a_label_added_first(
     staged.add("state", ["added"])
     staged.add("country", ["added"])
     edit(staged, value)
-    classified.child(staged.edits)
+    classified.store.commit(staged)
 
 
 def test_add_refuses_a_tuple_property_label_the_dim_does_not_list(store):
@@ -548,7 +548,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
     staged.remove("state", ["lower"])
     with pytest.raises(KeyError, match=r"names 'state' labels \['lower'\]"):
         staged.set("bus.state", "lower", bus="south")
-    child = classified.child(staged.edits)
+    child = classified.store.commit(staged)
     assert child.record.dims["state"].df()["state"].tolist() == ["upper"]
 
 
@@ -561,11 +561,11 @@ def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
     """
     staged = WorkingRecord(classified.record)
     staged.remove("country", ["NO"])
-    removed = classified.child(staged.edits)
+    removed = classified.store.commit(staged)
 
     tuples = pd.DataFrame(
         {"bus_state": [{"bus": "south", "state": "upper"}], "country": ["NO"]}
     )
     source = _Source(_schema(), connections={"bus_state": tuples}, dims={})
     with pytest.raises(ValueError, match=r"a removed country in 'country'"):
-        removed.child(source)
+        removed.store.commit(source, parent=removed)

@@ -75,7 +75,7 @@ def revision(store, schema):
     staged.set("p_max_pu", 0.9, ctype="Generator")
     staged.set("p_set", 1.0, entity="l1")
     staged.set("efficiency", 0.5, entity="l1", bus="b0")
-    return root.child(staged.edits)
+    return root.store.commit(staged)
 
 
 @pytest.fixture
@@ -181,7 +181,7 @@ def test_a_property_keyword_matches_a_label_by_its_stored_value(record):
 def test_set_of_a_category_re_categorizes_labels_and_flags(revision, committed):
     staged = WorkingRecord(revision.record)
     staged.set("entity.ctype", "Load", entity="g1")
-    record = revision.child(staged.edits).record if committed else staged
+    record = revision.store.commit(staged).record if committed else staged
     types = {e: r["ctype"] for e, r in _rows(record.properties["entity"]).items()}
     assert types == {"g1": "Load", "l1": "Load"}, "g1 is a load now"
     assert set(record.flags(ctype="Generator")) == set(), "no generator is left"

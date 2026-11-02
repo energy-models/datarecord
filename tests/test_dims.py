@@ -20,6 +20,7 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     relation,
+    relist,
     restate,
     schema,
     write_attribute,
@@ -136,6 +137,7 @@ def test_a_dim_names_its_own_file(store):
     pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(
         target / "bus.parquet", index=False
     )
+    relist(target.parent)
 
     axis = revision.record.dims["bus"].df()
     assert sorted(axis["bus"].tolist()) == ["north", "south"]
