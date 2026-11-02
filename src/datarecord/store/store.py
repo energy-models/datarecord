@@ -546,9 +546,9 @@ class Store:
             raise ValueError(msg)
         return manifest
 
-    def _held(self, id: UUID) -> tuple[UUID, UUID | None] | None:
+    def _held(self, id: UUID) -> tuple[UUID] | None:
         return self.workspace.con.execute(
-            "SELECT id, parent FROM revisions WHERE location = ? AND id = ?",
+            "SELECT id FROM revisions WHERE location = ? AND id = ?",
             [self.uri, id],
         ).fetchone()
 
@@ -564,8 +564,7 @@ class Store:
         -----
         - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
         """
-        row = self._held(id)
-        if row is None:
+        if self._held(id) is None:
             read = []
             next_id: UUID | None = id
             while next_id is not None and self._held(next_id) is None:
@@ -576,8 +575,7 @@ class Store:
                 read.append(found)
                 next_id = found.parent
             self._cache(read)
-            row = (read[0].id, read[0].parent)
-        return Revision(id=row[0], parent=row[1], store=self)
+        return Revision(id=id, store=self)
 
     def revisions(self) -> list[Revision]:
         """Every revision in this store, unordered; a pending layer is none.
@@ -604,9 +602,9 @@ class Store:
             ]
         )
         rows = self.workspace.con.execute(
-            "SELECT id, parent FROM revisions WHERE location = ?", [self.uri]
+            "SELECT id FROM revisions WHERE location = ?", [self.uri]
         ).fetchall()
-        return [Revision(id=id, parent=parent, store=self) for id, parent in rows]
+        return [Revision(id=id, store=self) for (id,) in rows]
 
     def layer(self, id: UUID) -> Record:
         """Revision `id`'s layer read alone, as the one layer it is.
@@ -700,7 +698,7 @@ class Claim:
         )
         manifest.write(store.files, store.manifest_uri(self.id))
         store._cache([manifest])
-        return Revision(id=self.id, parent=self.parent, store=store)
+        return Revision(id=self.id, store=store)
 
 
 _MANIFESTS = """
@@ -800,7 +798,6 @@ class Revision(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
 
     id: UUID
-    parent: UUID | None = None
     store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
 
     _record: Record | None = PrivateAttr(default=None)
@@ -868,6 +865,16 @@ class Revision(BaseModel):
             ).fetchall()
             self._manifest = _manifests(rows)[0]
         return self._manifest
+
+    @property
+    def parent(self) -> UUID | None:
+        """This revision's parent's id, as its manifest holds it."""
+        return self.manifest.parent
+
+    @property
+    def schema(self) -> Schema:  # type: ignore[override]  # shadows pydantic v1's deprecated JSON-schema classmethod
+        """The full schema this revision's layer was written under."""
+        return self.manifest.schema
 
     @property
     def meta(self) -> Meta:
