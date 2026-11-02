@@ -678,14 +678,12 @@ def _materialised_then_widened(store, partial=frozenset()):
 def test_a_fold_reads_under_a_widened_schema(store):
     """A map made before a dim was declared reads under a child's wider schema.
 
-    The map carries no schema, so it is read as it was folded. A compatible
-    widening only adds; the dim it adds has no field in the flag structs,
-    which `UNION ALL BY NAME` fills with NULL and which reads as unset - no row
-    mentions it.
+    The map is extended to the child's schema: `p_max_pu`, over `scenario`
+    there, gains the field and broadcasts along it, its rows holding NULL there.
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
@@ -696,15 +694,14 @@ def test_a_fold_reads_under_a_widened_schema(store):
     )
     flags = after.record.flags()["p_max_pu"]
     assert "scenario" not in flags.varies
-    assert "scenario" not in flags.broadcast, "a missing flag field reads as unset"
+    assert "scenario" in flags.broadcast, "the row from before broadcasts along it"
     assert "snapshot" in flags.broadcast, "a field the fold had still reads"
 
 
 def test_a_staged_tail_folds_onto_a_fold_from_before_a_widening(store):
-    """The tail's flag structs carry `scenario`, the materialised map's do not.
+    """A staged tail folds onto a materialised map extended to a schema declaring `scenario`.
 
-    The two shapes meet in one map, unioned by name; the resolved read and the
-    flags both go through it.
+    The resolved read and the flags both go through the one map.
 
     Notes
     -----
@@ -727,7 +724,7 @@ def test_a_staged_tail_folds_onto_a_fold_from_before_a_widening(store):
     )
     flags = w.flags()["p_max_pu"]
     assert "scenario" in flags.varies, "the staged row sets it"
-    assert "scenario" not in flags.broadcast, "the frozen row's missing field is unset"
+    assert "scenario" in flags.broadcast, "the frozen row broadcasts along it"
 
 
 def test_a_dim_listing_labels_resolves_after_a_widening(store):
@@ -783,9 +780,7 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
     with pytest.raises(RuntimeError):
         root.materialise()
     assert Path(store.dim_owners_uri(root.id)).exists()
-    assert not cache.materialised(root.id, store, root.record.schema), (
-        "the rest is no cache yet"
-    )
+    assert not cache.materialised(root.id, store), "the rest is no cache yet"
     assert not list(Path(store.resolved_dir(root.id)).rglob("*.tmp")), (
         "no temporary file is left behind"
     )

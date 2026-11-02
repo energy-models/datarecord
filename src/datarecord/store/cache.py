@@ -31,12 +31,11 @@ if TYPE_CHECKING:
     from datarecord.store.store import Store
 
 
-def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
-    """Whether `revision_id`'s node caches are materialised under `schema`.
+def materialised(revision_id: UUID, store: Store) -> bool:
+    """Whether `revision_id`'s node caches are materialised.
 
     A node's caches are written together (`materialise`), the map last, so
-    one map answers for the dim owners and dead labels beside it. A map
-    keyed otherwise than `schema` keys one is no cache (`read_owner_map`).
+    one map answers for the dim owners and dead labels beside it.
 
     This is a filesystem question rather than recorded state: layers are
     write-once, so a materialised cache is valid forever and its
@@ -47,12 +46,10 @@ def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    return read_owner_map(revision_id, store.workspace.con, schema, store) is not None
+    return read_owner_map(revision_id, store.workspace.con, store) is not None
 
 
-def sources_to_read(
-    lineage: list[Manifest], store: Store, schema: Schema
-) -> list[LayerSource]:
+def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
     """`lineage` as the sources to fold, truncated at the deepest materialised node.
 
     A materialised owner map is already folded over everything above it, so
@@ -68,8 +65,6 @@ def sources_to_read(
     ----------
     lineage
         The manifests root first, ending in the node being resolved.
-    schema
-        What the record is read under, which keys the caches it looks for.
 
     Returns
     -------
@@ -84,7 +79,7 @@ def sources_to_read(
         (
             depth
             for depth in range(len(lineage) - 2, -1, -1)
-            if materialised(lineage[depth].id, store, schema)
+            if materialised(lineage[depth].id, store)
         ),
         0,
     )
@@ -115,7 +110,7 @@ def materialise(
     """
     con = store.workspace.con
     _materialise_dims(revision_id, sources, store, schema)
-    with _checkpointed(sources, con, schema) as owner_map:
+    with _checkpointed(sources, con) as owner_map:
         _to_parquet(owner_map, store.owner_map_uri(revision_id), con)
 
 

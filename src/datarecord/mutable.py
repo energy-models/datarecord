@@ -201,7 +201,7 @@ class StagedSource:
         """The revision these edits are a delta against: the base's `revision_id`."""
         return self.record._base.revision_id
 
-    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
         """A staging area has no `resolved/` cache: it is never a fold's base."""
         return None
 

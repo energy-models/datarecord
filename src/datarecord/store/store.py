@@ -1075,7 +1075,7 @@ class Revision(_OfStore):
         if self._record is None:
             manifests = lineage(self.store, self.id)
             schema = manifests[-1].schema
-            sources = sources_to_read(manifests, self.store, schema)
+            sources = sources_to_read(manifests, self.store)
             self._record = Record(self.id, sources, self.store.workspace, schema)
         return self._record
 
