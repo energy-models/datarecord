@@ -12,18 +12,24 @@ Notes
 from __future__ import annotations
 
 import math
-from typing import Any
+from typing import Annotated, Any
 
 from mathspec.program import DimensionDtype, ParameterDtype
 from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    PlainSerializer,
     ValidationInfo,
     field_serializer,
     field_validator,
     model_validator,
 )
+
+Names = Annotated[
+    frozenset[str], PlainSerializer(sorted, return_type=list[str], when_used="json")
+]
+"""A set of names, written to JSON sorted, so a schema dumps alike in every process."""
 
 
 class _Declared(BaseModel):
@@ -235,7 +241,7 @@ class AttributeSpec(_ValueSpec):
     """
 
     dtype: ParameterDtype
-    dims: frozenset[str] = frozenset()
+    dims: Names = frozenset()
     breakpoints: bool = False
 
 
