@@ -45,23 +45,24 @@ A standalone directory and a layer differ only by where the manifest sits, yet `
 ### The layer manifest
 
 ```python
-class Manifest(BaseModel):
+@dataclass(frozen=True)
+class Manifest:
     id: UUID
     parent: UUID | None
     schema: Schema  # full, not a delta
-    files: Files  # {"dims": [...], "attributes": [...]}
-    meta: dict[str, str | int | float | bool] = {}
+    files: LayerFiles  # dims and attributes, by declared name
+    meta: dict[str, str | int | float | bool] = field(default_factory=dict)
 ```
 
 `schema` is the full schema the layer was written under; a child's must pass `compatible_with` against its parent's, and a root's is free. `files` lists what the layer wrote, by declared name: a read opens exactly these files and globs nothing, and ignores any file the list does not name. `meta` is the revision's own: flat, immutable, set at the write and not inherited by a child. `schema.meta` stays, and is inherited with the rest of the schema. `Schema.id` goes, since the id is the manifest's.
 
 ### Claim and commit
 
-| step   | file                   | write         | holds                         |
-| ------ | ---------------------- | ------------- | ----------------------------- |
-| claim  | `claim.json`           | create-only   | `id`, `parent`, `meta`, start |
-| data   | `dims/`, `attributes/` | unconditional | the layer's parquet           |
-| commit | `manifest.json`        | create-only   | the layer manifest            |
+| step   | file                   | write         | holds                             |
+| ------ | ---------------------- | ------------- | --------------------------------- |
+| claim  | `claim.json`           | create-only   | `id`, `parent`, `meta`, `created` |
+| data   | `dims/`, `attributes/` | unconditional | the layer's parquet               |
+| commit | `manifest.json`        | create-only   | the layer manifest                |
 
 A claim is create-only and is kept after the commit, so a second claim of one id fails at any time and an id names one revision forever. The manifest is the commit: a revision exists by its manifest, and a layer with a claim and no manifest is _pending_, which no read reaches. The commit checks that the manifest's `parent` is the claim's and that its `meta` keeps every key of the claim's unchanged; it may add keys, such as an outcome the job learns at its end.
 
@@ -70,11 +71,11 @@ Data goes straight into `layers/<id>/`, locally as remotely, and the local stagi
 ### Writing
 
 ```python
-store.claim(*, parent: Revision | None, meta: Meta = {}) -> Claim
-claim.commit(source, *, meta: Meta = {}) -> Revision
-store.commit(source, *, parent: Revision | None, meta: Meta = {}) -> Revision
-store.commit(w, *, meta: Meta = {}) -> Revision  # w a WorkingRecord
-ws.write(source, uri, *, meta: Meta = {}) -> Record
+store.claim(*, parent: Revision | None, meta: Meta | None = None) -> Claim
+claim.commit(source, *, meta: Meta | None = None) -> Revision
+store.commit(source, *, parent: Revision | None, meta: Meta | None = None) -> Revision
+store.commit(w, *, meta: Meta | None = None) -> Revision  # w a WorkingRecord
+ws.write(source, uri, *, meta: Meta | None = None) -> Record
 ```
 
 `store.commit` is `store.claim(...).commit(source)` in one call, and `store.root` and `rev.child` go. `parent` is a required keyword, so a new root is always written out as `parent=None`; a parent from another store is refused, naming both locations.
@@ -139,7 +140,7 @@ It costs:
 rev = store.commit(source, parent=None, meta={"run_id": "base"})
 child = store.commit(source, parent=rev, meta={"run_id": "2026-10-29-a"})
 child.meta  # {"run_id": "2026-10-29-a"}
-child.schema  # the schema child was written under
+child.manifest.schema  # the schema child was written under
 
 w = WorkingRecord(child.record)
 w.set("p_nom", 150.0, entity="wind1")
