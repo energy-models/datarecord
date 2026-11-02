@@ -89,10 +89,10 @@ whose docstring carries the sentence:
 
 ```python
 # no
-rel = try_read_parquet(...)  # union_by_name because a layer may lack a dim column
+dead = _dead_keys(held, axis, dim)  # None, not empty, so _living adds no join
 
-# yes — the sentence lives in _deleted_relation's docstring
-rel = try_read_parquet(...)
+# yes — the sentence lives in _dead_keys's docstring
+dead = _dead_keys(held, axis, dim)
 ```
 
 What stays inline, because it belongs where the eye lands rather than in a
@@ -100,7 +100,7 @@ docstring nobody opens:
 
 - **A justification of a line that reads as a mistake** — a swallowed exception,
   a magic literal, a deliberate no-op, a slower construct chosen over the obvious
-  fast one. `duck.py`'s note on why an HTTP 403 counts as a missing file, and
+  fast one. `files.py`'s note on why an HTTP 403 counts as a missing object, and
   `protocols.py`'s on why `__contains__` is overridden, are the model: they
   answer "why not the obvious thing", which no reader can recover from the code.
   Keep them as short as the reason allows — a couple of lines where the reason
@@ -131,8 +131,8 @@ name is the _caller_, not the implementer.
   inside belongs in the code, where anyone who needs it is already looking.
 - **A private helper is the exception** — there the reader _is_ a maintainer:
   write the constraint that made it exist, and the invariant a change could break
-  unknowingly. `resolve/owner_map.py`'s `_deleted_relation` and
-  `resolve/coords.py`'s `_base_and_above` are the model.
+  unknowingly. `resolve/coords.py`'s `_dead_keys` and `_base_and_above` are
+  the model.
 - **Cut** restatement of the signature, argument for a settled decision,
   narration of how the answer was found, and any tour of internals a caller
   cannot see.
@@ -153,7 +153,7 @@ name is the _caller_, not the implementer.
 - **Document the parameters that need it, not all of them.** Unlike Google style
   there is no all-or-nothing rule and no linter counting them, so a `Parameters`
   block covering the two arguments that carry a constraint and skipping `con` is
-  correct — `_deleted_relation` does it. A parameter whose name and annotation
+  correct — `_widened` does it. A parameter whose name and annotation
   already say everything gets no entry, and a function where that is true of
   every parameter gets the one-line docstring and no block.
 - **The gate is `datarecord/`**, where a docstring is a contract with a caller.
