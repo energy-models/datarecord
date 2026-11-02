@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # The schema
 
-A record has one schema, which each layer's `manifest.json` carries in full. It declares the record's dims, properties and attributes, maps each dtype to one DuckDB type, and limits which names may become columns.
+Each layer's `manifest.json` carries in full the schema the layer was written under, which may be narrower than a descendant's. A schema declares dims, properties and attributes, maps each dtype to one DuckDB type, and limits which names may become columns.
 
 ```python
 class Dimension(BaseModel):
@@ -98,13 +98,13 @@ Labels are data, and none of these rules constrain them. Beyond these columns, n
 
 ## One schema per record
 
-A record has one schema: the one its layer's [manifest](../storage/store.md#the-layers) carries. Each layer's `manifest.json` holds the full schema the layer was written under, never a delta, so one file answers a revision's schema without walking its ancestry, and a revision reads every layer of its ancestry under its own. A layer's data files hold no schema, which keeps each a plain parquet file that a tool knowing nothing about layering can read.
+A record is read under its last layer's schema, the one that layer's [manifest](../storage/store.md#the-layers) carries. Each layer's `manifest.json` holds the full schema the layer was written under, never a delta, so one file answers a revision's schema without walking its ancestry, and a revision reads every layer of its ancestry under its own. A layer's data files hold no schema, which keeps each a plain parquet file that a tool knowing nothing about layering can read.
 
 The schema is not layered data, and nothing folds it. A child's schema must pass `compatible_with` against its parent's, and a root's is free, so a layer cannot change what `p_nom` means, its dtype or the dims it varies over ([versioning](#versioning)). A child may widen its parent's schema. A new attribute then reaches that child and its descendants, and no revision written before, so one branch's experiment leaves its siblings as they were, and two sibling branches may declare one name differently. `schema.meta` is part of the schema and a child inherits it, unlike the revision's own `meta` in the manifest.
 
 A standalone record carries its own `manifest.json`, with no parent. `Workspace.at(uri)` reads that file, so the record answers the same through any workspace, and `at` refuses a directory without one. Its id, a UUID that `ws.write` mints, is the manifest's and not the schema's. The id is the record's layer id, which keys the fold tables a workspace shares. An id derived from the URI would serve stale folds to a record deleted and written again at that URI, or to a relative path read from another working directory. A layer of a store is read alone through its [store](../storage/store.md#the-store), `store.layer(id)`, under its own manifest, and `at` refuses a manifest that names a parent.
 
-An edit changes no schema. A [`WorkingRecord`](../use/editing.md) is one more layer over its base, and a layer declares nothing until it is committed, so a working record reads under its base's schema, standalone or not.
+An edit changes no schema. A [`WorkingRecord`](../use/editing.md) is one more layer over its base, and a layer declares nothing until it is committed, so a working record reads under its base's schema, standalone or not, and its edits are committed under it.
 
 ## Versioning
 
