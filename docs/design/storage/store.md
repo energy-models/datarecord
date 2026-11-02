@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 A `Workspace` holds the DuckDB database and the means to read and write files.
 A `Store` holds one location and its layers, and each layer carries the manifest that makes it a revision.
 The location holds the record, and the database holds caches.
-Every file in a store is written once, a layer's node caches aside, so two writers never write the same object.
+Every claim and manifest is written once, create-only, so two writers never take or commit one id.
 Files go through a small `Files` protocol with create-only writes, backed by the local filesystem or by S3.
 
 ## The store
@@ -70,6 +70,7 @@ class Manifest:
 `files` lists what the layer wrote, by declared name.
 A read opens exactly these files, globs nothing, and ignores any file in the layer the list does not name, such as one a failed attempt left behind.
 `meta` is the revision's own: flat, set at its write, and not inherited by a child.
+Each value is a string, an integer, a finite float or a boolean, since JSON has no NaN or infinity, and any other value is refused before anything is written.
 It says how one layer was made, such as a run's id.
 `schema.meta` says something about the record, such as a framework's network attributes, and a child inherits it with the rest of the schema.
 
@@ -88,6 +89,7 @@ A revision's `schema` is the SHA-256 of its schema's JSON, and `schemas` holds e
 `meta` is JSON, so its values keep their types.
 On a warm cache, building a `Record` reads no file.
 The cache can be incomplete but never stale, and rows are only ever added.
+A revision's row goes in only after its parent's, so a revision the cache holds has its whole ancestry there.
 
 `revisions()` lists `layers/` once and reads the manifest of each layer the table lacks.
 `revision(id)` on a miss reads that manifest and each parent's the table lacks, and raises `KeyError` where the first is absent, a pending layer included.
@@ -108,21 +110,19 @@ A URI without `://` is local, an `s3://` URI is remote, and any other scheme rai
 ```python
 class Files(Protocol):
     def read_text(self, uri: str) -> str | None: ...  # None on a miss
-    def write_text(self, uri: str, text: str, *, expect: Absent | None) -> None: ...
+    def create(self, uri: str, text: str) -> None: ...  # only where nothing is
     def list(self, prefix: str) -> list[str]: ...  # names directly under prefix
     def exists(self, uri: str) -> bool: ...
     def delete(self, prefix: str) -> None: ...  # everything under prefix
 ```
 
-`expect` is the precondition of a write.
-`Absent` writes only if nothing is there, and `None` writes unconditionally.
-Every claim and manifest is written with `Absent`.
+`create` writes only where nothing is yet, and raises `PreconditionFailedError` otherwise.
+Every claim and manifest is written by it.
 
-Locally every write lands under a temporary name and moves into place, so a reader meets a whole file or none.
-`Absent` moves the file with a hard link, which the OS refuses over an existing file.
+Locally `create` writes under a temporary name and hard-links the file into place, which the OS refuses over an existing file, so a reader meets a whole file or none.
 
 Remotely, `Files` runs on [boto3](https://boto3.amazonaws.com/), behind the optional extra `datarecord[remote]`.
-`Absent` maps to the conditional header `IfNoneMatch="*"` of `put_object`.
+`create` is `put_object` with the conditional header `IfNoneMatch="*"`.
 A refused write (`412`, or `409` for a racing one) raises `PreconditionFailedError`.
 DuckDB's `httpfs` writes a layer's parquet unconditionally, into a layer whose id was claimed once.
 The condition holds only as far as the server honours it.
@@ -154,12 +154,17 @@ A claim may stay pending for days, as when a job is submitted with it and commit
 The commit checks its parent, `meta` and schema before it writes anything.
 Its schema must pass `compatible_with` against its parent's manifest's ([versioning](../model/schema.md#versioning)), which cannot change, so there is no race to settle.
 Its `meta` keeps every key of the claim's unchanged and may add keys, such as an outcome the job learns at its end.
-Its parent is the claim's, and a `WorkingRecord`'s edits must have been staged over it.
+Its parent is the claim's, which `store.claim` takes only from its own store, refusing another store's revision and naming both locations.
+
+The edits of a `WorkingRecord` `w` are a delta against the revision `w` was built over, so they commit only as its child.
+`store.commit(w)` takes that revision as the parent and refuses a `parent` passed beside it, and `claim.commit(w)` refuses a claim whose parent is another.
+Over no revision of the store, a standalone directory or another store's revision, `store.commit(w)` refuses `w`, naming `ws.write(w, uri)`, which writes `w` whole.
 
 Data goes straight into `layers/<id>/`, locally as remotely, and nothing is staged and renamed.
 A commit that fails leaves its layer pending, with whatever data files it wrote.
 No read reaches them, a retried commit writes them again, and the manifest lists only what the committing attempt wrote.
 A [cleanup](#cleanup) deletes them on request.
+A claim has one committer at a time, since two commits of one claim at once write their data files under the same names.
 
 A standalone directory has no claim and orders its write by its manifest alone ([a standalone directory](concurrency.md#a-standalone-directory)).
 
@@ -174,7 +179,7 @@ store.cleanup(older_than=timedelta(days=14))  # pending, claimed at least this l
 ```
 
 `cleanup` takes exactly one of `ids` and `older_than`, deletes each layer directory through `Files.delete`, and returns the ids it deleted.
-A layer with a manifest is not deleted, and each is checked for one again right before its delete, so a layer that commits meanwhile is skipped.
+A layer with a manifest is not deleted, and each is checked for one again right before its delete.
 An id that is not pending is refused, naming it, before anything is deleted.
 A layer directory without a `claim.json`, a claim still being written or what a delete left behind, is no claim: `claims()` does not list it and `older_than` does not age it.
 
@@ -182,4 +187,3 @@ A job may run for days, so no timeout is both safe and useful, and nothing delet
 A commit refuses a claim whose `claim.json` is gone, checking before it writes its data and again before its manifest.
 Neither check is a lock, so a cleanup that deletes a layer between that last check and the manifest still leaves a revision listing files that are gone, and a layer that commits between its own check and its delete is still deleted.
 The caller therefore picks the ids, or an age that no running job reaches.
-`cleanup` deletes only pending layers, so it never removes a row the `revisions` cache holds.

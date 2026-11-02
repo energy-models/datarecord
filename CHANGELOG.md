@@ -41,24 +41,26 @@ All notable changes to datarecord are documented here. The format follows
 - `Workspace` holds the DuckDB database and `Store` holds one location. Each
   layer under `layers/<id>/` carries its own `manifest.json`, a `Manifest`
   holding its id, its parent, the full schema it was written under, the files
-  it wrote and a flat `meta`. A read opens exactly the files the manifest
-  lists and globs nothing. A `Revision` is its location and id: it compares,
-  hashes and serialises as them, and reads its ancestry in a new process.
-  `rev.manifest` and `rev.meta` answer from the workspace's `revisions` and
-  `schemas` tables, which cache each manifest whole. `ws.con` is the cursor of the calling thread. The write and
-  edit boundary rejects a relation from another connection or thread.
+  it wrote and a flat `meta` of strings, integers, finite floats and booleans.
+  A read opens exactly the files the manifest lists and globs nothing. A
+  `Revision` is its location and id: it compares, hashes and serialises as
+  them, and reads its ancestry in a new process. `rev.manifest` and
+  `rev.meta` answer from the workspace's `revisions` and `schemas` tables,
+  which cache each manifest whole. `ws.con` is the cursor of the calling
+  thread. The write and edit boundary rejects a relation from another
+  connection or thread.
 - Writing is `store.commit(source, parent=..., meta=...)`, with `parent=None`
-  for a new root, and `ws.write(source, uri, meta=...)`. `store.claim(parent=,
-meta=)` hands out a layer id by a create-only `claim.json` before any data
-  is written, and `claim.commit(source, meta=...)` writes the data into
-  `layers/<id>/` and then the manifest, create-only. Until then the layer is
-  pending and no read reaches it. A commit may add `meta` keys but not change
-  a claimed one. A child whose schema is not `compatible_with` its parent's,
-  or a parent from another store, is refused. `store.commit(w)` writes the
-  edits of a `WorkingRecord` as a child of the revision it was built over,
-  and refuses one built over anything else, naming `ws.write(w, uri)`, which
-  writes the flattened record. No file in a store is written twice, node
-  caches aside.
+  for a new root, and `ws.write(source, uri, meta=...)`.
+  `store.claim(parent=, meta=)` hands out a layer id by a create-only
+  `claim.json` before any data is written, and `claim.commit(source, meta=...)`
+  writes the data into `layers/<id>/` and then the manifest, create-only.
+  Until then the layer is pending and no read reaches it. A commit may add
+  `meta` keys but not change a claimed one. A child whose schema is not
+  `compatible_with` its parent's, or a parent from another store, is refused.
+  `store.commit(w)` writes the edits of a `WorkingRecord` as a child of the
+  revision it was built over, and refuses one built over anything else,
+  naming `ws.write(w, uri)`, which writes the flattened record. Each claim and
+  manifest is written once, create-only.
 - A `Claim` serialises and pickles as its store's location and id, and reads
   its parent, `meta` and claim time back from its `claim.json`, so a job in
   another process commits it. `store.claims()` lists the pending layers,
@@ -66,8 +68,8 @@ meta=)` hands out a layer id by a create-only `claim.json` before any data
   the revisions whose `meta` holds every pair given.
 - `store.cleanup(ids=[...])` and `store.cleanup(older_than=timedelta(...))`
   delete pending layers, and refuse an id that is not pending. Nothing else
-  deletes, and a committed layer is never deleted. `Files.delete(prefix)`
-  removes everything under a prefix, locally or on S3.
+  deletes. `Files.delete(prefix)` removes everything under a prefix, locally
+  or on S3.
 - A store or standalone directory on `s3://`, through boto3 behind the
   `datarecord[remote]` extra and configured by the AWS environment. Claims and
   manifests are written create-only, and each writer checks its schema
@@ -307,6 +309,8 @@ meta=)` hands out a layer id by a create-only `claim.json` before any data
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
   the same for one relation, dropping rows that name a label outside `labels`.
+- A failed write, local or remote, leaves its files in the pending layer
+  rather than staging them locally and renaming the directory into place.
 
 ### Removed
 
@@ -340,8 +344,6 @@ meta=)` hands out a layer id by a create-only `claim.json` before any data
   with its compare-and-swap, and the `revisions/` tree are gone, as is the
   local staging directory of a write. A store written before has no layer
   manifests, so it is unreadable and is written again.
-- `Files`' `Version` precondition is gone: `read_text` returns the text alone,
-  and `write_text` takes `expect=Absent()` or `None` and returns nothing.
 
 ### Fixed
 
@@ -404,8 +406,6 @@ meta=)` hands out a layer id by a create-only `claim.json` before any data
   again at one URI, or one relative path read from another working directory,
   reads its own folds. `ws.at` resolves a local path as `ws.store` does and
   refuses a manifest without an id.
-- A failed write, local or remote, leaves its files in the pending layer
-  rather than staging them locally and renaming the directory into place.
 - `ws.write` to an existing empty directory raises `FileExistsError` up front
   and says that a standalone record is written to a URI that does not exist
   yet.

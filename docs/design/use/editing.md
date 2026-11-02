@@ -252,9 +252,7 @@ The destination chooses the rows: a store takes `w.edits`, and a standalone dire
 `rollback()` clears the staging area.
 A write clears nothing, so a `WorkingRecord` that still holds its edits reads exactly what it did before.
 
-Edits written as a child of any other revision would be a delta computed against the wrong parent, since an axis edit restates its base's whole axis.
-`store.commit(w)` therefore takes no `parent`, and `claim.commit(w)` refuses a claim whose parent is not `w`'s base.
-Edits over a standalone directory or another store's revision have no revision of the store as their base, so `store.commit(w)` refuses them, naming `ws.write(w, uri)`, which writes `w` whole.
+Edits written as a child of any other revision would be a delta computed against the wrong parent, since an axis edit restates its base's whole axis, so a commit [refuses them](../storage/store.md#a-revision-exists-only-by-its-file).
 
 An edited axis, a multi-dim's included, is restated whole, whatever [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) says.
 The layer holds every label the axis has with the edits applied, with its properties, in [axis order](../model/dims.md#axis-order).
