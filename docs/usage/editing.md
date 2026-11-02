@@ -21,7 +21,7 @@ w = WorkingRecord(root.record)
 ```python
 w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
 w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per label, positional
-w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
+w.set("lifetime", {"wind1": 25.0, "wind2": 30.0})  # per label, keyed
 w.set(
     "p_max_pu", frame, entity=["wind1"]
 )  # a long frame: pandas, polars, arrow, a relation

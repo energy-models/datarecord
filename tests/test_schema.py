@@ -76,7 +76,7 @@ def test_ownership_is_derived_not_declared():
     # `entity` joins it because a layer patches one component's value.
     assert s.owned_per("p_max_pu") == frozenset({"entity", "scenario"})
     assert s.owned_per("marginal_cost") == frozenset({"entity", "scenario"})
-    # A first-stage decision: one value per component, owned once across
+    # Not addressed by scenario: one value per component, owned once across
     # every axis it does not vary over.
     assert s.owned_per("p_nom") == frozenset({"entity"})
     assert s.owned_per("carrier") == frozenset({"entity"})

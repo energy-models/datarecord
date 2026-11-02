@@ -125,6 +125,13 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- Breaking: the PyPSA dialect declares every component attribute over
+  `scenario`, except those PyPSA keeps the same in every scenario
+  (`*_nom_extendable`, `*_nom_opt`, `committable`, `lifetime`, ...), so a
+  static `p_nom` that differs per scenario round-trips (#28). A keyed
+  `set("p_nom", {...})` is then open in `entity` and `scenario`; pass the
+  labels as `entity=[...]` or as a series indexed by `entity`.
+
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
 

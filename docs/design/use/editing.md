@@ -75,7 +75,7 @@ A staged edit is already the row it will be written as, so writing `edits` is a 
 ```python
 w.set("p_nom", 150.0, entity=["wind1", "wind2"])  # broadcast
 w.set("p_nom", [150.0, 80.0], entity=["wind1", "wind2"])  # per label
-w.set("p_nom", {"wind1": 150.0, "wind2": 80.0})  # per label, keyed
+w.set("lifetime", {"wind1": 25.0, "wind2": 30.0})  # per label, keyed
 w.set("p_max_pu", frame, entity=["wind1"])  # long frame
 w.set("p_max_pu", series.rename_axis("snapshot"), entity=["wind1"])  # a series
 w.set("p_max_pu", 0.9)  # every entity, loads included, now and later

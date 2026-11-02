@@ -32,9 +32,9 @@ One attribute is one spec, one file and one `value` dtype.
 
 `dims` is the only addressing mechanism. It names a [multi-dim](multi-dims.md#attributes-over-a-multi-dim) as it names any dim, and a multi-dim's labels are tuples. The declaration and the storage of the attribute stay the same.
 
-`dims` also makes a scenario-varying `p_nom` a schema violation. A capacity is a first-stage decision, one value taken before the scenario is known, and stochastic scenarios differ only in dispatch.
+`dims` also keeps a first-stage decision first-stage. `p_nom_opt`, the capacity an optimiser decides before the scenario is known, is declared over `entity` alone, so a `p_nom_opt` row that names a scenario is a schema violation. A fixed `p_nom` is an input, not that decision, and may differ per scenario, so PyPSA's `p_nom` is declared over `scenario` too ([PyPSA](../tools/pypsa.md#entities-and-their-properties)).
 
-`dims` says which coordinates address a value. It says nothing about what kind of value it is. `p_nom` over `entity` alone is data an optimiser decides, and `carrier` describes the entity, so `carrier` is a [property](properties.md#properties).
+`dims` says which coordinates address a value. It says nothing about what kind of value it is. `p_nom` is data an optimiser reads, and `carrier` describes the entity, so `carrier` is a [property](properties.md#properties).
 
 `breakpoints` declares whether the attribute may carry a piecewise-linear curve. The write refuses a curve on an attribute that takes one value ([wide and long rows](#wide-and-long-rows)).
 
