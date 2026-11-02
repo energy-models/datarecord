@@ -195,6 +195,8 @@ class RemoteFiles:
             self._s3.head_object(Bucket=bucket, Key=key)
             return True
         except self._error as e:
+            # S3 answers 403 rather than 404 for a missing key when the caller
+            # lacks ListBucket, so 403 is a miss too.
             if self._status(e) not in (403, 404):
                 raise
         listed = self._s3.list_objects_v2(
