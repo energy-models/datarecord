@@ -40,7 +40,6 @@ from datarecord.duck import (
     distinct_values,
     fn,
     struct_of,
-    try_read_parquet,
 )
 from datarecord.protocols import Flags
 from datarecord.schema.categories import (
@@ -307,8 +306,10 @@ def read_owner_map(
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     """
-    return try_read_parquet(store.owner_map_uri(revision_id), con)
+    uri = store.owner_map_uri(revision_id)
+    return con.read_parquet(uri) if store.files.exists(uri) else None
 
 
 def read_dim_owners(
