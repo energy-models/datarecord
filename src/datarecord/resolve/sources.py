@@ -288,6 +288,10 @@ class ParquetLayer(_FileLayer):
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
         return Fold.read(self.layer_id, con, schema, self.store)
 
+    def sibling(self, layer_id: UUID) -> ParquetLayer:
+        """Layer `layer_id` of this layer's store."""
+        return ParquetLayer(self.store.revision(layer_id).manifest, self.store)
+
 
 @dataclass(frozen=True)
 class DirectorySource(_FileLayer):
