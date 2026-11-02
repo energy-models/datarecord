@@ -124,9 +124,13 @@ def _as_written(revision: Revision, kind: str, name: str) -> pd.DataFrame:
     path = Path(revision.store.layer_dir(revision.id), kind, f"{name}.parquet")
     if path.exists():
         return pd.read_parquet(path)
-    if revision.parent is None:
+    layer = Path(revision.store.layer_dir(revision.id))
+    manifest = Manifest.read(_LOCAL, str(layer / "manifest.json"))
+    assert manifest is not None, f"{layer} has no manifest"
+    parent = manifest.parent
+    if parent is None:
         return pd.DataFrame()
-    record = revision.store.revision(revision.parent).record
+    record = revision.store.revision(parent).record
     if name in record.schema.properties:
         rel = record.properties.get(name)
     else:
@@ -381,7 +385,7 @@ def _hand_built(store: Store, parent: Revision | None) -> Revision:
         files=LayerFiles(),
     )
     (layer / "manifest.json").write_text(manifest.json())
-    return Revision(id=id, parent=parent_id, store=store)
+    return Revision(id=id, store=store)
 
 
 def empty_root(store: Store) -> Revision:

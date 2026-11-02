@@ -667,11 +667,7 @@ def _frozen_table(
     """
     last = sources[-1] if sources else None
     rel = read
-    if (
-        rel is None
-        and isinstance(last, ParquetLayer)
-        and last.revision_id == revision_id
-    ):
+    if rel is None and isinstance(last, ParquetLayer) and last.layer_id == revision_id:
         rel = read_owner_map(revision_id, con, schema, last.store)
     if rel is not None:
         return cast_declared(schema, rel)

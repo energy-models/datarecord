@@ -71,7 +71,7 @@ def exported(single_revision, workspace, tmp_path):
     shutil.copytree(single_revision.store.uri, uri)
     store = workspace.store(uri)
     Path(store.claim_uri(single_revision.id)).unlink()
-    return Revision(id=single_revision.id, parent=None, store=store)
+    return Revision(id=single_revision.id, store=store)
 
 
 def _results_over(revision, n):

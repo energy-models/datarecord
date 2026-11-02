@@ -274,23 +274,19 @@ class ParquetLayer(_FileLayer):
     frozen: bool = True
 
     @property
-    def revision_id(self) -> UUID:
-        return self.manifest.id
-
-    @property
     def layer_id(self) -> UUID:
-        return self.revision_id
+        return self.manifest.id
 
     @property
     def _con(self) -> DuckDBPyConnection:
         return self.store.workspace.con
 
     def uri(self, path: str = "") -> str:
-        return self.store.layer_dir(self.revision_id) + path
+        return self.store.layer_dir(self.layer_id) + path
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self.revision_id, con, schema, self.store)
+        return Fold.read(self.layer_id, con, schema, self.store)
 
 
 @dataclass(frozen=True)

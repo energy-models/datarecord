@@ -228,7 +228,7 @@ def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
             with pytest.raises(KeyError):
                 reader.layer(claim.id)
             with pytest.raises(KeyError):
-                Revision(id=claim.id, parent=root.id, store=reader).record  # noqa: B018
+                Revision(id=claim.id, store=reader).record  # noqa: B018
             with pytest.raises(FileNotFoundError):
                 reader.workspace.at(store.layer_dir(claim.id))
     finally:
