@@ -97,7 +97,7 @@ Read and write therefore meet at one interface ([design](../design/use/writing.m
 The data goes straight into the layer, and its manifest comes last, so a source that fails validation leaves a pending layer, which no read reaches ([design](../design/use/writing.md)).
 
 A job can hold a claim for days: the claim pickles, and the job commits it at its end.
-Pending layers stay until an explicit cleanup deletes them, and a committed one is never deleted ([design](../design/storage/store.md#cleanup)):
+Pending layers stay until an explicit cleanup deletes them ([design](../design/storage/store.md#cleanup)):
 
 ```python
 store.claims()  # the pending layers, oldest first, with their meta

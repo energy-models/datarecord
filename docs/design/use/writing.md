@@ -14,32 +14,24 @@ A store write puts the layer's manifest last, so a layer becomes reachable only 
 A standalone directory gets its manifest last for the same reason.
 
 ```python
-store.claim(*, parent: Revision | None, meta: Meta = {}) -> Claim
-claim.commit(source, *, meta: Meta = {}) -> Revision
-store.commit(source, *, parent: Revision | None, meta: Meta = {}) -> Revision
-store.commit(w, *, meta: Meta = {}) -> Revision  # w a WorkingRecord
-ws.write(source, uri, *, meta: Meta = {}) -> Record  # a standalone directory, read back
+store.claim(*, parent: Revision | None, meta: Meta | None = None) -> Claim
+claim.commit(source, *, meta: Meta | None = None) -> Revision
+store.commit(source, *, parent: Revision | None, meta: Meta | None = None) -> Revision
+store.commit(w, *, meta: Meta | None = None) -> Revision  # w a WorkingRecord
+ws.write(source, uri, *, meta: Meta | None = None) -> Record  # a standalone directory, read back
 ```
 
 `store.commit` is `store.claim(...).commit(source)` in one call.
 `parent` is a required keyword, so a new root is written out as `parent=None`, and a root and a child differ by an argument.
-A call that names the store and a parent names the store twice, so a parent from another store is refused, naming both locations.
 
 A claim hands out the id before any data is written.
 A job submitted with a claim commits it at its end, days later if need be, and until then `store.claims()` lists the layer as pending, with its `meta`, and no [cleanup](../storage/store.md#cleanup) by age reaches it while it is young.
 
 A `WorkingRecord` brings its parent.
-`store.commit(w)` writes `w`'s [edits](editing.md#edits), a delta, as a child of the revision `w` was built over, and refuses a `parent` passed beside it.
-A base that is no revision of the store, a standalone directory or another store's revision, is refused, naming `ws.write(w, uri)`, which writes `w` whole.
-`claim.commit(w)` refuses a `w` whose base is not the claim's parent.
+`store.commit(w)` writes `w`'s [edits](editing.md#edits), a delta, as a child of the revision `w` was built over.
 
-`meta` is the revision's own: flat, each value a string, number or boolean, and set at its write.
-A commit keeps every key its claim set and may add keys, such as an outcome the job learns at its end.
-`store.revisions(meta={...})` finds the revisions whose `meta` holds every pair given.
-
-There is one destination per call, and each call is named for what it makes.
-A store write needs the location and the tree, a directory write needs only a connection, and the two return different things.
-`commit` says that it makes something new, since layers are [write-once](../layers/tree.md#a-layers-data-is-write-once) and a revision never changes.
+`meta` is the revision's own, as its [manifest](../storage/store.md#the-layers) holds it, and `store.revisions(meta={...})` finds the revisions whose `meta` holds every pair given.
+What a commit checks before it writes, its parent, its `meta` and its schema, is in [a revision exists only by its file](../storage/store.md#a-revision-exists-only-by-its-file).
 
 ## A write makes a new layer
 
