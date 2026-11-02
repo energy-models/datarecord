@@ -24,7 +24,7 @@ A revision exists only by writing its layer, so there is no empty revision.
 
 Each revision is its layer's `manifest.json` under `layers/`, holding its id, its parent, the full schema it was written under, the files it wrote and its own `meta`, so a location alone is enough to find the tree.
 A layer claimed with `store.claim` and not yet committed is pending, and no read reaches it.
-A `Revision` serialises as its id, its parent and its store's location ([design](../design/storage/store.md#the-tree-beside-the-layers)).
+A `Revision` serialises as its id and its store's location ([design](../design/storage/concurrency.md#crossing-a-process-boundary)).
 
 A layer's data is write-once, so any revision may be a parent and no cache needs invalidating ([design](../design/layers/tree.md#a-layers-data-is-write-once)).
 Branching is several children that share a parent by pointing at it.
@@ -76,6 +76,7 @@ child.materialise()
 ```python
 revision = store.revision(uuid)  # load one by id
 store.revisions()  # every revision, unordered
+store.revisions(meta={"run": "a"})  # those whose meta holds every pair given
 revision.ancestry()  # the ids from the root to this revision
 store.layer(uuid)  # one layer read alone
 ```
@@ -93,8 +94,16 @@ rev = claim.commit(source, meta={"status": "done"})  # data, then the manifest
 
 `source` is a `LayerData` or anything satisfying `RecordLike`, including a framework object that presents itself as a record.
 Read and write therefore meet at one interface ([design](../design/use/writing.md#layerdata)).
-An existing layer directory is an error.
-Locally, the writer stages the layer into a sibling path and renames it on success, so a source that fails validation leaves no layer ([design](../design/use/writing.md)).
+The data goes straight into the layer, and its manifest comes last, so a source that fails validation leaves a pending layer, which no read reaches ([design](../design/use/writing.md)).
+
+A job can hold a claim for days: the claim pickles, and the job commits it at its end.
+Pending layers stay until an explicit cleanup deletes them, and a committed one is never deleted ([design](../design/storage/store.md#cleanup)):
+
+```python
+store.claims()  # the pending layers, oldest first, with their meta
+store.cleanup(ids=[claim.id])  # these pending layers
+store.cleanup(older_than=timedelta(days=14))  # pending, claimed at least this long ago
+```
 
 The writer casts every column the schema declares a type for, so a record's files carry the schema's types and a reader can trust them.
 Each attribute file must carry exactly [its attribute's own coordinates](../design/storage/format.md#the-long-schema).

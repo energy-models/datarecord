@@ -31,11 +31,11 @@ datarecord/
 ├── mutable.py         # WorkingRecord, StagedSource
 ├── settle.py          # settle, the broadcast rule over long rows
 ├── store/
-│   ├── __init__.py    # re-exports Workspace, Store, Revision
-│   ├── store.py       # Workspace, Store, Revision, ancestry
+│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
+│   ├── store.py       # Workspace, Store, Claim, Revision, ancestry
 │   ├── files.py       # Files, LocalFiles, RemoteFiles
 │   ├── cache.py       # materialised node caches
-│   ├── manifest.py    # read_schema, reconcile_schema
+│   ├── manifest.py    # Manifest, LayerFiles, ClaimFile: a layer's manifest.json and claim.json
 │   └── write.py       # write_layer, layer_data
 └── tools/
     ├── base.py        # Tool, Schema, Attr, Requirements, UnsupportedRecordError
@@ -52,9 +52,9 @@ An import under `TYPE_CHECKING` may point the other way, as when `resolve/` name
 A subpackage's `__init__.py` re-exports its user-facing names, and `datarecord/__init__.py` imports them from there, so a user imports from `datarecord` alone.
 Code inside the package imports a name from the module that defines it, so no internal import runs through an `__init__.py`.
 
-`Workspace`, `Store` and `Revision` share `store/store.py` because they need each other at runtime.
-`Revision` is a pydantic model with a field of type `Store`, and it attaches to `Workspace.process()` when it loads from its serialised form.
-`Store` constructs `Revision`s.
+`Workspace`, `Store`, `Claim` and `Revision` share `store/store.py` because they need each other at runtime.
+`Claim` and `Revision` are pydantic models with a field of type `Store`, and each attaches to `Workspace.process()` when it loads from its serialised form.
+`Store` constructs both.
 The modules in `resolve/` take a `Workspace` and look up `workspace.con` on each call, so they reach the calling thread's cursor ([a cursor per thread](storage/concurrency.md#a-cursor-per-thread)).
 `store/` decides where a connection and a location come from, so `duck.py` holds no state.
 `mutable.py` is one module because `StagedSource` reads the private members of `WorkingRecord`.

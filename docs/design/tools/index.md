@@ -50,7 +50,7 @@ A tool plans relations and has no business with directories, locations or the tr
 A relation planned on another connection is [rejected at the boundary](../storage/concurrency.md#a-relation-from-another-connection-is-rejected), so a tool that picked its own connection would fail on the first write.
 
 ```python
-root = store.root(PyPSA.to_datarecord(n, ws.con))
+root = store.commit(PyPSA.to_datarecord(n, ws.con), parent=None)
 ```
 
 The result presents [`Relations`](../use/reading.md#relations) keyed by attribute, each in [the long schema](../storage/format.md#the-long-schema), so they go straight to [a write](../use/writing.md).
