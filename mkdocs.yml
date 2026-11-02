@@ -101,6 +101,7 @@ nav:
           - "DEP 24: categories are enum dimensions": development/proposals/dep-0024-categories-are-enum-dimensions.md
           - "DEP 25: each layer has its own manifest": development/proposals/dep-0025-a-layer-carries-its-manifest.md
           - "DEP 26: the fold reads each layer under its own schema": development/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema.md
+          - "DEP 28: a working record declares a property": development/proposals/dep-0028-a-working-record-declares-a-property.md
           - "DEP 31: `select` returns a view of a record's labels": development/proposals/dep-0031-a-record-selects-a-view.md
           - "DEP 33: the fold is a fixed plan": development/proposals/dep-0033-the-fold-is-a-fixed-plan.md
           - "DEP 34: `register` creates one view per relation": development/proposals/dep-0034-a-record-registers-as-views.md
