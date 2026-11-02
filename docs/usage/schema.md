@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Declaring a schema
 
-A record has one schema, written as `manifest.json` ([design](../design/model/schema.md)). The schema declares the dims, the properties of their labels and the attributes. This example declares a small network:
+Each layer's `manifest.json` carries the full schema it was written under ([design](../design/model/schema.md)). The schema declares the dims, the properties of their labels and the attributes. This example declares a small network:
 
 ```python
 from datarecord import Schema, Dimension, AttributeSpec, PropertySpec

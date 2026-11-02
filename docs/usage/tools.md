@@ -73,12 +73,11 @@ With `results_only=True`, `to_datarecord` presents only what the solve produced,
 ```python
 w = WorkingRecord(rev.record)
 w.set("p_max_pu", 0.8, entity=["wind1"])
-inputs = rev.child(w.edits)  # edited inputs are committed first
+inputs = store.commit(w)  # edited inputs are committed first
 n = PyPSA.build(inputs.record)
 n.optimize()
-solved = inputs.child(
-    PyPSA.to_datarecord(n, ws.con, results_only=True, base=inputs.record)
-)
+results = PyPSA.to_datarecord(n, ws.con, results_only=True, base=inputs.record)
+solved = store.commit(results, parent=inputs)
 solved.record.attributes["marginal_price"]  # a child of solved reads it too
 PyPSA.build(solved.record)  # marginal_price is in the network
 ```

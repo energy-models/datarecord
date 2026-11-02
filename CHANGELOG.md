@@ -38,20 +38,32 @@ All notable changes to datarecord are documented here. The format follows
   is called.
 - A multi-dim is a broadcast coordinate like any dim. A NULL multi-dim value
   means every tuple of the multi-dim, and `partial` may name a multi-dim.
-- `Workspace` holds the DuckDB database and `Store` holds one location. A
-  store keeps a revision file per revision as `revisions/<id>.json`, so a
-  `Revision` serialises as its location and id and reads its ancestry in a new
-  process. `ws.con` is the cursor of the calling thread. The write and edit
-  boundary rejects a relation from another connection or thread.
-- Writing is `store.root(source)`, `rev.child(source)` and
-  `ws.write(source, uri)`. `rev.child(w.edits)` writes the edits of a
-  `WorkingRecord` as a child layer, and `ws.write(w, uri)` writes the
-  flattened record. A tree write puts the revision file last, so a failed
-  write leaves no revision and does not widen the manifest.
+- `Workspace` holds the DuckDB database and `Store` holds one location. Each
+  layer under `layers/<id>/` carries its own `manifest.json`, a `Manifest`
+  holding its id, its parent, the full schema it was written under, the files
+  it wrote and a flat `meta`. A read opens exactly the files the manifest
+  lists and globs nothing. A `Revision` is its location and id: it compares,
+  hashes and serialises as them, and reads its ancestry in a new process.
+  `rev.manifest` and `rev.meta` answer from the workspace's `revisions` and
+  `schemas` tables, which cache each manifest whole. `ws.con` is the cursor of the calling thread. The write and
+  edit boundary rejects a relation from another connection or thread.
+- Writing is `store.commit(source, parent=..., meta=...)`, with `parent=None`
+  for a new root, and `ws.write(source, uri, meta=...)`. `store.claim(parent=,
+meta=)` hands out a layer id by a create-only `claim.json` before any data
+  is written, and `claim.commit(source, meta=...)` writes the data into
+  `layers/<id>/` and then the manifest, create-only. Until then the layer is
+  pending and no read reaches it. A commit may add `meta` keys but not change
+  a claimed one. A child whose schema is not `compatible_with` its parent's,
+  or a parent from another store, is refused. `store.commit(w)` writes the
+  edits of a `WorkingRecord` as a child of the revision it was built over,
+  and refuses one built over anything else, naming `ws.write(w, uri)`, which
+  writes the flattened record. No file in a store is written twice, node
+  caches aside.
 - A store or standalone directory on `s3://`, through boto3 behind the
-  `datarecord[remote]` extra and configured by the AWS environment. Revision
-  files are written create-only and the manifest by compare-and-swap, so two
-  writers that widen one schema both keep their widening.
+  `datarecord[remote]` extra and configured by the AWS environment. Claims and
+  manifests are written create-only, and each writer checks its schema
+  against its parent's manifest, which never changes, so two writers never
+  race.
 - `Tool.to_datarecord(model, con)` takes the connection that its frames are
   planned on.
 - Removing an entity removes the group tuples that name it, and the values of
@@ -260,8 +272,9 @@ All notable changes to datarecord are documented here. The format follows
 - A reference to a removed label in a group tuple or a property is checked in
   every subject that a layer restates, whole. A reference that an ancestor
   left dangling fails the next layer that restates its subject.
-- A standalone record's id is `Schema.id`, an optional field that its
-  `manifest.json` carries. A tree's manifest carries none.
+- A layer's id is its manifest's. A standalone directory is one layer with
+  no parent, and `ws.at` refuses a manifest naming one, a layer of a tree
+  being read alone through `store.layer(id)`.
 - A value over a dim or group outside `partial` that names a removed label is
   dropped at read, including the per-bus values of a removed `bus` label. A
   materialised node keeps the removed labels in `resolved/dead/`.
@@ -321,6 +334,10 @@ All notable changes to datarecord are documented here. The format follows
 - `Schema.membership_keys`, `Schema.group_coordinates`,
   `Group.coordinates`, `WorkingRecord.set`'s `indexed_by`, `entity_types` and
   the `entity_type` dim with its member files are gone.
+- `store.root`, `rev.child`, `Schema.id`, the store's one `manifest.json`
+  with its compare-and-swap, and the `revisions/` tree are gone, as is the
+  local staging directory of a write. A store written before has no layer
+  manifests, so it is unreadable and is written again.
 
 ### Fixed
 
@@ -366,13 +383,10 @@ All notable changes to datarecord are documented here. The format follows
 - Removing an entity drops the values of every group row that names it, in any
   field. A `contract` over `(from, to)` loses its values when either party is
   removed, and `flags(ctype)` counts such a row for the type of each party.
-- Writing a layer whose `manifest.json` write keeps losing, as it does with a
-  credential that can write the manifest but not read it, stops after ten
-  attempts with an error that names `s3:GetObject`.
 - `materialise()` writes `owner_map/inputs.parquet` last and each file through
   a temporary name, so a node reads as materialised only when its cache is
   complete.
-- A fold cached before the manifest widened reads under the wider schema.
+- A map materialised under a parent's schema reads under a child's wider one.
 - Reading an attribute over a `partial` dim scales linearly with the length of
   that dim. Folding the owner map no longer compares every row with every
   label of the dim's axis, so the first read of a record with long series is
@@ -386,6 +400,8 @@ All notable changes to datarecord are documented here. The format follows
   again at one URI, or one relative path read from another working directory,
   reads its own folds. `ws.at` resolves a local path as `ws.store` does and
   refuses a manifest without an id.
+- A failed write, local or remote, leaves its files in the pending layer
+  rather than staging them locally and renaming the directory into place.
 - `ws.write` to an existing empty directory raises `FileExistsError` up front
   and says that a standalone record is written to a URI that does not exist
   yet.
