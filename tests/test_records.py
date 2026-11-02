@@ -418,18 +418,13 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         stores[name] = (store, revision)
 
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
-    # Beyond `entity` and `bus`, which every schema here declares, the multi-dim.
     a, b = revision_a.record.schema, revision_b.record.schema
     assert a.broadcast_dims == ("entity", "bus", "scenario", "ctype", "connection")
-    assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection")
-
-    # A layer read directly needs no schema supplied either: its manifest has it.
-    assert store_b.layer(revision_b.id).schema.broadcast_dims == (
-        "entity",
-        "bus",
-        "vintage",
-        "ctype",
-        "connection",
+    assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection"), (
+        "each location's own dims beside `entity`, `bus` and the multi-dim"
+    )
+    assert store_b.layer(revision_b.id).schema == b, (
+        "a layer read alone takes its schema from its manifest"
     )
 
     for name, (store, revision) in stores.items():
