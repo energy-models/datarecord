@@ -154,7 +154,6 @@ All notable changes to datarecord are documented here. The format follows
   planned on; a hand-written `RecordLike` adds it.
 - `WorkingRecord` over a `RecordLike` that is no `Record` raises a `TypeError`
   naming the fix, `WorkingRecord(ws.write(source, uri))`.
-
 - Breaking: the PyPSA dialect declares every component attribute over
   `scenario`, except those PyPSA keeps the same in every scenario
   (`*_nom_extendable`, `*_nom_opt`, `committable`, `lifetime`, ...), so a
