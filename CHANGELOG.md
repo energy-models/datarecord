@@ -337,8 +337,8 @@ All notable changes to datarecord are documented here. The format follows
 - Every `Record` lists every dim, property subject and attribute its schema
   declares, a typed empty relation where no layer holds a row, rather than
   raising `KeyError`.
-- A relation of a `WorkingRecord` is planned from the schema and table names
-  alone, so one built before an edit reads it. Every staging table exists
+- A relation of a `WorkingRecord` is planned without reading a staged row,
+  only the frozen layers' rows, so one built before an edit reads it. Every staging table exists
   from the start, an axis holding a copy of the base's, and `rollback()`
   empties them rather than dropping them. Each edit runs in one transaction,
   which also refreshes the staged owner-map rows the fold, `flags()` and the

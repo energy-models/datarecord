@@ -16,7 +16,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Abstract
 
-The fold of a layer onto the owner map below it becomes one query whose joins do not depend on which named sets its rows hold: a row's named set is a column, not a loop. A `WorkingRecord`'s relations become a function of the schema and of table names alone, never of staged rows, so a relation built once reads every later edit. Where two staged edits cross, the later one wins.
+The fold of a layer onto the owner map below it becomes one query whose joins do not depend on which named sets its rows hold: a row's named set is a column, not a loop. A `WorkingRecord`'s relations are planned without reading a staged row, so a relation built once reads every later edit. Where two staged edits cross, the later one wins.
 
 ## Motivation
 
@@ -52,7 +52,7 @@ No read is slower than today's, at any depth or series length. Its memory may ex
 
 ### The staged step is fixed
 
-A relation of a `WorkingRecord` is a function of the schema and of table names, never of staged rows.
+The plan of a relation of a `WorkingRecord` never depends on the staged rows; it may depend on the rows of the frozen prefix, which do not change while the `WorkingRecord` lives.
 
 - Every `Record`, frozen or not, lists every dim and every attribute its schema declares. One with no rows reads an empty relation, where today it raises `KeyError`.
 - A `WorkingRecord` creates every staging table when it is created. An axis table holds a copy of the base's axis, an attribute table starts empty. A `one_of` dim has none.

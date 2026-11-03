@@ -762,7 +762,7 @@ def _fold_onto(
     drop once it has read the map (`_checkpointed`).
 
     Where `attribute` is given, `rel` holds its rows alone and each source
-    folds its rows of it alone, a plan fixed by the schema and table names
+    folds its rows of it alone, a plan that reads no staged row
     (`fold_layer`).
 
     Notes
