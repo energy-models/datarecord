@@ -537,7 +537,7 @@ class WorkingRecord(Record):
         return None if name is None else self.con.table(name)
 
     def _staged_attributes(self) -> tuple[str, ...]:
-        """Which attributes have staged rows, in declaration order.
+        """Which attributes have staged rows that survive a `remove`, in declaration order.
 
         Only a table an edit touched can hold one.
         """
@@ -545,7 +545,7 @@ class WorkingRecord(Record):
             a
             for a in self.schema.attributes
             if (_ATTRIBUTES, a) in self._touched
-            and self.con.table(self._staged[_ATTRIBUTES, a]).limit(1).fetchall()
+            and self._collapsed_attribute(a).limit(1).fetchall()
         )
 
     def _column_type(self, column: str, subject: str | None = None) -> DuckDBPyType:
