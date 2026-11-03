@@ -1969,7 +1969,7 @@ class _NetworkSource:
                 )
         return RecordSchema(
             **{
-                **dict(base),
+                **base.model_dump(),
                 "dimensions": dimensions,
                 "properties": properties,
                 "attributes": attributes,

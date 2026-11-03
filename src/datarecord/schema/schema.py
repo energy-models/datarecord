@@ -19,10 +19,12 @@ Notes
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from collections.abc import Iterable, Mapping
-from typing import Any, cast
+from functools import cached_property
+from typing import Any, Self, cast
 
 import duckdb
 from duckdb import ColumnExpression as col
@@ -149,6 +151,16 @@ def _typed_as(spec: Dimension | AttributeSpec | PropertySpec) -> str:
     )
 
 
+def schema_digest(raw: Any) -> tuple[str, str]:
+    """`raw`, a schema's JSON form, as compact JSON text and that text's sha256.
+
+    Keys keep their order, which a schema means: a multi-dim's members are
+    ordered.
+    """
+    text = json.dumps(raw, separators=(",", ":"))
+    return text, hashlib.sha256(text.encode()).hexdigest()
+
+
 class Schema(_Declared):
     """One record's schema.
 
@@ -190,6 +202,25 @@ class Schema(_Declared):
     properties: dict[str, dict[str, PropertySpec]] = Field(default_factory=dict)
     partial: Names | None = None
     meta: dict[str, Any] = Field(default_factory=dict)
+
+    @cached_property
+    def digest(self) -> str:
+        """The sha256 hex of the schema's compact JSON, as its manifest writes it.
+
+        Equal for equal schemas and stable across processes, so it keys a
+        schema wherever the schema itself cannot. Computed once: the nested
+        mappings must not be mutated; derive a changed schema with
+        `model_copy(update=...)`.
+        """
+        return schema_digest(json.loads(self.model_dump_json()))[1]
+
+    def model_copy(
+        self, *, update: Mapping[str, Any] | None = None, deep: bool = False
+    ) -> Self:
+        """A copy as pydantic makes it, without the `digest` of the original."""
+        copied = super().model_copy(update=update, deep=deep)
+        copied.__dict__.pop("digest", None)
+        return copied
 
     @model_validator(mode="after")
     def _validate(self) -> Schema:

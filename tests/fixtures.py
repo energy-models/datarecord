@@ -411,7 +411,7 @@ def widened(base: Schema, attribute: str) -> Schema:
     """`base` declaring one more attribute, shaped like its `p_nom`."""
     return Schema(
         **{
-            **dict(base),
+            **base.model_dump(),
             "attributes": {**base.attributes, attribute: base.attributes["p_nom"]},
         }
     )

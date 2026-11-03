@@ -13,7 +13,6 @@ Notes
 from __future__ import annotations
 
 import threading
-import weakref
 from collections.abc import Callable
 from functools import wraps
 from typing import Concatenate
@@ -92,36 +91,20 @@ def with_columns(
     return rel.project(star(), *added)
 
 
-_fingerprints: dict[int, str] = {}
-
-
-def _fingerprint(schema: Schema) -> str:
-    """`schema`'s JSON, serialised once per schema object.
-
-    Keyed by `id`, which the finaliser frees before the object's id can be
-    reused.
-    """
-    key = _fingerprints.get(id(schema))
-    if key is None:
-        key = _fingerprints[id(schema)] = schema.model_dump_json()
-        weakref.finalize(schema, _fingerprints.pop, id(schema), None)
-    return key
-
-
 def _per_schema[**P, T](
     build: Callable[Concatenate[Schema, P], T],
 ) -> Callable[Concatenate[Schema, P], T]:
     """`build` memoised on a `Schema` and further hashable arguments, for the last 64 keys.
 
     A schema is unhashable, and every layer holds its own equal copy, so it is
-    keyed by its `_fingerprint`.
+    keyed by its `digest`.
     """
     held: dict[tuple[object, ...], T] = {}
     lock = threading.Lock()
 
     @wraps(build)
     def memo(schema: Schema, *args: P.args, **kwargs: P.kwargs) -> T:
-        key = (_fingerprint(schema), *args, *sorted(kwargs.items()))
+        key = (schema.digest, *args, *sorted(kwargs.items()))
         with lock:
             found = held.get(key)
         if found is not None:
