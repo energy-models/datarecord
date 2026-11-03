@@ -117,11 +117,11 @@ def owner_keys(
     rel: DuckDBPyRelation,
     schema: Schema,
     layer_id: UUID,
-    attribute: str | None = None,
+    attributes: tuple[str, ...],
 ) -> DuckDBPyRelation:
     """One layer's owner-map keys, as it wrote them: one row per key of its attribute rows `rel`, under its `schema`.
 
-    `attribute` names the one attribute `rel` holds rows of, where it holds one.
+    `attributes` are those `rel` holds rows of.
 
     Notes
     -----
@@ -131,7 +131,7 @@ def owner_keys(
     return tagged.aggregate(
         [
             *(col(c) for c in (*schema.owner_map_key, LAYER_COLUMN)),
-            *_flags(schema, attribute),
+            *_flags(schema, attributes),
         ]
     )
 
@@ -150,22 +150,17 @@ def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelat
 
 
 @_per_schema
-def _flags(schema: Schema, attribute: str | None = None) -> tuple[Expression, ...]:
+def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...]:
     """The aggregates giving one key's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
 
-    `attribute` names the one attribute the rows are of, where they are of one.
+    `attributes` are those the rows are of.
 
     Notes
     -----
     - [flags](https://energy-models.github.io/datarecord/design/layers/resolution/#flags)
     """
     broadcast = schema.broadcast_dims
-    over = {
-        d: _over(schema, d)
-        if attribute is None
-        else lit(d in schema.coordinates_of(attribute))
-        for d in broadcast
-    }
+    over = {d: _over(schema, d, attributes) for d in broadcast}
     return (
         struct_of(
             {d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
@@ -177,17 +172,24 @@ def _flags(schema: Schema, attribute: str | None = None) -> tuple[Expression, ..
     )
 
 
-def _over(schema: Schema, dim: str) -> Expression:
-    """Whether a row's attribute is over `dim`.
+def _over(schema: Schema, dim: str, attributes: tuple[str, ...]) -> Expression:
+    """Whether a row's attribute, one of `attributes`, is over `dim`.
 
     An attribute not over `dim` holds NULL there for want of the column, which
-    is neither a label nor a broadcast.
+    is neither a label nor a broadcast. An undeclared attribute counts as over
+    every dim.
 
     Notes
     -----
     - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
-    lacking = [a for a in schema.attributes if dim not in schema.coordinates_of(a)]
+    lacking = [
+        a
+        for a in attributes
+        if a in schema.attributes and dim not in schema.coordinates_of(a)
+    ]
     if not lacking:
         return lit(True)  # noqa: FBT003
+    if len(lacking) == len(attributes):
+        return lit(False)  # noqa: FBT003
     return ~col("attribute").isin(*(lit(a) for a in lacking))
