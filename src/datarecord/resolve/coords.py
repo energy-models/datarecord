@@ -438,6 +438,19 @@ def tabled_coords(
     )
 
 
+def _one_of_seed(
+    base: Fold | Coords | None, schema: Schema, dim: str, con: DuckDBPyConnection
+) -> DuckDBPyRelation:
+    """`base`'s axis of the `one_of` dim `dim` where it carries one, else the schema's.
+
+    A record's frozen coords carry it (`Record._frozen_coords`), so a tail folded
+    onto them binds no `VALUES` list per read; a materialised or held fold
+    does not.
+    """
+    axis = None if base is None else base.axes.get(dim)
+    return one_of_axis(schema, dim, con) if axis is None else axis
+
+
 def resolve_coords(
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
@@ -483,7 +496,7 @@ def resolve_coords(
     dim_owners: dict[str, UUID] = {}
     for name in schema.dimensions:
         if name in schema.one_of_dims:
-            axes[name] = one_of_axis(schema, name, con)
+            axes[name] = _one_of_seed(base, schema, name, con)
             continue
         files = [
             (s, rel)
@@ -509,31 +522,6 @@ def resolve_coords(
         if before is not None:
             dead[name] = before
     return Coords(schema=schema, axes=axes, dead=dead, dim_owners=dim_owners)
-
-
-def resolve_one(
-    schema: Schema, sources: Sequence[LayerSource], con: DuckDBPyConnection, name: str
-) -> DuckDBPyRelation | None:
-    """Return the resolved axis `name` over `sources`, `None` where none has it.
-
-    The deepest file for it, or the resolved one of the deepest materialised
-    source above that file; the list of a dim with `one_of`.
-
-    Notes
-    -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-    """
-    if name in schema.one_of_dims:
-        return one_of_axis(schema, name, con)
-    for source in reversed(sources):
-        rel = source.axis(name)
-        if rel is not None:
-            return rel
-        fold = source.materialised(con)
-        if fold is not None:
-            return fold.axes.get(name)
-    return None
 
 
 def mortal(schema: Schema) -> tuple[str, ...]:

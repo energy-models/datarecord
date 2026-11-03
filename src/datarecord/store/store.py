@@ -922,9 +922,11 @@ class Claim(_OfStore):
                     f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/model/schema/#versioning)"
                 )
                 raise ValueError(msg)
-        sources = [] if parent is None else parent.record.sources
         files = write_layer(
-            data, store.layer_dir(self.id), store.workspace, parents=sources
+            data,
+            store.layer_dir(self.id),
+            store.workspace,
+            parent=None if parent is None else parent.record,
         )
         manifest = Manifest(
             id=self.id, parent=self.parent, schema=schema, files=files, meta=meta

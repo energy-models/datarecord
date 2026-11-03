@@ -593,6 +593,20 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
     assert [t for (t,) in tables if child.id.hex in t], "the map is a shared table"
 
 
+@pytest.mark.parametrize("working", [False, True], ids=["frozen", "working"])
+def test_a_record_read_first_here_reads_alike_in_other_threads(tree, working):
+    """What one thread keeps of a record's fold plans no relation on another's cursor.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    """
+    _, child = tree
+    record = WorkingRecord(child.record) if working else child.record
+    here = _read_all(record)
+    assert _in_threads(4, lambda _: _read_all(record)) == [here] * 4
+
+
 def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
     _, child = tree
 

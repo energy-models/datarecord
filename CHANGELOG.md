@@ -345,6 +345,9 @@ All notable changes to datarecord are documented here. The format follows
 - A fold starts from the deepest proper ancestor whose fold is materialised
   or already held by the workspace, so a record opened on a child after a
   commit folds only the child's layer.
+- A `Record` builds the coords of its frozen layers once per thread rather
+  than on every relation it reads, about halving a warm read of a deep
+  record. A write checks a new layer's axes against its parent's fold.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
