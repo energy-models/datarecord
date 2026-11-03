@@ -1115,6 +1115,45 @@ def test_a_layer_with_two_rows_neither_more_specific_is_refused(axes, rows, coor
         _rows_layer(axes, rows, "write_layer")
 
 
+@pytest.mark.parametrize(
+    ("rows", "dims", "meet"),
+    [
+        (_ENTITY_SCENARIO, ("entity", "scenario"), ("a", "x")),
+        (
+            [{"entity": "a", "value": 1.0}, {"snapshot": _T, "value": 2.0}],
+            ("entity", "snapshot"),
+            ("a", _T),
+        ),
+    ],
+    ids=["entity-scenario", "entity-snapshot"],
+)
+def test_a_set_crossing_a_staged_row_wins_where_the_two_meet(axes, rows, dims, meet):
+    """Two `set`s whose rows cross: the later stages the row naming both, with its value.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    record = _rows_layer(axes, rows, "set").record
+    assert broadcast(record, "p_nom", *dims)[meet] == 2.0, "the later edit wins"
+
+
+def test_a_set_crossing_a_later_staged_row_keeps_its_value_elsewhere(axes):
+    """Whichever of two crossing `set`s comes last wins where they meet, and only there.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    rows = [{"scenario": "x", "value": 2.0}, {"entity": "a", "value": 1.0}]
+    assert _read(_rows_layer(axes, rows, "set")) == {
+        ("a", "x"): 1.0,
+        ("a", "y"): 1.0,
+        ("b", "x"): 2.0,
+    }, "the entity row, staged last, wins at (a, x)"
+
+
 def test_two_rows_crossing_where_a_row_names_both_are_written(axes):
     """A record flattened from several layers holds a row naming both wherever two cross.
 
