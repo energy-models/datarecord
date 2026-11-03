@@ -20,6 +20,7 @@ Its `__init__` reruns in each new thread, so the lookup needs no existence check
 A dict keyed by thread id would reuse ids, and a `ContextVar` would be copied into a task runner's workers, which would then share the parent's cursor.
 
 Tables are shared between cursors: the `revisions` cache, the staging tables and the folded caches.
+So are a record's [registered views](views.md), which every cursor reads and which show an edit once its transaction commits.
 A `DuckDBPyRelation` is bound to the cursor that built it.
 The line between thread-bound and shared objects runs around relations alone.
 

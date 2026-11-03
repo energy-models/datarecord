@@ -10,9 +10,10 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Title    | a record registers its relations as views                                                                                                                                |
 | Author   | Jonas Hörsch                                                                                                                                                             |
-| Status   | Draft (2026-11-03)                                                                                                                                                       |
+| Status   | Implemented (2026-11-03)                                                                                                                                                 |
 | Requires | [DEP 25](dep-0025-a-layer-carries-its-manifest.md), [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md), [DEP 33](dep-0033-the-fold-is-a-fixed-plan.md) |
 | Created  | 2026-11-02                                                                                                                                                               |
+| Version  | Unreleased                                                                                                                                                               |
 
 ## Abstract
 
