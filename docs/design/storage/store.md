@@ -86,6 +86,7 @@ schemas(hash VARCHAR PRIMARY KEY, schema JSON)
 ```
 
 A revision's `schema` is the SHA-256 of its schema's JSON, and `schemas` holds each distinct schema once, so a chain that repeats its parent's schema stores it once.
+The workspace also keeps one parsed `Schema` per hash, which every revision sharing it hands out, so a manifest read from its file or the table validates its schema only where the hash is new to the workspace.
 `meta` is JSON, so its values keep their types.
 On a warm cache, building a `Record` reads no file.
 The cache can be incomplete but never stale, and rows are only ever added.

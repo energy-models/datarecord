@@ -13,10 +13,12 @@ import json
 import re
 import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import duckdb
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
@@ -25,7 +27,13 @@ from datarecord.resolve import coords
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from datarecord.store.manifest import LayerFiles, Manifest
+from datarecord.store.files import LocalFiles
+from datarecord.store.manifest import (
+    LayerFiles,
+    Manifest,
+    schema_digest,
+    written_digest,
+)
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -197,7 +205,7 @@ def test_a_write_creates_a_new_layer(store):
     base = Path(store.layer_dir(revision.id))
     assert (base / "attributes" / "p_nom.parquet").exists()
     assert (base / "claim.json").exists()
-    manifest = Manifest.read(store.files, str(base / "manifest.json"))
+    manifest = Manifest.read(store.files, str(base / "manifest.json"), {})
     assert manifest == Manifest(
         id=revision.id,
         parent=None,
@@ -387,6 +395,44 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
         elsewhere.close()
 
 
+def test_a_manifest_takes_a_built_schema_and_parses_a_read_one(tmp_path):
+    """A `Schema` handed to a `Manifest` is already built; re-running its
+    validator per layer would dominate reading a long lineage."""
+    clashing = {**_SCHEMA.dimensions, "Entity": _SCHEMA.dimensions["entity"]}
+    unchecked = _SCHEMA.model_copy(update={"dimensions": clashing})
+    manifest = Manifest(id=uuid4(), parent=None, schema=unchecked, files=LayerFiles())
+    assert manifest.schema is unchecked, "a built schema is taken as is"
+    files, uri = LocalFiles(), str(tmp_path / "manifest.json")
+    manifest.write(files, uri)
+    with pytest.raises(ValidationError, match="differ only in case"):
+        Manifest.read(files, uri, {})
+
+
+def test_a_cold_read_refuses_a_misspelt_schema_key(store, tmp_path):
+    revision = store.commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+    )
+    raw = json.loads(Path(store.manifest_uri(revision.id)).read_text())
+    raw["schema"]["misspelt"] = 1
+    uri = tmp_path / "manifest.json"
+    uri.write_text(json.dumps(raw))
+    with pytest.raises(ValidationError, match="misspelt"):
+        Manifest.read(store.files, str(uri), {})
+
+
+def test_a_schema_hashes_alike_written_and_read(store):
+    """So a read in the workspace that wrote it shares the written object."""
+    revision = store.commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+    )
+    uri = store.manifest_uri(revision.id)
+    raw = json.loads(Path(uri).read_text())
+    assert schema_digest(raw["schema"]) == written_digest(revision.manifest.schema)
+    read = Manifest.read(store.files, uri, store.workspace._schemas)
+    assert read is not None
+    assert read.schema is revision.manifest.schema, "one object per schema digest"
+
+
 def test_a_manifest_carries_its_layers_id(store, tmp_path):
     """The id is the manifest's, in the file and on the record read from it.
 
@@ -398,7 +444,7 @@ def test_a_manifest_carries_its_layers_id(store, tmp_path):
     out = tmp_path / "standalone"
     record = store.workspace.write(source, str(out), meta={"run": "a"})
 
-    written = Manifest.read(store.files, str(out / "manifest.json"))
+    written = Manifest.read(store.files, str(out / "manifest.json"), {})
     assert written is not None
     assert (written.id, written.parent, written.meta) == (
         record.revision_id,
