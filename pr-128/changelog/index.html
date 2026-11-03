@@ -1097,10 +1097,20 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
-<li>A workspace validates each distinct schema once. Revisions sharing a schema
+<li>
+<p>Breaking: the PyPSA dialect declares every component attribute over
+  <code>scenario</code>, except those PyPSA keeps the same in every scenario
+  (<code>*_nom_extendable</code>, <code>*_nom_opt</code>, <code>committable</code>, <code>lifetime</code>, ...), so a
+  static <code>p_nom</code> that differs per scenario round-trips (#28). A keyed
+  <code>set("p_nom", {...})</code> is then open in <code>entity</code> and <code>scenario</code>; pass the
+  labels as <code>entity=[...]</code> or as a series indexed by <code>entity</code>.</p>
+</li>
+<li>
+<p>A workspace validates each distinct schema once. Revisions sharing a schema
   hand out one <code>Schema</code> object, so reading a long lineage no longer re-runs the
   schema's checks per layer. A <code>Schema</code> obtained from a revision is shared:
-  copy it before changing it.</li>
+  copy it before changing it.</p>
+</li>
 <li>A materialised node no longer copies its axes into <code>resolved/dims/</code>.
   <code>resolved/dim_owners.parquet</code> names, per dim, the layer whose
   <code>dims/&lt;dim&gt;.parquet</code> is the deepest at or below the node, and a read opens
