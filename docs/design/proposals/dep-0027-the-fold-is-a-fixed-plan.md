@@ -67,6 +67,10 @@ A relation of a `WorkingRecord` is a function of the schema and of table names, 
 
 A `set` whose row crosses a staged row of the same attribute, with no staged row naming both, also stages the crossing row with its own value. The later edit wins wherever the two meet, and the staged rows never hold a crossing the fold would refuse.
 
+### A fold starts from the nearest fold at hand
+
+A fold starts from the deepest proper ancestor whose fold is materialised on disk or held by the workspace: its owner map, axes and dead labels, kept as shared tables for as long as the workspace's connection. Only the layers above it are folded, and only they are checked. A record opened on a child after a commit folds one layer onto its parent's fold.
+
 ### Writing staged edits
 
 A staged axis that equals the base's, as rows in position order, is not written, nor is an attribute table with no rows. An `add` undone by a `remove` writes nothing.
@@ -122,6 +126,7 @@ rel.fetchall()  # holds 150.0
 10. A checkpoint every few layers rather than every layer, and one union per layer in place of two binds.
 11. The parts of the plan derived from a schema built once per fold and layer schema.
 12. `materialise` reusing the frozen fold a workspace already holds.
+13. `_base_and_above` taking a workspace-held fold of an ancestor as its seed, beside a materialised one.
 
 The check: today's suite, with the tests asserting the refusal of crossing staged edits turned to last-writer-wins; owner maps equal to today's on every ancestry of the equivalence runs; a map materialised by today's code read back identically. After every `set`, `add` and `remove`, every relation built before the edit equals the relation built afresh.
 
@@ -138,4 +143,4 @@ The check: today's suite, with the tests asserting the refusal of crossing stage
 
 - The checks at `set` and at write still enumerate named sets per pattern, with data-driven fetches.
 - `set` spreads a scenario-scoped or crossing broadcast into one staged row per entity and snapshot.
-- When a deep ancestry materialises its map, so that a cold fold is bounded by depth.
+- When a deep ancestry materialises its map, so that a cold fold in a fresh workspace is bounded by depth.

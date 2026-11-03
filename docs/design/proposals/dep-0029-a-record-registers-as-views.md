@@ -104,4 +104,5 @@ The check: views registered on a fresh `WorkingRecord`, then `set`, `add` and `r
 - Access through a DuckDB server: whether the views' file scans and nested names pass its authorization.
 - A public `create_view` taking a qualified name, to request upstream.
 - A transaction per edit against `MERGE INTO` statements: pending a benchmark.
-- The cold fold of a deep revision is paid by `register` or the first read of a view, and stays linear in depth until a revision's map is materialised.
+- The cold fold of a deep revision is paid by `register` or the first read of a view, once per lineage in a workspace, and stays linear in depth until a revision's map is materialised.
+- The fold of every revision a server opens is held for the life of its connection: who drops it, and when.
