@@ -13,6 +13,7 @@ Notes
 from __future__ import annotations
 
 import threading
+import weakref
 from collections.abc import Callable
 from functools import wraps
 from uuid import UUID
@@ -90,24 +91,43 @@ def with_columns(
     return rel.project(star(), *added)
 
 
-def _per_schema[T](build: Callable[..., T]) -> Callable[..., T]:
-    """`build` memoised on its positional arguments, the first a `Schema`.
+_fingerprints: dict[int, str] = {}
 
-    A schema is unhashable, and every layer holds its own equal copy, so the
-    arguments are matched by equality, against the last few calls only.
+
+def _fingerprint(schema: Schema) -> str:
+    """`schema`'s JSON, serialised once per schema object.
+
+    Keyed by `id`, which the finaliser frees before the object's id can be
+    reused.
     """
-    held: list[tuple[tuple[object, ...], T]] = []
+    key = _fingerprints.get(id(schema))
+    if key is None:
+        key = _fingerprints[id(schema)] = schema.model_dump_json()
+        weakref.finalize(schema, _fingerprints.pop, id(schema), None)
+    return key
+
+
+def _per_schema[T](build: Callable[..., T]) -> Callable[..., T]:
+    """`build` memoised on a `Schema` and further hashable arguments, for the last 64 keys.
+
+    A schema is unhashable, and every layer holds its own equal copy, so it is
+    keyed by its `_fingerprint`.
+    """
+    held: dict[tuple[object, ...], T] = {}
     lock = threading.Lock()
 
     @wraps(build)
-    def memo(*args: object) -> T:
+    def memo(schema: Schema, *args: object) -> T:
+        key = (_fingerprint(schema), *args)
         with lock:
-            found = next((v for key, v in held if key == args), None)
+            found = held.get(key)
         if found is not None:
             return found
-        value = build(*args)
+        value = build(schema, *args)
         with lock:
-            held[:] = [*held[-63:], (args, value)]
+            held[key] = value
+            if len(held) > 64:
+                del held[next(iter(held))]
         return value
 
     return memo
