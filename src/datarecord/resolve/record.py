@@ -295,7 +295,6 @@ class _PerCursor(threading.local):
     def __init__(self) -> None:
         self.frozen_coords: Coords | None = None
         self.coords: Coords | None = None
-        self.labels: dict[str, DuckDBPyRelation] = {}
 
 
 @dataclass(frozen=True)
