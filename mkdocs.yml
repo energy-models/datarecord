@@ -87,8 +87,8 @@ nav:
           - "DEP 24: Categories are enum dimensions": design/proposals/dep-0024-categories-are-enum-dimensions.md
           - "DEP 25: A layer carries its manifest": design/proposals/dep-0025-a-layer-carries-its-manifest.md
           - "DEP 26: The fold reads each layer under its own schema": design/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema.md
-          - "DEP 27: The fold is a fixed plan": design/proposals/dep-0027-the-fold-is-a-fixed-plan.md
-          - "DEP 29: A record registers its relations as views": design/proposals/dep-0029-a-record-registers-as-views.md
+          - "DEP 33: The fold is a fixed plan": design/proposals/dep-0033-the-fold-is-a-fixed-plan.md
+          - "DEP 34: A record registers its relations as views": design/proposals/dep-0034-a-record-registers-as-views.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
