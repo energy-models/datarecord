@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 25: one default per value
+# DEP 32: one default per value
 
-| DEP      | 25                                                                                                                       |
+| DEP      | 32                                                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------------------------------------ |
 | Title    | one default per value                                                                                                    |
 | Author   | Bryn Pickering                                                                                                           |
