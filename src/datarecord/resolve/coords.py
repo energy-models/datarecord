@@ -288,13 +288,17 @@ def _dead_keys(
     held: Sequence[DuckDBPyRelation],
     final: DuckDBPyRelation,
     key: str,
+    *,
+    fixed: bool,
 ) -> DuckDBPyRelation | None:
     """Return the labels of `held` that `final` lacks, `None` where there is none.
 
     `held` is every set of labels the coordinate had: the base's dead labels
     and resolved axis, and each restatement above the base. A label one of
     them holds and the final axis lacks is one some layer removed. `None`
-    rather than an empty relation, so `_living` adds no join for it.
+    rather than an empty relation, so `_living` adds no join for it, unless
+    `fixed`: a restatement that can still change is answered by the
+    anti-join itself, empty or not, so no plan depends on its rows.
 
     Notes
     -----
@@ -307,6 +311,8 @@ def _dead_keys(
         col("h", key) == col("f", key),
         how="anti",
     )
+    if fixed:
+        return dead
     if not dead.limit(1).fetchall():
         return None
     return dead
@@ -344,7 +350,8 @@ def resolve_coords(
     Parameters
     ----------
     sources : sequence of LayerSource
-        Root first, ending in the layer being resolved.
+        Root first, ending in the layer being resolved. A source that is not
+        frozen, a staging area, restates every axis but those with `one_of`.
     con : DuckDBPyConnection
     split
         A folded seed and the sources to fold onto it, where the caller
@@ -368,7 +375,8 @@ def resolve_coords(
     """
     schema = sources[-1].schema
     base, above = split or _base_and_above(sources, con)
-    held_files = [source.axes() for source in above]
+    restated = {d for d in schema.dimensions if d not in schema.one_of_dims}
+    held_files = [source.axes() if source.frozen else restated for source in above]
     for source, names in zip(above, held_files, strict=True):
         refuse_one_of_file(schema, names, f"layer {source.layer_id}")
     keep = mortal(schema)
@@ -398,7 +406,8 @@ def resolve_coords(
         before = None if base is None else base.dead.get(name)
         if files:
             held = [r for r in (before, seed, *(r for _, r in files)) if r is not None]
-            before = _dead_keys(held, rel, name)
+            fixed = not all(s.frozen for s, _ in files)
+            before = _dead_keys(held, rel, name, fixed=fixed)
         if before is not None:
             dead[name] = before
     return Coords(schema=schema, axes=axes, dead=dead, dim_owners=dim_owners)
@@ -436,7 +445,7 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     read can drop (`_living`), and a dim a multi-dim's tuples range over or a
     property refers to, which the writer checks them against
     (`write._require_living_references`). A keyed coordinate's values the fold
-    drops itself (`fold_attributes`). A dim with `one_of` has no dead labels,
+    drops itself (`fold_layer`). A dim with `one_of` has no dead labels,
     its axis being the schema's list.
 
     Notes

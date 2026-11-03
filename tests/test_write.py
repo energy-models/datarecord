@@ -268,7 +268,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
         store.commit(ParquetLayer(forged.manifest, store), parent=None)
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
-        forged.record.dims  # noqa: B018
+        forged.record.dims["ctype"]
 
 
 @pytest.mark.parametrize(
@@ -1088,7 +1088,6 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(axes):
 _ENTITY_SCENARIO = [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.0}]
 
 
-@pytest.mark.parametrize("via", ["set", "write_layer"])
 @pytest.mark.parametrize(
     ("rows", "coordinate"),
     [
@@ -1105,9 +1104,7 @@ _ENTITY_SCENARIO = [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.
     ],
     ids=["entity-scenario", "settled-elsewhere"],
 )
-def test_a_layer_with_two_rows_neither_more_specific_is_refused(
-    axes, via, rows, coordinate
-):
+def test_a_layer_with_two_rows_neither_more_specific_is_refused(axes, rows, coordinate):
     """Each row names a dim the other leaves NULL, so no rule picks one where both meet.
 
     Notes
@@ -1115,7 +1112,7 @@ def test_a_layer_with_two_rows_neither_more_specific_is_refused(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     with pytest.raises(ValueError, match=rf"p_nom\.parquet.*{coordinate}"):
-        _rows_layer(axes, rows, via)
+        _rows_layer(axes, rows, "write_layer")
 
 
 def test_two_rows_crossing_where_a_row_names_both_are_written(axes):
@@ -1132,16 +1129,24 @@ def test_two_rows_crossing_where_a_row_names_both_are_written(axes):
     )
 
 
-def test_a_staged_pair_neither_more_specific_fails_the_read(axes):
-    """A layer not written by `write_layer` is held to the rule when it is read.
+def test_a_frame_staging_two_rows_neither_more_specific_is_refused(axes):
+    """One `set` staging two crossing rows, with none naming both, has no later edit to win.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    staged = _rows_staged(axes, _ENTITY_SCENARIO, "p_nom")
-    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*scenario=x"):
-        staged.attributes["p_nom"].df()
+    staged = _rows_staged(axes, [], "p_nom")
+    frame = pd.DataFrame(
+        {"entity": ["a", None], "scenario": [None, "x"], "value": [1.0, 2.0]}
+    )
+    with pytest.raises(
+        ValueError, match=r"'p_nom'.*\{'entity': 'a', 'scenario': 'x'\}"
+    ):
+        staged.set("p_nom", frame)
+    assert staged.attributes["p_nom"].fetchall() == [], (
+        "the refused edit stages nothing"
+    )
 
 
 _ONE_LABEL = [{"entity": "a", "value": 1.0}, {"entity": "a", "value": 2.0}]

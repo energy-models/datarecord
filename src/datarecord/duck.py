@@ -122,21 +122,6 @@ def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     )
 
 
-def distinct_values(
-    rel: DuckDBPyRelation, column: str, *, order: bool = True
-) -> tuple[Any, ...]:
-    """`rel`'s distinct values of `column`, as a tuple.
-
-    What keys a `LazyRelations` built over a relation: the values are read from a
-    column rather than from a directory listing, so one code path serves a local
-    directory and a remote prefix alike.
-    """
-    projected = rel.project(column).distinct()
-    if order:
-        projected = projected.order(column)
-    return tuple(r[0] for r in projected.fetchall())
-
-
 def is_frame(value: Any) -> bool:
     """Return whether `value` is a relation, or a pandas, polars or arrow frame DuckDB scans.
 

@@ -137,6 +137,14 @@ class LayerSource(Protocol):
         """
         ...
 
+    def owners(self, name: str) -> DuckDBPyRelation | None:
+        """One attribute's owner-map rows, where this layer keeps them; `None` where the fold aggregates `attribute(name)`.
+
+        A staging area keeps them in a table each edit refreshes, so that a
+        fold reading them does not aggregate every staged row once per use.
+        """
+        ...
+
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every `attributes/*.parquet` unioned by name, unprojected.
 
@@ -212,6 +220,9 @@ class _FileLayer:
         if name not in self.files.attributes:
             return None
         return self._read("attributes", [name])
+
+    def owners(self, name: str) -> DuckDBPyRelation | None:
+        return None
 
     def all_attributes(self) -> DuckDBPyRelation | None:
         if not self.files.attributes:

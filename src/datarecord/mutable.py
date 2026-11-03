@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import operator
 import sys
-from collections.abc import Collection, Container, Iterable, Mapping, Sequence
+from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import reduce
+from functools import reduce, wraps
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, cast
 from uuid import UUID, uuid4
@@ -46,8 +46,8 @@ from datarecord.duck import (
 from datarecord.protocols import RecordLike
 from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_map import named_sets, names_exactly
-from datarecord.resolve.record import Record
+from datarecord.resolve.owner_map import _own, named_sets, names_exactly, unsettled
+from datarecord.resolve.record import Record, _empty_long
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
@@ -206,7 +206,11 @@ class StagedSource:
         return None
 
     def axes(self) -> set[str]:
-        """The dims staged whole - by `add`, `remove` or a `set` on an axis column."""
+        """The dims whose staged axis differs from the base's, as rows in position order.
+
+        What a write of `edits` restates. The fold reads every staged axis
+        regardless, a staging area restating each from the start.
+        """
         return set(self.record._staged_dims())
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
@@ -219,18 +223,22 @@ class StagedSource:
         return self.record._restatement(f"{_AXIS_PREFIX}{dim}")
 
     def attributes(self) -> set[str]:
-        """Which attributes have staged rows."""
+        """Which attributes have staged rows, each table existing from the start."""
         return set(self.record._staged_attributes())
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         return self.record._collapsed_attribute(name)
+
+    def owners(self, name: str) -> DuckDBPyRelation:
+        """One attribute's owner-map rows, kept in a table each edit refreshes (`_refresh_owners`)."""
+        return self.record.con.table(self.record._staged[_OWNERS, name])
 
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every staged attribute, unioned by name and unprojected.
 
         By name because the tables carry per-attribute column variation exactly
         as the files do - one attribute's coordinates and no others - which is
-        what lets `fold_attributes` pad both the same way.
+        what lets `fold_layer` pad both the same way.
 
         Notes
         -----
@@ -244,6 +252,33 @@ class StagedSource:
         if not arms:
             return None
         return union_all_by_name(arms, self.record.con)
+
+
+def _atomic(edit: Callable[..., None]) -> Callable[..., None]:
+    """Run an edit in one transaction on the record's cursor, rolled back where it raises.
+
+    So a refused edit leaves the staging tables as they were, and a reader on
+    another cursor sees each edit whole or not at all.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+
+    @wraps(edit)
+    def run(self: WorkingRecord, *args: Any, **kwargs: Any) -> None:
+        con = self.con
+        con.begin()
+        try:
+            self._dirty.clear()
+            edit(self, *args, **kwargs)
+            self._refresh_owners()
+        except BaseException:
+            con.rollback()
+            raise
+        con.commit()
+
+    return run
 
 
 # -- the DuckDB-backed implementation (https://energy-models.github.io/datarecord/design/use/editing/#staging) ---------------------------------
@@ -289,6 +324,10 @@ class WorkingRecord(Record):
     #: file it stands for: one `value` column at the attribute's own type, and
     #: its own coordinates and no others.
     _staged: dict[tuple[str, str | None], str]
+    #: The `_staged` keys an edit wrote to since the start or `rollback()`.
+    _touched: set[tuple[str, str | None]]
+    #: The `_staged` keys the running edit wrote to.
+    _dirty: set[tuple[str, str | None]]
 
     def __init__(self, base: RecordLike) -> None:
         """Stage edits over `base`, which must be a `Record`.
@@ -312,12 +351,45 @@ class WorkingRecord(Record):
         # below reads them off `self`.
         object.__setattr__(self, "_layer_id", uuid4())
         object.__setattr__(self, "_staged", {})
+        object.__setattr__(self, "_touched", set())
+        object.__setattr__(self, "_dirty", set())
         object.__setattr__(self, "_base", base)
         super().__init__(
             base.revision_id,
             [*base.sources, StagedSource(self, self._layer_id)],
             base.workspace,
         )
+        for kind, attribute in self._kinds():
+            name = self._table(kind, attribute)
+            self._shape(kind, attribute).create(name)
+            self._staged[kind, attribute] = name
+            self._fill(kind, attribute)
+        for attribute in self.schema.attributes:
+            name = self._table(_OWNERS, attribute)
+            rows = self._shape(_ATTRIBUTES, attribute)
+            _own(rows, self.schema, self._layer_id, attribute).create(name)
+            self._staged[_OWNERS, attribute] = name
+        self._frozen_owners  # noqa: B018 - built outside any edit's transaction
+
+    def _kinds(self) -> list[tuple[str, str | None]]:
+        """Every staging table's `(kind, attribute)`: an axis per dim but those with `one_of`, a table per attribute."""
+        return [
+            *(
+                (f"{_AXIS_PREFIX}{d}", None)
+                for d in self.schema.dimensions
+                if d not in self.schema.one_of_dims
+            ),
+            *((_ATTRIBUTES, a) for a in self.schema.attributes),
+        ]
+
+    def _fill(self, kind: str, attribute: str | None) -> None:
+        """Fill a staging table as it starts: an axis with the base's, in base order; an attribute empty."""
+        if attribute is not None:
+            return
+        numbered = self._base_rows(kind).project(
+            star(), sql("row_number() OVER ()").alias(_POSITION)
+        )
+        self._insert(numbered, self._staged[kind, attribute], {})
 
     # -- staging tables -----------------------------------------------------
 
@@ -339,43 +411,26 @@ class WorkingRecord(Record):
         return f"staged_{kind}_{digest}_{self._layer_id.hex}"
 
     def _ensure(self, kind: str, attribute: str | None = None) -> str:
-        """The staging table for `kind`, created on first use.
+        """The staging table for `kind`, marked as touched by an edit.
 
-        `kind` is `_ATTRIBUTES` or an axis (`_AXIS_PREFIX` and its dim), which
-        gets a table shaped by its own file.
-
-        `_ATTRIBUTES` takes an `attribute` and gets a table per attribute, shaped
-        like the file it becomes: `long_columns_for` for the columns, and the
-        declared dtype for `value`.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        `kind` is `_ATTRIBUTES` with an `attribute`, or an axis (`_AXIS_PREFIX`
+        and its dim). Every table exists from the start (`_kinds`); the mark
+        is what `_staged_dims` and `_staged_attributes` look at.
         """
-        key = (kind, attribute)
-        if key in self._staged:
-            return self._staged[key]
-        name = self._table(kind, attribute)
-        self._shape(kind, attribute).create(name)
-        self._staged[key] = name
-        base = None if attribute is not None else self._base_rows(kind)
-        if base is not None:
-            numbered = base.project(
-                star(), sql("row_number() OVER ()").alias(_POSITION)
-            )
-            self._insert(numbered, name, {})
-        return name
+        self._touched.add((kind, attribute))
+        self._dirty.add((kind, attribute))
+        return self._staged[kind, attribute]
 
-    def _base_rows(self, kind: str) -> DuckDBPyRelation | None:
+    def _base_rows(self, kind: str) -> DuckDBPyRelation:
         """The base's resolved axis `kind` stands for, with its properties."""
         dim = kind[len(_AXIS_PREFIX) :]
         rows = (
             self._base.properties if dim in self.schema.properties else self._base.dims
         )
-        return rows.get(dim)
+        return rows[dim]
 
     def _restatement(self, kind: str) -> DuckDBPyRelation | None:
-        """The staged axis `kind` stands for, in position order; `None` where unstaged."""
+        """The staged axis `kind` stands for, in position order; `None` for a dim with `one_of`."""
         name = self._staged.get((kind, None))
         if name is None:
             return None
@@ -396,14 +451,13 @@ class WorkingRecord(Record):
         base = self._base_rows(kind)
         start = max(
             staged.aggregate(f"coalesce(max({_POSITION}), 0)").fetchall()[0][0],
-            0 if base is None else base.count("*").fetchall()[0][0],
+            base.count("*").fetchall()[0][0],
         )
         numbered = rel.project(star(), sql("row_number() OVER ()").alias("_n"))
-        held = [staged.project(col(key), col(_POSITION))]
-        if base is not None:
-            held.append(
-                base.project(col(key), sql("row_number() OVER ()").alias(_POSITION))
-            )
+        held = [
+            staged.project(col(key), col(_POSITION)),
+            base.project(col(key), sql("row_number() OVER ()").alias(_POSITION)),
+        ]
         joined = numbered.set_alias("r")
         for i, positions in enumerate(held):
             alias = f"h{i}"
@@ -425,40 +479,44 @@ class WorkingRecord(Record):
         branch here rather than a second dispatch beside it.
         """
         if attribute is not None:
-            return self._empty_long(attribute)
+            return _empty_long(self.schema, attribute, self.con)
         columns = _axis_columns(self.schema, kind[len(_AXIS_PREFIX) :])
         return empty_relation(self.con, **columns, **{_POSITION: sqltypes.BIGINT})
 
-    def _empty_long(self, attribute: str) -> DuckDBPyRelation:
-        """A row-less relation shaped like one attribute's long file.
+    def _refresh_owners(self) -> None:
+        """Recompute the owner rows of each attribute the running edit may have changed.
 
-        What the staging table is created from, so the table's shape is a
-        projection rather than assembled DDL - the same expressions the inserts
-        then project, which is what keeps the two from drifting.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-        - [the shape of an edit](https://energy-models.github.io/datarecord/design/use/editing/#the-shape-of-an-edit)
+        An attribute's rows read through its staged axes (`_collapsed_attribute`),
+        so an edit of an axis it is over changes them as well as one of its table.
         """
-        value = self.schema.value_type(attribute)
-        shaped = {
-            c: value if c == "value" else self._column_type(c)
-            for c in self.schema.long_columns_for(attribute)
-        }
-        return empty_relation(self.con, **cast("dict[str, DuckDBPyType]", shaped))
+        axes = {k.removeprefix(_AXIS_PREFIX) for k, a in self._dirty if a is None}
+        for attribute in self.schema.attributes:
+            key = (_ATTRIBUTES, attribute)
+            if key not in self._touched:
+                continue
+            columns = set(self.schema.long_columns_for(attribute))
+            if key not in self._dirty and not axes & columns:
+                continue
+            table = self._staged[_OWNERS, attribute]
+            self.con.execute(f"DELETE FROM {table}")
+            rows = self._collapsed_attribute(attribute)
+            _own(rows, self.schema, self._layer_id, attribute).insert_into(table)
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
         name = self._staged.get((kind, attribute))
         return None if name is None else self.con.table(name)
 
     def _staged_attributes(self) -> tuple[str, ...]:
-        """Which attributes have staged rows, in insertion order.
+        """Which attributes have staged rows, in declaration order.
 
-        The staging map is the answer, so this is not a query: a table exists
-        exactly where rows were staged.
+        Only a table an edit touched can hold one.
         """
-        return tuple(a for (k, a), _ in self._staged.items() if k == _ATTRIBUTES and a)
+        return tuple(
+            a
+            for a in self.schema.attributes
+            if (_ATTRIBUTES, a) in self._touched
+            and self.con.table(self._staged[_ATTRIBUTES, a]).limit(1).fetchall()
+        )
 
     def _column_type(self, column: str, subject: str | None = None) -> DuckDBPyType:
         return _column_type(self.schema, column, subject)
@@ -703,6 +761,7 @@ class WorkingRecord(Record):
         """Return the staged axis `name`, `None` where there is none."""
         return self.dims.get(name)
 
+    @_atomic
     def set(
         self,
         attribute: str,
@@ -1289,6 +1348,41 @@ class WorkingRecord(Record):
             broadcast=self._staged_coordinates(attribute),
         )
         self._complete_owned_whole(attribute, table)
+        self._refuse_crossing(attribute)
+
+    def _refuse_crossing(self, attribute: str) -> None:
+        """Refuse two staged rows of `attribute` that cross where no staged row names both.
+
+        The staged layer's rows are then those of a layer the writer accepts,
+        so the fold settles them as it does a written layer's.
+
+        Raises
+        ------
+        ValueError
+            Naming the attribute, the two sets of dims and the coordinate.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
+        """
+        rel = self._collapsed_attribute(attribute)
+        coordinates = self.schema.coordinates_of(attribute)
+        for a, b, meets in unsettled(rel, coordinates):
+            row = meets.limit(1).fetchall()
+            if not row:
+                continue
+            at = {
+                c: v for c, v in zip(coordinates, row[0], strict=True) if v is not None
+            }
+            msg = (
+                f"`set({attribute!r}, ...)` would stage a row naming {sorted(a)} and "
+                f"one naming {sorted(b)} that both cover {at}, where no staged row "
+                f"names {sorted(a | b)}, so neither is the more specific there; stage "
+                f"the rows with one naming both in one frame "
+                f"(https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+            )
+            raise ValueError(msg)
 
     def _delete_covered(
         self,
@@ -1374,7 +1468,7 @@ class WorkingRecord(Record):
         - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
         """
         whole = self._owned_whole(attribute)
-        if not whole or attribute not in self._base.attributes:
+        if not whole:
             return
 
         # Intersected with the attribute's own columns: a key column its file
@@ -1392,11 +1486,12 @@ class WorkingRecord(Record):
         coordinate = [c for c in self._long_key(attribute) if c != "breakpoint"]
         staged = self.con.table(table)
 
-        def axis(record: RecordLike, name: str) -> DuckDBPyRelation | None:
-            return record.dims.get(name)
-
-        axes = {d: axis(self, d) for d in present}
-        labelled = [c for c in scope if axis(self._base, c) is not None]
+        axes: dict[str, DuckDBPyRelation | None] = {d: self.dims[d] for d in present}
+        labelled = [
+            c
+            for c in scope
+            if c in self.schema.dimensions and self._base.dims[c].limit(1).fetchall()
+        ]
         keys = staged.filter(
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
@@ -1431,6 +1526,7 @@ class WorkingRecord(Record):
         )
         return self.con.sql(f"SELECT {unnested}", params=params).materialize()
 
+    @_atomic
     def add(
         self,
         dim: str,
@@ -1507,6 +1603,7 @@ class WorkingRecord(Record):
             self._positioned(rel, table, kind, dim), table, {}, key=(dim,)
         )
 
+    @_atomic
     def remove(
         self,
         dim: str,
@@ -1806,6 +1903,7 @@ class WorkingRecord(Record):
 
     # -- edits / rollback (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------
 
+    @_atomic
     def rollback(self) -> None:
         """Clear every staged row without writing.
 
@@ -1813,11 +1911,14 @@ class WorkingRecord(Record):
         -----
         - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
         """
-        for name in self._staged.values():
-            self.con.execute(f"DROP TABLE IF EXISTS {name}")
-        self._staged.clear()
+        for kind, attribute in self._touched:
+            self.con.execute(f"DELETE FROM {self._staged[kind, attribute]}")
+            self._fill(kind, attribute)
+            if kind == _ATTRIBUTES:
+                self.con.execute(f"DELETE FROM {self._staged[_OWNERS, attribute]}")
+        self._touched.clear()
 
-    def _collapsed_attribute(self, attribute: str) -> DuckDBPyRelation | None:
+    def _collapsed_attribute(self, attribute: str) -> DuckDBPyRelation:
         """One attribute's staged rows, without those naming a label its staged axis lacks.
 
         The rows are already one per coordinate - an edit replaced its key rather
@@ -1831,18 +1932,13 @@ class WorkingRecord(Record):
         nowhere. A multi-dim attribute's row naming a removed label goes by
         its tuple, which `remove` dropped.
 
-        None where nothing is staged for it, which is what says the base's rows
-        stand alone.
-
         Notes
         -----
         - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
         - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         """
-        rel = self._rows(_ATTRIBUTES, attribute)
-        if rel is None:
-            return None
+        rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
         for name in self.schema.dimensions:
             held = self._rows(f"{_AXIS_PREFIX}{name}")
@@ -1860,7 +1956,7 @@ class WorkingRecord(Record):
     # -- what edits write (https://energy-models.github.io/datarecord/design/use/editing/#edits) ------------------------------------------
 
     def _staged_dims(self) -> tuple[str, ...]:
-        """Which axes are staged whole, in declaration order.
+        """Which axes an edit left differing from the base's, in declaration order.
 
         Notes
         -----
@@ -1870,7 +1966,24 @@ class WorkingRecord(Record):
         return tuple(
             d
             for d in self.schema.dimensions
-            if (f"{_AXIS_PREFIX}{d}", None) in self._staged
+            if (kind := f"{_AXIS_PREFIX}{d}", None) in self._touched
+            and self._differs(kind)
+        )
+
+    def _differs(self, kind: str) -> bool:
+        """Whether the staged axis `kind` differs from the base's, as rows in position order."""
+        table = self.con.table(self._staged[kind, None])
+        columns = [c for c in table.columns if c != _POSITION]
+        order = sql(f"row_number() OVER (ORDER BY {_POSITION})").alias(_POSITION)
+        staged = table.project(*map(col, columns), order)
+        types = dict(zip(table.columns, table.types, strict=True))
+        base = self._base_rows(kind).project(
+            *(col(c).cast(types[c]).alias(c) for c in columns),
+            sql("row_number() OVER ()").alias(_POSITION),
+        )
+        return bool(
+            staged.except_(base).limit(1).fetchall()
+            or base.except_(staged).limit(1).fetchall()
         )
 
     @property
@@ -2038,6 +2151,9 @@ def _scalar(value: Any) -> Any:
 
 _ATTRIBUTES = "attributes"
 """The staging kind of an attribute's long rows, one table per attribute."""
+
+_OWNERS = "owners"
+"""The staging kind of an attribute's owner-map rows, one table per attribute."""
 
 _POSITION = "_position"
 """The column a staged axis keeps its order in, which a table does not."""
