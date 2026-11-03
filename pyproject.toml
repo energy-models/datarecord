@@ -95,8 +95,9 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 markers = [
   "slow: long-running checks (large fixtures); deselect with -m \"not slow\"",
+  "benchmark: timing checks, run with `pixi run bench`",
 ]
-addopts = '-m "not slow"'
+addopts = '-m "not slow and not benchmark"'
 
 [tool.coverage.run]
 branch = true
