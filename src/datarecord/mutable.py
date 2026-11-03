@@ -257,7 +257,7 @@ class StagedSource:
         ]
         if not arms:
             return None
-        return union_all_by_name(arms, self.record.con)
+        return union_all_by_name(arms)
 
 
 def _atomic(edit: Callable[..., None]) -> Callable[..., None]:

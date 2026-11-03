@@ -73,7 +73,7 @@ def test_union_all_by_name_folds_every_relation_by_name(store):
     con = store.workspace.con
     rels = [con.sql("SELECT 1 AS x, 'a' AS y"), con.sql("SELECT 2 AS x")]
     rels.append(con.sql("SELECT 'c' AS y, 3 AS x"))
-    got = union_all_by_name(rels, con).fetchall()
+    got = union_all_by_name(rels).fetchall()
     assert sorted(got, key=lambda r: r[0]) == [(1, "a"), (2, None), (3, "c")]
 
 

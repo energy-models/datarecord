@@ -52,6 +52,7 @@ from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.owner_keys import (
     _empty_relation,
     _flags,
+    _per_schema,
     _tagged,
     cast_declared,
     owner_keys,
@@ -159,9 +160,9 @@ def fold_layer(
         pairs = _meeting(kept, own, schema, attribute, _not_within)
         _refuse_unfilled(pairs, own, schema, refuse)
     if attribute is not None and _domain(schema, attribute).bit_count() < 2:
-        return union_all_by_name([kept, own], con)
+        return union_all_by_name([kept, own])
     pairs = _meeting(kept, own, schema, attribute, _incomparable)
-    return union_all_by_name([kept, own, _overlaps(pairs, schema).distinct()], con)
+    return union_all_by_name([kept, own, _overlaps(pairs, schema).distinct()])
 
 
 def _prune(
@@ -194,6 +195,7 @@ def _domain(schema: Schema, attribute: str) -> int:
     return sum(1 << i for i, d in enumerate(schema.partial_dims) if d in over)
 
 
+@_per_schema
 def _domain_of(schema: Schema) -> Expression:
     """Each row's `_domain`, by a CASE over its attribute."""
     full = (1 << len(schema.partial_dims)) - 1
@@ -581,7 +583,7 @@ def _widened(
         struct_of({d: broadcast(d) for d in now.broadcast_dims}).alias("broadcast"),
         col("breakpoints"),
     )
-    return union_all_by_name([extended, *parts], con)
+    return union_all_by_name([extended, *parts])
 
 
 def _split(
@@ -627,7 +629,7 @@ def _split(
         col("broadcast").alias("_was_broadcast"),
     ).set_alias("m")
     joined = stored.join(
-        union_all_by_name(files, con).set_alias("f"),
+        union_all_by_name(files).set_alias("f"),
         null_safe("m", "f", (LAYER_COLUMN, "attribute", *keys)),
     ).project(
         *(col("m", c).alias(c) for c in (*key_cols, *carried)),
@@ -693,13 +695,18 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
 def _checkpoint(
     rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """`rel` as a table, dropping the tables in `made` and leaving its name there."""
+    """`rel` as a table, its name appended to `made`."""
     name = f"_fold_{uuid4().hex}"
     rel.create(name)
-    for previous in made:
-        con.execute(f"DROP TABLE {previous}")
-    made[:] = [name]
+    made.append(name)
     return con.table(name)
+
+
+def _drop_but_last(made: list[str], con: DuckDBPyConnection) -> None:
+    """Drop every table `made` names but the last, which stays named there."""
+    for name in made[:-1]:
+        con.execute(f"DROP TABLE {name}")
+    del made[:-1]
 
 
 def _pruned(schema: Schema) -> tuple[str, ...]:
@@ -738,7 +745,8 @@ def _fold_onto(
 
     Where `made` is a list, each source's fold is kept in a table of its own
     before the next folds onto it, since DuckDB binds a relation's whole
-    tree at every step, which makes a long chain quadratic to build. The
+    tree at every step, which makes a long chain quadratic to build; so are
+    its owner rows, which its fold reads several times. The
     table the map is read from is left named in `made`, for the caller to
     drop once it has read the map (`_checkpointed`).
 
@@ -788,10 +796,13 @@ def _fold_onto(
                 )
             held[name] = now
         own = _layer_owners(source, attribute)
+        if made is not None and own is not None:
+            own = _checkpoint(own, made, con)
         refuse = source.layer_id if source.frozen else None
         rel = fold_layer(rel, own, removed, keyed, con, attribute, refuse=refuse)
         if made is not None and rel is not None:
             rel = _checkpoint(rel, made, con)
+            _drop_but_last(made, con)
     if rel is None:
         return _empty_relation(keyed, con, *keyed.owner_map_columns)
     return rel
@@ -818,7 +829,7 @@ def _layer_owners(
         k for a in sorted(source.attributes()) if (k := source.owners(a)) is not None
     ]
     if owned:
-        return union_all_by_name(owned, source.con)
+        return union_all_by_name(owned)
     rows = source.all_attributes()
     return None if rows is None else owner_keys(rows, source.schema, source.layer_id)
 

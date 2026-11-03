@@ -262,7 +262,7 @@ class Fold:
         layer = uuid4()
         owned = [owner_keys(attributes[a], schema, layer, a) for a in attributes]
         owner_map = (
-            union_all_by_name(owned, con)
+            union_all_by_name(owned)
             if owned
             else _empty_relation(schema, con, *schema.owner_map_columns)
         )

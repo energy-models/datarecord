@@ -12,6 +12,9 @@ Notes
 
 from __future__ import annotations
 
+import threading
+from collections.abc import Callable
+from functools import wraps
 from uuid import UUID
 
 from duckdb import ColumnExpression as col
@@ -87,6 +90,29 @@ def with_columns(
     return rel.project(star(), *added)
 
 
+def _per_schema[T](build: Callable[..., T]) -> Callable[..., T]:
+    """`build` memoised on its positional arguments, the first a `Schema`.
+
+    A schema is unhashable, and every layer holds its own equal copy, so the
+    arguments are matched by equality, against the last few calls only.
+    """
+    held: list[tuple[tuple[object, ...], T]] = []
+    lock = threading.Lock()
+
+    @wraps(build)
+    def memo(*args: object) -> T:
+        with lock:
+            found = next((v for key, v in held if key == args), None)
+        if found is not None:
+            return found
+        value = build(*args)
+        with lock:
+            held[:] = [*held[-63:], (args, value)]
+        return value
+
+    return memo
+
+
 def owner_keys(
     rel: DuckDBPyRelation,
     schema: Schema,
@@ -123,7 +149,8 @@ def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelat
     )
 
 
-def _flags(schema: Schema, attribute: str | None = None) -> list[Expression]:
+@_per_schema
+def _flags(schema: Schema, attribute: str | None = None) -> tuple[Expression, ...]:
     """The aggregates giving one key's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
 
     `attribute` names the one attribute the rows are of, where they are of one.
@@ -139,7 +166,7 @@ def _flags(schema: Schema, attribute: str | None = None) -> list[Expression]:
         else lit(d in schema.coordinates_of(attribute))
         for d in broadcast
     }
-    return [
+    return (
         struct_of(
             {d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
         ).alias("varies"),
@@ -147,7 +174,7 @@ def _flags(schema: Schema, attribute: str | None = None) -> list[Expression]:
             "broadcast"
         ),
         fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
-    ]
+    )
 
 
 def _over(schema: Schema, dim: str) -> Expression:
