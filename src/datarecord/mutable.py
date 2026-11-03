@@ -364,11 +364,14 @@ class WorkingRecord(Record):
             self._shape(kind, attribute).create(name)
             self._staged[kind, attribute] = name
             self._fill(kind, attribute)
+        shape = self._table(_OWNERS)
+        empty = empty_relation(self.con, attribute=sqltypes.VARCHAR)
+        _own(empty, self.schema, self._layer_id).create(shape)
         for attribute in self.schema.attributes:
             name = self._table(_OWNERS, attribute)
-            rows = self._shape(_ATTRIBUTES, attribute)
-            _own(rows, self.schema, self._layer_id, attribute).create(name)
+            self.con.execute(f"CREATE TABLE {name} AS FROM {shape}")
             self._staged[_OWNERS, attribute] = name
+        self.con.execute(f"DROP TABLE {shape}")
         self._frozen_owners  # noqa: B018 - built outside any edit's transaction
 
     def _kinds(self) -> list[tuple[str, str | None]]:
