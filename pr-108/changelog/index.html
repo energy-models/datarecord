@@ -1076,6 +1076,14 @@ SPDX-License-Identifier: CC-BY-4.0
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
 <li>
+<p>Breaking: the PyPSA dialect declares every component attribute over
+  <code>scenario</code>, except those PyPSA keeps the same in every scenario
+  (<code>*_nom_extendable</code>, <code>*_nom_opt</code>, <code>committable</code>, <code>lifetime</code>, ...), so a
+  static <code>p_nom</code> that differs per scenario round-trips (#28). A keyed
+  <code>set("p_nom", {...})</code> is then open in <code>entity</code> and <code>scenario</code>; pass the
+  labels as <code>entity=[...]</code> or as a series indexed by <code>entity</code>.</p>
+</li>
+<li>
 <p>datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no <code>fetchone()</code>.</p>
 </li>
