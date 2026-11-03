@@ -409,7 +409,7 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
     record = root.store.commit(staged).record
 
     for plan in (
-        _fold_map(record.sources, record.con).explain().upper(),
+        _fold_map(record.sources).explain().upper(),
         record.attributes["weight"].explain().upper(),
     ):
         assert "HASH JOIN" in plan, "it joins at all"

@@ -339,7 +339,6 @@ def _dead_keys(
 @overload
 def _base_and_above(
     sources: Sequence[LayerSource],
-    con: DuckDBPyConnection,
     *,
     owner_map: Literal[True],
 ) -> tuple[Fold | None, list[LayerSource]]: ...
@@ -348,14 +347,13 @@ def _base_and_above(
 @overload
 def _base_and_above(
     sources: Sequence[LayerSource],
-    con: DuckDBPyConnection,
     *,
     owner_map: Literal[False],
 ) -> tuple[Fold | Coords | None, list[LayerSource]]: ...
 
 
 def _base_and_above(
-    sources: Sequence[LayerSource], con: DuckDBPyConnection, *, owner_map: bool
+    sources: Sequence[LayerSource], *, owner_map: bool
 ) -> tuple[Fold | Coords | None, list[LayerSource]]:
     """Split `sources` at the deepest one whose fold is at hand: that fold, then the rest.
 
@@ -376,15 +374,13 @@ def _base_and_above(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     for i in range(len(sources) - 2, -1, -1):
-        base = sources[i].materialised(con) or _held(sources[i], con, owner_map)
+        base = sources[i].materialised() or _held(sources[i], owner_map)
         if base is not None:
             return base, list(sources[i + 1 :])
     return None, list(sources)
 
 
-def _held(
-    source: LayerSource, con: DuckDBPyConnection, owner_map: bool
-) -> Fold | Coords | None:
+def _held(source: LayerSource, owner_map: bool) -> Fold | Coords | None:
     """`source`'s node's fold from the workspace's shared tables, `None` where they lack it.
 
     The tables are keyed by the node a `Record` reads, and hold the fold over
@@ -394,7 +390,7 @@ def _held(
     `owner_map`, the owner map is required beside the coords, which its fold
     reads too.
     """
-    rid = source.layer_id
+    rid, con = source.layer_id, source.con
     try:
         rows = con.table(_dim_owners_table(rid)).fetchall()
         rel = con.table(_table_name(rid)) if owner_map else None
@@ -453,7 +449,6 @@ def _one_of_seed(
 
 def resolve_coords(
     sources: Sequence[LayerSource],
-    con: DuckDBPyConnection,
     split: tuple[Fold | Coords | None, list[LayerSource]] | None = None,
 ) -> Coords:
     """Resolve every dim the last source's schema declares and the dead labels.
@@ -463,7 +458,6 @@ def resolve_coords(
     sources : sequence of LayerSource
         Root first, ending in the layer being resolved. A source that is not
         frozen, a staging area, restates every axis but those with `one_of`.
-    con : DuckDBPyConnection
     split
         A folded seed and the sources to fold onto it, where the caller
         already holds them: `_base_and_above`, or a frozen
@@ -484,8 +478,8 @@ def resolve_coords(
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    schema = sources[-1].schema
-    base, above = split or _base_and_above(sources, con, owner_map=False)
+    schema, con = sources[-1].schema, sources[-1].con
+    base, above = split or _base_and_above(sources, owner_map=False)
     restated = {d for d in schema.dimensions if d not in schema.one_of_dims}
     held_files = [source.axes() if source.frozen else restated for source in above]
     for source, names in zip(above, held_files, strict=True):

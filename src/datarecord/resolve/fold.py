@@ -242,7 +242,7 @@ class Fold:
         ).fetchall()
 
     @classmethod
-    def read(cls, layer: ParquetLayer, con: DuckDBPyConnection) -> Fold | None:
+    def read(cls, layer: ParquetLayer) -> Fold | None:
         """`layer`'s node's `Fold` under its own schema, `None` if it is not materialised.
 
         The owner map is the presence marker: the map is written last
@@ -255,7 +255,7 @@ class Fold:
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
-        revision_id, store = layer.layer_id, layer.store
+        revision_id, store, con = layer.layer_id, layer.store, layer.con
         owner_map = read_owner_map(revision_id, con, store)
         if owner_map is None:
             return None
