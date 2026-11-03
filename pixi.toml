@@ -35,6 +35,7 @@ python-duckdb = "0d"
 [feature.test.dependencies]
 pytest = "*"
 pytest-cov = "*"
+pytest-xdist = "*"
 mypy = "*"
 pandas = "*"
 pyarrow = "*"

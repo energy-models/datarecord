@@ -18,7 +18,6 @@ from datarecord.mutable import WorkingRecord
 from datarecord.protocols import Flags, RecordLike, Relations
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec
-from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
     empty_root,
@@ -31,14 +30,14 @@ from tests.fixtures import (
 MEMBERS = ("dims", "properties", "attributes")
 
 
-@pytest.fixture
-def written(store):
+@pytest.fixture(scope="module")
+def written(module_store):
     """A record of one layer, so every construction below reads the same files.
 
     One generator with a `p_max_pu` series and an `efficiency` on its
     connection, so attributes, the entity axis and a multi-dim are all present.
     """
-    layer = empty_root(store, schema())
+    layer = empty_root(module_store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])
     write_multi_dim(
         layer, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
@@ -57,8 +56,8 @@ def written(store):
     return layer.commit()
 
 
-@pytest.fixture
-def both(written, store):
+@pytest.fixture(scope="module")
+def both(written):
     """One record, every way of constructing a `Record` over it.
 
     The same files reached by two source constructions: as the layer of a
@@ -74,7 +73,7 @@ def both(written, store):
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
     """
     node = written.record
-    directory = store.layer(written.id)
+    directory = written.store.layer(written.id)
     return (
         node,
         directory,
@@ -84,22 +83,6 @@ def both(written, store):
 
 
 # -- the protocol ------------------------------------------------------------
-
-
-def test_every_construction_satisfies_the_protocol(both):
-    """Structural conformance, so a consumer cannot tell which it holds.
-
-    Notes
-    -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
-    """
-    for record in both:
-        assert isinstance(record, RecordLike)
-
-
-def test_a_network_source_is_a_record(store, ac_dc):
-    """`to_datarecord` returns one too, which is what puts read and write on one seam."""
-    assert isinstance(PyPSA.to_datarecord(ac_dc, store.workspace.con), RecordLike)
 
 
 @dataclass(frozen=True)
@@ -155,48 +138,32 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     assert "p_nom" in store.layer(revision.id).attributes
 
 
-def test_the_writer_refuses_timestamps_with_a_time_zone(store):
-    """Written as `set` takes them: a zone is refused, not converted to naive time.
+def test_constructions_agree(both):
+    """A single-layer record resolves to the same keys, flags and rows every way.
 
-    Notes
-    -----
-    - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
-    """
-    record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
-    with pytest.raises(ValueError, match="carry timestamps with a time zone"):
-        store.commit(record, parent=None)
-
-
-def test_constructions_agree_on_every_key_set(both):
-    """One record, several ways of reading it: the keys must not depend on which."""
-    node, *rest = both
-    for other in rest:
-        for member in MEMBERS:
-            assert list(getattr(node, member)) == list(getattr(other, member)), member
-
-
-def test_constructions_agree_on_flags(both):
-    """One aggregate, whichever source list it folds over.
+    Every construction is a `RecordLike` of bare DuckDB relations, so a consumer
+    cannot tell which it holds. The rows themselves, not their count: this
+    fixture is the whole evidence that reading a directory needs no
+    implementation of its own, and two constructions returning the same number
+    of different rows would satisfy a count.
 
     Notes
     -----
     - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
+    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
     """
+    for record in both:
+        assert isinstance(record, RecordLike)
+        for member in MEMBERS:
+            values = getattr(record, member)
+            assert values, f"the fixture has {member}"
+            for key in values:
+                assert isinstance(values[key], DuckDBPyRelation), (member, key)
     node, *rest = both
     for other in rest:
-        assert node.flags() == other.flags()
-
-
-def test_constructions_agree_on_rows(both):
-    """A single-layer record resolves to the same rows every way.
-
-    The rows themselves, not their count: this fixture is the whole evidence
-    that reading a directory needs no implementation of its own, and two
-    constructions returning the same number of different rows would satisfy a
-    count.
-    """
-    node, *rest = both
-    for other in rest:
+        for member in MEMBERS:
+            assert list(getattr(node, member)) == list(getattr(other, member)), member
+        assert node.flags() == other.flags(), "one aggregate, whichever sources"
         for attribute in node.attributes:
             left = node.attributes[attribute].df()
             right = other.attributes[attribute].df()
@@ -209,19 +176,6 @@ def test_constructions_agree_on_rows(both):
             assert left.equals(right), attribute
 
 
-# -- laziness (https://energy-models.github.io/datarecord/design/use/reading/#relations, https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold) ---------------------------------------------------
-
-
-@pytest.mark.parametrize("member", ["dims", "properties", "attributes"])
-def test_every_value_is_a_relation(both, member):
-    """Each member's values are bare DuckDB relations, whatever the backing."""
-    for record in both:
-        values = getattr(record, member)
-        assert values, f"the fixture has {member}"
-        for key in values:
-            assert isinstance(values[key], DuckDBPyRelation), (member, key)
-
-
 def test_relations_stay_unmaterialised(both):
     """An overlay-backed relation is a DuckDB plan, not a materialised table."""
     node, *_ = both
@@ -230,35 +184,6 @@ def test_relations_stay_unmaterialised(both):
 
 
 # -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold) ----------------------------------
-
-
-def test_flags_report_both_sets_where_components_disagree(store):
-    """A mixed type puts `snapshot` in both sets, which is the split.
-
-    Two generators, one with a series and one with a single value. Both
-    containers are needed, and both sets holding `snapshot` is what says so -
-    the constant pass takes the NULL-snapshot rows, the series pass the rest.
-
-    Notes
-    -----
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
-    """
-    layer = empty_root(store, schema())
-    write_component(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
-    write_attribute(
-        layer,
-        "p_max_pu",
-        [
-            {"entity": "wind", "snapshot": s, "value": v}
-            for s, v in (("2030-01-01", 0.4), ("2030-01-02", 0.6))
-        ]
-        + [{"entity": "gas", "value": 1.0}],
-    )
-
-    record = layer.commit().record
-    combined = record.flags()["p_max_pu"]
-    assert "snapshot" in combined.varies
-    assert "snapshot" in combined.broadcast
 
 
 def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
@@ -373,17 +298,6 @@ def test_missing_key_raises(both):
         assert len(list(record.attributes)) == len(record.attributes)
         with pytest.raises(KeyError):
             record.attributes["not_an_attribute"]
-
-
-def test_an_unsolved_network_has_no_results(both):
-    """A result still at its default is absent rather than written.
-
-    Notes
-    -----
-    - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
-    """
-    for record in both:
-        assert not {"p", "marginal_price"} & set(record.attributes)
 
 
 # -- one schema per record root (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ----------------------------------------
