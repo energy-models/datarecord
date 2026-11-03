@@ -45,7 +45,9 @@ A table tells a registration from any other schema in the database, so a server 
 DuckDB has no comments on schemas to mark them by, and a marker view in each schema would be found only by a reserved name.
 
 `register` creates the schemas, the views and the row in one transaction, and raises if `name` exists.
+It refuses the name of a database attached to the workspace, which DuckDB would read as the catalog of `name.dims`.
 `Workspace.unregister(name)` drops the schema with its views and its row, in one transaction.
+It refuses a name with no row, so a schema no record registered is never dropped.
 DuckDB nests no transaction, so both refuse a cursor that already holds one open, as [an edit](../use/editing.md#edits) does.
 
 ## Live over a `WorkingRecord`
