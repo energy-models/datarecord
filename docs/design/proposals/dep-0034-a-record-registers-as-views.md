@@ -43,10 +43,11 @@ Two records under one schema register the same views, since every record lists e
 
 ### API
 
-- `Record.register(name: str) -> None` creates `name` and its views. It raises if `name` exists.
-- `Workspace.unregister(name: str) -> None` drops `name` with its views.
+- `Record.register(name: str) -> None` creates `name` and its views, and adds a row for `name` to the workspace's `registered` table, in one transaction. It raises if `name` exists.
+- `Workspace.unregister(name: str) -> None` drops `name` with its views and its row, in one transaction.
+- `Workspace.registered() -> DuckDBPyRelation` reads the `registered` table: `name`, `location`, `revision`, `working` and `created`. A SQL client reads the table itself.
 - `WorkingRecord.rollback()` leaves the views valid, since it refills the staging tables rather than dropping them (DEP 33).
-- `rev.child(w.edits)` leaves the views on `w` as they are. A server drops them and registers a `WorkingRecord` on the child.
+- `store.commit(w)` leaves the views on `w` as they are. A server drops them and registers a `WorkingRecord` on the new revision.
 
 ### Consistent states
 
@@ -54,7 +55,7 @@ Every state a reader on another cursor can observe is a state some sequence of w
 
 ### Schema changes
 
-A `WorkingRecord` refuses a schema change that alters a column or the fold of an existing view: widening an attribute's `dims`, adding a property, or adding a dim to `partial`. Adding an attribute or a dim adds its view.
+A `WorkingRecord` has no method that changes its schema; the schema changes only at commit. A method that changes it is to refuse a change that alters a column or the fold of an existing view: widening an attribute's `dims`, adding a property, or adding a dim to `partial`. Adding an attribute or a dim is to add its view.
 
 ## Rationale
 
@@ -76,14 +77,14 @@ SELECT * FROM edit_3f2a.properties.bus WHERE carrier = 'AC';
 
 ```python
 w.set("p_nom", 150.0, entity="wind1")  # the next SELECT reads 150.0
-child = rev.child(w.edits)
+child = store.commit(w)
 ws.unregister("edit_3f2a")
 WorkingRecord(child.record).register("edit_8c01")
 ```
 
 ## Implementation notes
 
-1. Edits leave only consistent states: one transaction per edit, with frozen fold tables built on a cursor of their own.
+1. Edits leave only consistent states: one transaction per edit, with the frozen fold tables built before the first edit.
 2. `register` and `unregister`. A view is created by the connection's `_create_view` with the path `(name, kind, view)` and the SQL of `_render(rel, literals=True, wrap_text=True)`, the call `DuckDBPyRelation.create_view` makes with a plain name, which keeps alive the Python objects a relation reads. The public method takes one identifier only, so DuckDB is pinned and a test reads a view from another cursor after the relation is collected.
 3. `register` builds every relation before it creates any view. Each view it creates changes the catalog, and DuckDB re-binds a relation built before that change, node by node, the next time it derives from it. The pieces every relation of a record shares, its coords, its frozen prefix and the staged layer's base, are built once per record, and a union of relations is `rel.union_by_name` rather than `con.sql` over the captured relations, which binds the whole captured text again. In a prototype on a PyPSA record with 168 views, this took registering from 20–25 s to about 9.5 s; a single transaction around all creates showed no clear gain.
 
@@ -96,14 +97,15 @@ The check: views registered on a fresh `WorkingRecord`, then `set`, `add` and `r
 - `CREATE VIEW … AS rel.sql_query()`. The text reads Python objects that are released with the relation, and breaks on a relation with parameters.
 - A two-step registration through a helper view in `main`. It works with public API only, and clutters `main` with one view per relation.
 - Replacing views on structural edits. See [Rationale](#rationale).
+- Marking a registered schema instead of listing it in a table. DuckDB 2.0 does not implement comments on schemas. A comment on every view adds a catalog change per view. A marker view inside each schema is found only by a reserved view name, which a table spares.
+- Leaving discovery to the server. A crashed server leaves schemas that no one can tell from the workspace's own.
 - `MERGE INTO` in place of a transaction per edit. Every edit also writes the staged owner tables, so none fits in one statement: `set` takes two or three, `rollback` nine. Without a transaction, a reader saw a half-written edit in about half its reads; inside one, `MERGE` was 5–30% slower than `DELETE` and `INSERT` and no more consistent.
 
 ## Open Issues
 
 - Schema changes that alter an existing view: refused for now, or replacing the views they reach.
 - Settling in the client: [`settle`](../use/reading.md#settling-rows) ported to the frontend, and a page on the raw format for SQL clients.
-- Discovery and cleanup: how a client lists registered schemas and the revisions table, and who unregisters an abandoned one.
-- Access through a DuckDB server: whether the views' file scans and nested names pass its authorization.
+- Cleanup: who unregisters an abandoned schema, and by what rule. The `registered` table lists them; DuckDB 2.0 has no comments on schemas to mark them by.
 - A public `create_view` taking a qualified name, to request upstream.
 - DuckDB 2.0 lets a reader on another cursor see part of a committed transaction once it writes about 300,000 rows or more, in 0.1–1% of reads. No edit can rule it out until DuckDB does, and it is to be reported upstream.
 - The cold fold of a deep revision is paid by `register` or the first read of a view, once per lineage in a workspace, and stays linear in depth until a revision's map is materialised.
