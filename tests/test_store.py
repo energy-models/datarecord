@@ -813,3 +813,43 @@ def test_a_relation_from_another_connection_is_rejected(tree):
             w.set("p_nom", frame)
     finally:
         foreign.close()
+
+
+def _read_all(record):
+    """Every dim, attribute and flag of `record`, rows sorted so two folds compare."""
+    return (
+        {d: sorted(r.fetchall(), key=str) for d, r in record.dims.items()},
+        {a: sorted(r.fetchall(), key=str) for a, r in record.attributes.items()},
+        record.flags(),
+    )
+
+
+@pytest.mark.parametrize("held", [("dims",), ("dims", "attributes")])
+def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
+    """A record on a commit's child folds onto the fold its workspace holds of the parent.
+
+    The edits read before the commit leave the parent's coords, and with an
+    attribute its owner map, as the workspace's tables.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    """
+    _, child = tree
+    w = WorkingRecord(child.record)
+    w.add("entity", ["solar"], ctype="Generator")
+    w.add("scenario", ["high", "low"])
+    w.set("p_max_pu", 0.7, entity="solar")
+    w.set("p_max_pu", 0.9, scenario="high")
+    w.remove("entity", ["wind"])
+    relations = {"dims": w.dims, "attributes": w.attributes}
+    for kind in held:
+        for rel in relations[kind].values():
+            rel.fetchall()
+    grandchild = store.commit(w)
+    fresh = Workspace()
+    try:
+        afresh = _read_all(fresh.store(store.uri).revision(grandchild.id).record)
+        assert _read_all(grandchild.record) == afresh
+    finally:
+        fresh.close()
