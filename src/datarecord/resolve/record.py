@@ -31,12 +31,14 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
+from duckdb._relation import _render
 
 from datarecord.duck import (
     empty_relation,
     fn,
     null_safe,
     struct_of,
+    transaction,
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
@@ -396,6 +398,50 @@ class Record:
         - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         return self._fold.flags(**categories)
+
+    def register(self, name: str) -> None:
+        """Create the DuckDB schema `name` with a view per dim, property subject and attribute.
+
+        The views sit in `name.dims`, `name.properties` and `name.attributes`,
+        each reading as its relation here; over a `WorkingRecord` they follow
+        every edit. `name` is listed in the workspace's `registered()` table.
+
+        Raises
+        ------
+        duckdb.CatalogException
+            If the schema `name` exists.
+        duckdb.TransactionException
+            Where the cursor already holds an open transaction.
+
+        Notes
+        -----
+        - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
+        """
+        kinds = {
+            "dims": self.dims,
+            "properties": self.properties,
+            "attributes": self.attributes,
+        }
+        rendered = {
+            (name, kind, view): _render(rel, literals=True, wrap_text=True)[0]
+            for kind, relations in kinds.items()
+            for view, rel in relations.items()
+        }
+        con = self.con
+        with transaction(
+            con,
+            "register",
+            "https://energy-models.github.io/datarecord/design/storage/views/",
+        ):
+            con.execute(f"CREATE SCHEMA {col(name)}")
+            for kind in kinds:
+                con.execute(f"CREATE SCHEMA {col(name, kind)}")
+            for path, query in rendered.items():
+                con._create_view(path, query)
+            con.execute(
+                "INSERT INTO registered (name, revision, working) VALUES (?, ?, ?)",
+                [name, self.revision_id, not self.frozen],
+            )
 
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 

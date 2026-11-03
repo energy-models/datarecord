@@ -21,7 +21,8 @@ uv = "*"
 
 [dependencies]
 datarecord = { path = "." }
-duckdb = ">=2.0,<3"
+# Exact: `register` calls the private `_create_view` and `_render`.
+duckdb = "==2.0.0"
 pydantic = ">=2.12"
 
 [pypi-dependencies]

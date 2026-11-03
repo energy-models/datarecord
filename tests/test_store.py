@@ -13,10 +13,9 @@ Notes
 import json
 import math
 import pickle
-import threading
 from collections import Counter
-from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
+from functools import partial
 from pathlib import Path
 from uuid import uuid4
 
@@ -34,6 +33,7 @@ from tests.fixtures import (
     broadcast,
     empty_child,
     empty_root,
+    in_threads,
     schema,
     widened,
     write_attribute,
@@ -50,18 +50,6 @@ def tree(store):
     write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.4}])
     root = layer.commit()
     return root, empty_child(root).commit()
-
-
-def _in_threads(n, fn):
-    """Run `fn(i)` in `n` threads released together, and return the results."""
-    barrier = threading.Barrier(n)
-
-    def run(i):
-        barrier.wait()
-        return fn(i)
-
-    with ThreadPoolExecutor(n) as pool:
-        return list(pool.map(run, range(n)))
 
 
 def test_a_store_needs_a_location(workspace):
@@ -583,7 +571,7 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
         rows = record.attributes["p_max_pu"].fetchall()
         return workspace.con, len(rows)
 
-    results = _in_threads(8, read)
+    results = in_threads(8, read)
     cursors = {id(con) for con, _ in results}
     assert len(cursors) == 8, "one cursor per thread"
     assert len({n for _, n in results}) == 1, "every thread reads the same rows"
@@ -609,7 +597,7 @@ def test_a_record_read_first_here_reads_alike_in_other_threads(tree, working):
     _, child = tree
     record = WorkingRecord(child.record) if working else child.record
     here = _read_all(record)
-    assert _in_threads(4, lambda _: _read_all(record)) == [here] * 4
+    assert in_threads(4, lambda _: _read_all(record)) == [here] * 4
 
 
 def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
@@ -619,7 +607,7 @@ def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
         fresh = store.revision(child.id)
         return sorted(fresh.record._fold.owner_map.fetchall(), key=str)
 
-    first, second = _in_threads(2, fold)
+    first, second = in_threads(2, fold)
     assert first == second
     assert first
 
@@ -647,7 +635,7 @@ def test_a_revision_is_cached_only_after_its_parent(store):
         fresh = Workspace()
         try:
             again = fresh.store(store.uri)
-            chains = _in_threads(8, lambda i, again=again: read(again, i))
+            chains = in_threads(8, partial(read, again))
             assert chains == [[root.id, child.id, leaf.id]] * 8
         finally:
             fresh.close()
@@ -672,7 +660,7 @@ def test_two_threads_adding_one_revision_row_both_succeed(workspace, store, tree
     fresh = Workspace()
     try:
         again = fresh.store(store.uri)
-        ids = _in_threads(2, lambda _: again.revision(child.id).id)
+        ids = in_threads(2, lambda _: again.revision(child.id).id)
         assert ids == [child.id, child.id]
     finally:
         fresh.close()
