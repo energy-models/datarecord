@@ -22,9 +22,9 @@ The fold of a layer onto the owner map below it becomes one query whose joins do
 
 The fold today loops over the named sets the rows of a layer hold, and runs joins per pair of them. Its plan depends on the data, and its joins grow with the patterns a deep ancestry accumulates: 388 joins for the frozen fold of a 16-layer PyPSA ancestry.
 
-A `WorkingRecord` takes more decisions from staged rows in Python: whether a staging table exists, which layers own an attribute, whether an axis is staged, whether a layer holds rows both ways. A relation built before an edit therefore misses what that edit changes. Any consumer that keeps a relation, a view in a database most of all, reads a stale plan.
+A `WorkingRecord` decides from staged rows in Python whether a staging table exists, which layers own an attribute and whether an axis is staged. A relation built before an edit misses what that edit changes, and a view reads a stale plan.
 
-Two staged edits that cross, each naming a dim the other leaves NULL, are refused today. The user of an editor sees the order of their clicks matter.
+Two staged edits that cross, each naming a dim the other leaves NULL, are refused today, so the order of an editor's clicks matters.
 
 ## Specification
 
@@ -38,15 +38,15 @@ A row's named set over the `partial` dims is a bitmask. The fold of one layer's 
 
 The query computes each row's candidate masks from its own mask and its attribute's domain, the `partial` dims the attribute is over, so the plan does not grow with the masks a schema allows.
 
-A named set no row holds costs nothing, and no join runs on an empty pattern. Only owner-map rows are expanded, never value rows, so series length does not reach the expansion. The fold serves the frozen prefix and its materialised map, the staged step, `flags()` and the write of a whole record.
+A named set no row holds costs nothing. Only owner-map rows are expanded, never value rows. The fold serves the frozen prefix and its materialised map, the staged step, `flags()` and the write of a whole record.
 
 Under [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md) the masks and the candidate masks of a layer are taken over its own schema's `partial` dims, once per distinct layer schema, after the map folded so far is widened to it.
 
-The fold no longer refuses rows. An unfilled row or an unsettled crossing is refused by `set` for the staged layer, and for a frozen layer when a workspace first builds the fold over it, so a layer from any writer is still checked.
+The fold no longer refuses rows. A frozen layer's unfilled rows and unsettled crossings are refused when a workspace first builds the fold over it, so a layer from any writer is still checked. A `set` whose own rows cross each other is refused, and its edit rolled back. `set` fills what it stages, so it runs no check for unfilled rows.
 
 ### The read ranks only contested rows
 
-A layer is contested for an attribute where its rows of it name different sets of `partial` dims. It reaches some coordinates twice, and the read keeps the more specific row there. Whether a layer is contested is a column of the map, not a Python decision. The read joins the value rows of contested layers in one arm, which ranks them, and those of every other layer in a second arm, which passes them straight through. A record with no contested layer ranks nothing. A frozen `Record` needs no fixed plan and keeps today's check, taking the ranking arm only where a layer is contested.
+A layer is contested for an attribute where its rows name different sets of `partial` dims, so it reaches some coordinates twice and the read keeps the more specific row there. Whether a layer is contested is a column of the map, not a Python decision. The read joins the value rows of contested layers in one arm, which ranks them, and those of every other layer in a second arm, which passes them straight through. A frozen `Record` keeps today's check, taking the ranking arm only where a layer is contested.
 
 No read is slower than today's, at any depth or series length. Its memory may exceed today's by a small constant, never by an amount that grows with depth or series length.
 
@@ -54,7 +54,7 @@ No read is slower than today's, at any depth or series length. Its memory may ex
 
 A relation of a `WorkingRecord` is a function of the schema and of table names, never of staged rows.
 
-- Every `Record`, frozen or not, lists every dim and every attribute its schema declares, as an empty relation where it holds no rows.
+- Every `Record`, frozen or not, lists every dim and every attribute its schema declares. One with no rows reads an empty relation, where today it raises `KeyError`.
 - A `WorkingRecord` creates every staging table when it is created. An axis table holds a copy of the base's axis, an attribute table starts empty. A `one_of` dim has none.
 - The staged layer owns every axis from the start, so [`dim_owners`](../layers/resolution.md#one-fold-for-every-axis) names it for every dim.
 - The staged layer is a possible owner of every attribute, whether or not it holds rows.
@@ -81,23 +81,23 @@ A fixed fold could enumerate every named set the schema allows, one join per pat
 
 On a 16-layer PyPSA ancestry with 1,000 generators over 8,760 snapshots, the frozen fold runs 171 joins instead of 388, takes 0.68× the time and peaks at 0.45× the buffer memory. Its expansion takes at most 5,637 rows at every series length.
 
-Folding the staged layer per attribute is required as well as fixed. Folding all attributes at once binds every staging table into every relation, which with all tables created eagerly costs seconds per relation for a schema of 150 attributes.
+The staged layer must fold one attribute at a time. A fold of all attributes at once binds every staging table into every relation. For a schema of 150 attributes, that costs seconds per relation.
 
-The eager copy of every axis costs memory per open `WorkingRecord`, axes being small against attribute data. In exchange the staged layer owns every axis from the start, and its restatements need no tracking of what was touched, since the write compares.
+Eager staging tables have a price. Creating a `WorkingRecord` takes 0.4–0.5 s for a schema of 153 attributes, where today it takes no time, and each one holds a copy of every axis. In exchange the staged layer owns every axis from the start. Nothing tracks which axes an edit touched, because the write compares them with the base.
 
-Last writer wins is what a user of an editor expects, and what `set` already does where two rows name the same key. Refusing the second of two crossing edits would make the order of a user's clicks matter.
+Last writer wins is what the user of an editor expects. It is also what `set` already does where two rows name the same key.
 
-A fixed plan cannot skip the ranking from a Python check, as today's read does. Ranking every value row instead kept the plan fixed but read a single base layer with a long series 5× slower and with 1 GB more memory. Carrying the check as data keeps the plan fixed and the ranking's input to the rows that need it. With the staged owner rows kept in tables, every read of the 16-layer ancestry above is at least as fast as today's, most of them 3–10× faster, and `flags()` takes 0.1 s instead of up to 2.7 s.
+A fixed plan cannot skip the ranking from a Python check, as today's read does. Ranking every value row instead kept the plan fixed but read a single base layer with a long series 5× slower and with 1 GB more memory. Carrying the check as data keeps the ranking's input to the rows that need it. With the staged owner rows kept in tables, every read of the 16-layer ancestry above is at least as fast as today's, most of them 3–10× faster, and `flags()` takes 0.1 s instead of up to 2.7 s.
 
-The cost moves to edits. Each edit recomputes the owner rows of the attributes it touched, which adds a few percent to a large `set`. The read of an edited record carries the fold joins of its staged layer and lists every frozen owner, which costs it a few tens of MB more than today's on small data.
+Each edit recomputes the owner rows of the attributes it touched, which adds a few percent to a large `set`. The read of an edited record takes a few tens of MB more memory than today's on small data.
 
-The cost: each owner-map row is copied up to 2^k times, and the checks a layer is refused by move from the read to the places a layer is made.
+A relation that stays valid across edits still pays for each of them. DuckDB 2.0 re-binds every Python relation after any committed write, to any table, schema or cursor. A consumer should therefore hold few relations across a write.
 
-The fixed fold cuts the joins per layer, not the statements. A cold fold still runs a refusal check, a checkpoint and a union bind per frozen layer, so its time stays linear in depth: about 0.45 s per layer over 200 thin layers. Bounding it by depth takes a policy of materialised maps, which this DEP does not set.
+The fixed fold cuts the joins per layer, not the statements, so a cold fold stays linear in depth: about 0.45 s per layer over 200 thin layers.
 
 ## Usage
 
-Nothing changes in what a user writes, except that a crossing `set` succeeds:
+A crossing `set` succeeds:
 
 ```python
 w.set("p_max_pu", 0.5, entity="wind1")
@@ -128,19 +128,21 @@ rel.fetchall()  # holds 150.0
 12. `materialise` reusing the frozen fold a workspace already holds.
 13. `_base_and_above` taking a workspace-held fold of an ancestor as its seed, beside a materialised one.
 
-The check: today's suite, with the tests asserting the refusal of crossing staged edits turned to last-writer-wins; owner maps equal to today's on every ancestry of the equivalence runs; a map materialised by today's code read back identically. After every `set`, `add` and `remove`, every relation built before the edit equals the relation built afresh.
+The check: today's suite, with crossing staged edits turned to last-writer-wins; owner maps equal to today's on every ancestry of the equivalence runs and on a map today's code materialised; after every edit, every relation built before it equals one built afresh.
 
 ## Rejected Ideas
 
 - Masks taken from the powerset of `partial` coordinates while folding all attributes at once. The plan became intractable in a prototype.
 - Named sets enumerated from the schema per attribute. The plan is fixed and fast for one attribute, but runs joins on empty patterns in every fold.
 - Candidate masks as a constant list in the plan. Building the plan takes 4.4 s at nine `partial` dims, against 0.04 s computed per row.
-- Candidate masks joined from a table kept per schema. It ties on PyPSA, but adds three or four joins, more memory and a table to keep.
-- Ranking every value row on read. It keeps the plan fixed but reads a single base layer with a long series 5× slower than today.
-- Refusing a `set` that crosses a staged row. See [Rationale](#rationale).
+- Candidate masks joined from a table per schema. It ties on PyPSA, but adds joins, memory and a table to keep.
+- Ranking every value row on read. See [Rationale](#rationale).
+- Refusing a `set` that crosses a staged row: it makes the order of a user's clicks matter.
+- Separate schemas or attached databases to escape DuckDB's re-bind after a write. Every Python relation on the connection is re-bound regardless.
 
 ## Open Issues
 
 - The checks at `set` and at write still enumerate named sets per pattern, with data-driven fetches.
 - `set` spreads a scenario-scoped or crossing broadcast into one staged row per entity and snapshot.
 - When a deep ancestry materialises its map, so that a cold fold in a fresh workspace is bounded by depth.
+- An edit runs in its own transaction, so it fails where the caller holds an open transaction on the same cursor.
