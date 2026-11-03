@@ -34,6 +34,7 @@ from datarecord.resolve.coords import (
     refuse_one_of_file,
     refuse_twice,
     refuse_unheld,
+    removed_labels,
     resolve_coords,
 )
 from datarecord.resolve.owner_keys import cast_declared
@@ -398,15 +399,7 @@ def _require_living_references(
         now = layer.axis(dim)
         if before is None or now is None:
             continue
-        gone = (
-            before.project(col(dim))
-            .set_alias("b")
-            .join(
-                now.project(col(dim)).set_alias("n"),
-                col("b", dim) == col("n", dim),
-                how="anti",
-            )
-        )
+        gone = removed_labels(before, now, dim)
         if gone.limit(1).fetchall():
             killed[dim] = gone
     if not whole and not killed:
