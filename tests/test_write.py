@@ -25,7 +25,7 @@ from datarecord.resolve import coords
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from datarecord.store.manifest import read_schema
+from datarecord.store.manifest import LayerFiles, Manifest
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -36,7 +36,6 @@ from tests.fixtures import (
     schema,
     unpacked,
     write_axis,
-    write_schema,
 )
 
 
@@ -171,7 +170,7 @@ def test_a_write_builds_each_key_once(store):
             "entity": pd.DataFrame({"entity": ["steel_dri"], "ctype": ["Process"]})
         },
     )
-    store.root(source)
+    store.commit(source, parent=None)
 
     assert sorted(source.built) == [
         "attributes:e_nom",
@@ -185,24 +184,31 @@ def test_a_write_builds_each_key_once(store):
 
 
 def test_a_write_creates_a_new_layer(store):
-    """Files land where `layer_dir` says - data only, no schema.
-
-    The record's one schema goes beside `layers/`, so a layer directory holds
-    nothing but data. That is what keeps it a plain parquet directory a reader
-    knowing nothing about layering can open.
+    """Files land where `layer_dir` says, beside the claim and the manifest listing them.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
-    revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
+    revision = store.commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None, meta={"run": 1}
+    )
 
     base = Path(store.layer_dir(revision.id))
     assert (base / "attributes" / "p_nom.parquet").exists()
-    assert not (base / "manifest.json").exists()
-    # Written once for the whole tree, and it is what the layer is read under.
-    assert read_schema(store) == _SCHEMA
-    assert store.revisions() == [revision], "the revision file makes it real"
+    assert (base / "claim.json").exists()
+    manifest = Manifest.read(store.files, str(base / "manifest.json"))
+    assert manifest == Manifest(
+        id=revision.id,
+        parent=None,
+        schema=_SCHEMA,
+        files=LayerFiles(dims=("entity",), attributes=("p_nom",)),
+        meta={"run": 1},
+    ), "the full schema and every file written, by name"
+    assert revision.manifest == manifest
+    assert [r.id for r in store.revisions()] == [revision.id], (
+        "the manifest makes it real"
+    )
 
 
 def test_no_layer_file_carries_order_key(store, tmp_path):
@@ -221,7 +227,7 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
     """
     entities = ["steel_dri", "h2_north"]
     connection = {"entity": "steel_dri", "bus": "h2_north"}
-    revision = store.root(
+    revision = store.commit(
         _Source(
             _SCHEMA,
             attributes={"p_nom": _long()},
@@ -235,7 +241,8 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
                 )
             },
             connections={"connection": pd.DataFrame({"connection": [connection]})},
-        )
+        ),
+        parent=None,
     )
 
     staged = WorkingRecord(revision.record)
@@ -257,12 +264,13 @@ def test_no_layer_file_carries_order_key(store, tmp_path):
 def test_a_write_rejects_a_category_its_dim_does_not_list(store):
     entities = pd.DataFrame({"entity": ["a"], "ctype": ["Nope"]})
     with pytest.raises(Exception, match="Nope"):
-        store.root(
+        store.commit(
             _Source(
                 _SCHEMA,
                 dims={"entity": entities[["entity"]]},
                 properties={"entity": entities},
-            )
+            ),
+            parent=None,
         )
     _nothing_reachable(store)
 
@@ -274,7 +282,9 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     -----
     - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
-    revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
+    revision = store.commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+    )
     assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
     revision.materialise()
     out = tmp_path / "flat"
@@ -288,10 +298,11 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
         "neither the layer, its cache nor a record written whole holds the list"
     )
 
-    forged = empty_root(store)
-    write_axis(forged, "ctype", [{"ctype": "Process"}])
+    layer = empty_root(store, _SCHEMA)
+    write_axis(layer, "ctype", [{"ctype": "Process"}])
+    forged = layer.commit()
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
-        store.root(ParquetLayer(forged.id, _SCHEMA, store))
+        store.commit(ParquetLayer(forged.manifest, store), parent=None)
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
         forged.record.dims  # noqa: B018
 
@@ -315,7 +326,7 @@ def test_a_record_handing_over_the_one_of_list_writes_no_file_of_it(store):
     -----
     - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
-    revision = store.root(_with_ctype_axis(_CTYPES))
+    revision = store.commit(_with_ctype_axis(_CTYPES), parent=None)
     assert not (Path(store.layer_dir(revision.id)) / "dims" / "ctype.parquet").exists()
     assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
 
@@ -344,7 +355,7 @@ def test_a_record_handing_over_another_one_of_axis_is_refused(store, labels, mat
     - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
     """
     with pytest.raises(ValueError, match=match):
-        store.root(_with_ctype_axis(labels))
+        store.commit(_with_ctype_axis(labels), parent=None)
     _nothing_reachable(store)
 
 
@@ -360,7 +371,7 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
     record = workspace.write(source, out)
 
     assert (Path(out) / "manifest.json").exists()
-    assert record.schema == _SCHEMA.model_copy(update={"id": record.schema.id})
+    assert record.schema == _SCHEMA
     assert workspace.at(out).schema == record.schema
 
     # And it is that file answering: a standalone record is one whole record,
@@ -376,41 +387,49 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
         elsewhere.close()
 
 
-def test_only_a_standalone_manifest_carries_an_id(store, tmp_path):
-    """The id is the schema's field, in the file and on the record read from it.
+def test_a_manifest_carries_its_layers_id(store, tmp_path):
+    """The id is the manifest's, in the file and on the record read from it.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
     out = tmp_path / "standalone"
-    record = store.workspace.write(source, str(out))
+    record = store.workspace.write(source, str(out), meta={"run": "a"})
 
-    written = Schema.model_validate_json((out / "manifest.json").read_text())
-    assert written.id == record.revision_id
-    assert record.schema.id == record.revision_id
+    written = Manifest.read(store.files, str(out / "manifest.json"))
+    assert written is not None
+    assert (written.id, written.parent, written.meta) == (
+        record.revision_id,
+        None,
+        {"run": "a"},
+    )
 
     copy = store.workspace.write(record, str(tmp_path / "copy"))
-    assert copy.schema.id not in {None, record.schema.id}, "a copy mints its own id"
+    assert copy.revision_id != record.revision_id, "a copy mints its own id"
 
-    store.root(record)
-    tree = store.files.read_text(store.manifest_uri)
-    assert tree is not None
-    assert "id" not in json.loads(tree[0]), "a tree's manifest carries no id"
+    revision = store.commit(record, parent=None)
+    assert revision.manifest.id == revision.id != record.revision_id
 
 
-def test_a_directory_without_a_manifest_is_no_standalone_record(store, tmp_path):
-    """`Workspace.at` refuses a layer directory: that is read through its store.
+def test_a_layer_of_a_tree_is_no_standalone_record(store, tmp_path):
+    """`Workspace.at` refuses a layer with a parent: that is read through its store.
+
+    A directory with no manifest holds no record at all.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
-    revision = store.root(_Source(_SCHEMA, attributes={"p_nom": _long()}))
+    source = _Source(_SCHEMA, attributes={"p_nom": _long()})
+    root = store.commit(source, parent=None)
+    child = store.commit(source, parent=root)
+    with pytest.raises(ValueError, match=r"`layer\(id\)`"):
+        store.workspace.at(store.layer_dir(child.id))
+    assert store.layer(child.id).schema == _SCHEMA
     with pytest.raises(FileNotFoundError, match="no manifest"):
-        store.workspace.at(store.layer_dir(revision.id))
-    assert store.layer(revision.id).schema == _SCHEMA
+        store.workspace.at(str(tmp_path / "layers"))
 
 
 def test_a_standalone_write_refuses_an_existing_directory(workspace, tmp_path):
@@ -428,13 +447,15 @@ def test_a_standalone_write_refuses_an_existing_directory(workspace, tmp_path):
 
     out = str(tmp_path / "new")
     record = workspace.write(source, out)
-    assert record.schema == _SCHEMA.model_copy(update={"id": record.schema.id})
+    assert record.schema == _SCHEMA
     with pytest.raises(FileExistsError, match="does not exist yet"):
         workspace.write(source, out)
 
 
 def test_a_failed_standalone_write_leaves_no_record(workspace, tmp_path):
     """The manifest is written last, so a directory whose write failed is none.
+
+    Its data files stay, and the URI takes a record once the caller deletes them.
 
     Notes
     -----
@@ -444,9 +465,13 @@ def test_a_failed_standalone_write_leaves_no_record(workspace, tmp_path):
     short = _long().drop(columns=["breakpoint"])
     with pytest.raises(ValueError, match="missing long-schema columns"):
         workspace.write(_Source(_SCHEMA, attributes={"p_nom": short}), str(out))
-    assert not out.exists()
+    assert not (out / "manifest.json").exists()
     with pytest.raises(FileNotFoundError):
         workspace.at(str(out))
+    with pytest.raises(FileExistsError):
+        workspace.write(_p_nom(1.0), str(out))
+    shutil.rmtree(out)
+    assert _read_p_nom(workspace.write(_p_nom(1.0), str(out))) == [1.0]
 
 
 def _p_nom(value: float) -> _Source:
@@ -498,21 +523,23 @@ def test_a_manifest_without_an_id_is_refused(workspace, tmp_path):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     out = tmp_path / "standalone"
     workspace.write(_p_nom(1.0), str(out))
-    (out / "manifest.json").write_text(_SCHEMA.model_dump_json())
-    with pytest.raises(ValueError, match="no record id"):
+    manifest = json.loads((out / "manifest.json").read_text())
+    del manifest["id"]
+    (out / "manifest.json").write_text(json.dumps(manifest))
+    with pytest.raises(ValueError, match="id\n  Field required"):
         workspace.at(str(out))
 
 
 def _nothing_reachable(store) -> None:
-    """A failed tree write leaves no revision, no layer and no manifest."""
-    assert store.revisions() == [], "no revision file, so nothing reaches a layer"
-    layers = Path(store.uri, "layers")
-    assert not (layers.exists() and any(layers.iterdir())), "staged and removed"
-    assert not Path(store.manifest_uri).exists(), "never widened for no layer"
+    """A failed tree write leaves its layer pending: claimed, with no manifest."""
+    assert store.revisions() == [], "no manifest, so nothing reaches a layer"
+    assert [p.name for p in Path(store.uri, "layers").glob("*/*.json")] == [
+        "claim.json"
+    ]
 
 
 def test_a_file_carries_only_its_own_attributes_coordinates(store):
@@ -529,7 +556,7 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
     - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
     connection = {"entity": "steel_dri", "bus": "h2_north"}
-    revision = store.root(
+    revision = store.commit(
         _Source(
             _SCHEMA,
             attributes={
@@ -539,7 +566,8 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
                 "efficiency": _long(attribute="efficiency", connection=connection),
                 "weight": _long(attribute="weight", scenario="s1"),
             },
-        )
+        ),
+        parent=None,
     )
     inputs = Path(store.layer_dir(revision.id), "attributes")
 
@@ -585,7 +613,7 @@ def test_a_write_rejects_an_undeclared_attribute(store):
     source = _Source(_SCHEMA, attributes={"not_declared": _long()})
 
     with pytest.raises(ValueError, match="not a declared attribute"):
-        store.root(source)
+        store.commit(source, parent=None)
 
 
 def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
@@ -606,7 +634,7 @@ def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
     with pytest.raises(
         ValueError, match=r"carries columns \['bus'\].*not addressed by"
     ):
-        store.root(source)
+        store.commit(source, parent=None)
 
 
 def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
@@ -625,7 +653,7 @@ def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
     source = _Source(_SCHEMA, attributes={"efficiency": short})
 
     with pytest.raises(ValueError, match=r"'connection' as .*\['entity', 'bus'\]"):
-        store.root(source)
+        store.commit(source, parent=None)
 
 
 def test_a_multi_dim_column_round_trips_as_a_struct(store):
@@ -634,7 +662,9 @@ def test_a_multi_dim_column_round_trips_as_a_struct(store):
     row |= {"snapshot": None, "scenario": None, "period": None}
     connection = {"entity": "steel_dri", "bus": "h2_north"}
     frame = pd.DataFrame([{"connection": connection, **row}])
-    revision = store.root(_Source(_SCHEMA, attributes={"efficiency": frame}))
+    revision = store.commit(
+        _Source(_SCHEMA, attributes={"efficiency": frame}), parent=None
+    )
 
     rows = relation(revision, "efficiency").project("connection, value").fetchall()
     assert rows == [(connection, 1.0)]
@@ -646,7 +676,7 @@ def test_a_write_rejects_a_missing_long_column(store):
     source = _Source(_SCHEMA, attributes={"p_nom": short})
 
     with pytest.raises(ValueError, match="missing long-schema columns.*breakpoint"):
-        store.root(source)
+        store.commit(source, parent=None)
     _nothing_reachable(store)
 
 
@@ -661,7 +691,7 @@ def test_a_write_rejects_a_flat_multi_dim_frame(store):
     source = _Source(_SCHEMA, connections={"connection": flat})
 
     with pytest.raises(ValueError, match="missing its key column 'connection'"):
-        store.root(source)
+        store.commit(source, parent=None)
 
 
 def test_a_write_rejects_a_multi_dim_struct_not_of_its_key(store):
@@ -675,7 +705,7 @@ def test_a_write_rejects_a_multi_dim_struct_not_of_its_key(store):
     source = _Source(_SCHEMA, connections={"connection": partial})
 
     with pytest.raises(ValueError, match="one struct column"):
-        store.root(source)
+        store.commit(source, parent=None)
 
 
 def test_a_write_rejects_an_axis_without_its_key_column(store):
@@ -690,7 +720,7 @@ def test_a_write_rejects_an_axis_without_its_key_column(store):
     )
 
     with pytest.raises(ValueError, match="missing its key column 'snapshot'"):
-        store.root(source)
+        store.commit(source, parent=None)
     _nothing_reachable(store)
 
 
@@ -712,16 +742,15 @@ def _add_tuple_junk(store):
 def _write_junk(store):
     frame = pd.DataFrame({"scenario": ["high"], "junk": [1]})
     try:
-        store.root(_Source(_SCHEMA, dims={"scenario": frame}))
+        store.commit(_Source(_SCHEMA, dims={"scenario": frame}), parent=None)
     finally:
         _nothing_reachable(store)
 
 
 def _read_junk(store):
-    write_schema(_SCHEMA, store)
-    root = empty_root(store)
+    root = empty_root(store, _SCHEMA)
     write_axis(root, "scenario", [{"scenario": "high", "junk": 1}])
-    root.record.dims["scenario"].fetchall()
+    root.commit().record.dims["scenario"].fetchall()
 
 
 @pytest.mark.parametrize(
@@ -752,16 +781,15 @@ def test_an_undeclared_column_is_refused(store, write, accepted):
 
 
 def _written_axis(store, frame):
-    store.root(_Source(_SCHEMA, dims={"scenario": frame}))
+    store.commit(_Source(_SCHEMA, dims={"scenario": frame}), parent=None)
 
 
 def _read_axis(store, frame):
-    write_schema(_SCHEMA, store)
-    root = empty_root(store)
-    target = Path(store.layer_dir(root.id), "dims")
+    root = empty_root(store, _SCHEMA)
+    target = root.dir / "dims"
     target.mkdir(parents=True)
     frame.to_parquet(target / "scenario.parquet", index=False)
-    root.record.dims["scenario"].fetchall()
+    root.commit().record.dims["scenario"].fetchall()
 
 
 @pytest.fixture(params=[False, True], ids=["one-pass", "a-pass-per-row"])
@@ -791,7 +819,7 @@ def _scenarios(record) -> list[str]:
 def _xyz(store):
     """A root whose `scenario` axis is `x, y, z`."""
     frame = pd.DataFrame({"scenario": ["x", "y", "z"]})
-    return store.root(_Source(_SCHEMA, dims={"scenario": frame}))
+    return store.commit(_Source(_SCHEMA, dims={"scenario": frame}), parent=None)
 
 
 @pytest.mark.parametrize(
@@ -806,7 +834,8 @@ def test_a_restatement_in_its_parents_order_is_written(store, order):
     - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
     """
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
-    assert _scenarios(_xyz(store).child(restated).record) == order
+    root = _xyz(store)
+    assert _scenarios(store.commit(restated, parent=root).record) == order
 
 
 @pytest.mark.parametrize(
@@ -823,7 +852,7 @@ def test_a_restatement_reordering_its_parents_labels_is_refused(store, order, fi
     root = _xyz(store)
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
     with pytest.raises(ValueError, match=f"scenario '{first}' out of its parent's"):
-        root.child(restated)
+        root.store.commit(restated, parent=root)
 
 
 @pytest.mark.parametrize("materialised", [False, True])
@@ -838,15 +867,15 @@ def test_a_label_added_again_reads_in_one_order(store, materialised):
     root = _xyz(store)
     staged = WorkingRecord(root.record)
     staged.remove("scenario", ["y"])
-    removed = root.child(staged.edits)
+    removed = root.store.commit(staged)
     if materialised:
         removed.materialise()
 
     staged = WorkingRecord(removed.record)
     staged.add("scenario", ["y"])
-    readded = removed.child(staged.edits)
+    readded = removed.store.commit(staged)
     readded.materialise()
-    reads = [staged, readded.record, empty_child(readded).record]
+    reads = [staged, readded.record, empty_child(readded).commit().record]
     assert [_scenarios(r) for r in reads] == [["x", "z", "y"]] * 3
 
 
@@ -863,7 +892,7 @@ def test_an_attribute_column_in_a_dims_frame_is_refused(store):
     )
 
     with pytest.raises(ValueError, match="they are attributes, whose values are long"):
-        store.root(source)
+        store.commit(source, parent=None)
     _nothing_reachable(store)
 
 
@@ -877,15 +906,14 @@ def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
 
     A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
     """
-    write_schema(_SCHEMA, store)
-    base = empty_root(store)
+    base = empty_root(store, _SCHEMA).commit()
     staged = WorkingRecord(base.record)
     staged.add("entity", _ENTITIES, ctype="Generator")
     staged.add("bus", _BUSES)
     staged.add("scenario", _SCENARIOS)
     staged.add("snapshot", [_T])
     staged.add("connection", list(tuples))
-    base = base.child(staged.edits)
+    base = base.store.commit(staged)
     staged = WorkingRecord(base.record)
     for row in rows:
         coords = {c: v for c, v in row.items() if c not in ("value", "connection")}
@@ -902,13 +930,13 @@ def _rows_layer(
     """
     if via == "set":
         base, staged = _rows_staged(store, rows, attribute, tuples)
-        return base.child(staged.edits)
+        return base.store.commit(staged)
     nulls = dict.fromkeys(("entity", "connection", "scenario", "snapshot"))
     frame = pd.concat(
         [_long(**{**nulls, "attribute": attribute, **row}) for row in rows],
         ignore_index=True,
     )
-    return store.root(
+    return store.commit(
         _Source(
             _SCHEMA,
             attributes={attribute: frame},
@@ -924,7 +952,8 @@ def _rows_layer(
                     {"entity": _ENTITIES, "ctype": ["Generator"] * 2}
                 )
             },
-        )
+        ),
+        parent=None,
     )
 
 
@@ -1068,11 +1097,14 @@ def _child(store, attribute: str = "p_nom", connections=None, **row):
     base = _rows_layer(store, [{"entity": "a", "value": 1.0}], "write_layer")
     if connections is not None:
         frame = pd.DataFrame({"connection": connections})
-        return base.child(_Source(_SCHEMA, connections={"connection": frame}, dims={}))
+        return base.store.commit(
+            _Source(_SCHEMA, connections={"connection": frame}, dims={}), parent=base
+        )
     nulls = dict.fromkeys(("entity", "connection", "scenario", "snapshot"))
     frame = _long(**{**nulls, "attribute": attribute, **row})
-    return base.child(
-        _Source(_SCHEMA, attributes={attribute: frame}, connections={}, dims={})
+    return base.store.commit(
+        _Source(_SCHEMA, attributes={attribute: frame}, connections={}, dims={}),
+        parent=base,
     )
 
 
@@ -1180,7 +1212,7 @@ def test_a_label_removed_after_its_set_takes_the_value_with_it(
         rows = record.attributes["p_nom"].df()
         return set(zip(rows["entity"], rows["value"], strict=True))
 
-    reads = [staged, base.child(staged.edits).record]
+    reads = [staged, base.store.commit(staged).record]
     assert [values(r) for r in reads] == [{("b", 1.0)}] * 2, (
         "staged and committed, the removed label's value is gone"
     )
@@ -1212,7 +1244,7 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override,
     lower = _rows_layer(store, rows, via)
     staged = WorkingRecord(lower.record)
     staged.set("p_nom", 5.0, **override)
-    assert _read(lower.child(staged.edits)) == read
+    assert _read(lower.store.commit(staged)) == read
 
 
 @pytest.mark.parametrize("via", ["set", "write_layer"])
@@ -1427,7 +1459,7 @@ def test_a_write_stores_the_declared_type_widening_a_column(
     -----
     - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
     """
-    revision = store.root(_typed(file, column, values))
+    revision = store.commit(_typed(file, column, values), parent=None)
     path = Path(store.layer_dir(revision.id), file)
     on_disk = store.workspace.con.read_parquet(str(path)).project(column)
     assert str(on_disk.types[0]) == stored, f"{column!r} of {file} as declared"
@@ -1478,7 +1510,7 @@ def test_a_write_refuses_a_column_that_does_not_fit_its_dtype(
     with pytest.raises(
         ValueError, match=f"{file}: column '{column}' has type .*{match}"
     ):
-        store.root(_typed(file, column, values))
+        store.commit(_typed(file, column, values), parent=None)
     _nothing_reachable(store)
 
 
@@ -1500,12 +1532,11 @@ def _plant(p_nom: frozenset[str], *, categorized: bool = False) -> Schema:
 
 def _plant_layer(store, schema: Schema, **columns):
     """A root holding `ctype` `Gen` and entities `g1` and `g2` with their `p_nom`, under `schema`."""
-    write_schema(schema, store)
-    root = empty_root(store)
+    root = empty_root(store, schema).commit()
     staged = WorkingRecord(root.record)
     staged.add("entity", ["g1", "g2"], **columns)
     staged.set("p_nom", {"g1": 1.0, "g2": 2.0})
-    return root.child(staged.edits)
+    return root.store.commit(staged)
 
 
 def test_a_single_dim_attribute_is_long_rows_of_attributes(store):
@@ -1541,10 +1572,10 @@ def test_widening_a_single_dim_attribute_reads_old_rows_in_every_scenario(store)
 
     wide = _plant(frozenset({"entity", "scenario"}))
     assert wide.compatible_with(narrow) == []
-    write_schema(wide, store)
-    staged = WorkingRecord(store.revision(layer.id).record)
+    widened = empty_child(layer, wide).commit()
+    staged = WorkingRecord(widened.record)
     staged.add("scenario", ["low", "high"])
-    child = store.revision(layer.id).child(staged.edits)
+    child = store.commit(staged)
 
     assert broadcast(child.record, "p_nom", "entity", "scenario") == {
         ("g1", "low"): 1.0,
@@ -1645,8 +1676,8 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     -----
     - [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
     """
-    root = store.root(_awkward({("a", "near"): 1.0, ("b", "far"): 2.0}))
-    child = root.child(_awkward({("b", "far"): 5.0}))
+    root = store.commit(_awkward({("a", "near"): 1.0, ("b", "far"): 2.0}), parent=None)
+    child = root.store.commit(_awkward({("b", "far"): 5.0}), parent=root)
 
     assert child.record.schema == _AWKWARD, "the manifest reads back unchanged"
     rows = relation(child, "Order_Size").df()
@@ -1660,7 +1691,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     out = str(tmp_path / "standalone")
     workspace.write(child.record, out)
     again = workspace.at(out)
-    assert again.schema == _AWKWARD.model_copy(update={"id": again.schema.id})
+    assert again.schema == _AWKWARD
     flat = again.attributes["Order_Size"].df()
     assert dict(zip(zip(flat["select"], flat["Horizon"]), flat["value"])) == got, (
         "a flattened standalone copy reads the same"

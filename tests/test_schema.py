@@ -850,6 +850,15 @@ def test_round_trips_through_json():
     assert back == s
 
 
+def test_json_lists_each_set_sorted():
+    """A set's order varies with the hash seed; the JSON keys the workspace's `schemas` table."""
+    written = json.loads(pypsa_schema().model_dump_json())
+    sets = [written["partial"], *(a["dims"] for a in written["attributes"].values())]
+    assert all(s == sorted(s) for s in sets), (
+        "the same schema dumps alike in every process"
+    )
+
+
 @pytest.mark.parametrize(
     "path",
     [

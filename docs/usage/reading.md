@@ -156,7 +156,7 @@ The layout is the whole format ([design](../design/storage/format.md)):
 
 ```text
 record/
-├── manifest.json            # the schema, and the record's id
+├── manifest.json            # the record's id, its schema and the files it holds
 ├── dims/<dim>.parquet       # one axis per declared dim, multi-dims included: labels and their properties
 └── attributes/<attr>.parquet  # one attribute per file, whatever its dims, results included
 ```

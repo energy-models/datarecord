@@ -26,7 +26,6 @@ from tests.fixtures import (
     write_attribute,
     write_component,
     write_multi_dim,
-    write_schema,
 )
 
 MEMBERS = ("dims", "properties", "attributes")
@@ -39,12 +38,10 @@ def written(store):
     One generator with a `p_max_pu` series and an `efficiency` on its
     connection, so attributes, the entity axis and a multi-dim are all present.
     """
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_component(revision, "Generator", [{"entity": "wind"}])
+    layer = empty_root(store, schema())
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_multi_dim(
-        revision, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
+        layer, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
     )
     write_attribute(
         layer,
@@ -57,7 +54,7 @@ def written(store):
     write_attribute(
         layer, "efficiency", [{"entity": "wind", "bus": "north", "value": 0.9}]
     )
-    return revision
+    return layer.commit()
 
 
 @pytest.fixture
@@ -154,7 +151,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
 
     # And the writer consumes it, which is the point of widening the type:
     # it iterates and looks up, both of which a `dict` answers.
-    revision = store.root(record)
+    revision = store.commit(record, parent=None)
     assert "p_nom" in store.layer(revision.id).attributes
 
 
@@ -167,7 +164,7 @@ def test_the_writer_refuses_timestamps_with_a_time_zone(store):
     """
     record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
     with pytest.raises(ValueError, match="carry timestamps with a time zone"):
-        store.root(record)
+        store.commit(record, parent=None)
 
 
 def test_constructions_agree_on_every_key_set(both):
@@ -246,10 +243,8 @@ def test_flags_report_both_sets_where_components_disagree(store):
     -----
     - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     """
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_component(revision, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
+    layer = empty_root(store, schema())
+    write_component(layer, "Generator", [{"entity": "wind"}, {"entity": "gas"}])
     write_attribute(
         layer,
         "p_max_pu",
@@ -260,7 +255,7 @@ def test_flags_report_both_sets_where_components_disagree(store):
         + [{"entity": "gas", "value": 1.0}],
     )
 
-    record = revision.record
+    record = layer.commit().record
     combined = record.flags()["p_max_pu"]
     assert "snapshot" in combined.varies
     assert "snapshot" in combined.broadcast
@@ -282,9 +277,8 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
     - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
     - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     """
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(
+    layer = empty_root(
+        store,
         schema(
             attributes={
                 "Generator": {
@@ -296,13 +290,12 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
                 }
             }
         ),
-        store,
     )
-    write_component(revision, "Generator", [{"entity": "wind"}])
+    write_component(layer, "Generator", [{"entity": "wind"}])
     write_attribute(layer, "p_nom", [{"entity": "wind", "value": 100.0}])
     write_attribute(layer, "p_max_pu", [{"entity": "wind", "value": 0.9}])
 
-    record = revision.record
+    record = layer.commit().record
     flags = record.flags()
     # Addressed by `entity` alone, so no other axis is reportable either way.
     assert flags["p_nom"].varies == {"entity"}
@@ -328,21 +321,21 @@ def test_node_record_orders_members(store):
     - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    root = empty_root(store)
-    write_schema(schema(), store)
+    root_layer = empty_root(store, schema())
     write_component(
-        root,
+        root_layer,
         "Generator",
         [{"entity": "wind"}, {"entity": "gas"}, {"entity": "coal"}],
     )
+    root = root_layer.commit()
     root.materialise()
-    middle = empty_child(root)
+    middle = empty_child(root).commit()
     middle.materialise()
 
     child = empty_child(middle)
     write_component(child, "Generator", [{"entity": "New Solar"}])
 
-    axis = child.record.properties["entity"].df()
+    axis = child.commit().record.properties["entity"].df()
     names = list(axis[axis["ctype"] == "Generator"]["entity"])
     assert names == ["wind", "gas", "coal", "New Solar"], (
         "the child restates the root's members in order, then its addition"
@@ -359,11 +352,10 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     -----
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
-    revision = empty_root(store)
-    write_schema(schema(), store)
-    write_component(revision, "Generator", [{"entity": "wind"}])
+    layer = empty_root(store, schema())
+    write_component(layer, "Generator", [{"entity": "wind"}])
 
-    assert "connection" not in store.layer(revision.id).dims
+    assert "connection" not in store.layer(layer.commit().id).dims
 
 
 def test_missing_key_raises(both):
@@ -398,7 +390,7 @@ def test_an_unsolved_network_has_no_results(both):
 
 
 def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
-    """A store's schema comes from *its* location, and so do its layers.
+    """A revision's schema comes from its own manifest, under *its* location.
 
     Two records on two locations disagree about their dims without either
     being wrong, while sharing one workspace.
@@ -410,27 +402,18 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
     ]
     for name, dims in cases:
         store = workspace.store(str(tmp_path / name))
-        write_schema(schema(dims=dims, partial=set(dims)), store)
-        revision = empty_root(store)
-        write_attribute(
-            store.layer_dir(revision.id), "p_nom", [{"entity": "g", "value": 1.0}]
-        )
-        stores[name] = (store, revision)
+        layer = empty_root(store, schema(dims=dims, partial=set(dims)))
+        write_attribute(layer, "p_nom", [{"entity": "g", "value": 1.0}])
+        stores[name] = (store, layer.commit())
 
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
-    # Beyond `entity` and `bus`, which every schema here declares, the multi-dim.
     a, b = revision_a.record.schema, revision_b.record.schema
     assert a.broadcast_dims == ("entity", "bus", "scenario", "ctype", "connection")
-    assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection")
-
-    # A layer read directly needs no schema supplied either: its own directory
-    # carries none (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record), so its store's answers.
-    assert store_b.layer(revision_b.id).schema.broadcast_dims == (
-        "entity",
-        "bus",
-        "vintage",
-        "ctype",
-        "connection",
+    assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection"), (
+        "each location's own dims beside `entity`, `bus` and the multi-dim"
+    )
+    assert store_b.layer(revision_b.id).schema == b, (
+        "a layer read alone takes its schema from its manifest"
     )
 
     for name, (store, revision) in stores.items():
@@ -438,4 +421,4 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
         assert (location / "layers" / str(revision.id)).is_dir(), (
             "each location's layers land under it"
         )
-        assert (location / "revisions" / f"{revision.id}.json").is_file()
+        assert (location / "layers" / str(revision.id) / "manifest.json").is_file()

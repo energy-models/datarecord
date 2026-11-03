@@ -16,9 +16,11 @@ from typing import Any
 import pytest
 
 from datarecord.mutable import WorkingRecord
+from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec
 from datarecord.store.store import Revision
 from tests.fixtures import (
+    HandBuilt,
     broadcast,
     drop_connections,
     drop_entities,
@@ -32,7 +34,6 @@ from tests.fixtures import (
     write_component,
     write_connections,
     write_multi_dim,
-    write_schema,
 )
 
 PROCESS = "Process"
@@ -47,15 +48,13 @@ def _connections(revision):
     return revision.record.dims["connection"]
 
 
-def _root(store) -> Revision:
-    """A record whose layer has one Process with three connections."""
-    write_schema(schema(), store)
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_axis(revision, "bus", [{"bus": b} for b in ("h2_north", "iron_ore", "dri")])
-    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
+def _root(store, declared: Schema | None = None) -> HandBuilt:
+    """A layer with one Process with three connections, under `declared` else `schema()`."""
+    layer = empty_root(store, declared or schema())
+    write_axis(layer, "bus", [{"bus": b} for b in ("h2_north", "iron_ore", "dri")])
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
-        revision,
+        layer,
         [
             {"entity": "steel_dri", "bus": "h2_north"},
             {"entity": "steel_dri", "bus": "iron_ore"},
@@ -70,7 +69,7 @@ def _root(store) -> Revision:
             for b, v in (("h2_north", 2.1), ("iron_ore", 1.6), ("dri", 1.0))
         ],
     )
-    return revision
+    return layer
 
 
 def _efficiencies(revision) -> dict[str, float]:
@@ -80,19 +79,19 @@ def _efficiencies(revision) -> dict[str, float]:
 
 def test_connections_resolve_in_order(store):
     """A component's connections come back in the order of the file holding them."""
-    revision = _root(store)
+    revision = _root(store).commit()
     frame = unpacked(_connections(revision))
     assert list(frame["bus"]) == ["h2_north", "iron_ore", "dri"]
 
 
 def test_patch_overrides_one_connection_only(store):
     """The sibling-clobbering case: `bus` in `owner_map_key` scopes ownership per connection."""
-    root = _root(store)
+    root = _root(store).commit()
     root.materialise()
 
     child = empty_child(root)
     write_attribute(
-        store.layer_dir(child.id),
+        child,
         "efficiency",
         [
             {
@@ -106,23 +105,27 @@ def test_patch_overrides_one_connection_only(store):
 
     # The patched connection takes the child's value; its siblings keep the
     # root's rather than vanishing.
-    assert _efficiencies(child) == {"h2_north": 9.9, "iron_ore": 1.6, "dri": 1.0}
+    assert _efficiencies(child.commit()) == {
+        "h2_north": 9.9,
+        "iron_ore": 1.6,
+        "dri": 1.0,
+    }
 
 
 def test_patch_hits_the_bus_it_named_not_a_position(store):
     """An intermediate layer inserting a connection does not redirect a later patch."""
-    root = _root(store)
+    root = _root(store).commit()
     root.materialise()
 
     # A middle layer prepends a connection, which under a positional encoding
     # would shift every later index by one.
-    middle = empty_child(root)
+    middle_layer = empty_child(root)
     write_connections(
-        middle,
+        middle_layer,
         [{"entity": "steel_dri", "bus": "elec_north"}],
     )
     write_attribute(
-        store.layer_dir(middle.id),
+        middle_layer,
         "efficiency",
         [
             {
@@ -133,11 +136,12 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
             }
         ],
     )
+    middle = middle_layer.commit()
     middle.materialise()
 
     leaf = empty_child(middle)
     write_attribute(
-        store.layer_dir(leaf.id),
+        leaf,
         "efficiency",
         [
             {
@@ -149,7 +153,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
         ],
     )
 
-    assert _efficiencies(leaf) == {
+    assert _efficiencies(leaf.commit()) == {
         "h2_north": 2.1,
         "iron_ore": 1.6,
         "dri": 7.7,  # the bus the patch named
@@ -167,22 +171,23 @@ def test_component_level_attribute_is_unaffected(store):
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     """
-    root = _root(store)
+    layer = _root(store)
     write_attribute(
-        store.layer_dir(root.id),
+        layer,
         "p_nom",
         [{"ctype": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
+    root = layer.commit()
     root.materialise()
 
     child = empty_child(root)
     write_attribute(
-        store.layer_dir(child.id),
+        child,
         "p_nom",
         [{"ctype": PROCESS, "entity": "steel_dri", "value": 250.0}],
     )
 
-    df = relation(child, "p_nom").df()
+    df = relation(child.commit(), "p_nom").df()
     assert list(df["value"]) == [250.0]
     assert "bus" not in df.columns, (
         "`p_nom` is not addressed by the connection multi-dim"
@@ -196,11 +201,9 @@ def test_per_connection_attribute_varies_by_snapshot(store):
     -----
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
-    write_schema(schema(), store)
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
-    write_connections(revision, [{"entity": "steel_dri", "bus": "h2_north"}])
+    layer = empty_root(store, schema())
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
+    write_connections(layer, [{"entity": "steel_dri", "bus": "h2_north"}])
     write_attribute(
         layer,
         "efficiency",
@@ -229,6 +232,7 @@ def test_per_connection_attribute_varies_by_snapshot(store):
         ],
     )
 
+    revision = layer.commit()
     flags = revision.record.flags()["efficiency"]
     # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
     # another's is a single broadcast row, and the union over the rows
@@ -242,11 +246,12 @@ def test_per_connection_attribute_varies_by_snapshot(store):
 
 def test_restating_without_a_connection_removes_it(store):
     """A restatement omitting a connection drops its row and its `attributes/` rows."""
-    root = _root(store)
+    root = _root(store).commit()
     root.materialise()
 
-    child = empty_child(root)
-    drop_connections(child, [("steel_dri", "iron_ore")])
+    child_layer = empty_child(root)
+    drop_connections(child_layer, [("steel_dri", "iron_ore")])
+    child = child_layer.commit()
 
     frame = unpacked(_connections(child))
     assert set(frame["bus"]) == {"h2_north", "dri"}
@@ -262,15 +267,16 @@ def test_a_removed_component_reaches_its_connections_through_their_removal(store
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    root = _root(store)
+    root = _root(store).commit()
     root.materialise()
 
-    both = empty_child(root)
-    drop_entities(both, ["steel_dri"])
+    both_layer = empty_child(root)
+    drop_entities(both_layer, ["steel_dri"])
     drop_connections(
-        both,
+        both_layer,
         [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
     )
+    both = both_layer.commit()
     frame = both.record.dims["connection"]
     assert frame.count("*").fetchall() == [(0,)], "every connection row is removed"
     assert "efficiency" not in both.record.attributes, "and their values go with them"
@@ -288,22 +294,21 @@ def test_a_dim_a_multi_dim_draws_on_still_broadcasts(store):
     - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
     """
     price = AttributeSpec(dtype="float", dims={"bus", "snapshot"})
-    write_schema(
-        schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"}), store
-    )
-    root = empty_root(store)
-    layer = store.layer_dir(root.id)
-    write_axis(root, "bus", [{"bus": "north"}, {"bus": "south"}])
+    declared = schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"})
+    layer = empty_root(store, declared)
+    write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
     write_attribute(layer, "marginal_price", [{"value": 5.0}], connection=False)
+    root = layer.commit()
     root.materialise()
 
-    child = empty_child(root)
+    child_layer = empty_child(root)
     write_attribute(
-        store.layer_dir(child.id),
+        child_layer,
         "marginal_price",
         [{"bus": "south", "value": 7.0}],
         connection=False,
     )
+    child = child_layer.commit()
 
     def prices(revision):
         resolved = broadcast(revision.record, "marginal_price", "bus")
@@ -321,9 +326,9 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    root = _root(store)
+    root = _root(store).commit()
     child = empty_child(root)
-    target = Path(store.layer_dir(child.id), "attributes")
+    target = Path(child.dir, "attributes")
     target.mkdir(parents=True, exist_ok=True)
     store.workspace.con.sql(
         """
@@ -331,7 +336,11 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
                'efficiency' AS attribute, NULL::DOUBLE AS breakpoint, 0.5 AS value
         """
     ).to_parquet(str(target / "efficiency.parquet"))
-    assert _efficiencies(child) == {"h2_north": 0.5, "iron_ore": 0.5, "dri": 0.5}
+    assert _efficiencies(child.commit()) == {
+        "h2_north": 0.5,
+        "iron_ore": 0.5,
+        "dri": 0.5,
+    }
 
 
 def test_a_multi_dim_outside_partial_is_owned_whole(store):
@@ -343,19 +352,20 @@ def test_a_multi_dim_outside_partial_is_owned_whole(store):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
-    root = _root(store)
-    write_schema(schema(partial={"scenario"}), store)
+    root = _root(store, schema(partial={"scenario"})).commit()
     child = empty_child(root)
     write_attribute(
-        store.layer_dir(child.id),
+        child,
         "efficiency",
         [{"entity": "steel_dri", "bus": "h2_north", "value": 9.9}],
     )
-    assert _efficiencies(child) == {"h2_north": 9.9}, "the child restates the attribute"
+    assert _efficiencies(child.commit()) == {"h2_north": 9.9}, (
+        "the child restates the attribute"
+    )
 
     gone = empty_child(root)
     drop_connections(gone, [("steel_dri", "iron_ore")])
-    assert _efficiencies(gone) == {"h2_north": 2.1, "dri": 1.0}
+    assert _efficiencies(gone.commit()) == {"h2_north": 2.1, "dri": 1.0}
 
 
 def _connection(entity, bus):
@@ -377,12 +387,12 @@ def test_remove_drops_the_tuples_naming_the_entity(store):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    base = _root(store)
+    base = _root(store).commit()
     other = WorkingRecord(base.record)
     other.add("entity", ["blast_furnace"], ctype=PROCESS)
     other.add("connection", _connection("blast_furnace", "iron_ore"))
     other.set("efficiency", 3.0, entity=["blast_furnace"], bus="iron_ore")
-    root = base.child(other.edits)
+    root = base.store.commit(other)
 
     staged = WorkingRecord(root.record)
     staged.set("efficiency", 0.5, entity=["steel_dri"], bus="dri")
@@ -394,7 +404,7 @@ def test_remove_drops_the_tuples_naming_the_entity(store):
         "neither the base's nor the staged values, and another entity keeps its own"
     )
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert set(unpacked(child.record.dims["connection"])["entity"]) == {"blast_furnace"}
     assert _efficiency_rows(child.record) == {("blast_furnace", "iron_ore"): 3.0}
 
@@ -406,10 +416,10 @@ def test_add_refuses_a_tuple_naming_a_removed_entity(store):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    root = _root(store)
+    root = _root(store).commit()
     staged = WorkingRecord(root.record)
     staged.remove("entity", ["steel_dri"])
-    removed = root.child(staged.edits)
+    removed = root.store.commit(staged)
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
@@ -455,14 +465,15 @@ def test_a_tuple_an_ancestor_left_dangling_fails_the_next_restatement(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    root = _root(store)
-    dangling = empty_child(root)
-    drop_entities(dangling, ["steel_dri"])
+    root = _root(store).commit()
+    dangling_layer = empty_child(root)
+    drop_entities(dangling_layer, ["steel_dri"])
+    dangling = dangling_layer.commit()
 
     staged = WorkingRecord(dangling.record)
     edit(staged)
     with outcome:
-        dangling.child(staged.edits)
+        dangling.store.commit(staged)
 
 
 def test_set_requires_every_party_to_exist(store):
@@ -485,20 +496,18 @@ def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    root = _root(store)
-    write_schema(schema(partial={"scenario"}), store)
+    root = _root(store, schema(partial={"scenario"})).commit()
     dead = Path(store.resolved_dir(root.id), "dead")
     root.materialise()
     assert not dead.exists() or not any(dead.iterdir()), "nothing dead, no file"
 
     staged = WorkingRecord(root.record)
     staged.remove("entity", ["steel_dri"])
-    removed = root.child(staged.edits)
+    removed = root.store.commit(staged)
     removed.materialise()
     assert Path(store.resolved_dir(removed.id), "dead", "connection.parquet").exists()
 
-    leaf = empty_child(removed)
-    assert _efficiencies(leaf) == {}
+    assert _efficiencies(empty_child(removed).commit()) == {}
 
 
 def test_readding_a_tuple_outside_partial_revives_its_values(store):
@@ -508,17 +517,16 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    root = _root(store)
-    write_schema(schema(partial={"scenario"}), store)
+    root = _root(store, schema(partial={"scenario"})).commit()
     staged = WorkingRecord(root.record)
     staged.remove("entity", ["steel_dri"])
-    removed = root.child(staged.edits)
+    removed = root.store.commit(staged)
     removed.materialise()
 
     revived = WorkingRecord(removed.record)
     revived.add("entity", ["steel_dri"], ctype=PROCESS)
     revived.add("connection", _connection("steel_dri", "dri"))
-    assert _efficiencies(removed.child(revived.edits)) == {"dri": 1.0}
+    assert _efficiencies(removed.store.commit(revived)) == {"dri": 1.0}
 
 
 # -- a multi-dim drawing twice on `entity` ----------------------------------
@@ -533,30 +541,26 @@ def _contract_root(store) -> Revision:
     either party: both ride inside the `contract` struct.
     """
     price = AttributeSpec(dtype="float", dims={"contract", "snapshot"})
-    write_schema(
-        schema(
-            attributes={SELLER: {"price": price}},
-            partial={"scenario", "contract"},
-            multi_dims={
-                "connection": {"entity": "entity", "bus": "bus"},
-                "contract": {"from": "entity", "to": "entity"},
-            },
-        ),
-        store,
+    declared = schema(
+        attributes={SELLER: {"price": price}},
+        partial={"scenario", "contract"},
+        multi_dims={
+            "connection": {"entity": "entity", "bus": "bus"},
+            "contract": {"from": "entity", "to": "entity"},
+        },
     )
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_component(revision, SELLER, [{"entity": "plant"}])
-    write_component(revision, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
+    layer = empty_root(store, declared)
+    write_component(layer, SELLER, [{"entity": "plant"}])
+    write_component(layer, BUYER, [{"entity": "mill"}, {"entity": "smelter"}])
     write_multi_dim(
-        revision,
+        layer,
         "contract",
         [
             {"contract": {"from": "plant", "to": "mill"}},
             {"contract": {"from": "plant", "to": "smelter"}},
         ],
     )
-    Path(layer, "attributes").mkdir(parents=True, exist_ok=True)
+    Path(layer.dir, "attributes").mkdir(parents=True, exist_ok=True)
     store.workspace.con.sql(
         """
         SELECT {'from': 'plant', 'to': c}::STRUCT("from" VARCHAR, "to" VARCHAR)
@@ -564,8 +568,8 @@ def _contract_root(store) -> Revision:
                NULL::TIMESTAMP AS snapshot, 'price' AS attribute, v AS value
         FROM (VALUES ('mill', 10.0), ('smelter', 20.0)) t(c, v)
         """
-    ).to_parquet(str(Path(layer, "attributes", "price.parquet")))
-    return revision
+    ).to_parquet(str(Path(layer.dir, "attributes", "price.parquet")))
+    return layer.commit()
 
 
 def _prices(record) -> dict[str, float]:
@@ -592,7 +596,7 @@ def test_remove_reaches_a_multi_dims_second_entity_before_and_after_commit(store
     staged.remove("entity", ["mill"])
     assert _prices(staged) == {"smelter": 20.0}, "neither the base's nor the staged"
 
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
     contracts = child.record.dims["contract"]
     assert len(contracts) == 1, "its tuple went with it"

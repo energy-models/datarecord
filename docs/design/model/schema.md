@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # The schema
 
-A record has one schema, written as `manifest.json` beside its layers. It declares the record's dims, properties and attributes, maps each dtype to one DuckDB type, and limits which names may become columns.
+Each layer's `manifest.json` carries in full the schema the layer was written under, which may be narrower than a descendant's. A schema declares dims, properties and attributes, maps each dtype to one DuckDB type, and limits which names may become columns.
 
 ```python
 class Dimension(BaseModel):
@@ -98,24 +98,17 @@ Labels are data, and none of these rules constrain them. Beyond these columns, n
 
 ## One schema per record
 
-A record has one schema. A directory record's schema is `manifest.json` in the directory. A layered record's schema lives beside the layers, and no layer holds one:
+A record is read under its last layer's schema, the one that layer's [manifest](../storage/store.md#the-layers) carries. Each layer's `manifest.json` holds the full schema the layer was written under, never a delta, so one file answers a revision's schema without walking its ancestry, and a revision reads every layer of its ancestry under its own. A layer's data files hold no schema, which keeps each a plain parquet file that a tool knowing nothing about layering can read.
 
-```text
-record-root/
-├── manifest.json               # the schema, one for the whole tree
-└── layers/<uuid>/              # a layer: dims/, attributes/
-    └── resolved/               # caches (owner map, dim owners, dead labels)
-```
+The schema is not layered data, and nothing folds it. A child's schema must pass `compatible_with` against its parent's, and a root's is free, so a layer cannot change what `p_nom` means, its dtype or the dims it varies over ([versioning](#versioning)). A child may widen its parent's schema. A new attribute then reaches that child and its descendants, and no revision written before, so one branch's experiment leaves its siblings as they were, and two sibling branches may declare one name differently. `schema.meta` is part of the schema and a child inherits it, unlike the revision's own `meta` in the manifest.
 
-The schema is not layered data. A layer cannot change what `p_nom` means, its dtype or the dims it varies over. The schema is known without walking the ancestry, and the record can validate it before anything is read. Adding an attribute amends the root schema, so a new attribute is visible at the top of the tree. A layer directory holds only data, which keeps it a plain parquet directory that a tool knowing nothing about layering can read.
+A standalone record carries its own `manifest.json`, with no parent. `Workspace.at(uri)` reads that file, so the record answers the same through any workspace, and `at` refuses a directory without one. Its id, a UUID that `ws.write` mints, is the manifest's and not the schema's. The id is the record's layer id, which keys the fold tables a workspace shares. An id derived from the URI would serve stale folds to a record deleted and written again at that URI, or to a relative path read from another working directory. A layer of a store is read alone through its [store](../storage/store.md#the-store), `store.layer(id)`, under its own manifest, and `at` refuses a manifest that names a parent.
 
-A standalone record carries its own `manifest.json`. `Workspace.at(uri)` reads that file, so the record answers the same through any workspace, and `at` refuses a directory without one. A standalone manifest also carries an `id`, a UUID that `ws.write` mints, as the schema's optional `id` field, so the file stays flat and validates whole. The id is the record's layer id, which keys the fold tables a workspace shares. An id derived from the URI would serve stale folds to a record deleted and written again at that URI, or to a relative path read from another working directory. `at` refuses a manifest without an id. Rooting a schema into a tree clears its id. A tree's manifest needs none, since its revisions name its layers. A single layer directory carries no manifest, so it is read through its [store](../storage/store.md#the-store), `store.layer(id)`, under the manifest of the tree it belongs to.
-
-An edit changes neither kind of schema. A [`WorkingRecord`](../use/editing.md) is one more layer over its base. A layer declares nothing, so a working record reads under its base's schema, standalone or not.
+An edit changes no schema. A [`WorkingRecord`](../use/editing.md) is one more layer over its base, and a layer declares nothing until it is committed, so a working record reads under its base's schema, standalone or not, and its edits are committed under it.
 
 ## Versioning
 
-One schema outlives many layers, so a change to it meets data written under the previous one. `version` records which schema a record's layers were written against. What matters is which changes existing layers survive.
+A child may declare a wider schema than its parent, so a read meets layers written under an older schema than its own. `version` records which schema a layer was written against. What matters is which changes existing layers survive.
 
 A compatible change keeps old layers readable. `version` bumps and nothing else happens:
 
@@ -132,7 +125,7 @@ An incompatible change makes existing rows decode differently, or not at all:
 - moving a name between `properties` and `attributes`, or between subjects, which moves the [file](../storage/format.md#where-a-value-lives) its value is read from
 - removing from `partial`, after which a layer that patched one value along that axis is a partial override of an axis owned whole, which [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) forbids
 
-The compatible changes are those where NULL already means what the new schema needs, so [the broadcast rule](attributes.md#the-broadcast-rule) absorbs them and no row changes. `schema.compatible_with(other)` returns one reason per incompatibility.
+The compatible changes are those where NULL already means what the new schema needs, so [the broadcast rule](attributes.md#the-broadcast-rule) absorbs them and no row changes. `schema.compatible_with(other)` returns one reason per incompatibility. A commit checks the child's schema against its parent's manifest this way before it writes any data, and refuses an incompatible one, leaving the layer [pending](../storage/store.md#a-revision-exists-only-by-its-file).
 
 An incompatible change needs the layers rewritten. For a layered record that means flattening it to a [standalone directory](../storage/concurrency.md#a-standalone-directory) under the new schema. A reader that meets a `version` it was not written for should refuse, since every failure above is silent.
 

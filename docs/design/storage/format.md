@@ -13,16 +13,18 @@ The section in which a name is declared decides the file its values go in.
 
 [A write](../use/writing.md) produces the directory, and `Workspace.at(uri)` reads it.
 A record that is never written has no directory and answers [the protocol](../use/reading.md) all the same.
+A layer of a [store](store.md#the-layers) has the same layout under `layers/<id>/`, beside its `claim.json` and its `resolved/` node caches.
 
 ```text
 record/
-├── manifest.json                   # the schema, and the record's id
+├── manifest.json                   # its id, parent, full schema, files and meta
 ├── dims/<dim>.parquet              # one axis per declared dim but those with one_of, multi-dims included: labels and properties
 └── attributes/<attr>.parquet       # one attribute per file, results included
 ```
 
 Each file is named for what it holds: `dims/scenario.parquet` holds the `scenario` axis, and `attributes/p_nom.parquet` holds `p_nom`.
 A file takes the declared name unchanged, so the dim `bus` lives in `dims/bus.parquet`.
+The [manifest](store.md#the-layers) lists the files by these names, and a read opens exactly those and ignores any other file in the directory.
 
 ## Axis files
 

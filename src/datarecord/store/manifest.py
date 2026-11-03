@@ -2,102 +2,164 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The record's one schema, read from and written to `manifest.json` beside its layers.
+"""A layer's `manifest.json`, which makes it a revision, and its `claim.json`.
+
+A layer carries its own manifest: its id, its parent, the full schema it was
+written under, the files it wrote and a flat `meta`. A claim reserves the id
+before any data is written, and is kept.
 
 Notes
 -----
-- [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
-- [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
+- [workspaces and stores](https://energy-models.github.io/datarecord/design/storage/store/)
+- [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
 """
 
 from __future__ import annotations
 
-import random
-from time import sleep
-from typing import TYPE_CHECKING
+from datetime import datetime
+from typing import TYPE_CHECKING, Annotated
+from uuid import UUID
+
+from pydantic import ConfigDict, Field, TypeAdapter
+from pydantic.dataclasses import dataclass
 
 from datarecord.schema.schema import Schema
-from datarecord.store.files import Absent, PreconditionFailedError, Version
 
 if TYPE_CHECKING:
-    from datarecord.store.store import Store
+    from datarecord.store.files import Files
+
+Meta = dict[str, str | int | Annotated[float, Field(allow_inf_nan=False)] | bool]
+"""A revision's own `meta`: flat, set at its write, and not inherited.
+
+A float is finite, since JSON has no NaN or infinity to store it as.
+"""
 
 
-def read_schema(store: Store) -> Schema:
-    """The record's one schema, read from beside `store`'s layers.
+@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+class LayerFiles:
+    """What a layer wrote, by declared name: `dims/<dim>.parquet`, `attributes/<attr>.parquet`.
 
-    No fold and no ancestry: a schema is not layered data. One file makes it a
-    property of the record, knowable before any layer is read and stated once
-    for a hundred-layer tree. A record that declares none reads as an empty
-    `Schema`, which declares no dims and no attributes.
+    A read opens exactly these and ignores any other file in the layer.
+    """
+
+    dims: tuple[str, ...] = ()
+    attributes: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+class Manifest:
+    """A layer's `manifest.json`: written last and create-only, it makes the revision exist.
+
+    Attributes
+    ----------
+    parent
+        The revision this layer folds over, `None` for a root or a standalone
+        directory.
+    schema
+        The full schema the layer was written under, never a delta.
+    meta
+        The revision's own: set at the write, and not inherited by a child,
+        unlike `schema.meta`.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [workspaces and stores](https://energy-models.github.io/datarecord/design/storage/store/)
     """
-    found = store.files.read_text(store.manifest_uri)
-    return Schema() if found is None else Schema.model_validate_json(found[0])
+
+    id: UUID
+    parent: UUID | None
+    schema: Schema
+    files: LayerFiles
+    meta: Meta = Field(default_factory=dict)
+
+    def write(self, files: Files, uri: str) -> None:
+        """Write this manifest at `uri`, create-only.
+
+        Raises
+        ------
+        PreconditionFailedError
+            If a manifest is already there.
+        """
+        _create(files, uri, _MANIFEST, self)
+
+    @classmethod
+    def read(cls, files: Files, uri: str) -> Manifest | None:
+        """The manifest at `uri`, or `None` where there is none."""
+        return _read(files, uri, _MANIFEST)
 
 
-def reconcile_schema(schema: Schema, store: Store) -> None:
-    """Declare the record's schema, or check this layer agrees with it.
+@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+class ClaimFile:
+    """A layer's `claim.json`: written create-only when its id is handed out, and kept.
 
-    A schema is not layered data, so there is nothing to fold: the first writer
-    states it and the rest must be `compatible_with` it. Read and written beside
-    `store`'s own layers, so one record never consults another's manifest.
+    Attributes
+    ----------
+    meta
+        The revision's `meta` as claimed, which its commit may extend and
+        never change.
+    created
+        When the id was handed out, which an age-limited cleanup compares.
+    """
 
-    A compare-and-swap: the manifest is written only if unchanged since it was
-    read, and a writer that lost re-reads and checks again, so two writers
-    widening at once end with both widenings or an incompatibility reported,
-    never one silently lost. A lost write backs off with jitter and is retried
-    up to `_ATTEMPTS` times.
+    id: UUID
+    parent: UUID | None
+    meta: Meta
+    created: datetime
+
+    def write(self, files: Files, uri: str) -> None:
+        """Write this claim at `uri`, create-only, so an id is handed out once.
+
+        Raises
+        ------
+        PreconditionFailedError
+            If the id was claimed before.
+        """
+        _create(files, uri, _CLAIM, self)
+
+    @classmethod
+    def read(cls, files: Files, uri: str) -> ClaimFile | None:
+        """The claim at `uri`, or `None` where there is none."""
+        return _read(files, uri, _CLAIM)
+
+
+_MANIFEST = TypeAdapter(Manifest)
+_CLAIM = TypeAdapter(ClaimFile)
+_META = TypeAdapter(Meta)
+
+
+def _create[T](files: Files, uri: str, adapter: TypeAdapter[T], value: T) -> None:
+    files.create(uri, adapter.dump_json(value).decode())
+
+
+def _read[T](files: Files, uri: str, adapter: TypeAdapter[T]) -> T | None:
+    found = files.read_text(uri)
+    return None if found is None else adapter.validate_json(found)
+
+
+def validate_meta(meta: Meta | None) -> Meta:
+    """`meta` checked flat, each value a string, finite number or boolean.
+
+    Raises
+    ------
+    pydantic.ValidationError
+        For any other value.
+    """
+    return _META.validate_python(meta or {}, strict=True)
+
+
+def merge_meta(claimed: Meta, given: Meta) -> Meta:
+    """`given` added to `claimed`, which a commit may extend and never change.
 
     Raises
     ------
     ValueError
-        If this layer's schema would make the record's existing layers
-        unreadable.
-    RuntimeError
-        If every attempt lost: the manifest kept changing, or it cannot be read
-        and a 403 was taken for a missing key.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
+        Naming each claimed key `given` sets otherwise.
     """
-    schema = schema.model_copy(update={"id": None})
-    files = store.files
-    for attempt in range(_ATTEMPTS):
-        found = files.read_text(store.manifest_uri)
-        expect: Version | Absent = Absent() if found is None else found[1]
-        existing = Schema() if found is None else Schema.model_validate_json(found[0])
-        if existing.dimensions or existing.attributes:
-            if schema == existing:
-                return
-            problems = schema.compatible_with(existing)
-            if problems:
-                msg = (
-                    f"this layer's schema is incompatible with the record's: "
-                    f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/model/schema/#versioning)"
-                )
-                raise ValueError(msg)
-        try:
-            files.write_text(
-                store.manifest_uri, schema.model_dump_json(), expect=expect
-            )
-        except PreconditionFailedError:
-            sleep(random.uniform(0, 0.05 * 2**attempt))
-            continue
-        return
-    msg = (
-        f"{store.manifest_uri} changed under each of {_ATTEMPTS} writes, or cannot "
-        f"be read: a 403 on read counts as missing, so check s3:GetObject "
-        f"(https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)"
-    )
-    raise RuntimeError(msg)
-
-
-_ATTEMPTS = 10
-"""How many times `reconcile_schema` writes the manifest before giving up."""
+    changed = sorted(k for k, v in given.items() if k in claimed and claimed[k] != v)
+    if changed:
+        msg = (
+            f"the commit changes the claimed meta {changed}; a commit keeps every "
+            f"key of its claim's meta unchanged and may only add keys"
+        )
+        raise ValueError(msg)
+    return {**claimed, **given}

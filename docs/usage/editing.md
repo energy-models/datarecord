@@ -143,7 +143,7 @@ A `WorkingRecord` does not write.
 The record stays unchanged until you hand its edits to a writer ([design](../design/use/editing.md#edits)):
 
 ```python
-new = root.child(w.edits)  # a patch layer under a new child of the base
+new = store.commit(w)  # a patch layer under a new child of the base
 ws.write(w, "out/")  # a standalone record, flattened
 w.rollback()  # clear the staging area, if you are done
 ```
@@ -153,7 +153,7 @@ The fold resolves the rest from the parent.
 `w` itself is the resolved result, what is staged plus what the record already reads.
 A standalone directory needs that, since it has no parent to resolve against.
 
-The edits are a delta against the revision `w` was built over, so `child` raises if you write them under another one.
+The edits are a delta against the revision `w` was built over, so `claim.commit(w)` raises if the claim's parent is another one.
 Layers are write-once, so the layer lands in the new child ([design](../design/layers/tree.md#a-layers-data-is-write-once)).
 The returned revision reads the edits back:
 

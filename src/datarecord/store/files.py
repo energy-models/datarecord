@@ -4,7 +4,7 @@
 
 """The small files a store coordinates through, local or remote.
 
-Tables go through DuckDB; everything else - the manifest, the revision files,
+Tables go through DuckDB; everything else - the manifests, the claims,
 listing them, whether a layer exists - goes through a `Files`, picked by the
 URI's scheme.
 
@@ -15,25 +15,15 @@ Notes
 
 from __future__ import annotations
 
-import hashlib
 import os
-import sys
+import shutil
 import tempfile
-from collections.abc import Iterator
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, NewType, Protocol
-
-Version = NewType("Version", str)
-"""What an object's content was when read: a local SHA-256, a remote ETag."""
-
-
-class Absent:
-    """The precondition that nothing is at the URI yet: a create-only write."""
+from typing import Any, Protocol
 
 
 class PreconditionFailedError(Exception):
-    """A conditional write found the object other than `expect` said."""
+    """A create-only write found something at its URI already."""
 
 
 class Files(Protocol):
@@ -44,26 +34,17 @@ class Files(Protocol):
     - [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
     """
 
-    def read_text(self, uri: str) -> tuple[str, Version] | None:
-        """The text at `uri` and its version, or `None` on a miss."""
+    def read_text(self, uri: str) -> str | None:
+        """The text at `uri`, or `None` on a miss."""
         ...
 
-    def write_text(
-        self, uri: str, text: str, *, expect: Version | Absent | None
-    ) -> Version:
-        """Write `text` to `uri`, if `expect` holds.
-
-        Parameters
-        ----------
-        expect
-            `Absent` writes only if nothing is there, a `Version` only if the
-            object is unchanged since it was read at that version, `None`
-            unconditionally.
+    def create(self, uri: str, text: str) -> None:
+        """Write `text` to `uri`, only if nothing is there yet.
 
         Raises
         ------
         PreconditionFailedError
-            If `expect` does not hold.
+            If something is at `uri` already.
         """
         ...
 
@@ -73,68 +54,45 @@ class Files(Protocol):
 
     def exists(self, uri: str) -> bool: ...
 
+    def delete(self, prefix: str) -> None:
+        """Delete everything under `prefix`, which ends in a slash.
 
-def _version(text: str) -> Version:
-    return Version(hashlib.sha256(text.encode()).hexdigest())
-
-
-@contextmanager
-def _locked(path: Path) -> Iterator[None]:
-    """Hold an exclusive lock on `path`'s sibling `<name>.lock`."""
-    with open(path.with_name(path.name + ".lock"), "a+") as fh:
-        if sys.platform == "win32":
-            import msvcrt
-
-            fh.seek(0)
-            msvcrt.locking(fh.fileno(), msvcrt.LK_LOCK, 1)
-        else:
-            import fcntl
-
-            fcntl.flock(fh, fcntl.LOCK_EX)
-        yield
+        Raises
+        ------
+        FileNotFoundError
+            If nothing is under `prefix`.
+        """
+        ...
 
 
 class LocalFiles:
     """`Files` on the local filesystem.
 
-    Every write lands under a temporary name and is renamed or linked into
-    place, so a reader sees a whole file or none.
+    Every write lands under a temporary name and is hard-linked into place,
+    which the OS refuses over an existing file, so a reader sees a whole file
+    or none.
     """
 
-    def read_text(self, uri: str) -> tuple[str, Version] | None:
+    def read_text(self, uri: str) -> str | None:
         try:
-            text = Path(uri).read_text()
+            return Path(uri).read_text()
         except FileNotFoundError:
             return None
-        return text, _version(text)
 
-    def write_text(
-        self, uri: str, text: str, *, expect: Version | Absent | None
-    ) -> Version:
+    def create(self, uri: str, text: str) -> None:
         path = Path(uri)
         path.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
         try:
             with os.fdopen(fd, "w") as fh:
                 fh.write(text)
-            if isinstance(expect, Absent):
-                try:
-                    os.link(tmp, path)
-                except FileExistsError:
-                    msg = f"{uri} already exists"
-                    raise PreconditionFailedError(msg) from None
-            elif expect is None:
-                os.replace(tmp, path)
-            else:
-                with _locked(path):
-                    current = self.read_text(uri)
-                    if current is None or current[1] != expect:
-                        msg = f"{uri} changed since it was read"
-                        raise PreconditionFailedError(msg)
-                    os.replace(tmp, path)
+            try:
+                os.link(tmp, path)
+            except FileExistsError:
+                msg = f"{uri} already exists"
+                raise PreconditionFailedError(msg) from None
         finally:
             Path(tmp).unlink(missing_ok=True)
-        return _version(text)
 
     def list(self, prefix: str) -> list[str]:
         path = Path(prefix)
@@ -144,6 +102,9 @@ class LocalFiles:
 
     def exists(self, uri: str) -> bool:
         return Path(uri).exists()
+
+    def delete(self, prefix: str) -> None:
+        shutil.rmtree(prefix)
 
 
 def _split(uri: str) -> tuple[str, str]:
@@ -155,9 +116,8 @@ def _split(uri: str) -> tuple[str, str]:
 class RemoteFiles:
     """`Files` on S3, through boto3, configured by the AWS environment alone.
 
-    `expect` maps to `put_object`'s conditional headers, `IfNoneMatch="*"` for
-    `Absent` and `IfMatch` for a `Version`, which is the object's ETag. They
-    hold only as far as the server honours them.
+    `create` is `put_object` with the conditional header `IfNoneMatch="*"`,
+    which holds only as far as the server honours it.
 
     Raises
     ------
@@ -188,7 +148,7 @@ class RemoteFiles:
     def _status(e: Any) -> int:
         return e.response["ResponseMetadata"]["HTTPStatusCode"]
 
-    def read_text(self, uri: str) -> tuple[str, Version] | None:
+    def read_text(self, uri: str) -> str | None:
         bucket, key = _split(uri)
         try:
             got = self._s3.get_object(Bucket=bucket, Key=key)
@@ -197,28 +157,20 @@ class RemoteFiles:
             if self._status(e) in (403, 404):
                 return None
             raise
-        return got["Body"].read().decode(), Version(got["ETag"])
+        return got["Body"].read().decode()
 
-    def write_text(
-        self, uri: str, text: str, *, expect: Version | Absent | None
-    ) -> Version:
+    def create(self, uri: str, text: str) -> None:
         bucket, key = _split(uri)
-        condition: dict[str, str] = {}
-        if isinstance(expect, Absent):
-            condition["IfNoneMatch"] = "*"
-        elif expect is not None:
-            condition["IfMatch"] = expect
         try:
-            put = self._s3.put_object(
-                Bucket=bucket, Key=key, Body=text.encode(), **condition
+            self._s3.put_object(
+                Bucket=bucket, Key=key, Body=text.encode(), IfNoneMatch="*"
             )
         except self._error as e:
             # 409 is a conditional write racing another on the same key.
             if self._status(e) in (409, 412):
-                msg = f"{uri} is not as `expect` said: {e}"
+                msg = f"{uri} already exists: {e}"
                 raise PreconditionFailedError(msg) from e
             raise
-        return Version(put["ETag"])
 
     def list(self, prefix: str) -> list[str]:
         bucket, key = _split(prefix)
@@ -249,3 +201,19 @@ class RemoteFiles:
             Bucket=bucket, Prefix=key.rstrip("/") + "/", MaxKeys=1
         )
         return listed.get("KeyCount", 0) > 0
+
+    def delete(self, prefix: str) -> None:
+        bucket, key = _split(prefix)
+        pages = self._s3.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket, Prefix=key
+        )
+        keys = [{"Key": o["Key"]} for page in pages for o in page.get("Contents", [])]
+        if not keys:
+            msg = f"nothing under {prefix} to delete"
+            raise FileNotFoundError(msg)
+        for start in range(0, len(keys), 1000):
+            batch = {"Objects": keys[start : start + 1000]}
+            done = self._s3.delete_objects(Bucket=bucket, Delete=batch)
+            if done.get("Errors"):
+                msg = f"deleting under {prefix} failed: {done['Errors']}"
+                raise OSError(msg)

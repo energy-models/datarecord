@@ -34,7 +34,7 @@ A signature annotates against `RecordLike`, and a framework object satisfies it 
 `Record` is the interface over [one fold](../layers/resolution.md#one-record-over-one-fold), and `Revision.record` and `Workspace.at(uri)` both return one.
 The class has the short name because a caller constructs and holds it.
 The protocol is read-only.
-[Writing](writing.md) goes through `store.root(source)`, `rev.child(source)` or `ws.write(source, uri)`, and [the record format](../storage/format.md) is how a record is stored.
+[Writing](writing.md) goes through `store.commit(source, parent=...)`, `store.claim(...)` and `claim.commit(source)`, or `ws.write(source, uri)`, and [the record format](../storage/format.md) is how a record is stored.
 
 Each accessor holds one section of [the schema](../model/schema.md): `dims` the labels, `properties` the metadata of those labels, and `attributes` the data.
 What a name is declared as decides where its values are read.
