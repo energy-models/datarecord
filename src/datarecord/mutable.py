@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression, TransactionException, sqltypes
+from duckdb import DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
@@ -42,6 +42,7 @@ from datarecord.duck import (
     null_safe,
     scratch_table,
     struct_of,
+    transaction,
     union_all_by_name,
 )
 from datarecord.protocols import RecordLike
@@ -282,24 +283,14 @@ def _atomic[**P](
 
     @wraps(edit)
     def run(self: WorkingRecord, *args: P.args, **kwargs: P.kwargs) -> None:
-        con = self.con
-        try:
-            con.begin()
-        except TransactionException as e:
-            msg = (
-                f"`{edit.__name__}` runs in its own transaction, and this cursor "
-                f"already holds one open; commit or roll it back before the edit "
-                f"(https://energy-models.github.io/datarecord/design/use/editing/#edits)"
-            )
-            raise TransactionException(msg) from e
-        try:
+        with transaction(
+            self.con,
+            edit.__name__,
+            "https://energy-models.github.io/datarecord/design/use/editing/#edits",
+        ):
             self._dirty.clear()
             edit(self, *args, **kwargs)
             self._refresh_owners()
-        except BaseException:
-            con.rollback()
-            raise
-        con.commit()
 
     return run
 
