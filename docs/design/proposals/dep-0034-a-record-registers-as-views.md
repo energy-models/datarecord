@@ -4,19 +4,19 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 29: a record registers its relations as views
+# DEP 34: a record registers its relations as views
 
-| DEP      | 29                                                                                                                                                                       |
+| DEP      | 34                                                                                                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Title    | a record registers its relations as views                                                                                                                                |
 | Author   | Jonas Hörsch                                                                                                                                                             |
 | Status   | Draft (2026-11-03)                                                                                                                                                       |
-| Requires | [DEP 25](dep-0025-a-layer-carries-its-manifest.md), [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md), [DEP 27](dep-0027-the-fold-is-a-fixed-plan.md) |
+| Requires | [DEP 25](dep-0025-a-layer-carries-its-manifest.md), [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md), [DEP 33](dep-0033-the-fold-is-a-fixed-plan.md) |
 | Created  | 2026-11-02                                                                                                                                                               |
 
 ## Abstract
 
-`record.register(name)` creates a DuckDB schema `name` in the workspace's database, with one view per dim, per property subject and per declared attribute, in the nested schemas `name.dims`, `name.properties` and `name.attributes`. Any client of that database, a SQL client over a DuckDB server included, reads the record without Python. Over a `WorkingRecord` the views are created once and stay live: every edit shows in them as soon as it commits, since [DEP 27](dep-0027-the-fold-is-a-fixed-plan.md) makes each relation a fixed plan.
+`record.register(name)` creates a DuckDB schema `name` in the workspace's database, with one view per dim, per property subject and per declared attribute, in the nested schemas `name.dims`, `name.properties` and `name.attributes`. Any client of that database, a SQL client over a DuckDB server included, reads the record without Python. Over a `WorkingRecord` the views are created once and stay live: every edit shows in them as soon as it commits, since [DEP 33](dep-0033-the-fold-is-a-fixed-plan.md) makes each relation a fixed plan.
 
 ## Motivation
 
@@ -24,7 +24,7 @@ A frontend reads a revision and edits it through a server. The server holds a `W
 
 Each server builds these views itself today. A prototype wraps each relation's `sql_query()` in `CREATE VIEW`, one catalog per revision with three schemas inside. It works for a frozen record and fails for an edited one:
 
-- A view holds the plan its relation had when it was created. Today that plan depends on the staged rows, so an edit that changes the plan never reaches the view. DEP 27 removes this.
+- A view holds the plan its relation had when it was created. Today that plan depends on the staged rows, so an edit that changes the plan never reaches the view. DEP 33 removes this.
 - The SQL of a staged relation reads Python objects by name, which are gone when the view is next read.
 
 ## Specification
@@ -37,7 +37,7 @@ Each server builds these views itself today. A prototype wraps each relation's `
 | `name.properties.<d>` | dim that declares properties                                       | as `record.properties[d]`                             |
 | `name.attributes.<a>` | attribute the schema declares                                      | as `record.attributes[a]`, empty where it has no rows |
 
-Two records under one schema register the same views, since every record lists every declared dim and attribute (DEP 27).
+Two records under one schema register the same views, since every record lists every declared dim and attribute (DEP 33).
 
 `name` is a top-level schema in the workspace's database, so the views are visible to every cursor and every connection to it. The views are raw: a NULL coordinate means every label ([the broadcast rule](../model/attributes.md#the-broadcast-rule)), two rows can cover one coordinate, and no property default is applied. [Settling](../use/reading.md#settling-rows) is the client's.
 
@@ -45,7 +45,7 @@ Two records under one schema register the same views, since every record lists e
 
 - `Record.register(name: str) -> None` creates `name` and its views. It raises if `name` exists.
 - `Workspace.unregister(name: str) -> None` drops `name` with its views.
-- `WorkingRecord.rollback()` leaves the views valid, since it refills the staging tables rather than dropping them (DEP 27).
+- `WorkingRecord.rollback()` leaves the views valid, since it refills the staging tables rather than dropping them (DEP 33).
 - `rev.child(w.edits)` leaves the views on `w` as they are. A server drops them and registers a `WorkingRecord` on the child.
 
 ### Consistent states

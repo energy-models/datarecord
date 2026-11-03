@@ -4,9 +4,9 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 27: the fold is a fixed plan
+# DEP 33: the fold is a fixed plan
 
-| DEP      | 27                                                                   |
+| DEP      | 33                                                                   |
 | -------- | -------------------------------------------------------------------- |
 | Title    | the fold is a fixed plan                                             |
 | Author   | Jonas Hörsch                                                         |
