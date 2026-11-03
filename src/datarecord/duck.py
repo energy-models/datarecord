@@ -72,29 +72,19 @@ def write_parquet(
     con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
 
 
-def union_all_by_name(
-    rels: Sequence[DuckDBPyRelation], con: DuckDBPyConnection
-) -> DuckDBPyRelation:
-    """Fold relations pairwise through `UNION ALL BY NAME`.
+def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
+    """Fold relations pairwise through `UNION ALL BY NAME`, an arm lacking a column reading NULL there.
 
-    The local names `u` and `rel` are load-bearing: DuckDB's replacement scan
-    binds them by *name* out of this frame's locals, so the SQL below reads
-    them despite them looking unused. Renaming either silently returns a short
-    union; `test_union_all_by_name_folds_every_relation` pins it.
-
-    Not `con.register`: measured at 2.2-2.6x slower here, widening with layer
-    count (the deep-overlay case materialised caches exist to make cheap), and it leaves a
-    named view per call on a connection that outlives the fold.
+    `DuckDBPyRelation.union_by_name` rather than one `con.sql` per arm, whose
+    replacement scan binds the whole tree of either side again: on a deep
+    fold, that took a third of its time.
 
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     """
-    u = rels[0]
-    for rel in rels[1:]:  # noqa: F841 - bound by name in the SQL below
-        u = con.sql("FROM u UNION ALL BY NAME FROM rel")
-    return u
+    return reduce(DuckDBPyRelation.union_by_name, rels)
 
 
 def ex_all(exprs: Iterable[Expression]) -> Expression:

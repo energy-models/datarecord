@@ -355,6 +355,9 @@ All notable changes to datarecord are documented here. The format follows
 - A `Record` builds the coords of its frozen layers once per thread rather
   than on every relation it reads, about halving a warm read of a deep
   record. A write checks a new layer's axes against its parent's fold.
+- The cold fold of a deep record's owner map takes about half the time:
+  each layer's owner rows are aggregated once, unions bind once per arm, and
+  the parts of the plan a schema fixes are built once per schema.
 - An edit inside a transaction the caller holds open on the same cursor is
   refused with a `TransactionException` that says so, since an edit runs in
   its own transaction.

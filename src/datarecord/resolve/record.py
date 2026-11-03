@@ -579,7 +579,7 @@ class Record:
         if not layers:
             return _empty_long(schema, attribute, con)
         unkeyed = [c for c in columns if c not in partial_dims]
-        values = union_all_by_name(layers, con).set_alias("l")
+        values = union_all_by_name(layers).set_alias("l")
         stored = _as_stored(om, broadcast_over)
 
         def joined(keys: DuckDBPyRelation, *named: Expression) -> DuckDBPyRelation:

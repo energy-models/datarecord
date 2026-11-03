@@ -93,7 +93,7 @@ Each edit recomputes the owner rows of the attributes it touched, which adds a f
 
 A relation that stays valid across edits still pays for each of them. DuckDB 2.0 re-binds every Python relation after any committed write, to any table, schema or cursor. A consumer should therefore hold few relations across a write.
 
-The fixed fold cuts the joins per layer, not the statements, so a cold fold stays linear in depth: about 0.45 s per layer over 200 thin layers.
+The fixed fold cuts the joins per layer, not the statements, so a cold fold stays linear in depth: about 0.18 s per layer over 64 layers.
 
 ## Usage
 
@@ -123,7 +123,7 @@ rel.fetchall()  # holds 150.0
 7. The staged owner-map rows in per-attribute tables that every edit refreshes.
 8. Last writer wins in `set`.
 9. The refusal of a frozen layer checked inside the statement that checkpoints its fold, with no fetch of its own.
-10. A checkpoint every few layers rather than every layer, and one union per layer in place of two binds.
+10. Each layer's owner rows aggregated once into its checkpoint, and one union per layer in place of two binds.
 11. The parts of the plan derived from a schema built once per fold and layer schema.
 12. `materialise` reusing the frozen fold a workspace already holds.
 13. `_base_and_above` taking a workspace-held fold of an ancestor as its seed, beside a materialised one.
@@ -138,6 +138,7 @@ The check: today's suite, with crossing staged edits turned to last-writer-wins;
 - Candidate masks joined from a table per schema. It ties on PyPSA, but adds joins, memory and a table to keep.
 - Ranking every value row on read. See [Rationale](#rationale).
 - Refusing a `set` that crosses a staged row: it makes the order of a user's clicks matter.
+- A checkpoint every few layers rather than every layer. The checks and the crossing join each read the map below, so the plan doubles with each layer left unchecked: 25 s for a depth-16 fold checkpointed every fourth layer, against 3 s.
 - Separate schemas or attached databases to escape DuckDB's re-bind after a write. Every Python relation on the connection is re-bound regardless.
 
 ## Open Issues
