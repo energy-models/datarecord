@@ -348,6 +348,9 @@ All notable changes to datarecord are documented here. The format follows
 - A `Record` builds the coords of its frozen layers once per thread rather
   than on every relation it reads, about halving a warm read of a deep
   record. A write checks a new layer's axes against its parent's fold.
+- An edit inside a transaction the caller holds open on the same cursor is
+  refused with a `TransactionException` that says so, since an edit runs in
+  its own transaction.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
