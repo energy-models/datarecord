@@ -438,10 +438,10 @@ def test_a_property_is_set_only_on_a_label_some_layer_wrote(store):
 # -- a property that refers to a dim holds a live label --------
 
 
-@pytest.fixture
-def classified(store) -> Revision:
+@pytest.fixture(scope="module")
+def classified(module_store) -> Revision:
     """North in lower, south in upper, both in DE, and the pair (north, lower) in DE."""
-    layer = empty_root(store, _schema())
+    layer = empty_root(module_store, _schema())
     write_axis(layer, "country", [{"country": "DE"}, {"country": "NO"}])
     write_axis(
         layer,

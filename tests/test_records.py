@@ -31,14 +31,14 @@ from tests.fixtures import (
 MEMBERS = ("dims", "properties", "attributes")
 
 
-@pytest.fixture
-def written(store):
+@pytest.fixture(scope="module")
+def written(module_store):
     """A record of one layer, so every construction below reads the same files.
 
     One generator with a `p_max_pu` series and an `efficiency` on its
     connection, so attributes, the entity axis and a multi-dim are all present.
     """
-    layer = empty_root(store, schema())
+    layer = empty_root(module_store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])
     write_multi_dim(
         layer, "connection", [{"connection": {"entity": "wind", "bus": "north"}}]
@@ -57,8 +57,8 @@ def written(store):
     return layer.commit()
 
 
-@pytest.fixture
-def both(written, store):
+@pytest.fixture(scope="module")
+def both(written):
     """One record, every way of constructing a `Record` over it.
 
     The same files reached by two source constructions: as the layer of a
@@ -74,7 +74,7 @@ def both(written, store):
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
     """
     node = written.record
-    directory = store.layer(written.id)
+    directory = written.store.layer(written.id)
     return (
         node,
         directory,

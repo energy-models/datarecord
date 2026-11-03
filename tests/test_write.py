@@ -779,22 +779,22 @@ def test_a_write_rejects_an_axis_without_its_key_column(store):
     _nothing_reachable(store)
 
 
-def _set_junk(store):
-    _, staged = _rows_staged(store, [], "p_nom")
+def _set_junk(store, axes):  # noqa: ARG001
+    staged = _rows_staged(axes, [], "p_nom")
     staged.set("p_nom", pd.DataFrame({"entity": ["a"], "value": [1.0], "junk": [1]}))
 
 
-def _add_junk(store):
-    _, staged = _rows_staged(store, [], "p_nom")
+def _add_junk(store, axes):  # noqa: ARG001
+    staged = _rows_staged(axes, [], "p_nom")
     staged.add("entity", ["c"], junk=1)
 
 
-def _add_tuple_junk(store):
-    _, staged = _rows_staged(store, [], "p_nom")
+def _add_tuple_junk(store, axes):  # noqa: ARG001
+    staged = _rows_staged(axes, [], "p_nom")
     staged.add("connection", [_AB], junk=1)
 
 
-def _write_junk(store):
+def _write_junk(store, axes):  # noqa: ARG001
     frame = pd.DataFrame({"scenario": ["high"], "junk": [1]})
     try:
         store.commit(_Source(_SCHEMA, dims={"scenario": frame}), parent=None)
@@ -802,7 +802,7 @@ def _write_junk(store):
         _nothing_reachable(store)
 
 
-def _read_junk(store):
+def _read_junk(store, axes):  # noqa: ARG001
     root = empty_root(store, _SCHEMA)
     write_axis(root, "scenario", [{"scenario": "high", "junk": 1}])
     root.commit().record.dims["scenario"].fetchall()
@@ -822,7 +822,7 @@ def _read_junk(store):
         pytest.param(_read_junk, "['scenario']", id="read"),
     ],
 )
-def test_an_undeclared_column_is_refused(store, write, accepted):
+def test_an_undeclared_column_is_refused(store, axes, write, accepted):
     """A column no declaration accounts for has no dtype and no meaning, so it is refused, not dropped.
 
     Notes
@@ -831,7 +831,7 @@ def test_an_undeclared_column_is_refused(store, write, accepted):
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     with pytest.raises(ValueError, match=r"\['junk'\]") as raised:
-        write(store)
+        write(store, axes)
     assert accepted in str(raised.value), "the error names the columns it accepts"
 
 
@@ -956,11 +956,8 @@ _AB, _BB = {"entity": "a", "bus": "b0"}, {"entity": "b", "bus": "b0"}
 _BUSES = ["b0", "b1"]
 
 
-def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
-    """Return a written base, and a staging area over it holding `rows` of `attribute`.
-
-    A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
-    """
+def _axes(store, tuples=(_AB, _BB)):
+    """Return a written base holding `_ENTITIES`, `_BUSES`, `_SCENARIOS`, `_T` and `tuples`."""
     base = empty_root(store, _SCHEMA).commit()
     staged = WorkingRecord(base.record)
     staged.add("entity", _ENTITIES, ctype="Generator")
@@ -968,24 +965,41 @@ def _rows_staged(store, rows: list[dict], attribute: str, tuples=(_AB, _BB)):
     staged.add("scenario", _SCENARIOS)
     staged.add("snapshot", [_T])
     staged.add("connection", list(tuples))
-    base = base.store.commit(staged)
+    return base.store.commit(staged)
+
+
+@pytest.fixture(scope="module")
+def axes(tmp_path_factory):
+    """`_axes` once for the module; a test only ever commits beside or below it."""
+    workspace = Workspace()
+    yield _axes(workspace.store(str(tmp_path_factory.mktemp("axes"))))
+    workspace.close()
+
+
+def _rows_staged(base, rows: list[dict], attribute: str):
+    """Return a staging area over `base` holding `rows` of `attribute`.
+
+    A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
+    """
     staged = WorkingRecord(base.record)
     for row in rows:
         coords = {c: v for c, v in row.items() if c not in ("value", "connection")}
         staged.set(attribute, row["value"], **coords, **row.get("connection", {}))
-    return base, staged
+    return staged
 
 
 def _rows_layer(
-    store, rows: list[dict], via: str, attribute: str = "p_nom", tuples=(_AB, _BB)
+    axes, rows: list[dict], via: str, attribute: str = "p_nom", tuples=(_AB, _BB)
 ):
     """Return a revision whose top layer holds `rows` of `attribute`, written `via` `set` or a source.
 
-    A coordinate a row leaves out is NULL there.
+    A coordinate a row leaves out is NULL there. Written in `axes`' store, over
+    `axes` itself where `tuples` are its own.
     """
+    store = axes.store
     if via == "set":
-        base, staged = _rows_staged(store, rows, attribute, tuples)
-        return base.store.commit(staged)
+        base = axes if tuples == (_AB, _BB) else _axes(store, tuples)
+        return store.commit(_rows_staged(base, rows, attribute))
     nulls = dict.fromkeys(("entity", "connection", "scenario", "snapshot"))
     frame = pd.concat(
         [_long(**{**nulls, "attribute": attribute, **row}) for row in rows],
@@ -1069,14 +1083,14 @@ def _read(revision, attribute: str = "p_nom") -> dict[tuple, float]:
         "connection",
     ],
 )
-def test_a_layer_reads_its_more_specific_row(store, via, attribute, rows, read):
+def test_a_layer_reads_its_more_specific_row(axes, via, attribute, rows, read):
     """Within one layer, a row naming a label beats one broadcasting over its dim.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    got = _read(_rows_layer(store, rows, via, attribute), attribute)
+    got = _read(_rows_layer(axes, rows, via, attribute), attribute)
     assert got == read, "one value per coordinate, the most specific row's"
 
 
@@ -1133,23 +1147,23 @@ _ALL_TWO = {("a", "x"): 2.0, ("a", "y"): 2.0, ("b", "x"): 2.0, ("b", "y"): 2.0}
         "other-tuple",
     ],
 )
-def test_a_later_set_replaces_what_it_covers(store, attribute, rows, read):
+def test_a_later_set_replaces_what_it_covers(axes, attribute, rows, read):
     """A `set` drops the earlier staged rows its own rows cover, and keeps the rest.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
-    got = _read(_rows_layer(store, rows, "set", attribute), attribute)
+    got = _read(_rows_layer(axes, rows, "set", attribute), attribute)
     assert got == read, "the later set wins where it covers"
 
 
 _T2 = pd.Timestamp("2031-01-01")
 
 
-def _child(store, attribute: str = "p_nom", connections=None, **row):
+def _child(axes, attribute: str = "p_nom", connections=None, **row):
     """Write one `attribute` row, or `connections` alone, as a child layer holding no axis, over `_rows_layer`'s."""
-    base = _rows_layer(store, [{"entity": "a", "value": 1.0}], "write_layer")
+    base = _rows_layer(axes, [{"entity": "a", "value": 1.0}], "write_layer")
     if connections is not None:
         frame = pd.DataFrame({"connection": connections})
         return base.store.commit(
@@ -1172,7 +1186,7 @@ def _child(store, attribute: str = "p_nom", connections=None, **row):
     ],
     ids=["partial", "outside-partial"],
 )
-def test_a_value_at_a_label_its_axis_lacks_is_refused(store, via, row, dim):
+def test_a_value_at_a_label_its_axis_lacks_is_refused(axes, via, row, dim):
     """`set` judges the axis as staged, the writer the layer's final axis, its parent's where it writes none.
 
     Notes
@@ -1182,16 +1196,16 @@ def test_a_value_at_a_label_its_axis_lacks_is_refused(store, via, row, dim):
     """
     with pytest.raises((KeyError, ValueError), match=rf"names '{dim}' labels \["):
         if via == "child":
-            _child(store, **row)
+            _child(axes, **row)
         else:
-            _rows_layer(store, [row], via)
+            _rows_layer(axes, [row], via)
 
 
 _A1 = {"entity": "a", "bus": "b1"}
 
 
 @pytest.mark.parametrize("via", ["set", "write_layer", "child"])
-def test_a_value_at_a_tuple_its_multi_dim_lacks_is_refused(store, via):
+def test_a_value_at_a_tuple_its_multi_dim_lacks_is_refused(axes, via):
     """`a` and `b1` are labels of their axes, but no `connection` tuple pairs them.
 
     Notes
@@ -1202,12 +1216,12 @@ def test_a_value_at_a_tuple_its_multi_dim_lacks_is_refused(store, via):
     row = {"connection": _A1, "value": 1.0}
     with pytest.raises((KeyError, ValueError), match=r"names 'connection' tuples \["):
         if via == "child":
-            _child(store, "efficiency", **row)
+            _child(axes, "efficiency", **row)
         else:
-            _rows_layer(store, [row], via, "efficiency")
+            _rows_layer(axes, [row], via, "efficiency")
 
 
-def test_set_at_a_tuple_naming_an_unknown_label_names_the_label(store):
+def test_set_at_a_tuple_naming_an_unknown_label_names_the_label(axes):
     """The label is checked before the tuple, so the error names the bus, not the tuple.
 
     Notes
@@ -1218,11 +1232,11 @@ def test_set_at_a_tuple_naming_an_unknown_label_names_the_label(store):
     with pytest.raises(
         KeyError, match=r"names 'bus' labels \['zz'\] in 'connection.bus'"
     ):
-        _rows_layer(store, [row], "set", "efficiency")
+        _rows_layer(axes, [row], "set", "efficiency")
 
 
 @pytest.mark.parametrize("via", ["set", "write_layer", "child"])
-def test_a_tuple_naming_a_label_no_axis_holds_is_refused(store, via):
+def test_a_tuple_naming_a_label_no_axis_holds_is_refused(axes, via):
     """`add` judges the axis as staged, the writer the layer's final axis, its parent's where it writes none.
 
     Notes
@@ -1236,9 +1250,9 @@ def test_a_tuple_naming_a_label_no_axis_holds_is_refused(store, via):
         match=r"names 'bus' labels \['zz'\] in 'connection.bus'",
     ):
         if via == "child":
-            _child(store, connections=tuples)
+            _child(axes, connections=tuples)
         else:
-            _rows_layer(store, [{"entity": "a", "value": 1.0}], via, tuples=tuples)
+            _rows_layer(axes, [{"entity": "a", "value": 1.0}], via, tuples=tuples)
 
 
 @pytest.mark.parametrize(
@@ -1250,7 +1264,7 @@ def test_a_tuple_naming_a_label_no_axis_holds_is_refused(store, via):
     ids=["partial", "outside-partial"],
 )
 def test_a_label_removed_after_its_set_takes_the_value_with_it(
-    store, dim, label, added, at
+    axes, dim, label, added, at
 ):
     """The label is in no restatement, so no fold marks it dead and the staging area drops the row.
 
@@ -1258,7 +1272,7 @@ def test_a_label_removed_after_its_set_takes_the_value_with_it(
     -----
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
-    base, staged = _rows_staged(store, [{"entity": "b", "value": 1.0}], "p_nom")
+    staged = _rows_staged(axes, [{"entity": "b", "value": 1.0}], "p_nom")
     staged.add(dim, [label], **added)
     staged.set("p_nom", 5.0, **at, **{dim: label})
     staged.remove(dim, [label])
@@ -1267,7 +1281,7 @@ def test_a_label_removed_after_its_set_takes_the_value_with_it(
         rows = record.attributes["p_nom"].df()
         return set(zip(rows["entity"], rows["value"], strict=True))
 
-    reads = [staged, base.store.commit(staged).record]
+    reads = [staged, axes.store.commit(staged).record]
     assert [values(r) for r in reads] == [{("b", 1.0)}] * 2, (
         "staged and committed, the removed label's value is gone"
     )
@@ -1288,7 +1302,7 @@ def test_a_label_removed_after_its_set_takes_the_value_with_it(
     ],
     ids=["one-key", "a-broadcast-key"],
 )
-def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override, read):
+def test_a_later_layer_overrides_a_layer_holding_both_rows(axes, via, override, read):
     """The lower layer still picks its more specific row where it keeps the key.
 
     Notes
@@ -1296,7 +1310,7 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override,
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
-    lower = _rows_layer(store, rows, via)
+    lower = _rows_layer(axes, rows, via)
     staged = WorkingRecord(lower.record)
     staged.set("p_nom", 5.0, **override)
     assert _read(lower.store.commit(staged)) == read
@@ -1335,7 +1349,7 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(store, via, override,
     ids=["entity-scenario", "entity-snapshot", "beside-a-default", "settled-elsewhere"],
 )
 def test_a_layer_with_two_rows_neither_more_specific_is_refused(
-    store, via, rows, coordinate
+    axes, via, rows, coordinate
 ):
     """Each row names a dim the other leaves NULL, so no rule picks one where both meet.
 
@@ -1344,7 +1358,7 @@ def test_a_layer_with_two_rows_neither_more_specific_is_refused(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     with pytest.raises(ValueError, match=rf"p_nom\.parquet.*{coordinate}"):
-        _rows_layer(store, rows, via)
+        _rows_layer(axes, rows, via)
 
 
 @pytest.mark.parametrize(
@@ -1369,20 +1383,20 @@ def test_a_layer_with_two_rows_neither_more_specific_is_refused(
     ],
     ids=["entity-scenario", "entity-snapshot"],
 )
-def test_two_rows_crossing_where_a_row_names_both_are_written(store, rows, dims):
+def test_two_rows_crossing_where_a_row_names_both_are_written(axes, rows, dims):
     """A record flattened from several layers holds a row naming both wherever two cross.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    record = _rows_layer(store, rows, "write_layer").record
+    record = _rows_layer(axes, rows, "write_layer").record
     assert broadcast(record, "p_nom", *dims)[("a", rows[1][dims[1]])] == 3.0, (
         "the row naming both wins where the two cross"
     )
 
 
-def test_a_staged_pair_neither_more_specific_fails_the_read(store):
+def test_a_staged_pair_neither_more_specific_fails_the_read(axes):
     """A layer not written by `write_layer` is held to the rule when it is read.
 
     Notes
@@ -1390,7 +1404,7 @@ def test_a_staged_pair_neither_more_specific_fails_the_read(store):
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     rows = [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.0}]
-    _, staged = _rows_staged(store, rows, "p_nom")
+    staged = _rows_staged(axes, rows, "p_nom")
     with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*scenario=x"):
         staged.attributes["p_nom"].df()
 
@@ -1419,7 +1433,7 @@ def test_a_staged_pair_neither_more_specific_fails_the_read(store):
     ids=["broadcast", "one-label", "beside-a-default", "one-breakpoint"],
 )
 @pytest.mark.usefixtures("split_passes")
-def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(store, rows, coordinate):
+def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(axes, rows, coordinate):
     """Two rows naming the same labels are equally specific, so no rule picks one.
 
     Notes
@@ -1429,17 +1443,17 @@ def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(store, rows, coor
     with pytest.raises(
         ValueError, match=rf"p_nom\.parquet holds 2 rows at {coordinate};"
     ):
-        _rows_layer(store, rows, "write_layer")
+        _rows_layer(axes, rows, "write_layer")
 
 
-def test_a_curve_is_no_pair_of_rows(store):
+def test_a_curve_is_no_pair_of_rows(axes):
     """The rows of one curve differ in `breakpoint`, so each is its own row."""
     rows: list[dict] = [{"entity": "a", "breakpoint": b, "value": b} for b in (0, 1)]
-    df = _rows_layer(store, rows, "write_layer").record.attributes["p_nom"].df()
+    df = _rows_layer(axes, rows, "write_layer").record.attributes["p_nom"].df()
     assert sorted(df["breakpoint"]) == [0, 1], "both points held as written"
 
 
-def test_a_stored_pair_naming_the_same_dims_fails_the_read(store, tmp_path):
+def test_a_stored_pair_naming_the_same_dims_fails_the_read(axes):
     """A layer not written by `write_layer` is held to the rule when it is read.
 
     Notes
@@ -1447,8 +1461,8 @@ def test_a_stored_pair_naming_the_same_dims_fails_the_read(store, tmp_path):
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
-    revision = _rows_layer(store, rows, "write_layer")
-    (file,) = tmp_path.rglob("attributes/p_nom.parquet")
+    revision = _rows_layer(axes, rows, "write_layer")
+    file = Path(axes.store.layer_dir(revision.id), "attributes", "p_nom.parquet")
     twin = duckdb.read_parquet(str(file)).filter("entity = 'a'")
     duckdb.read_parquet(str(file)).union(twin).to_parquet(str(file) + ".twin")
     Path(str(file) + ".twin").replace(file)
@@ -1769,7 +1783,7 @@ def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     assert "efficiency2" not in source.attributes
 
 
-def test_ports_round_trip_through_connections_with_a_role_per_type(store, ac_dc):
+def test_ports_round_trip_through_connections_with_a_role_per_type(store):
     """Each port is a connection row with a role, and comes back as its own column.
 
     Notes
@@ -1777,7 +1791,14 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store, ac_dc)
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = export_network(ac_dc, store)
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=1, freq="h"))
+    n.add("Bus", ["b0", "b1"])
+    n.add("Generator", "g", bus="b0")
+    n.add("Link", "l", bus0="b0", bus1="b1")
+    revision = export_network(n, store)
     rows = unpacked(
         store.workspace.con.read_parquet(
             store.layer_dir(revision.id) + "dims/connection.parquet"
@@ -1789,7 +1810,7 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store, ac_dc)
         ("Link", {"input", "output"}, ("bus0", "bus1")),
         ("Generator", {"attached"}, ("bus",)),
     ):
-        original = ac_dc.c[ctype].static
+        original = n.c[ctype].static
         mine = rows[rows["entity"].isin(original.index)]
         assert set(mine["role"]) == roles, f"{ctype} roles follow PyPSA's sign"
         for port in ports:

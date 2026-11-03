@@ -331,6 +331,22 @@ def test_a_layer_directory_without_a_claim_is_no_claim(store):
     assert stray.exists(), "only a claimed layer is aged"
 
 
+@pytest.fixture(scope="module")
+def metas(module_store):
+    """Three revisions by their `meta`, and a pending claim carrying `a`'s."""
+    metas = {
+        "a": {"run": "a", "n": 1},
+        "b": {"run": "b", "n": 1},
+        "c": {"run": "c", "ok": True},
+    }
+    names = {
+        module_store.commit(_p_nom(), parent=None, meta=m).id: name
+        for name, m in metas.items()
+    }
+    module_store.claim(parent=None, meta=metas["a"])
+    return module_store, names
+
+
 @pytest.mark.parametrize(
     ("meta", "found"),
     [
@@ -344,23 +360,14 @@ def test_a_layer_directory_without_a_claim_is_no_claim(store):
     ],
     ids=["none", "one", "shared", "both", "one-off", "other-type", "bool"],
 )
-def test_revisions_filter_by_meta(store, meta, found):
+def test_revisions_filter_by_meta(metas, meta, found):
     """A revision is listed when its `meta` holds every pair given; a pending layer never.
 
     Notes
     -----
     - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
     """
-    metas = {
-        "a": {"run": "a", "n": 1},
-        "b": {"run": "b", "n": 1},
-        "c": {"run": "c", "ok": True},
-    }
-    names = {
-        store.commit(_p_nom(), parent=None, meta=m).id: name
-        for name, m in metas.items()
-    }
-    store.claim(parent=None, meta={"run": "a", "n": 1})
+    store, names = metas
     fresh = Workspace()
     try:
         for reader in (store, fresh.store(store.uri)):

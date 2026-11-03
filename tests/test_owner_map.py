@@ -34,7 +34,6 @@ from tests.fixtures import (
     drop_entities,
     empty_child,
     empty_root,
-    export_network,
     restate,
     schema,
     write_attribute,
@@ -258,7 +257,7 @@ def test_last_writer_wins_per_key(store, parent):
     assert owner_of("Norway Wind", "p_max_pu") == parent.id
 
 
-def test_removing_a_component_removes_all_its_attributes(store, ac_dc):
+def test_removing_a_component_removes_all_its_attributes(ac_dc_root):
     """Removing a component removes every attribute and the component row of it.
 
     Only on the branch that carries it, and through to a built model.
@@ -267,8 +266,7 @@ def test_removing_a_component_removes_all_its_attributes(store, ac_dc):
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    parent = export_network(ac_dc, store)
-    parent.materialise()
+    parent = ac_dc_root
     before = {k for k in keys(parent) if k[0] == "Norway Gas"}
     assert len(before) > 1
     assert "Norway Gas" in entity_names(parent)

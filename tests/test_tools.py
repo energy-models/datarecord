@@ -54,11 +54,29 @@ def single_revision(tmp_path_factory, ac_dc):
 
 
 @pytest.fixture(scope="module")
-def solved(single_revision):
-    """The network `single_revision` builds, optimised once for the module."""
-    n = PyPSA.build(single_revision.record)
+def built(single_revision):
+    """The network `single_revision` builds, once for the module; a test changes a copy."""
+    return PyPSA.build(single_revision.record)
+
+
+@pytest.fixture(scope="module")
+def solved(built):
+    """`built`, optimised once for the module."""
+    n = built.copy()
     n.optimize(solver_name="highs")
     return n
+
+
+@pytest.fixture(scope="module")
+def results(single_revision, solved) -> Revision:
+    """`solved`'s results, written once as a thin layer over `single_revision`."""
+    return _results_over(single_revision, solved)
+
+
+@pytest.fixture(scope="module")
+def results_built(results):
+    """The network `results` builds, once for the module; a test changes a copy."""
+    return PyPSA.build(results.record)
 
 
 @pytest.fixture
@@ -73,12 +91,6 @@ def exported(single_revision, workspace, tmp_path) -> HandBuilt:
     for kind in ("dims", "attributes"):
         shutil.copytree(source / kind, layer.dir / kind)
     return layer
-
-
-@pytest.fixture
-def copied(exported) -> Revision:
-    """`exported` committed as it is, for a test to write children over."""
-    return exported.commit()
 
 
 def _results_over(revision, n):
@@ -192,7 +204,7 @@ def test_flags_per_role_name_the_attributes_reaching_a_connection_of_it(
     assert set(record.flags(role=role)) == reaching
 
 
-def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
+def test_buses_and_carriers_are_labels_of_their_dims(single_revision, built, ac_dc):
     """`n.buses` and `n.carriers` are the `bus` and `carrier` axes, under PyPSA's names.
 
     Notes
@@ -218,7 +230,6 @@ def test_buses_and_carriers_are_labels_of_their_dims(single_revision, ac_dc):
     assert record.schema.attributes["v_nom"].dims == {"bus", "scenario"}
     assert record.schema.attributes["co2_emissions"].dims == {"carrier", "scenario"}
 
-    built = PyPSA.build(record)
     for ctype in ("Bus", "Carrier"):
         original = ac_dc.c[ctype].static
         pd.testing.assert_frame_equal(
@@ -292,7 +303,7 @@ def test_a_carrier_is_a_live_label(single_revision):
         w.remove("carrier", ["gas"])
 
 
-def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision):
+def test_a_value_its_type_does_not_take_is_reported_and_left_out(store):
     """A broadcast reaches every entity; the build keeps it to the types taking it.
 
     Notes
@@ -301,7 +312,12 @@ def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision
     """
     from datarecord.mutable import WorkingRecord
 
-    w = WorkingRecord(single_revision.record)
+    n = _north()
+    n.add("Bus", "south")
+    n.add("Load", "load", bus="south")
+    n.add("Line", "line", bus0="north", bus1="south", x=0.1)
+    n.add("Link", "link", bus0="north", bus1="south")
+    w = WorkingRecord(export_network(n, store).record)
     w.set("p_max_pu", 0.9)
 
     report = PyPSA.verify(w)
@@ -312,6 +328,21 @@ def test_a_value_its_type_does_not_take_is_reported_and_left_out(single_revision
     assert (n.c.Link.static["p_max_pu"] == 0.9).all()
     assert "p_max_pu" not in n.c.Load.static
     assert "p_max_pu" not in n.c.Load.dynamic
+
+
+@pytest.fixture(scope="module")
+def two_generators(tmp_path_factory):
+    """Generators `g1` and `g2` at bus `b` over scenarios `low` and `high`, exported once."""
+    import pypsa
+
+    n = pypsa.Network()
+    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+    n.add("Bus", "b")
+    n.add("Generator", ["g1", "g2"], bus="b")
+    n.set_scenarios({"low": 0.5, "high": 0.5})
+    workspace = Workspace()
+    yield export_network(n, workspace.store(str(tmp_path_factory.mktemp("two"))))
+    workspace.close()
 
 
 def _add_generator(w, name: str) -> None:
@@ -367,7 +398,7 @@ def _add_generator(w, name: str) -> None:
     ids=["scenario-crosses-entities", "entity-crosses-a-scenario", "added-member"],
 )
 def test_a_build_settles_rows_of_several_layers_by_the_broadcast_rule(
-    store, layers, built
+    two_generators, layers, built
 ):
     """Rows as written, a deeper layer crossing a shallower one, build each member's value.
 
@@ -375,16 +406,9 @@ def test_a_build_settles_rows_of_several_layers_by_the_broadcast_rule(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    import pypsa
-
     from datarecord.mutable import WorkingRecord
 
-    n = pypsa.Network()
-    n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
-    n.add("Bus", "b")
-    n.add("Generator", ["g1", "g2"], bus="b")
-    n.set_scenarios({"low": 0.5, "high": 0.5})
-    revision = export_network(n, store)
+    revision = two_generators
     for edit in layers:
         w = WorkingRecord(revision.record)
         edit(w)
@@ -895,15 +919,14 @@ def test_a_solved_network_exports_its_results_long_form(single_revision, solved)
     assert set(nom["entity"]) == set(n.c["Generator"].static.index[nonzero])
 
 
-def test_an_export_skips_results_still_at_their_default(single_revision):
+def test_an_export_skips_results_still_at_their_default(single_revision, built):
     """An unsolved network yields no `p`/`p_nom_opt` rows.
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    n = PyPSA.build(single_revision.record)
-    results = PyPSA.to_datarecord(n, single_revision.record.con).attributes
+    results = PyPSA.to_datarecord(built, single_revision.record.con).attributes
     assert "p" not in results
     assert "p_nom_opt" not in results
 
@@ -936,7 +959,7 @@ def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
         )
 
 
-def test_bus_results_are_keyed_by_bus(copied, solved):
+def test_bus_results_are_keyed_by_bus(results, results_built, solved):
     """`marginal_price`, `v_mag_pu` and `v_ang` are over `bus`; `Bus.p` and the rest are derived.
 
     `build` copies a result into the network like any attribute.
@@ -946,8 +969,7 @@ def test_bus_results_are_keyed_by_bus(copied, solved):
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    revision = _results_over(copied, solved)
-    schema = revision.record.schema
+    schema = results.record.schema
     over_bus = {
         a for a, spec in _registry_schema().attributes.items() if "bus" in spec.dims
     }
@@ -956,10 +978,10 @@ def test_bus_results_are_keyed_by_bus(copied, solved):
     assert "bus" not in schema.attributes["p"].dims
 
     expected = solved.c["Bus"].dynamic["marginal_price"]
-    wide = _prices(revision)
+    wide = _prices(results)
     assert np.allclose(wide[expected.columns].reindex(expected.index), expected)
 
-    built = PyPSA.build(revision.record).c["Bus"].dynamic["marginal_price"]
+    built = results_built.c["Bus"].dynamic["marginal_price"]
     pd.testing.assert_frame_equal(
         built[expected.columns],
         expected,
@@ -969,41 +991,41 @@ def test_bus_results_are_keyed_by_bus(copied, solved):
     )
 
 
-def test_a_child_reads_its_parents_results_and_the_latest_wins(copied, solved):
+def test_a_child_reads_its_parents_results_and_the_latest_wins(results, results_built):
     """A result is an attribute: it inherits through layers, a later one standing over it.
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    revision = _results_over(copied, solved)
-    expected = _prices(revision)
-    pd.testing.assert_frame_equal(_prices(empty_child(revision).commit()), expected)
+    expected = _prices(results)
+    pd.testing.assert_frame_equal(_prices(empty_child(results).commit()), expected)
 
-    n = PyPSA.build(revision.record)
+    n = results_built.copy()
     n.c["Bus"].dynamic["marginal_price"] *= 2
-    resolved = _results_over(revision, n)
+    resolved = _results_over(results, n)
     pd.testing.assert_frame_equal(_prices(empty_child(resolved).commit()), expected * 2)
 
 
-def test_a_re_solve_leaves_no_stale_sub_network(copied, solved):
+def test_a_re_solve_leaves_no_stale_sub_network(
+    single_revision, results, results_built, solved
+):
     """A results layer replaces `base`'s SubNetworks rather than adding to them.
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    revision = _results_over(copied, solved)
     *kept, dropped = sorted(solved.c["SubNetwork"].static.index)
-    assert _sub_networks(revision) == sorted([*kept, dropped])
-    entities = revision.record.dims["entity"].df()
-    assert entities.equals(copied.record.dims["entity"].df()), (
+    assert _sub_networks(results) == sorted([*kept, dropped])
+    entities = results.record.dims["entity"].df()
+    assert entities.equals(single_revision.record.dims["entity"].df()), (
         "a results layer leaves the entity axis alone"
     )
 
-    n = PyPSA.build(revision.record)
+    n = results_built.copy()
     n.remove("SubNetwork", dropped)
-    resolved = _results_over(revision, n)
+    resolved = _results_over(results, n)
     assert _sub_networks(resolved) == sorted(kept)
     slack = resolved.record.attributes["slack_bus"].df()
     assert dropped not in set(slack["sub_network"]), "its results went with it"
@@ -1012,15 +1034,17 @@ def test_a_re_solve_leaves_no_stale_sub_network(copied, solved):
 @pytest.mark.parametrize(
     ("over_solved", "listed"), [(False, None), (True, [])], ids=["unsolved", "solved"]
 )
-def test_results_without_sub_networks_list_none(copied, solved, over_solved, listed):
+def test_results_without_sub_networks_list_none(
+    single_revision, built, results, results_built, over_solved, listed
+):
     """A solve without SubNetworks restates a `sub_network` axis `base` has empty, and writes none where it has none.
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    base = _results_over(copied, solved) if over_solved else copied
-    n = PyPSA.build(base.record)
+    base, n = (results, results_built) if over_solved else (single_revision, built)
+    n = n.copy()
     n.remove("SubNetwork", n.c["SubNetwork"].static.index)
     n.c["Bus"].dynamic["marginal_price"] = pd.DataFrame(
         1.0, index=n.snapshots, columns=n.c["Bus"].static.index
@@ -1036,7 +1060,9 @@ def test_results_without_sub_networks_list_none(copied, solved, over_solved, lis
 @pytest.mark.parametrize(
     ("ctype", "attr"), [("Line", "mu_upper"), ("Bus", "marginal_price")]
 )
-def test_a_result_a_re_solve_leaves_out_reads_as_null(copied, solved, ctype, attr):
+def test_a_result_a_re_solve_leaves_out_reads_as_null(
+    single_revision, results_built, ctype, attr
+):
     """A results layer restates `base`'s results it does not write as NULL.
 
     Built back, the network holds PyPSA's own default there.
@@ -1045,12 +1071,11 @@ def test_a_result_a_re_solve_leaves_out_reads_as_null(copied, solved, ctype, att
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    n = PyPSA.build(_results_over(copied, solved).record)
+    n = results_built.copy()
     n.c[ctype].dynamic[attr] = pd.DataFrame(
         1.0, index=n.snapshots, columns=n.c[ctype].static.index
     )
-    base = _results_over(copied, n)
-    n = PyPSA.build(base.record)
+    base = _results_over(single_revision, n)
     n.c[ctype].dynamic[attr] = n.c[ctype].dynamic[attr].iloc[:, :0]
     resolved = _results_over(base, n)
 

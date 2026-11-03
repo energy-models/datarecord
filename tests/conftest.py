@@ -41,6 +41,29 @@ def store(workspace, tmp_path):
     return workspace.store(str(tmp_path))
 
 
+@pytest.fixture(scope="module")
+def module_store(tmp_path_factory):
+    """A store shared by a module, for fixtures its tests only branch from."""
+    ws = Workspace()
+    yield ws.store(str(tmp_path_factory.mktemp("module")))
+    ws.close()
+
+
+@pytest.fixture(scope="session")
+def ac_dc_root(tmp_path_factory, ac_dc):
+    """`ac_dc` exported and materialised once per session, to branch from.
+
+    Its store is shared, so a test only ever reads it or commits a child of it.
+    """
+    from tests.fixtures import export_network
+
+    ws = Workspace()
+    revision = export_network(ac_dc, ws.store(str(tmp_path_factory.mktemp("ac_dc"))))
+    revision.materialise()
+    yield revision
+    ws.close()
+
+
 @pytest.fixture(scope="session")
 def ac_dc():
     """PyPSA's `ac_dc_meshed`, with its carriers' own cost columns dropped.
