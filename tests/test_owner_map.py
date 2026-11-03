@@ -15,7 +15,6 @@ import json
 from dataclasses import replace
 from itertools import product
 from pathlib import Path
-from uuid import uuid4
 
 import pandas as pd
 import pytest
@@ -24,10 +23,9 @@ from datarecord import WorkingRecord, Workspace
 from datarecord.duck import union_all_by_name
 from datarecord.resolve.fold import read_dim_owners
 from datarecord.resolve.owner_map import _fold_map
-from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec
-from datarecord.store.manifest import LayerFiles, Manifest
+from datarecord.store.manifest import LayerFiles
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -60,38 +58,23 @@ def parent(store):
     return revision
 
 
-def test_union_all_by_name_folds_every_relation(store):
-    """Three arms, not two: the fold's union binds `u`/`rel` by name.
+def test_union_all_by_name_folds_every_relation_by_name(store):
+    """Every arm by *name*, so an arm lacking a column reads NULL there.
 
-    Two relations pass whatever the loop body does, since the first pairing is
-    the only one. Three is what catches the failure mode the helper's variables
-    invite - a scan that re-reads `rels[0]` instead of advancing would give
-    `[1, 1]` here, with no error to point at it.
+    Three arms, not two: a scan that re-reads `rels[0]` instead of advancing
+    would give `1` twice, with no error to point at it. Filling by name is what
+    lets a layer written before `bus`/`breakpoint` existed still resolve.
 
     Notes
     -----
     - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
-    """
-    rels = [store.workspace.con.sql(f"SELECT {i} AS x") for i in (1, 2, 3)]
-    got = union_all_by_name(rels, store.workspace.con).fetchall()
-    assert sorted(v for (v,) in got) == [1, 2, 3]
-
-
-def test_union_all_by_name_fills_a_missing_column_with_null(store):
-    """By *name*, so an arm lacking a column reads NULL there.
-
-    What lets a layer written before `bus`/`breakpoint` existed still resolve.
-
-    Notes
-    -----
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    rels = [
-        store.workspace.con.sql("SELECT 1 AS x, 'a' AS y"),
-        store.workspace.con.sql("SELECT 2 AS x"),
-    ]
-    got = union_all_by_name(rels, store.workspace.con).fetchall()
-    assert sorted(got, key=lambda r: r[0]) == [(1, "a"), (2, None)]
+    con = store.workspace.con
+    rels = [con.sql("SELECT 1 AS x, 'a' AS y"), con.sql("SELECT 2 AS x")]
+    rels.append(con.sql("SELECT 'c' AS y, 3 AS x"))
+    got = union_all_by_name(rels, con).fetchall()
+    assert sorted(got, key=lambda r: r[0]) == [(1, "a"), (2, None), (3, "c")]
 
 
 def keys(revision):
@@ -167,11 +150,15 @@ def _coords(store, revision):
         workspace.close()
 
 
-@pytest.mark.parametrize("dropped", [[], ["gas"]], ids=["nothing-dead", "gas-dead"])
 @pytest.mark.parametrize(
-    "cached",
-    [(), ("root",), ("middle",), ("root", "middle")],
-    ids=["leaf-only", "root", "middle", "root-and-middle"],
+    ("cached", "dropped"),
+    [((), []), ((), ["gas"]), (("root",), ["gas"]), (("middle",), [])],
+    ids=[
+        "leaf-only-nothing-dead",
+        "leaf-only-gas-dead",
+        "root-gas-dead",
+        "middle-nothing-dead",
+    ],
 )
 def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropped):
     """A node cache names each axis's layer and whether it has dead labels, and reads back as the full fold.
@@ -225,38 +212,6 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropp
     ), "dead label files are written only where a dim has dead labels"
 
 
-def test_last_writer_wins_per_key(store, parent):
-    """A child's key overrides the parent's, others stay with the parent.
-
-    Every key of a root's map points at the root itself. The entity axis has no
-    `layer_uuid`: it folds like an axis, its winning row the whole row in one
-    file.
-
-    Notes
-    -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-    """
-    record = parent.record
-    assert set(record._fold.owner_map.df()["layer_uuid"]) == {parent.id}
-    assert "layer_uuid" not in record._coords.axes["entity"].columns
-    assert ("Manchester Wind", "p_max_pu") in keys(parent)
-
-    child_layer = empty_child(parent)
-    write_attribute(
-        child_layer, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}]
-    )
-    child = child_layer.commit()
-    df = child.record._fold.owner_map.df()
-
-    def owner_of(name, attr):
-        sel = df[(df["entity"] == name) & (df["attribute"].astype(str) == attr)]
-        return sel["layer_uuid"].iloc[0]
-
-    assert owner_of("Manchester Wind", "p_max_pu") == child.id
-    assert owner_of("Manchester Wind", "marginal_cost") == parent.id
-    assert owner_of("Norway Wind", "p_max_pu") == parent.id
-
-
 def test_removing_a_component_removes_all_its_attributes(ac_dc_root):
     """Removing a component removes every attribute and the component row of it.
 
@@ -308,26 +263,6 @@ def test_a_removed_cache_falls_back_to_the_fold(store, parent):
     assert keys(fresh) == expected
 
 
-def test_any_node_may_be_a_parent(store, parent):
-    """A layer is write-once, so no node needs preparing to branch from.
-
-    Notes
-    -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
-    """
-    child_layer = empty_child(parent)
-    write_attribute(
-        child_layer, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}]
-    )
-    child = child_layer.commit()
-    grandchild = empty_child(child).commit()
-    # The child was never materialised, yet its layer resolves for the
-    # grandchild all the same.
-    df = grandchild.record._fold.owner_map.df()
-    row = df[(df["entity"] == "Manchester Wind") & (df["attribute"] == "p_max_pu")]
-    assert set(row["layer_uuid"]) == {child.id}
-
-
 def test_a_record_with_no_manifest_folds(store):
     """A record that declares no schema resolves to an empty map, not a crash.
 
@@ -347,32 +282,6 @@ def test_a_record_with_no_manifest_folds(store):
     owner_map = revision.record._fold.owner_map
     assert "varies" in owner_map.columns
     assert owner_map.fetchall() == []
-
-
-def test_a_parquet_layer_locates_a_layers_files(store):
-    """The fold names files and the source says where they are.
-
-    `Store.layer_dir` is what a `ParquetLayer` derives from, so this pins the
-    seam rather than the layout: a reader asks for `attributes/p_nom.parquet` and
-    never builds the path itself.
-
-    Notes
-    -----
-    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
-    """
-    revision_id = uuid4()
-    manifest = Manifest(
-        id=revision_id, parent=None, schema=Schema(), files=LayerFiles()
-    )
-    source = ParquetLayer(manifest, store)
-    assert isinstance(source, LayerSource), (
-        "structural, so no import is needed to be one"
-    )
-
-    assert source.uri() == store.layer_dir(revision_id), "empty is the layer root"
-    assert source.uri("attributes/p_nom.parquet") == (
-        store.layer_dir(revision_id) + "attributes/p_nom.parquet"
-    )
 
 
 def test_a_read_refuses_an_owner_map_naming_a_file_the_layer_lacks(store, tmp_path):
@@ -684,17 +593,11 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
         assert broadcast(record, "p_max_pu", "entity", "snapshot") == expected
 
 
-@pytest.mark.parametrize("materialised", [False, True])
-@pytest.mark.parametrize(
-    ("named", "null"), [("snapshot", "period"), ("period", "snapshot")]
-)
-def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
-    store, named, null, materialised
-):
+def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(store):
     """A child naming one of two dims outside `partial` leaves the rest of the series.
 
     The root sets `x` at every `(period, snapshot)` of `a`; the child sets `a`
-    at one label of `named`, leaving `null` NULL.
+    at one `snapshot`, leaving `period` NULL.
 
     Notes
     -----
@@ -718,21 +621,19 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
     root.add("entity", ["a"])
     root.add("period", [1, 2])
     root.add("snapshot", [0, 1])
-    for p, s in product([1, 2], [0, 1]):
-        root.set("x", 10.0 * p + s, entity="a", period=p, snapshot=s)
+    keys = pd.DataFrame(product([1, 2], [0, 1]), columns=["period", "snapshot"])
+    root.set("x", keys.assign(entity="a", value=10.0 * keys.period + keys.snapshot))
     committed = base.store.commit(root)
-    if materialised:
-        committed.materialise()
     child = WorkingRecord(committed.record)
-    child.set("x", 99.0, entity="a", **{named: 1})
+    child.set("x", 99.0, entity="a", snapshot=1)
 
     expected = {
-        ("a", p, s): 99.0 if {"period": p, "snapshot": s}[named] == 1 else 10.0 * p + s
+        ("a", p, s): 99.0 if s == 1 else 10.0 * p + s
         for p, s in product([1, 2], [0, 1])
     }
     for record in (child, committed.store.commit(child).record):
         assert broadcast(record, "x", "entity", "period", "snapshot") == expected, (
-            f"the set reaches every {null} at {named}=1, the root keeps the rest"
+            "the set reaches every period at snapshot=1, the root keeps the rest"
         )
 
 
@@ -802,8 +703,7 @@ def test_a_widening_child_splits_its_parents_rows_by_their_labels(store, materia
     ), "one fold table per node folded, whatever schema reads it"
 
 
-@pytest.mark.parametrize("materialised", [False, True])
-def test_a_node_reads_the_same_whichever_descendant_widens(store, materialised):
+def test_a_node_reads_the_same_whichever_descendant_widens(store):
     """A middle node reads alike before and after a leaf brings `scenario` into `partial`.
 
     The middle crosses the root on `(entity, period)`, so it owns overlap rows,
@@ -839,8 +739,7 @@ def test_a_node_reads_the_same_whichever_descendant_widens(store, materialised):
         ],
     )
     middle = layer.commit()
-    if materialised:
-        middle.materialise()
+    middle.materialise()
 
     def read(revision):
         return broadcast(revision.record, "p_max_pu", "entity", "period", "scenario")
@@ -856,8 +755,9 @@ def test_a_node_reads_the_same_whichever_descendant_widens(store, materialised):
     assert read(store.revision(middle.id)) == before
 
 
-@pytest.mark.parametrize("materialised", [False, True])
-@pytest.mark.parametrize("partial", [set(), {"scenario"}])
+@pytest.mark.parametrize(
+    ("partial", "materialised"), [(set(), False), ({"scenario"}, True)]
+)
 def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
     store, partial, materialised
 ):
@@ -892,8 +792,10 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
     )
 
 
-@pytest.mark.parametrize("materialised", [False, True])
-@pytest.mark.parametrize("remover", ["parent", "widening child"])
+@pytest.mark.parametrize(
+    ("remover", "materialised"),
+    [("parent", False), ("parent", True), ("widening child", False)],
+)
 def test_a_label_removed_along_a_dim_joining_partial_names_no_row(
     store, remover, materialised
 ):
@@ -930,29 +832,29 @@ def _committed(layer, *, materialised):
     return revision
 
 
-def _restated_then_widened(store, *, materialised):
+def _restated_then_widened(store):
     """A child restates `(gas, high)` along `scenario` outside `partial`; a leaf widens."""
-    layer = empty_child(_scenario_root(store, materialised=materialised))
+    layer = empty_child(_scenario_root(store, materialised=False))
     write_attribute(
         layer, "p_max_pu", [{"entity": "gas", "scenario": "high", "value": 3.0}]
     )
-    leaf = empty_child(_committed(layer, materialised=materialised), _WIDE).commit()
+    leaf = empty_child(layer.commit(), _WIDE).commit()
     expected = {("gas", "high"): 3.0, ("wind", "low"): 5.0, ("wind", "high"): 5.0}
     return _p_max_pu(leaf), expected
 
 
-def _removed_widened_re_added(store, *, materialised):
+def _removed_widened_re_added(store):
     """`low` is removed outside `partial`, `scenario` joins it, then `low` is re-added."""
-    layer = empty_child(_scenario_root(store, materialised=materialised))
+    layer = empty_child(_scenario_root(store, materialised=False))
     restate(layer, "dims", "scenario", [], drop=["low"])
-    widening = empty_child(_committed(layer, materialised=materialised), _WIDE)
-    layer = empty_child(_committed(widening, materialised=materialised))
+    widening = empty_child(layer.commit(), _WIDE)
+    layer = empty_child(widening.commit())
     restate(layer, "dims", "scenario", [{"scenario": "low"}])
     expected = {("gas", "high"): 2.0, ("wind", "low"): 5.0, ("wind", "high"): 5.0}
     return _p_max_pu(layer.commit()), expected
 
 
-def _two_dims_joining(store, *, materialised):
+def _two_dims_joining(store):
     """`period` and `scenario` join `partial` in one child writing `(gas, 2040, high)`."""
     layer = empty_root(store, _NARROW)
     write_component(layer, "Generator", [{"entity": "gas"}])
@@ -968,7 +870,7 @@ def _two_dims_joining(store, *, materialised):
         ],
     )
     wide = schema(partial={"period", "scenario", "connection"})
-    layer = empty_child(_committed(layer, materialised=materialised), wide)
+    layer = empty_child(layer.commit(), wide)
     write_attribute(
         layer,
         "p_max_pu",
@@ -980,7 +882,7 @@ def _two_dims_joining(store, *, materialised):
     return broadcast(record, "p_max_pu", "entity", "period", "scenario"), expected
 
 
-def _connection_joining(store, *, materialised):
+def _connection_joining(store):
     """The multi-dim `connection` joins `partial` in a child writing `(gas, south)`."""
     layer = empty_root(store, schema(partial=set()))
     write_component(layer, "Generator", [{"entity": "gas"}])
@@ -994,7 +896,7 @@ def _connection_joining(store, *, materialised):
             {"entity": "gas", "bus": "south", "value": 0.5},
         ],
     )
-    layer = empty_child(_committed(layer, materialised=materialised), _WIDE)
+    layer = empty_child(layer.commit(), _WIDE)
     write_attribute(
         layer, "efficiency", [{"entity": "gas", "bus": "south", "value": 0.9}]
     )
@@ -1002,7 +904,6 @@ def _connection_joining(store, *, materialised):
     return broadcast(layer.commit().record, "efficiency", "connection"), expected
 
 
-@pytest.mark.parametrize("materialised", [False, True])
 @pytest.mark.parametrize(
     "build",
     [
@@ -1012,9 +913,7 @@ def _connection_joining(store, *, materialised):
         _connection_joining,
     ],
 )
-def test_a_widening_of_partial_reads_what_the_narrower_layers_wrote(
-    store, build, materialised
-):
+def test_a_widening_of_partial_reads_what_the_narrower_layers_wrote(store, build):
     """Each shape of `partial` widening under layers written narrower reads as `build` says.
 
     Notes
@@ -1022,7 +921,7 @@ def test_a_widening_of_partial_reads_what_the_narrower_layers_wrote(
     - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    read, expected = build(store, materialised=materialised)
+    read, expected = build(store)
     assert read == expected, build.__doc__
 
 

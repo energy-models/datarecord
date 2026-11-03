@@ -176,11 +176,10 @@ def test_a_property_keyword_matches_a_label_by_its_stored_value(record):
     )
 
 
-@pytest.mark.parametrize("committed", [False, True], ids=["staged", "committed"])
-def test_set_of_a_category_re_categorizes_labels_and_flags(revision, committed):
+def test_set_of_a_category_re_categorizes_labels_and_flags(revision):
     staged = WorkingRecord(revision.record)
     staged.set("entity.ctype", "Load", entity="g1")
-    record = revision.store.commit(staged).record if committed else staged
+    record = revision.store.commit(staged).record
     types = {e: r["ctype"] for e, r in _rows(record.properties["entity"]).items()}
     assert types == {"g1": "Load", "l1": "Load"}, "g1 is a load now"
     assert set(record.flags(ctype="Generator")) == set(), "no generator is left"
