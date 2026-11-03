@@ -1477,7 +1477,7 @@ staged rows are one more source on the end.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>The record's one manifest, which every source carries too.</p>
+                <p>The schema the record is read under: its last layer's.</p>
               </div>
             </td>
             <td>
@@ -1661,7 +1661,7 @@ staged rows are one more source on the end.</p>
 
 
         <p>What a record answers, however it is backed, as DuckDB relations.</p>
-<p>Read-only: writing is <code>store.root(source)</code>, <code>rev.child(source)</code> or
+<p>Read-only: writing is <code>store.commit(source, parent=...)</code> or
 <code>ws.write(source, uri)</code>, whose writer reads a <code>LayerData</code> rather than this -
 a framework's own <code>RecordLike</code> reaches it through an adapter.</p>
 

@@ -1908,10 +1908,10 @@ Over one source the fold is a scan of it: every key is owned by the one layer, a
 <li><code>schema.partial</code> sets the granularity of a patch, and one layer patches nothing, so <code>partial</code> is inert there.</li>
 </ul>
 <p>The fold requires a layer layout, and a record directory is one.
-A directory copied out of any tree, with no revision file, reads identically.</p>
+A standalone directory and a layer of a store share that layout, and each is read under its own manifest by one rule.</p>
 <h2 id="materialised-node-caches">Materialised node caches<a class="headerlink" href="#materialised-node-caches" title="Permanent link">&para;</a></h2>
 <p>A revision's owner map, the layers holding its resolved axes and its dead labels may be materialised under <code>layers/&lt;id&gt;/resolved/</code>.
-The schema is not, since there is <a href="../../model/schema/#one-schema-per-record">one for the whole record</a> and nothing per revision to resolve.</p>
+The schema is not, since each layer's manifest carries <a href="../../model/schema/#one-schema-per-record">its schema whole</a> and nothing folds it.</p>
 <p>Where a materialised map exists, a read stops there.
 The map is already folded over everything above it, so a read walks the ancestry back to the nearest materialised revision and no further.
 That truncation keeps a deep chain cheap.
@@ -1928,6 +1928,7 @@ A read above the revision seeds its dead labels from these files, since the axis
 <code>resolved/dead/</code> and <code>owner_map.parquet</code> are folds, since no layer file holds either.</p>
 <p>Materialising is a policy: every N layers, at a branch point, or on demand.
 It only adds files under <code>resolved/</code>, so it changes no answer, only how many layers a read touches.
+No manifest lists them: they are written after the commit, at any later time, and a read opens each by name.
 The persisted map is the fold's result, and a NULL in it reaches the labels of the node read, so a label added below the node is reached as it would be without the cache.</p>
 
 

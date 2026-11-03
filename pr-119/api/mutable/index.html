@@ -1376,11 +1376,10 @@ rebuilding the format from a protocol that deliberately lacks it.</p>
     <div class="doc doc-contents ">
 
         <p>The staged layer alone: the delta against the base, as a <code>LayerData</code>.</p>
-<p>What <code>rev.child(w.edits)</code> writes, where <code>rev</code> is the revision this
-record was built over - only the edits, the fold resolving the rest from
-the parent. The record itself is the flattened whole, base plus edits,
-which is what a standalone <code>ws.write(w, uri)</code> wants; <code>rev.child(w)</code>
-would write that whole as a child, reading back right but larger.</p>
+<p>What <code>store.commit(w)</code> writes, as a child of the revision this record
+was built over - only the edits, the fold resolving the rest from the
+parent. The record itself is the flattened whole, base plus edits,
+which is what a standalone <code>ws.write(w, uri)</code> wants.</p>
 <p>Writing clears nothing: <code>rollback()</code> does, called or not.</p>
 
 
