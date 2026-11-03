@@ -315,8 +315,8 @@ All notable changes to datarecord are documented here. The format follows
   read its labels.
 - The writer accepts two rows that each name a dim the other leaves NULL
   where a row naming both is there, so `ws.write(w, uri)` writes a record of
-  several layers. The read of a `WorkingRecord` refuses two staged rows that
-  cross with no staged row naming both.
+  several layers. A `set` staging two rows that cross with no row naming
+  both is refused.
 - The fold reads each layer under the schema in its own manifest. Where a
   deeper layer's schema is wider, the map folded so far, materialised or not,
   is extended to it, so a materialised node keeps counting after a descendant
@@ -324,6 +324,24 @@ All notable changes to datarecord are documented here. The format follows
   `owner_map_<id>`. A layer that restates a key along a dim outside `partial`
   and omits a label its parent held there deletes that value, and a later
   widening of `partial` no longer brings it back.
+- The fold of a layer onto the map below it is one query whose joins its
+  schema fixes, whatever named sets its rows hold (`fold_layer`, replacing
+  `fold_attributes`). A frozen layer leaving a dim outside `partial` unfilled
+  is refused when a workspace first folds it, not on every read.
+- Every `Record` lists every dim, property subject and attribute its schema
+  declares, a typed empty relation where no layer holds a row, rather than
+  raising `KeyError`.
+- A relation of a `WorkingRecord` is planned from the schema and table names
+  alone, so one built before an edit reads it. Every staging table exists
+  from the start, an axis holding a copy of the base's, and `rollback()`
+  empties them rather than dropping them. Each edit runs in one transaction,
+  which also refreshes the staged owner-map rows the fold, `flags()` and the
+  write read.
+- A `set` whose row crosses a staged row, with no staged row naming both, also
+  stages the row naming both with its value: the later edit wins where the
+  two meet, rather than the read failing.
+- The edits of a `WorkingRecord` restate an axis only where it differs from
+  the base's, and write no attribute without rows.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
