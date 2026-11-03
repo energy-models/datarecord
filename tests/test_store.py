@@ -432,7 +432,7 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
     monkeypatch.setattr(cache, "_checkpointed", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
-    assert Path(store.resolved_dir(root.id), "dims", "entity.parquet").exists()
+    assert Path(store.dim_owners_uri(root.id)).exists()
     assert not cache.materialised(root.id, store, root.record.schema), (
         "the rest is no cache yet"
     )
