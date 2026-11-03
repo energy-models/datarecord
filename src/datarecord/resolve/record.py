@@ -411,6 +411,9 @@ class Record:
         ------
         duckdb.CatalogException
             If the schema `name` exists.
+        ValueError
+            If `name` is a database attached to the workspace, which DuckDB
+            would read as the catalog of the nested schemas.
         duckdb.TransactionException
             Where the cursor already holds an open transaction.
 
@@ -418,6 +421,12 @@ class Record:
         -----
         - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
         """
+        con = self.con
+        if (name,) in con.sql(
+            "SELECT database_name FROM duckdb_databases()"
+        ).fetchall():
+            msg = f"`{name}` names a database attached to the workspace; register under another name"
+            raise ValueError(msg)
         kinds = {
             "dims": self.dims,
             "properties": self.properties,
@@ -428,7 +437,6 @@ class Record:
             for kind, relations in kinds.items()
             for view, rel in relations.items()
         }
-        con = self.con
         with transaction(
             con,
             "register",

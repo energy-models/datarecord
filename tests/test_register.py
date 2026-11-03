@@ -171,12 +171,38 @@ def test_a_reader_sees_only_whole_edits(workspace, working):
         thread.join()
 
     assert len(seen) > len(EDITS), "the reader read between every two edits"
+    assert any(s != states[0] for s in seen), "the reader saw an edit"
     assert all(s in states for s in seen), (
         "a reader saw a state no sequence of whole edits leaves"
     )
 
 
-def test_register_refuses_an_open_transaction(workspace, small):
+@pytest.mark.parametrize(
+    "call",
+    [
+        pytest.param(lambda ws, small: small.record.register("edit"), id="register"),
+        pytest.param(lambda ws, small: ws.unregister("edit"), id="unregister"),
+    ],
+)
+def test_register_and_unregister_refuse_an_open_transaction(workspace, small, call):
     workspace.con.begin()
-    with pytest.raises(duckdb.TransactionException):
-        small.record.register("edit")
+    try:
+        with pytest.raises(duckdb.TransactionException, match="already holds one open"):
+            call(workspace, small)
+    finally:
+        workspace.con.rollback()
+
+
+def test_unregister_leaves_a_schema_no_record_registered(workspace):
+    con = workspace.con
+    con.execute("CREATE SCHEMA other")
+    con.execute("CREATE TABLE other.t (a INTEGER)")
+    with pytest.raises(duckdb.CatalogException, match="no record is registered"):
+        workspace.unregister("other")
+    assert con.table("other.t").columns == ["a"], "a schema no record registered stays"
+
+
+def test_register_refuses_a_database_name(workspace, small):
+    [(database,)] = workspace.con.sql("SELECT current_database()").fetchall()
+    with pytest.raises(ValueError, match="names a database"):
+        small.record.register(database)

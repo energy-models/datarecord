@@ -149,7 +149,8 @@ class Workspace:
         Raises
         ------
         duckdb.CatalogException
-            If there is no schema `name`.
+            If `name` is not registered, so a schema no record registered is
+            never dropped.
         duckdb.TransactionException
             Where the cursor already holds an open transaction.
 
@@ -163,8 +164,13 @@ class Workspace:
             "unregister",
             "https://energy-models.github.io/datarecord/design/storage/views/",
         ):
+            deleted = con.execute(
+                "DELETE FROM registered WHERE name = ? RETURNING name", [name]
+            ).fetchall()
+            if not deleted:
+                msg = f"no record is registered as `{name}` (`Workspace.registered()`)"
+                raise duckdb.CatalogException(msg)
             con.execute(f"DROP SCHEMA {col(name)} CASCADE")
-            con.execute("DELETE FROM registered WHERE name = ?", [name])
 
     def registered(self) -> DuckDBPyRelation:
         """Every registered name, with the `revision` it reads, whether it is `working`, and when it was `created`.
