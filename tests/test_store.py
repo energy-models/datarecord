@@ -867,3 +867,29 @@ def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
         assert _read_all(grandchild.record) == afresh
     finally:
         fresh.close()
+
+
+@pytest.mark.parametrize("read", [False, True], ids=["cold", "held"])
+def test_a_materialised_node_reads_as_folded_afresh(store, tree, read):
+    """A node materialises the fold its workspace holds, or folds afresh, to the same caches.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    """
+    _, child = tree
+    w = WorkingRecord(child.record)
+    w.add("scenario", ["high", "low"])
+    w.set("p_max_pu", 0.9, scenario="high")
+    node = store.commit(w)
+    leaf = empty_child(node).commit()
+    if read:
+        _read_all(node.record)
+    expected = _read_all(leaf.record)
+    node.materialise()
+    fresh = Workspace()
+    try:
+        again = fresh.store(store.uri).revision(leaf.id).record
+        assert _read_all(again) == expected
+    finally:
+        fresh.close()
