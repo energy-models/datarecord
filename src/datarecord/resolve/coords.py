@@ -302,6 +302,21 @@ def _first_unheld(
     return list(named)[first[0][0]], first[0][1]
 
 
+def removed_labels(
+    before: DuckDBPyRelation, now: DuckDBPyRelation, dim: str
+) -> DuckDBPyRelation:
+    """The labels of `dim` the axis `before` holds and the axis `now` does not."""
+    return (
+        before.project(col(dim))
+        .set_alias("b")
+        .join(
+            now.project(col(dim)).set_alias("n"),
+            col("b", dim) == col("n", dim),
+            how="anti",
+        )
+    )
+
+
 def _dead_keys(
     held: Sequence[DuckDBPyRelation],
     final: DuckDBPyRelation,

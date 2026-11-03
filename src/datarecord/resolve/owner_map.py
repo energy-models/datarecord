@@ -46,6 +46,7 @@ from datarecord.resolve.coords import (
     _dead_keys,
     _dim_owners_table,
     _table_name,
+    removed_labels,
     resolve_coords,
 )
 from datarecord.resolve.fold import read_owner_map
@@ -109,7 +110,6 @@ def fold_layer(
     own: DuckDBPyRelation | None,
     removed: Mapping[str, DuckDBPyRelation],
     schema: Schema,
-    con: DuckDBPyConnection,
     attribute: str | None = None,
     *,
     refuse: UUID | None = None,
@@ -181,12 +181,15 @@ def _prune(
     return parent
 
 
-def _mask(dims: Sequence[str]) -> Expression:
-    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`."""
+def _mask(dims: Sequence[str], alias: str | None = None) -> Expression:
+    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
     return reduce(
         operator.add,
         (
-            col(d).isnotnull().cast(sqltypes.INTEGER) * lit(1 << i)
+            (col(d) if alias is None else col(alias, d))
+            .isnotnull()
+            .cast(sqltypes.INTEGER)
+            * lit(1 << i)
             for i, d in enumerate(dims)
         ),
         lit(0),
@@ -534,7 +537,6 @@ def _widened(
     now: Schema,
     dead: Callable[[str], DuckDBPyRelation | None],
     owner: Callable[[UUID], LayerSource],
-    con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
     """The map `rel`, keyed and flagged under `was`, extended to `now`, which is `compatible_with` it.
 
@@ -571,7 +573,7 @@ def _widened(
     )
     parts = []
     if varying and rel.aggregate([fn.bool_or(splits)]).fetchall()[0][0]:
-        parts.append(_split(rel.filter(splits), was, now, joining, dead, owner, con))
+        parts.append(_split(rel.filter(splits), was, now, joining, dead, owner))
         rel = rel.filter(~splits)
 
     def old(flag: str, d: str) -> Expression:
@@ -599,7 +601,6 @@ def _split(
     joining: Sequence[str],
     dead: Callable[[str], DuckDBPyRelation | None],
     owner: Callable[[UUID], LayerSource],
-    con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
     """`rows`, each varying along a dim of `joining`, one per label its owning layer wrote there at its key.
 
@@ -646,12 +647,8 @@ def _split(
         *(col(f"_key_{k}").alias(k) if k in keys else col(k) for k in now.partial_dims),
         *(col(c) for c in ("attribute", LAYER_COLUMN, *FLAG_COLUMNS)),
     )
-    for d in joining:
-        gone = dead(d)
-        if gone is not None:
-            gone = gone.project(col(d).alias("_gone"))
-            split = split.join(gone, col(d) == col("_gone"), how="anti")
-    return split
+    gone = {d: g for d in joining if (g := dead(d)) is not None}
+    return _prune(split, gone)
 
 
 def _fold_map(
@@ -783,7 +780,7 @@ def _fold_onto(
 
     for source in sources:
         if rel is not None:
-            rel = _widened(rel, keyed, source.schema, dead_at, owner, con)
+            rel = _widened(rel, keyed, source.schema, dead_at, owner)
         keyed = source.schema
         removed = {}
         for name, before in held.items():
@@ -793,21 +790,11 @@ def _fold_onto(
             if name not in keyed.partial_dims:
                 past[name].append(now)
             elif before is not None:
-                removed[name] = (
-                    before.project(col(name))
-                    .set_alias("b")
-                    .join(
-                        now.project(col(name)).set_alias("n"),
-                        col("b", name) == col("n", name),
-                        how="anti",
-                    )
-                )
+                removed[name] = removed_labels(before, now, name)
             held[name] = now
         own = _layer_owners(source, attribute)
         refuse = source.layer_id if source.frozen else None
-        rel = fold_layer(
-            rel, own, removed, keyed, con, attribute, refuse=refuse, keep=keep
-        )
+        rel = fold_layer(rel, own, removed, keyed, attribute, refuse=refuse, keep=keep)
         if made is not None and rel is not None:
             rel = _checkpoint(rel, made, con)
             _drop_but_last(made, con)

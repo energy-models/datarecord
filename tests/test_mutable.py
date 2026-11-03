@@ -503,6 +503,13 @@ def _rows(rel):
         ),
         ("dims", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
         ("dims", "scenario", lambda w: w.add("scenario", ["high"])),
+        (
+            "dims",
+            "connection",
+            lambda w: w.add(
+                "connection", [{"entity": "Norway Gas", "bus": "Manchester"}]
+            ),
+        ),
     ],
     ids=[
         "set-without-rows",
@@ -510,6 +517,7 @@ def _rows(rel):
         "set-property",
         "add-label",
         "add-to-an-empty-dim",
+        "add-tuple",
     ],
 )
 def test_a_relation_built_before_an_edit_reads_it(staged, member, name, edit):

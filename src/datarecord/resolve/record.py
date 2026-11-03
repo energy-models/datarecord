@@ -18,11 +18,10 @@ Notes
 from __future__ import annotations
 
 import dataclasses
-import operator
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from functools import cached_property, reduce, wraps
+from functools import cached_property, wraps
 from typing import TYPE_CHECKING, cast
 from uuid import UUID, uuid4
 
@@ -191,18 +190,6 @@ def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRe
     )
 
 
-def _named_mask(alias: str, dims: Sequence[str]) -> Expression:
-    """Return a bitmask with one bit per dim in `dims`, set where the row under `alias` names a label of that dim."""
-    return reduce(
-        operator.add,
-        (
-            col(alias, d).isnotnull().cast(sqltypes.INTEGER) * lit(1 << i)
-            for i, d in enumerate(dims)
-        ),
-        lit(0),
-    )
-
-
 def _most_specific(
     rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
 ) -> DuckDBPyRelation:
@@ -210,7 +197,7 @@ def _most_specific(
 
     One layer may hold a row naming a label of a `partial` dim beside a row
     leaving that dim NULL, and both join the key that label names. The column
-    `_named` holds the `_named_mask` of the `partial` dims, so the row kept is
+    `_named` holds the `_mask` of the `partial` dims, so the row kept is
     the one whose mask is the union of all masks at its coordinate. Where no
     row has that mask, two rows each name a dim the other leaves NULL; where
     two rows at one breakpoint have that mask, they name the same dims.
@@ -603,7 +590,7 @@ class Record:
         ranked = _most_specific(
             joined(
                 stored.filter(col("_contested")),
-                _named_mask("l", broadcast_over).alias("_named"),
+                _mask(broadcast_over, "l").alias("_named"),
             ),
             coordinates,
             attribute,

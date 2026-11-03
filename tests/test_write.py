@@ -12,6 +12,7 @@ Notes
 import json
 import re
 import shutil
+from itertools import permutations
 from pathlib import Path
 
 import duckdb
@@ -58,6 +59,7 @@ class _Source:
         properties=None,
     ):
         self._schema = schema
+        self._con = duckdb.connect()
         self.built: list[str] = []
         self._attributes = attributes or {}
         connections = (
@@ -73,6 +75,10 @@ class _Source:
     @property
     def schema(self):
         return self._schema
+
+    @property
+    def con(self):
+        return self._con
 
     def _frames(self, mapping, tag):
         def build(key):
@@ -1167,6 +1173,43 @@ def test_a_set_crossing_a_later_staged_row_keeps_its_value_elsewhere(axes):
         ("a", "y"): 1.0,
         ("b", "x"): 2.0,
     }, "the entity row, staged last, wins at (a, x)"
+
+
+_THREE_DIMS = {
+    "entity": {"entity": "a", "value": 1.0},
+    "scenario": {"scenario": "x", "value": 2.0},
+    "snapshot": {"snapshot": _T, "value": 3.0},
+}
+
+
+@pytest.mark.parametrize(
+    "order",
+    list(permutations(_THREE_DIMS)),
+    ids=lambda order: "-".join(order),
+)
+def test_the_last_of_three_crossing_sets_wins_where_they_meet(axes, order):
+    """Three `set`s, each naming one `partial` dim: the last covering a coordinate wins there.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    rows = [_THREE_DIMS[d] for d in order]
+    dims = tuple(_THREE_DIMS)
+    expected = {
+        (e, s, _T): next(
+            r["value"]
+            for r in reversed(rows)
+            if all(r.get(d, c) == c for d, c in zip(dims, (e, s, _T), strict=True))
+        )
+        for e in _ENTITIES
+        for s in _SCENARIOS
+    }
+    staged = _rows_staged(axes, rows, "p_nom")
+    assert broadcast(staged, "p_nom", *dims) == expected, "staged, the last set wins"
+    committed = axes.store.commit(staged).record
+    assert broadcast(committed, "p_nom", *dims) == expected, "committed, it still does"
 
 
 def test_two_rows_crossing_where_a_row_names_both_are_written(axes):
