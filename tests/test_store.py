@@ -469,6 +469,22 @@ def test_a_child_narrowing_its_parents_schema_stays_pending(store):
     assert child.manifest.schema == wide, "a child keeping the schema is written"
 
 
+def test_revisions_sharing_a_schema_share_one_object(store):
+    """Parsed once per workspace, by digest, whether first written or first read."""
+    root = store.commit(_p_nom(), parent=None)
+    child = store.commit(_p_nom(), parent=root)
+    wide = widened(_SCHEMA, "extra")
+    leaf = store.commit(_Source(wide, attributes={"p_nom": _long()}), parent=child)
+    fresh = Workspace()
+    try:
+        for s in (store, fresh.store(store.uri)):
+            schemas = [s.revision(r.id).manifest.schema for r in (root, child, leaf)]
+            assert schemas[0] is schemas[1], "one object for one schema"
+            assert schemas[2] is not schemas[0], "a widened schema is its own"
+    finally:
+        fresh.close()
+
+
 def _standalone(store, root, tmp_path):
     return store.workspace.write(root.record, str(tmp_path / "flat"))
 

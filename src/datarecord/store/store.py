@@ -18,7 +18,6 @@ Notes
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import threading
@@ -57,6 +56,7 @@ from datarecord.store.manifest import (
     Meta,
     merge_meta,
     validate_meta,
+    written_digest,
 )
 from datarecord.store.write import layer_data, write_layer
 
@@ -122,6 +122,7 @@ class Workspace:
         self._db.execute(_REVISIONS)
         self._cursors = _Cursors(self._db)
         self._stores: dict[str, Store] = {}
+        self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
         self._remote: Files | None = None
         self._remote_lock = threading.Lock()
@@ -235,7 +236,9 @@ class Workspace:
         - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
         """
         base = _absolute(uri) + "/"
-        manifest = Manifest.read(self.files(base), base + "manifest.json")
+        manifest = Manifest.read(
+            self.files(base), base + "manifest.json", self._schemas
+        )
         if manifest is None:
             msg = f"{base} has no manifest.json, so holds no record"
             raise FileNotFoundError(msg)
@@ -500,11 +503,12 @@ class Store:
     def _cache(self, manifests: Iterable[Manifest]) -> None:
         """Add `manifests` to the workspace's `revisions` table in order, their schemas to `schemas`.
 
-        Each schema row goes in before its revision row, which `lineage` joins it to.
+        Each schema row goes in before its revision row, which `lineage` joins
+        it to, and each schema is shared from the workspace by its digest.
         """
         for manifest in manifests:
-            text = manifest.schema.model_dump_json()
-            digest = hashlib.sha256(text.encode()).hexdigest()
+            text, digest = written_digest(manifest.schema)
+            self.workspace._schemas.setdefault(digest, manifest.schema)
             files = {
                 "dims": list(manifest.files.dims),
                 "attributes": list(manifest.files.attributes),
@@ -561,7 +565,9 @@ class Store:
         ValueError
             If the manifest names another id than its directory's.
         """
-        manifest = Manifest.read(self.files, self.manifest_uri(id))
+        manifest = Manifest.read(
+            self.files, self.manifest_uri(id), self.workspace._schemas
+        )
         if manifest is not None and manifest.id != id:
             msg = f"{self.manifest_uri(id)} names revision {manifest.id}"
             raise ValueError(msg)
@@ -930,7 +936,7 @@ class Claim(_OfStore):
 
 
 _MANIFESTS = """
-SELECT r.id, r.parent, r.meta, r.files, s.schema
+SELECT r.id, r.parent, r.meta, r.files, s.hash, s.schema
 FROM revisions r JOIN schemas s ON s.hash = r.schema
 """
 
@@ -988,7 +994,7 @@ def lineage(store: Store, revision_id: UUID) -> list[Manifest]:
     rows = store.workspace.con.execute(
         _LINEAGE, {"location": store.uri, "id": revision_id}
     ).fetchall()
-    manifests = _manifests(rows)
+    manifests = _manifests(rows, store.workspace._schemas)
     first = manifests[0]
     if first.parent is not None:
         msg = (
@@ -1000,18 +1006,19 @@ def lineage(store: Store, revision_id: UUID) -> list[Manifest]:
     return manifests
 
 
-def _manifests(rows: list[tuple[Any, ...]]) -> list[Manifest]:
-    """`_MANIFESTS` rows as manifests, each distinct schema parsed once."""
-    schemas: dict[str, Schema] = {}
+def _manifests(
+    rows: list[tuple[Any, ...]], schemas: dict[str, Schema]
+) -> list[Manifest]:
+    """`_MANIFESTS` rows as manifests, each schema parsed only where `schemas` misses its digest."""
     manifests = []
-    for id, parent, meta, files, text in rows:
-        if text not in schemas:
-            schemas[text] = Schema.model_validate_json(text)
+    for id, parent, meta, files, digest, text in rows:
+        if digest not in schemas:
+            schemas[digest] = Schema.model_validate_json(text)
         manifests.append(
             Manifest(
                 id=id,
                 parent=parent,
-                schema=schemas[text],
+                schema=schemas[digest],
                 files=LayerFiles(**files),
                 meta=json.loads(meta),
             )
@@ -1092,7 +1099,7 @@ class Revision(_OfStore):
                 _MANIFESTS + "WHERE r.location = ? AND r.id = ?",
                 [self.store.uri, self.id],
             ).fetchall()
-            self._manifest = _manifests(rows)[0]
+            self._manifest = _manifests(rows, self.store.workspace._schemas)[0]
         return self._manifest
 
     @property

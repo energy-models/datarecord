@@ -155,6 +155,10 @@ All notable changes to datarecord are documented here. The format follows
   `set("p_nom", {...})` is then open in `entity` and `scenario`; pass the
   labels as `entity=[...]` or as a series indexed by `entity`.
 
+- A workspace validates each distinct schema once. Revisions sharing a schema
+  hand out one `Schema` object, so reading a long lineage no longer re-runs the
+  schema's checks per layer. A `Schema` obtained from a revision is shared:
+  copy it before changing it.
 - A materialised node no longer copies its axes into `resolved/dims/`.
   `resolved/dim_owners.parquet` names, per dim, the layer whose
   `dims/<dim>.parquet` is the deepest at or below the node, and a read opens

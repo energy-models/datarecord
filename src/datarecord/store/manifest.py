@@ -16,11 +16,13 @@ Notes
 
 from __future__ import annotations
 
+import hashlib
+import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Any
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, TypeAdapter
+from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter
 from pydantic.dataclasses import dataclass
 
 from datarecord.schema.schema import Schema
@@ -56,7 +58,9 @@ class Manifest:
         The revision this layer folds over, `None` for a root or a standalone
         directory.
     schema
-        The full schema the layer was written under, never a delta.
+        The full schema the layer was written under, never a delta. Taken as
+        built where it is handed in, and parsed by `read` once per distinct
+        schema.
     meta
         The revision's own: set at the write, and not inherited by a child,
         unlike `schema.meta`.
@@ -68,7 +72,7 @@ class Manifest:
 
     id: UUID
     parent: UUID | None
-    schema: Schema
+    schema: InstanceOf[Schema]
     files: LayerFiles
     meta: Meta = Field(default_factory=dict)
 
@@ -83,9 +87,27 @@ class Manifest:
         _create(files, uri, _MANIFEST, self)
 
     @classmethod
-    def read(cls, files: Files, uri: str) -> Manifest | None:
-        """The manifest at `uri`, or `None` where there is none."""
-        return _read(files, uri, _MANIFEST)
+    def read(
+        cls, files: Files, uri: str, schemas: dict[str, Schema]
+    ) -> Manifest | None:
+        """The manifest at `uri`, or `None` where there is none.
+
+        Its schema is taken from `schemas` by `schema_digest`, and parsed and
+        added there only where it is missing.
+
+        Raises
+        ------
+        pydantic.ValidationError
+            If the manifest, or a schema not in `schemas`, is malformed.
+        """
+        found = files.read_text(uri)
+        if found is None:
+            return None
+        raw = json.loads(found)
+        text, digest = schema_digest(raw["schema"])
+        if digest not in schemas:
+            schemas[digest] = Schema.model_validate_json(text)
+        return _MANIFEST.validate_python({**raw, "schema": schemas[digest]})
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -125,6 +147,21 @@ class ClaimFile:
 _MANIFEST = TypeAdapter(Manifest)
 _CLAIM = TypeAdapter(ClaimFile)
 _META = TypeAdapter(Meta)
+
+
+def schema_digest(raw: Any) -> tuple[str, str]:
+    """`raw`, a schema's JSON form, as compact JSON text and that text's sha256.
+
+    Keys keep their order, which a schema means: a multi-dim's members are
+    ordered.
+    """
+    text = json.dumps(raw, separators=(",", ":"))
+    return text, hashlib.sha256(text.encode()).hexdigest()
+
+
+def written_digest(schema: Schema) -> tuple[str, str]:
+    """`schema_digest` of `schema` as `Manifest.write` writes it."""
+    return schema_digest(json.loads(schema.model_dump_json()))
 
 
 def _create[T](files: Files, uri: str, adapter: TypeAdapter[T], value: T) -> None:
