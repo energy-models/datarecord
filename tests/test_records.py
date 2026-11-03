@@ -140,6 +140,18 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     assert "p_nom" in store.layer(revision.id).attributes
 
 
+def test_the_writer_refuses_timestamps_with_a_time_zone(store):
+    """Written as `set` takes them: a zone is refused, not converted to naive time.
+
+    Notes
+    -----
+    - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    """
+    record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
+    with pytest.raises(ValueError, match="carry timestamps with a time zone"):
+        store.commit(record, parent=None)
+
+
 def test_constructions_agree(both):
     """A single-layer record resolves to the same keys, flags and rows every way.
 

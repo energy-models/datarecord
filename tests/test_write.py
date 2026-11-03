@@ -323,16 +323,31 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
         elsewhere.close()
 
 
-def test_a_cold_read_refuses_a_misspelt_schema_key(store, tmp_path):
-    revision = store.commit(
-        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
-    )
-    raw = json.loads(Path(store.manifest_uri(revision.id)).read_text())
-    raw["schema"]["misspelt"] = 1
-    uri = tmp_path / "manifest.json"
-    uri.write_text(json.dumps(raw))
-    with pytest.raises(ValidationError, match="misspelt"):
-        Manifest.read(store.files, str(uri), {})
+@pytest.mark.parametrize(
+    ("spoil", "match"),
+    [
+        pytest.param(
+            lambda raw: raw["schema"].update(misspelt=1),
+            "misspelt",
+            id="a-misspelt-schema-key",
+        ),
+        pytest.param(lambda raw: raw.pop("id"), "id\n  Field required", id="no-id"),
+    ],
+)
+def test_a_cold_read_refuses_a_spoilt_manifest(workspace, tmp_path, spoil, match):
+    """A manifest without an id leaves the record's folds nothing to be keyed by.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    """
+    out = tmp_path / "standalone"
+    workspace.write(_p_nom(1.0), str(out))
+    raw = json.loads((out / "manifest.json").read_text())
+    spoil(raw)
+    (out / "manifest.json").write_text(json.dumps(raw))
+    with pytest.raises(ValidationError, match=match):
+        workspace.at(str(out))
 
 
 def test_a_manifest_carries_its_layers_id(store, tmp_path):
