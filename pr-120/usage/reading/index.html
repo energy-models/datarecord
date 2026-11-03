@@ -1276,7 +1276,7 @@ Flags of a wider scope overstate the rows and give the same answer, only more sl
 </code></pre></div>
 <p>The layout is the whole format (<a href="../../design/storage/format/">design</a>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>record/
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>├── manifest.json            # the schema, and the record's id
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>├── manifest.json            # the record's id, its schema and the files it holds
 <a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>├── dims/&lt;dim&gt;.parquet       # one axis per declared dim, multi-dims included: labels and their properties
 <a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>└── attributes/&lt;attr&gt;.parquet  # one attribute per file, whatever its dims, results included
 </code></pre></div>

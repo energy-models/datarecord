@@ -1525,8 +1525,7 @@ The labels it names keep their other rows, so removing a connection leaves the e
 <a href="../../use/editing/#add-remove"><code>remove(dim, labels)</code></a> restates the axis without the labels, and every multi-dim with a coordinate over <code>dim</code> without the tuples that name one, in one layer.
 The tuples' values go with them.
 Re-adding a label or tuple in <code>partial</code> brings back the label and no value that named it below the removal.
-Every broadcast covering it, written before or after the removal, <a href="../resolution/#what-a-row-reaches">reaches it</a> again.
-Re-adding one outside <code>partial</code> brings back its values, since the read only hid them.</p>
+Every broadcast covering it, written before or after the removal, <a href="../resolution/#what-a-row-reaches">reaches it</a> again.</p>
 <h2 id="what-the-writer-checks">What the writer checks<a class="headerlink" href="#what-the-writer-checks" title="Permanent link">&para;</a></h2>
 <p>The writer refuses a layer that adds a tuple naming a dead label.
 It refuses a layer that stores a dead label in a <a href="../../model/properties/#properties">property that refers to</a> a dim.

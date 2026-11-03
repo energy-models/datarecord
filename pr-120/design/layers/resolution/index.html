@@ -930,6 +930,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#extending-the-map-to-a-wider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extending the map to a wider schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#flags" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1576,6 +1587,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#extending-the-map-to-a-wider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Extending the map to a wider schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#flags" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1679,7 +1701,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="resolution">Resolution<a class="headerlink" href="#resolution" title="Permanent link">&para;</a></h1>
-<p>The owner map records each layer's attribute keys as the layer wrote them, with removals applied.
+<p>The owner map records each layer's attribute keys as the layer wrote them, under its own schema, with removals applied.
 Where a deeper layer's row crosses a parent row, the map adds one overlap row, owned by the deeper layer.
 For axes, a multi-dim's tuples included, the deepest file for each one is the answer.
 Reading an attribute joins the owning layers' files to the map with one hash join and returns the owned rows as written.
@@ -1705,13 +1727,14 @@ Every axis is a single keyed file that a layer restates whole, so it needs no ma
 <p>The map holds no <code>value</code>, no value of a varying dim and no <code>breakpoint</code>, so its size is independent of the series data and of the length of a curve.
 It holds no depth either: the fold settles ownership across layers, so a read needs none.</p>
 <p>The key derives from the schema: it is <a href="../tree/#partial-the-granularity-of-an-override"><code>partial_dims</code></a> plus <code>attribute</code>.
+A layer's rows are keyed by the schema in its own manifest, and a node's map by the node's, which the fold <a href="#extending-the-map-to-a-wider-schema">extends the map to</a> where a deeper layer's is wider.
 A coordinate that an attribute's own file lacks reads as NULL, so the key is one fixed tuple across attributes whose columns differ.
 A <a href="../../model/multi-dims/">multi-dim</a> is one column, so the map itself shows which columns name a multi-dim's tuple.
 A multi-dim outside <code>partial</code> is in no key, as any dim outside it is in none.
 A layer that touches one connection's value restates the attribute's whole extent along that multi-dim.
 An attribute over such a multi-dim and no other <code>partial</code> coordinate has the key <code>(attribute)</code> alone, the grain of a record-level weighting.</p>
 <p>The map holds one row per layer and per distinct key the layer wrote, a NULL key column left NULL, and the overlap rows of <a href="#crossing-rows">crossing rows</a>.
-The fold builds it along the path from the root: the parent's map minus removals and the rows the layer covers, union the layer's own keys and its overlap rows.
+The fold builds it along the path from the root: the parent's map, extended to the layer's schema, minus removals and the rows the layer covers, union the layer's own keys and its overlap rows.
 A revision whose caches are <a href="#materialised-node-caches">materialised</a> persists the map and pointers to the layers holding its resolved axes.
 A read then needs the ancestry only back to the nearest materialised revision, which is what lets a deep tree scale.</p>
 <p>The fold applies removals to every key column.
@@ -1728,8 +1751,9 @@ Only a row that names a removed label or tuple is dropped.</p>
 Only the dims the attribute uses count: its <code>dims</code> and the coordinates' dims of its multi-dims.
 Two rows cover a common key where, on each <code>partial</code> coordinate, they hold the same label or one of them holds NULL.
 They cross where they cover a common key and neither names every dim the other names.</p>
-<p>A layer folds onto its parent's map in four steps, none of which reads an axis:</p>
+<p>A layer folds onto its parent's map in five steps:</p>
 <ol>
+<li>Where the layer's schema is wider than the parent's, the parent's map is <a href="#extending-the-map-to-a-wider-schema">extended to it</a>.</li>
 <li>The parent rows naming a label or tuple that the layer removes are dropped, and a row NULL there never is.</li>
 <li>A parent row is dropped where a row of the layer covers it and names no <code>partial</code> dim the parent row leaves NULL.</li>
 <li>For each parent row and row of the layer that cross on <code>partial</code> dims, the layer gains an overlap row naming every label either names.
@@ -1764,13 +1788,13 @@ The fold adds an overlap row for each crossing pair:</p>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>wind    high      p_nom      child   wind    high      999
 </code></pre></div>
 <p>At <code>(wind, high)</code> the overlap row names every dim the other two name, so the broadcast rule gives 999.
-A child writing <code>(gas, NULL) = 60</code> instead names no more than the root's <code>(gas, NULL)</code>, and step 2 drops the root's row.
+A child writing <code>(gas, NULL) = 60</code> instead names no more than the root's <code>(gas, NULL)</code>, and step 3 drops the root's row.
 A child writing <code>(gas, high) = 70</code> names more and leaves the root's rows as written, and the broadcast rule gives <code>(gas, high)</code> to the child.</p>
 <p>The map grows with the rows layers write and the pairs that cross, not with the labels a broadcast reaches.
 A depth per row would let the read settle ownership instead, but every read would then pay what the fold pays once, and a consumer would have to know about layers.</p>
 <h3 id="what-a-row-reaches">What a row reaches<a class="headerlink" href="#what-a-row-reaches" title="Permanent link">&para;</a></h3>
 <p>A NULL on a <code>partial</code> coordinate reaches every label of that coordinate's axis, or every tuple of its multi-dim, as resolved at the node read.
-The fold reads no axis and splits no row, so a label added below a materialised node is reached, as is a label staged in a <code>WorkingRecord</code> and the first label of an axis that was empty when the broadcast was written.
+The fold reads no axis, and splits a row only by its own layer's labels where a dim <a href="#extending-the-map-to-a-wider-schema">joins <code>partial</code></a>, so a label added below a materialised node is reached, as is a label staged in a <code>WorkingRecord</code> and the first label of an axis that was empty when the broadcast was written.
 Adding the scenario <code>mid</code> below the child above reads <code>(gas, mid)</code> as 50.</p>
 <p>A row reaches every coordinate that no more specific row covers, whichever layer wrote it.
 A deeper layer thus owns only the coordinates its rows reach.
@@ -1786,6 +1810,46 @@ With <code>partial = {entity}</code>, a root writing a series over <code>snapsho
 </code></pre></div>
 <p>The child's rows at <code>wind</code> name <code>entity</code> and <code>snapshot</code>, a strict superset of the root's, so nothing crosses and the root's series stays as written.
 The fold refuses a layer written otherwise that leaves such a crossing, naming the layer, the attribute, the dim and the key.</p>
+<h3 id="extending-the-map-to-a-wider-schema">Extending the map to a wider schema<a class="headerlink" href="#extending-the-map-to-a-wider-schema" title="Permanent link">&para;</a></h3>
+<p>The fold reads each layer under the schema in its own manifest: its <code>partial</code> keys the layer's rows, and its attributes' <code>dims</code> scope their flags.
+<code>compatible_with</code> holds along every ancestry, so both only grow from a layer to its child.
+A node's map depends on its ancestry alone, so its fold table and its materialised map are valid forever, whatever a descendant declares.</p>
+<p>Before a layer folds onto its parent's map, the map is brought to the layer's schema where that schema is wider, whether it was folded live or read from a materialised node.
+Two changes need it, whether or not the dim <code>d</code> is new to the schema:</p>
+<table>
+<thead>
+<tr>
+<th>change in the layer's schema</th>
+<th>extension of the map</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>d</code> added to an attribute's <code>dims</code></td>
+<td>the field <code>d</code> in both flag structs, <code>broadcast.d</code> set on the attribute's rows, which hold NULL along it</td>
+</tr>
+<tr>
+<td><code>d</code> joins <code>partial</code></td>
+<td>a NULL key column for rows not varying along <code>d</code>; each row varying along it is split by the labels its owning layer wrote there, below</td>
+</tr>
+</tbody>
+</table>
+<p>The first states in the flags what the rows are, a <a href="../../model/attributes/#the-broadcast-rule">broadcast</a>, so the read joins them as one and <a href="../../use/reading/#flags"><code>flags()</code></a> reports them.
+Two consecutive layers under one schema extend nothing.</p>
+<p>A NULL key column does not mean the same for every row.
+Take a root under <code>partial = {entity}</code> writing <code>(gas, low) 1</code> and <code>(gas, high) 2</code> along <code>scenario</code>, and a child under <code>{entity, scenario}</code> writing <code>(gas, high) 3</code>.
+Extended with NULL, the root's map row <code>(gas, NULL)</code> would keep <code>varies.scenario</code>, and the read would join it only to the root's rows stored NULL along <code>scenario</code>, of which there are none.
+Split, the root owns <code>(gas, low)</code> and <code>(gas, high)</code>, the child's row covers the second, and the read gives <code>(gas, low) 1</code> and <code>(gas, high) 3</code>.</p>
+<p>The split is one join of the varying rows, an <a href="#crossing-rows">overlap row</a> included, keyed as their layer stored them and NULL-safe on the old key, against the owning layers' files of the attributes concerned.
+It gives a row per label and, where the layer also wrote the key NULL along <code>d</code>, one row NULL there; a multi-dim's labels are its tuples.
+Each split row's flags are recomputed per new key by the aggregate a layer's own rows use.
+Inherited, they would let a row that held a key both ways also join the layer's row NULL along <code>d</code>, answering its label twice.</p>
+<p>The split rows are then anti-joined against the <a href="#a-label-outside-the-key">dead labels</a> of <code>d</code> at the parent, since the read hid those rows there and no read will once <code>d</code> is a key column.
+While <code>d</code> is outside <code>partial</code> the fold keeps every restatement of it, seeded from a materialised base's dead labels, and the dead labels at the parent are those these held and the parent's axis lacks.
+Usually there are none, and the anti-join is skipped.
+From the layer on, the fold prunes <code>d</code> by each layer's removals as it does any <code>partial</code> dim.</p>
+<p>No other compatible change reaches the fold.
+The refusal of a crossing along <a href="#a-dim-outside-partial">a dim outside <code>partial</code></a> judges the layer's rows against the extended map, under the layer's schema.</p>
 <h3 id="flags">Flags<a class="headerlink" href="#flags" title="Permanent link">&para;</a></h3>
 <p>The fold computes the <a href="../../use/reading/#flags">flags</a> of each map row in the group-by that builds the layer's rows, so they cost nothing beyond it.
 It computes them per key, so per entity: whether this entity's <code>p_max_pu</code> sets <code>timestep</code> differs from whether any entity's does.
@@ -1796,10 +1860,8 @@ It describes the rows the map keeps, so a broadcast that deeper rows shadow at e
 A dim that a multi-dim draws on has its own field, so a <code>marginal_price</code> constant over buses reports <code>bus</code> as broadcast.</p>
 <p>The flags are two structs because <a href="../../model/dims/">which dims exist is declared</a>.
 A column per dim would make the map's column set depend on the schema.
-<a href="../../model/schema/#versioning">Versioning</a> calls adding a dim compatible, and that has to hold for a map persisted at a <a href="#materialised-node-caches">materialised revision</a> too.
-In a struct, the new dim is a missing field, which <code>UNION ALL BY NAME</code> fills with NULL as it would a missing column.
-The new dim then reads as unset, which is true, since no row mentions it.
-The map's columns stay fixed, and only the fields change.</p>
+In a struct, the map's columns stay fixed, and only the fields change.
+A dim new to a layer's schema gains its field where the fold <a href="#extending-the-map-to-a-wider-schema">extends the map</a> to that schema, so no map lacks a field its node's schema declares.</p>
 <p><code>breakpoints</code> sits outside both structs, since a breakpoint is no dim (<a href="../../model/attributes/#wide-and-long-rows">wide and long rows</a>).
 The dim namespace lives entirely inside <code>varies</code> and <code>broadcast</code>, so a dim named <code>breakpoints</code> collides with nothing.</p>
 <p><code>Record.flags()</code> unions the flags over the record.
@@ -1838,8 +1900,8 @@ One category's labels are <code>properties[dim]</code> filtered on its categoriz
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="k">JOIN</span><span class="w"> </span><span class="p">(</span><span class="w"> </span><span class="c1">-- the map keyed as its owning layer stored each key</span>
 <a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="w">  </span><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="n">EXCLUDE</span><span class="w"> </span><span class="p">(</span><span class="n">scenario</span><span class="p">),</span><span class="w"> </span><span class="n">scenario</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">__owned_scenario</span><span class="p">,</span>
 <a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="w">         </span><span class="k">UNNEST</span><span class="p">(</span><span class="n">list_concat</span><span class="p">(</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">           </span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="k">COALESCE</span><span class="p">(</span><span class="n">varies</span><span class="p">.</span><span class="n">scenario</span><span class="p">,</span><span class="w"> </span><span class="k">false</span><span class="p">)</span><span class="w">   </span><span class="k">THEN</span><span class="w"> </span><span class="p">[</span><span class="n">scenario</span><span class="p">]</span><span class="w"> </span><span class="k">END</span><span class="p">,</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">           </span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="k">COALESCE</span><span class="p">(</span><span class="n">broadcast</span><span class="p">.</span><span class="n">scenario</span><span class="p">,</span><span class="w"> </span><span class="k">true</span><span class="p">)</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="p">[</span><span class="k">NULL</span><span class="p">]</span><span class="w"> </span><span class="k">END</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="w">           </span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">varies</span><span class="p">.</span><span class="n">scenario</span><span class="w">    </span><span class="k">THEN</span><span class="w"> </span><span class="p">[</span><span class="n">scenario</span><span class="p">]</span><span class="w"> </span><span class="k">END</span><span class="p">,</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="w">           </span><span class="k">CASE</span><span class="w"> </span><span class="k">WHEN</span><span class="w"> </span><span class="n">broadcast</span><span class="p">.</span><span class="n">scenario</span><span class="w"> </span><span class="k">THEN</span><span class="w"> </span><span class="p">[</span><span class="k">NULL</span><span class="p">]</span><span class="w"> </span><span class="k">END</span>
 <a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="w">         </span><span class="p">))</span><span class="w"> </span><span class="k">AS</span><span class="w"> </span><span class="n">scenario</span>
 <a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="w">  </span><span class="k">FROM</span><span class="w"> </span><span class="n">owner_map</span>
 <a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">)</span><span class="w"> </span><span class="n">o</span>
@@ -1866,9 +1928,7 @@ DuckDB would join on the other columns and filter the dim afterwards, which cost
 <p>So the map is keyed as its owning layer stored each key, which its <a href="#flags">flags</a> record.
 A map row keeps its value where the layer's row set the dim (<code>varies</code>), and holds NULL where the row left it NULL (<code>broadcast</code>), with the owned value carried beside it.
 A layer row then finds its owned keys by its stored values, NULLs included, on NULL-safe equality.
-That is one hash join, which scans the layers and the map once each.
-A flag field missing from a map folded before the dim was declared counts as <code>broadcast</code> here, since the layers' rows hold NULL there.
-The flags a consumer reads count it as unset.</p>
+That is one hash join, which scans the layers and the map once each.</p>
 <p>An overlap row reads its labels, so a layer that also wrote a row naming those labels answers that coordinate twice.
 Where a layer holds rows of an attribute naming different sets of <code>partial</code> dims, the read keeps at each coordinate the row that names every <code>partial</code> dim another row there names, <a href="../../model/attributes/#the-broadcast-rule">the more specific one</a>, through a window over the attribute's coordinates.
 A coordinate with no such row, or with two at one breakpoint, fails the read, naming the attribute and the coordinate.
@@ -1910,16 +1970,16 @@ Over one source the fold is a scan of it: every key is owned by the one layer, a
 <li><code>schema.partial</code> sets the granularity of a patch, and one layer patches nothing, so <code>partial</code> is inert there.</li>
 </ul>
 <p>The fold requires a layer layout, and a record directory is one.
-A directory copied out of any tree, with no revision file, reads identically.</p>
+A standalone directory and a layer of a store share that layout, and each is read under its own manifest by one rule.</p>
 <h2 id="materialised-node-caches">Materialised node caches<a class="headerlink" href="#materialised-node-caches" title="Permanent link">&para;</a></h2>
 <p>A revision's owner map, the layers holding its resolved axes and its dead labels may be materialised under <code>layers/&lt;id&gt;/resolved/</code>.
-The schema is not, since there is <a href="../../model/schema/#one-schema-per-record">one for the whole record</a> and nothing per revision to resolve.</p>
+The schema is not, since each layer's manifest carries <a href="../../model/schema/#one-schema-per-record">its schema whole</a> and nothing folds it.</p>
 <p>Where a materialised map exists, a read stops there.
 The map is already folded over everything above it, so a read walks the ancestry back to the nearest materialised revision and no further.
 That truncation keeps a deep chain cheap.
 The same rule decides where resolved axes come from: the layers a revision's own <code>resolved/dim_owners.parquet</code> names where materialised, and its raw <code>dims/</code> otherwise.
 The presence of the cache answers this, and no recorded state is involved.
-A map whose key columns are not those the schema's <a href="../tree/#partial-the-granularity-of-an-override"><code>partial</code></a> gives is no cache: one persisted before a dim joined <code>partial</code> holds NULL there for a row varying along it, so the read folds from the layers as if nothing were materialised.
+A materialised map always counts: it is keyed by its node's schema, and a read under a wider one <a href="#extending-the-map-to-a-wider-schema">extends it</a> as it would a map folded live.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
 <code>resolved/dim_owners.parquet</code> holds a row <code>(dim, layer_uuid, has_dead)</code> per axis, a multi-dim's included: the layer whose <code>dims/&lt;dim&gt;.parquet</code> is the deepest at or below the revision, and whether the dim has dead labels. A read of an axis stops there too, and opens that layer's file. A dim it does not name has no axis. A <a href="../../model/dims/#a-dim-with-one_of">dim with <code>one_of</code></a> is never named, its axis being the schema's list.
 The file points into ancestor layers by UUID, as the owner map does, rather than copying their files. A layer is write-once, so the pointer never goes stale, and on object storage it is one read where a directory of copies is a listing.</p>
@@ -1930,6 +1990,7 @@ A read above the revision seeds its dead labels from these files, since the axis
 <code>resolved/dead/</code> and <code>owner_map.parquet</code> are folds, since no layer file holds either.</p>
 <p>Materialising is a policy: every N layers, at a branch point, or on demand.
 It only adds files under <code>resolved/</code>, so it changes no answer, only how many layers a read touches.
+No manifest lists them: they are written after the commit, at any later time, and a read opens each by name.
 The persisted map is the fold's result, and a NULL in it reaches the labels of the node read, so a label added below the node is reached as it would be without the cache.</p>
 
 

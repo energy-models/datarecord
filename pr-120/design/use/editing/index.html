@@ -1653,7 +1653,7 @@ A staged edit is already the row it will be written as, so writing <code>edits</
 <h2 id="set"><code>set</code><a class="headerlink" href="#set" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>  <span class="c1"># broadcast</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">[</span><span class="mf">150.0</span><span class="p">,</span> <span class="mf">80.0</span><span class="p">],</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">])</span>  <span class="c1"># per label</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"wind1"</span><span class="p">:</span> <span class="mf">150.0</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">:</span> <span class="mf">80.0</span><span class="p">})</span>  <span class="c1"># per label, keyed</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"lifetime"</span><span class="p">,</span> <span class="p">{</span><span class="s2">"wind1"</span><span class="p">:</span> <span class="mf">25.0</span><span class="p">,</span> <span class="s2">"wind2"</span><span class="p">:</span> <span class="mf">30.0</span><span class="p">})</span>  <span class="c1"># per label, keyed</span>
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">frame</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>  <span class="c1"># long frame</span>
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">series</span><span class="o">.</span><span class="n">rename_axis</span><span class="p">(</span><span class="s2">"snapshot"</span><span class="p">),</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>  <span class="c1"># a series</span>
 <a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">)</span>  <span class="c1"># every entity, loads included, now and later</span>
@@ -1814,28 +1814,24 @@ The caller <code>set</code>s such a property to another label or None first.</p>
 It holds two things that the <a href="../writing/">writers</a> take:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"gen1"</span><span class="p">])</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># the delta, as a child layer</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>  <span class="c1"># the edits, as a child of rev</span>
 <a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># base plus edits, flattened</span>
 <a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
 </code></pre></div>
 <ul>
 <li><code>w.edits</code> is the staged layer alone, the <a href="../writing/#layerdata"><code>LayerData</code></a> it already is.
-  Written as a child of the revision <code>w</code> was built over, it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
+  <code>store.commit(w)</code> writes it as a child of the revision <code>w</code> was built over, so it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
   The fold resolves the rest from the parent.
-  The layer lands in the child, so the revision that <code>child</code> returns reads the edits back.</li>
+  The layer lands in the child, so the revision that <code>commit</code> returns reads the edits back.</li>
 <li><code>w</code> itself is what is staged plus what the record already reads: the whole resolved record.
-  It is written as a standalone directory, where there is no parent to resolve against.</li>
+  <code>ws.write(w, uri)</code> writes it as a standalone directory, where there is no parent to resolve against.</li>
 </ul>
 <p>The writer has one contract for both: enumerate what the source holds and hand each part over.
-The caller chooses the rows to write, <code>w.edits</code> or <code>w</code>.
-The caller names the parent, which is the revision <code>w</code> was built from.
+The destination chooses the rows: a store takes <code>w.edits</code>, and a standalone directory takes <code>w</code>.
+<code>w</code> brings its parent, the revision it was built over, so the caller names none.
 <code>rollback()</code> clears the staging area.
 A write clears nothing, so a <code>WorkingRecord</code> that still holds its edits reads exactly what it did before.</p>
-<p><code>other.child(w.edits)</code>, with <code>w</code> built over a different revision, would write a delta computed against the wrong parent, since an axis edit restates its base's whole axis.
-<code>child</code> therefore compares the edits' base revision with its own id and raises on a mismatch.
-Edits over a directory have no revision as their base, so they are a child of none.
-<code>rev.child(w)</code> writes the whole resolved record as a child layer.
-That layer reads back correctly and is larger than the delta, so <code>edits</code> is the name to use.</p>
+<p>Edits written as a child of any other revision would be a delta computed against the wrong parent, since an axis edit restates its base's whole axis, so a commit <a href="../../storage/store/#a-revision-exists-only-by-its-file">refuses them</a>.</p>
 <p>An edited axis, a multi-dim's included, is restated whole, whatever <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a> says.
 The layer holds every label the axis has with the edits applied, with its properties, in <a href="../../model/dims/#axis-order">axis order</a>.
 A layer's axis file then says what the axis is there, and reads without its parent (<a href="../../layers/removal/">removing labels</a>).
@@ -1863,9 +1859,9 @@ The same distinction governs <a href="#reading-with-pending-edits">the read over
   Its tuples stay removed.</li>
 <li><code>set</code> on a label this record also added: the attribute rows live in <code>attributes/</code>, and a property patches the staged row.</li>
 </ul>
-<p>Along an axis outside <code>partial</code>, a layer must carry a label's whole extent.
-So a <code>set</code> of one value along such an axis reads the resolved series for that key and stages the untouched coordinates beside the edit.
-That is the one read of parent data an edit makes.
+<p>Along an axis outside <code>partial</code>, a layer that restates a key and omits a label its parent held there deletes that value, and a later widening of <code>partial</code> does not bring it back.
+So an edit carries a label's whole extent: a <code>set</code> of one value along such an axis reads the resolved series for that key and stages the untouched coordinates beside the edit.
+That is the fill's contract rather than a rule every layer must meet, and the one read of parent data an edit makes.
 It happens when the rows are staged, so the staging table already holds what the layer will hold, and a write of <code>edits</code> has no completion step.</p>
 <p>The fill covers the key the edit named.
 A label no edit mentioned keeps its rows in the parent, since a layer that carried them would claim an extent it was never given.
