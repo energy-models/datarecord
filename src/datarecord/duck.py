@@ -75,10 +75,6 @@ def write_parquet(
 def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
     """Fold relations pairwise through `UNION ALL BY NAME`, an arm lacking a column reading NULL there.
 
-    `DuckDBPyRelation.union_by_name` rather than one `con.sql` per arm, whose
-    replacement scan binds the whole tree of either side again: on a deep
-    fold, that took a third of its time.
-
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)

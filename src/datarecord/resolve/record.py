@@ -384,8 +384,8 @@ class Record:
     def _fixed(self) -> bool:
         """Whether this record's relations are planned without reading a row past the frozen prefix.
 
-        So where a source past the frozen prefix can still change under a
-        relation already built, which then reads every later edit.
+        True where a source past the prefix can still change, so a relation
+        built before an edit reads it.
 
         Notes
         -----

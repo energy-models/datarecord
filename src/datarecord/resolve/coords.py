@@ -364,10 +364,9 @@ def _base_and_above(
     folds from the root. Where `owner_map`, a held fold counts only with its
     owner map, and the base is a `Fold`.
 
-    The last source is never the base: a node resolves from its own layer, never
-    from its own cache. Reading a node through its own materialised `Fold` would
-    return the cached answer instead of resolving it, and folding *nothing* on
-    top - the same reason `sources_to_read` truncates only at proper ancestors.
+    The last source is never the base: its own fold would return the cached
+    answer and fold nothing on top, the reason `sources_to_read` truncates only
+    at proper ancestors.
 
     Notes
     -----

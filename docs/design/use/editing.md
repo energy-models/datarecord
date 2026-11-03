@@ -113,7 +113,7 @@ w.set("p_max_pu", 0.7, scenario="high")  # wind1 under high reads 0.7
 
 A staged row that already names both keeps its value, being the more specific.
 So the staged rows never hold a crossing that [the read](../layers/resolution.md#resolving-a-relation) could not settle, and the order of two edits decides a value, never whether an edit succeeds.
-Last writer wins is what `set` already does where two rows name the same key, and what the user of an editor expects.
+Last writer wins is what `set` does where two rows name the same key, and what the user of an editor expects.
 A `set` whose own rows cross each other with no row naming both is refused, and the edit rolls back; a frame that stages them stages a row naming both beside them.
 
 `set` packs a multi-dim's coordinates into its [struct column](../model/multi-dims.md#one-struct-column), so `entity="dc", bus="north"` stages `connection = {entity: dc, bus: north}`.
@@ -367,7 +367,7 @@ The table starts as a copy of the base's resolved axis in base order.
 `remove` deletes the label's row, and a property `set` patches one column in place.
 The writer and the reads take each table in position order.
 
-A `WorkingRecord` creates every table when it is created, an attribute's empty and an axis filled from the base.
+A `WorkingRecord` creates every table when it is created, and an attribute's starts empty.
 Creation then takes about half a second for a schema of 150 attributes, and every axis is held twice.
 In exchange the staged layer owns every axis from the start, and which tables exist never depends on what was staged.
 `rollback()` empties the attribute tables and refills each axis from the base, and drops no table.

@@ -104,7 +104,7 @@ Upstream making buses and carriers indices may turn an unlisted carrier into an 
 
 ### Whether the checks at `set` and at write can take the fold's fixed plan
 
-[The fold](layers/resolution.md#one-plan-for-every-layer) carries a row's named set as data, so its joins do not depend on the rows. The refusal of two crossing rows in [`set`](use/editing.md#set) and in [the writer](use/writing.md#shape) still loops over the pairs of named sets the rows hold, fetching per pair.
+[The fold](layers/resolution.md#one-plan-for-every-layer) carries a row's named set as data, so its joins do not depend on the rows. The refusal of two crossing rows in [`set`](use/editing.md#set) and in [the writer](use/writing.md#shape) loops over the pairs of named sets the rows hold, fetching per pair.
 
 ### Whether `set` can stage a scoped or crossing broadcast without spreading it
 

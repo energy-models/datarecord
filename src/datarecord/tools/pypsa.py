@@ -2411,7 +2411,7 @@ class _NetworkSource:
         return LazyRelations(subjects, frame)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Off this network's rows read as one layer, as a record written from it answers.
+        """The flags of this network's rows read as one layer, as a record written from it answers.
 
         Notes
         -----
