@@ -90,6 +90,14 @@ A bare [selector](use/editing.md#set) naming a property of two dims one attribut
 
 A snapshot mapped to its period is [a dim and a property that refers to the period](model/dims.md#mapping-labels-to-another-dim), two declarations a helper could make one.
 
+### Whether a `WorkingRecord` may delete one value along a dim outside `partial`
+
+A layer that restates a key along such a dim and omits a label its parent held there [deletes that value](use/editing.md#edits). A `WorkingRecord`'s fill carries the label's whole extent, so today only a hand-written layer can.
+
+### Whether a layer may remove a dim from `partial`
+
+[Versioning](model/schema.md#versioning) refuses it. Allowing it, the layer would restate, as resolved, every key of its own `partial` at which a parent map row names a label of the dim; the fold would then project the dim out of the parent's map, [step 3 of the fold](layers/resolution.md#crossing-rows) dropping every row that named it, and refuse a layer leaving one uncovered. `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
+
 ### What PyPSA#1474 lands as
 
 Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none. The tool adds the one and stores the other as NULL today ([PyPSA](tools/pypsa.md#buses-and-carriers-are-dims)).
@@ -102,7 +110,7 @@ Every label of the dim it leaves NULL, at the label it names. The rest of the se
 
 ### Whether a broadcast survives materialisation
 
-It does. The owner map holds keys as written and the fold reads no axis, so a NULL reaches every label the axis holds at the node read: one added below a materialised revision and one staged in a `WorkingRecord` alike ([what a row reaches](layers/resolution.md#what-a-row-reaches)). A map materialised before `partial` changed is no cache, and the read folds from the layers again ([materialised node caches](layers/resolution.md#materialised-node-caches)).
+It does. The owner map holds keys as written and the fold reads no axis, so a NULL reaches every label the axis holds at the node read: one added below a materialised revision and one staged in a `WorkingRecord` alike ([what a row reaches](layers/resolution.md#what-a-row-reaches)). A map materialised before `partial` widened is [extended](layers/resolution.md#extending-the-map-to-a-wider-schema) to the wider key like a map folded live.
 
 ### Whether `flags` needs a record-level counterpart
 

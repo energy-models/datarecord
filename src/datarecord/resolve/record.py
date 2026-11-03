@@ -36,7 +36,6 @@ from duckdb import StarExpression as star
 from datarecord.duck import (
     fn,
     null_safe,
-    struct_field,
     struct_of,
     union_all_by_name,
 )
@@ -48,10 +47,12 @@ from datarecord.resolve.owner_map import (
     _frozen_coords,
     _table,
     frozen_prefix,
+    owned_rows,
+    source_for,
     unsettled,
     with_columns,
 )
-from datarecord.resolve.sources import LayerSource, ParquetLayer
+from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties
 from datarecord.schema.schema import LAYER_COLUMN, Schema
 
@@ -95,25 +96,22 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A key NULL on a
     dim stays NULL, the read returning it as written. The flags then say how
     the layer stored it, and a key its layer wrote both ways appears once per
-    way. A flag field NULL from `UNION ALL BY NAME`, or missing from a map
-    folded before the dim was declared, is a dim no row set: `varies` false,
-    `broadcast` true.
+    way.
 
     Notes
     -----
     - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
     types = dict(zip(om.columns, om.types, strict=True))
     for d in dims:
         stored = fn.list_concat(
             duckdb.CaseExpression(
-                struct_field(om, "varies", d, lit(False)),  # noqa: FBT003
+                fn.struct_extract(col("varies"), lit(d)),
                 fn.list_value(col(d)),
             ),
             duckdb.CaseExpression(
-                struct_field(om, "broadcast", d, lit(True)),  # noqa: FBT003
+                fn.struct_extract(col("broadcast"), lit(d)),
                 fn.list_value(lit(None).cast(types[d])),
             ),
         )
@@ -130,14 +128,12 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     """Return per attribute in `om`: its owning layers, and whether one holds keys both ways.
 
     A layer holds keys both ways where its rows of the attribute name
-    different sets of `partial` dims, read off `varies`. A flag field missing
-    from a map folded before the dim was declared is unset.
+    different sets of `partial` dims, read off `varies`.
     """
     dims = schema.partial_dims
     contested = "false"
     if dims:
-        unset = lit(False)  # noqa: FBT003
-        named = struct_of({d: struct_field(om, "varies", d, unset) for d in dims})
+        named = struct_of({d: fn.struct_extract(col("varies"), lit(d)) for d in dims})
         ways = struct_of({"l": col(LAYER_COLUMN), "n": named})
         contested = f"count(DISTINCT {ways}) > count(DISTINCT {LAYER_COLUMN})"
     rows = om.aggregate(
@@ -307,8 +303,6 @@ class Record:
         staged rows are one more source on the end.
     workspace
         Where the calling thread's cursor comes from.
-    schema
-        The schema the record is read under: its last layer's.
 
     Notes
     -----
@@ -322,7 +316,11 @@ class Record:
     revision_id: UUID
     sources: list[LayerSource]
     workspace: Workspace
-    schema: Schema
+
+    @property
+    def schema(self) -> Schema:
+        """The schema the record is read under: its last source's."""
+        return self.sources[-1].schema
 
     @property
     def con(self) -> DuckDBPyConnection:
@@ -388,27 +386,23 @@ class Record:
         The frozen prefix's fold is a set of shared tables (`_frozen_coords`),
         read on the calling thread's cursor. The sources after it are folded
         per call onto those tables, so a read with staged edits opens no file.
-        A schema widened since the fold reads the tables as they are, a
-        compatible widening changing no column an axis already has.
 
         Notes
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
-        - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
         """
         prefix = self._prefix
         if self.frozen:
             return prefix
         above = self.sources[frozen_prefix(self.sources) :]
-        return resolve_coords(self.schema, self.sources, self.con, (prefix, above))
+        return resolve_coords(self.sources, self.con, (prefix, above))
 
     @property
     def _prefix(self) -> Coords:
         """Return the frozen prefix's coords, its shared tables read on the calling thread's cursor.
 
-        A `one_of` dim's axis is the schema's, so it is not among the tables and stays
-        current with a schema widened since the fold.
+        A `one_of` dim's axis is the schema's, so it is not among the tables.
 
         Notes
         -----
@@ -439,7 +433,7 @@ class Record:
         Plain data, which any thread computes the same.
         """
         prefix = self.sources[: frozen_prefix(self.sources)]
-        return _frozen_coords(self.revision_id, prefix, self.con, self.schema)
+        return _frozen_coords(self.revision_id, prefix, self.con)
 
     @property
     def _fold(self) -> Fold:
@@ -454,9 +448,7 @@ class Record:
             schema=self.schema,
             axes=coords.axes,
             dim_owners=coords.dim_owners,
-            owner_map=_table(
-                self.revision_id, self.sources, self.con, self.schema, self._prefix
-            ),
+            owner_map=_table(self.revision_id, self.sources, self.con, self._prefix),
             dead=coords.dead,
         )
 
@@ -470,14 +462,7 @@ class Record:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
-        for source in self.sources:
-            if source.layer_id == layer_uuid:
-                return source
-        # A layer the map names but the source list does not hold: the map was
-        # materialised over a longer ancestry than this node reads, so the
-        # winning row is still in that layer's own directory, in the same store.
-        layer = next(s for s in self.sources if isinstance(s, ParquetLayer))
-        return layer.sibling(layer_uuid)
+        return source_for(self.sources, layer_uuid)
 
     def _relation(self, attribute: str) -> DuckDBPyRelation:
         """Return the resolved long relation of one attribute, folded over every layer.
@@ -491,6 +476,8 @@ class Record:
         KeyError
             If no layer owns a row of `attribute`. Only a key set read before
             `rollback()` and used after it asks for such an attribute.
+        ValueError
+            If a frozen layer the owner map names holds no file of `attribute`.
         duckdb.Error
             When fetched, where one layer holds two rows covering a key and
             neither is the more specific there (`_most_specific`), or a staged
@@ -523,7 +510,7 @@ class Record:
         crossed: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
             source = self._source_for(layer_uuid)
-            rel = source.attribute(attribute)
+            rel = owned_rows(source, attribute)
             if rel is None:
                 continue
             rel = with_columns(schema, rel, *columns)

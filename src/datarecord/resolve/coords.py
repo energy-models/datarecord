@@ -313,7 +313,7 @@ def _dead_keys(
 
 
 def _base_and_above(
-    sources: Sequence[LayerSource], con: DuckDBPyConnection, schema: Schema
+    sources: Sequence[LayerSource], con: DuckDBPyConnection
 ) -> tuple[Fold | None, list[LayerSource]]:
     """Split `sources` at the deepest materialised one: its `Fold`, then the rest.
 
@@ -328,24 +328,21 @@ def _base_and_above(
     top - the same reason `sources_to_read` truncates only at proper ancestors.
     """
     for i in range(len(sources) - 2, -1, -1):
-        base = sources[i].materialised(con, schema)
+        base = sources[i].materialised(con)
         if base is not None:
             return base, list(sources[i + 1 :])
     return None, list(sources)
 
 
 def resolve_coords(
-    schema: Schema,
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
     split: tuple[Fold | Coords | None, list[LayerSource]] | None = None,
 ) -> Coords:
-    """Resolve every dim `schema` declares and the dead labels.
+    """Resolve every dim the last source's schema declares and the dead labels.
 
     Parameters
     ----------
-    schema
-        The record's schema, which declares the dims and their keys.
     sources : sequence of LayerSource
         Root first, ending in the layer being resolved.
     con : DuckDBPyConnection
@@ -369,7 +366,8 @@ def resolve_coords(
     - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    base, above = split or _base_and_above(sources, con, schema)
+    schema = sources[-1].schema
+    base, above = split or _base_and_above(sources, con)
     held_files = [source.axes() for source in above]
     for source, names in zip(above, held_files, strict=True):
         refuse_one_of_file(schema, names, f"layer {source.layer_id}")
@@ -425,7 +423,7 @@ def resolve_one(
         rel = source.axis(name)
         if rel is not None:
             return rel
-        fold = source.materialised(con, schema)
+        fold = source.materialised(con)
         if fold is not None:
             return fold.axes.get(name)
     return None

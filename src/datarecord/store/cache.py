@@ -21,22 +21,19 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord.duck import ensure_local_dir, write_parquet
 from datarecord.resolve.coords import resolve_coords
-from datarecord.resolve.fold import read_owner_map
 from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
-from datarecord.schema.schema import Schema
 
 if TYPE_CHECKING:
     from datarecord.store.manifest import Manifest
     from datarecord.store.store import Store
 
 
-def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
-    """Whether `revision_id`'s node caches are materialised under `schema`.
+def materialised(revision_id: UUID, store: Store) -> bool:
+    """Whether `revision_id`'s node caches are materialised.
 
     A node's caches are written together (`materialise`), the map last, so
-    one map answers for the dim owners and dead labels beside it. A map
-    keyed otherwise than `schema` keys one is no cache (`read_owner_map`).
+    one map answers for the dim owners and dead labels beside it.
 
     This is a filesystem question rather than recorded state: layers are
     write-once, so a materialised cache is valid forever and its
@@ -47,12 +44,10 @@ def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    return read_owner_map(revision_id, store.workspace.con, schema, store) is not None
+    return store.files.exists(store.owner_map_uri(revision_id))
 
 
-def sources_to_read(
-    lineage: list[Manifest], store: Store, schema: Schema
-) -> list[LayerSource]:
+def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
     """`lineage` as the sources to fold, truncated at the deepest materialised node.
 
     A materialised owner map is already folded over everything above it, so
@@ -68,8 +63,6 @@ def sources_to_read(
     ----------
     lineage
         The manifests root first, ending in the node being resolved.
-    schema
-        What the record is read under, which keys the caches it looks for.
 
     Returns
     -------
@@ -84,7 +77,7 @@ def sources_to_read(
         (
             depth
             for depth in range(len(lineage) - 2, -1, -1)
-            if materialised(lineage[depth].id, store, schema)
+            if materialised(lineage[depth].id, store)
         ),
         0,
     )
@@ -92,7 +85,7 @@ def sources_to_read(
 
 
 def materialise(
-    revision_id: UUID, sources: Sequence[LayerSource], store: Store, schema: Schema
+    revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
     """Write `revision_id`'s node caches: owner map, dim owners and dead labels.
 
@@ -114,8 +107,8 @@ def materialise(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
-    _materialise_dims(revision_id, sources, store, schema)
-    with _checkpointed(sources, con, schema) as owner_map:
+    _materialise_dims(revision_id, sources, store)
+    with _checkpointed(sources, con) as owner_map:
         _to_parquet(owner_map, store.owner_map_uri(revision_id), con)
 
 
@@ -135,10 +128,7 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection) -> Non
 
 
 def _materialise_dims(
-    revision_id: UUID,
-    sources: Sequence[LayerSource],
-    store: Store,
-    schema: Schema,
+    revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
     """Write this node's dim owners and dead labels into its node cache, not its layer.
 
@@ -147,7 +137,7 @@ def _materialise_dims(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
-    coords = resolve_coords(schema, sources, con)
+    coords = resolve_coords(sources, con)
     dead = f"{store.resolved_dir(revision_id)}dead/"
     ensure_local_dir(dead if coords.dead else store.resolved_dir(revision_id))
     for name, rel in coords.dead.items():

@@ -165,20 +165,16 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     # materialised. `_Unmaterialised` forces `materialised()` to `None` so the
     # fold cannot take a base and must re-derive what the base would carry.
     class _Unmaterialised(ParquetLayer):
-        def materialised(self, con, schema):  # noqa: ARG002
+        def materialised(self, con):  # noqa: ARG002
             return None
 
     full = lineage(store, grandchild.id)
-    schema = full[-1].schema
     workspace = store.workspace
-    truncated = Record(
-        grandchild.id, sources_to_read(full, store, schema), workspace, schema
-    )
+    truncated = Record(grandchild.id, sources_to_read(full, store), workspace)
     unresolved = Record(
         grandchild.id,
         [_Unmaterialised(manifest, store) for manifest in full],
         workspace,
-        schema,
     )
 
     def ownership(record):

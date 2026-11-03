@@ -194,14 +194,14 @@ class StagedSource:
         someone else supplies; it is also what `store.commit(w)` writes
         directly, where it needs its own.
         """
-        return self.record.schema
+        return self.record._base.schema
 
     @property
     def base(self) -> UUID:
         """The revision these edits are a delta against: the base's `revision_id`."""
         return self.record._base.revision_id
 
-    def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
+    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
         """A staging area has no `resolved/` cache: it is never a fold's base."""
         return None
 
@@ -317,7 +317,6 @@ class WorkingRecord(Record):
             base.revision_id,
             [*base.sources, StagedSource(self, self._layer_id)],
             base.workspace,
-            base.schema,
         )
 
     # -- staging tables -----------------------------------------------------

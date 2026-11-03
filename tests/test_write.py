@@ -13,10 +13,12 @@ import json
 import re
 import shutil
 from pathlib import Path
+from uuid import uuid4
 
 import duckdb
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
@@ -25,7 +27,13 @@ from datarecord.resolve import coords
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from datarecord.store.manifest import LayerFiles, Manifest
+from datarecord.store.files import LocalFiles
+from datarecord.store.manifest import (
+    LayerFiles,
+    Manifest,
+    schema_digest,
+    written_digest,
+)
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -197,7 +205,7 @@ def test_a_write_creates_a_new_layer(store):
     base = Path(store.layer_dir(revision.id))
     assert (base / "attributes" / "p_nom.parquet").exists()
     assert (base / "claim.json").exists()
-    manifest = Manifest.read(store.files, str(base / "manifest.json"))
+    manifest = Manifest.read(store.files, str(base / "manifest.json"), {})
     assert manifest == Manifest(
         id=revision.id,
         parent=None,
@@ -387,6 +395,44 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
         elsewhere.close()
 
 
+def test_a_manifest_takes_a_built_schema_and_parses_a_read_one(tmp_path):
+    """A `Schema` handed to a `Manifest` is already built; re-running its
+    validator per layer would dominate reading a long lineage."""
+    clashing = {**_SCHEMA.dimensions, "Entity": _SCHEMA.dimensions["entity"]}
+    unchecked = _SCHEMA.model_copy(update={"dimensions": clashing})
+    manifest = Manifest(id=uuid4(), parent=None, schema=unchecked, files=LayerFiles())
+    assert manifest.schema is unchecked, "a built schema is taken as is"
+    files, uri = LocalFiles(), str(tmp_path / "manifest.json")
+    manifest.write(files, uri)
+    with pytest.raises(ValidationError, match="differ only in case"):
+        Manifest.read(files, uri, {})
+
+
+def test_a_cold_read_refuses_a_misspelt_schema_key(store, tmp_path):
+    revision = store.commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+    )
+    raw = json.loads(Path(store.manifest_uri(revision.id)).read_text())
+    raw["schema"]["misspelt"] = 1
+    uri = tmp_path / "manifest.json"
+    uri.write_text(json.dumps(raw))
+    with pytest.raises(ValidationError, match="misspelt"):
+        Manifest.read(store.files, str(uri), {})
+
+
+def test_a_schema_hashes_alike_written_and_read(store):
+    """So a read in the workspace that wrote it shares the written object."""
+    revision = store.commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+    )
+    uri = store.manifest_uri(revision.id)
+    raw = json.loads(Path(uri).read_text())
+    assert schema_digest(raw["schema"]) == written_digest(revision.manifest.schema)
+    read = Manifest.read(store.files, uri, store.workspace._schemas)
+    assert read is not None
+    assert read.schema is revision.manifest.schema, "one object per schema digest"
+
+
 def test_a_manifest_carries_its_layers_id(store, tmp_path):
     """The id is the manifest's, in the file and on the record read from it.
 
@@ -398,7 +444,7 @@ def test_a_manifest_carries_its_layers_id(store, tmp_path):
     out = tmp_path / "standalone"
     record = store.workspace.write(source, str(out), meta={"run": "a"})
 
-    written = Manifest.read(store.files, str(out / "manifest.json"))
+    written = Manifest.read(store.files, str(out / "manifest.json"), {})
     assert written is not None
     assert (written.id, written.parent, written.meta) == (
         record.revision_id,
@@ -599,20 +645,29 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
 # -- validation -------------------------------------------------------------
 
 
-def test_a_write_rejects_an_undeclared_attribute(store):
-    """An attribute with no spec has no shape, so there is nothing to write it as.
+@pytest.mark.parametrize(
+    ("source", "match"),
+    [
+        (_Source(_SCHEMA, attributes={"not_declared": _long()}), "attribute"),
+        (
+            _Source(_SCHEMA, dims={"region": pd.DataFrame({"region": ["north"]})}),
+            "dim",
+        ),
+    ],
+    ids=["attribute", "dim"],
+)
+def test_a_write_rejects_an_undeclared_attribute_or_dim(store, source, match):
+    """A file the schema does not declare is refused rather than listed.
 
-    Its `dims` are what say which columns the file carries, so writing one the
-    schema does not declare would put a file in `attributes/` whose column set no
-    reader could derive.
+    An attribute with no spec has no shape to write it in, and an axis no dim
+    declares would be read by a descendant declaring that dim.
 
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
+    - [shape](https://energy-models.github.io/datarecord/design/use/writing/#shape)
     """
-    source = _Source(_SCHEMA, attributes={"not_declared": _long()})
-
-    with pytest.raises(ValueError, match="not a declared attribute"):
+    with pytest.raises(ValueError, match=f"not a declared {match}"):
         store.commit(source, parent=None)
 
 
