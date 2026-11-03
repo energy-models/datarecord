@@ -382,7 +382,7 @@ class Record:
 
     @property
     def _fixed(self) -> bool:
-        """Whether this record's relations are planned from the schema and table names alone.
+        """Whether this record's relations are planned without reading a row past the frozen prefix.
 
         So where a source past the frozen prefix can still change under a
         relation already built, which then reads every later edit.
