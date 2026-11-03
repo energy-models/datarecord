@@ -36,7 +36,8 @@ from datarecord.resolve.coords import (
     refuse_unheld,
     resolve_coords,
 )
-from datarecord.resolve.owner_map import cast_declared, unsettled
+from datarecord.resolve.owner_keys import cast_declared
+from datarecord.resolve.owner_map import unsettled
 from datarecord.resolve.record import PinnedRecord, Record
 from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
 from datarecord.schema.schema import DERIVED, Schema

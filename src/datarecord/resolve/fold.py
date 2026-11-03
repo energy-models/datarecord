@@ -30,14 +30,15 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
 
-from datarecord.duck import fn, struct_of
+from datarecord.duck import fn, struct_of, union_all_by_name
 from datarecord.protocols import Flags
+from datarecord.resolve.owner_keys import _empty_relation, owner_keys
 from datarecord.schema.categories import (
     categorized_dim,
     matching,
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
 
     from duckdb import DuckDBPyConnection
 
+    from datarecord.protocols import RecordLike
     from datarecord.resolve.sources import ParquetLayer
     from datarecord.schema.schema import Schema
     from datarecord.store.store import Store
@@ -240,6 +242,31 @@ class Fold:
                 fn.bool_or(col("breakpoints")).alias("breakpoints"),
             ]
         ).fetchall()
+
+    @classmethod
+    def as_one_layer(cls, record: RecordLike) -> Fold:
+        """A record that no layer holds, folded as one layer.
+
+        Its `flags` answer as a record written from it would, so a `RecordLike`
+        that is no `Record`, a tool presenting a framework object among them,
+        can answer them. The owner map is collected once, so each `flags` call
+        aggregates it alone. A layered `Record` passed here is flattened: the
+        keys each of its layers wrote are lost.
+
+        Notes
+        -----
+        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        """
+        schema, attributes, con = record.schema, record.attributes, record.con
+        layer = uuid4()
+        owned = [owner_keys(attributes[a], schema, layer, a) for a in attributes]
+        owner_map = (
+            union_all_by_name(owned, con)
+            if owned
+            else _empty_relation(schema, con, *schema.owner_map_columns)
+        )
+        return cls(schema, dict(record.properties), {}, owner_map.materialize(), {})
 
     @classmethod
     def read(cls, layer: ParquetLayer) -> Fold | None:

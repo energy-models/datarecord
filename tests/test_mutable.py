@@ -126,6 +126,22 @@ def test_a_working_record_overrides_no_read_member():
     )
 
 
+def test_a_base_that_is_no_record_is_refused(root, ac_dc):
+    """A `RecordLike` has no layers to fold edits over; the error names the write that gives some.
+
+    Notes
+    -----
+    - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
+    """
+    from datarecord.tools.pypsa import PyPSA
+
+    source = PyPSA.to_datarecord(ac_dc, root.store.workspace.con)
+    with pytest.raises(
+        TypeError, match=re.escape("WorkingRecord(ws.write(source, uri))")
+    ):
+        WorkingRecord(source)
+
+
 # -- value forms (https://energy-models.github.io/datarecord/design/use/editing/#set) -----------------------------------------------------
 
 

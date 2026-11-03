@@ -19,6 +19,8 @@ class RecordLike(Protocol):
 
     @property
     def schema(self) -> Schema: ...  # dims, properties, attributes, partial
+    @property
+    def con(self) -> DuckDBPyConnection: ...  # what its relations are planned on
 
     @property
     def dims(self) -> Relations: ...  # axis key columns, keyed by dim
@@ -148,6 +150,7 @@ The rule needs no knowledge of layers, so `settle` lives in core and reads a pla
 
 The protocol names DuckDB: a `RecordLike` answers `DuckDBPyRelation`s.
 A tool's record builds them on the caller's connection, as the PyPSA tool scans its pandas frames with `con.from_df`.
+`con` names that connection, the calling thread's cursor for a `Record`, so a consumer can plan its own frames and SQL beside the record's relations.
 A `RecordLike` therefore needs DuckDB, which is the cost of one representation from fold to consumer.
 
 The resolution engine has no abstraction layer either.

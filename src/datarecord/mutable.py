@@ -46,7 +46,8 @@ from datarecord.duck import (
 from datarecord.protocols import RecordLike
 from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_map import _own, named_sets, names_exactly, unsettled
+from datarecord.resolve.owner_keys import owner_keys
+from datarecord.resolve.owner_map import named_sets, names_exactly, unsettled
 from datarecord.resolve.record import Record, _empty_long
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
@@ -354,15 +355,18 @@ class WorkingRecord(Record):
         Raises
         ------
         TypeError
-            For any other `RecordLike`. A framework object hands over relations
-            and has no layer layout behind it, so synthesising one would be
-            rebuilding the format from a protocol that deliberately lacks it.
+            For any other `RecordLike`, naming `ws.write(source, uri)`, which
+            gives one.
+
+        Notes
+        -----
+        - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
         """
         if not isinstance(base, Record):
             msg = (
-                f"a `WorkingRecord` reads by folding its staged rows over the base's, "
-                f"and a {type(base).__name__} has no layer layout to fold - pass a "
-                f"`Record`, which `Revision.record` and `Workspace.at(uri)` both give"
+                f"a `WorkingRecord` folds its staged rows over a `Record`'s layers, "
+                f"and a {type(base).__name__} has none: write it first, "
+                f"`WorkingRecord(ws.write(source, uri))`"
             )
             raise TypeError(msg)
         # `object.__setattr__` throughout: the base is a frozen dataclass, and
@@ -385,7 +389,7 @@ class WorkingRecord(Record):
             self._fill(kind, attribute)
         shape = self._table(_OWNERS)
         empty = empty_relation(self.con, attribute=sqltypes.VARCHAR)
-        _own(empty, self.schema, self._layer_id).create(shape)
+        owner_keys(empty, self.schema, self._layer_id).create(shape)
         for attribute in self.schema.attributes:
             name = self._table(_OWNERS, attribute)
             self.con.execute(f"CREATE TABLE {name} AS FROM {shape}")
@@ -522,7 +526,7 @@ class WorkingRecord(Record):
             table = self._staged[_OWNERS, attribute]
             self.con.execute(f"DELETE FROM {table}")
             rows = self._collapsed_attribute(attribute)
-            _own(rows, self.schema, self._layer_id, attribute).insert_into(table)
+            owner_keys(rows, self.schema, self._layer_id, attribute).insert_into(table)
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
         name = self._staged.get((kind, attribute))

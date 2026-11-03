@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Protocol, runtime_checkable
 
-from duckdb import DuckDBPyRelation
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord.schema.schema import Schema
 
@@ -140,6 +140,17 @@ class RecordLike(Protocol):
         Notes
         -----
         - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+        """
+        ...
+
+    @property
+    def con(self) -> DuckDBPyConnection:
+        """The connection every relation here is planned on, the calling thread's.
+
+        Notes
+        -----
+        - [one engine](https://energy-models.github.io/datarecord/design/use/reading/#one-engine)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         """
         ...
 

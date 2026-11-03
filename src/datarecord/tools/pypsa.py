@@ -42,8 +42,8 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import empty_relation, ex_all, fn, null_safe, struct_of
 from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
-from datarecord.resolve.owner_map import cast_declared
-from datarecord.resolve.record import Record
+from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_keys import cast_declared
 from datarecord.schema.categories import matching, with_defaults
 from datarecord.schema.schema import Schema as RecordSchema
 from datarecord.schema.specs import (
@@ -289,32 +289,6 @@ class NetworkShape:
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         """
         return [SCENARIO, "entity"] if self.stochastic else ["entity"]
-
-
-def _connection(record: RecordLike) -> DuckDBPyConnection:
-    """Return the DuckDB connection the relations of `record` belong to.
-
-    Off the concrete backing, since the protocol names no connection. Needed
-    because a relation exposes no reachable reference to its connection, and
-    this tool's `PIVOT` - which `relation.query` refuses as a `MULTI`
-    statement - needs one.
-
-    Raises
-    ------
-    TypeError
-        If `record` is not a `Record`.
-
-    Notes
-    -----
-    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
-    """
-    if not isinstance(record, Record):
-        msg = (
-            f"the PyPSA tool builds from a Record, not a {type(record).__name__}: "
-            "it runs DuckDB SQL on the record's connection"
-        )
-        raise TypeError(msg)
-    return record.con
 
 
 def _snapshot_frame(snapshots: pd.Index) -> pd.DataFrame:
@@ -1449,7 +1423,7 @@ class PyPSATool(Tool):
         if missing:
             raise UnsupportedRecordError(self.name, missing)
 
-        con = _connection(record)
+        con = record.con
         schema = record.schema
         shape = NetworkShape(record.dims, record.properties)
         n = _new_network(record, shape, con)
@@ -2056,7 +2030,7 @@ class _NetworkSource:
         def axis(dim: str) -> DuckDBPyRelation:
             if dim == CONNECTION:
                 return self._connection_frame().project(col(CONNECTION))
-            return self.con.from_df(axes[dim]())
+            return cast_declared(self.schema, self.con.from_df(axes[dim]()), dim)
 
         return LazyRelations((*present, ENTITY, CONNECTION), axis)
 
@@ -2431,24 +2405,23 @@ class _NetworkSource:
         def frame(subject: str) -> DuckDBPyRelation:
             rel = frames[subject]()
             declared = {subject, *self.schema.properties[subject]}
-            return rel.project(*(col(c) for c in rel.columns if c in declared))
+            kept = rel.project(*(col(c) for c in rel.columns if c in declared))
+            return cast_declared(self.schema, kept, subject)
 
         return LazyRelations(subjects, frame)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Never consulted: `write_layer` persists frames, not flags.
-
-        A network-backed source exists to be written, and the write path reads
-        only the frame mappings. Answering properly is easy - `c.static` and
-        `c.dynamic` are PyPSA's own split on the snapshot axis, so it needs no
-        scan - but an implementation no caller reaches is one no test pins, so
-        the honest answer is the empty one.
+        """Off this network's rows read as one layer, as a record written from it answers.
 
         Notes
         -----
-        - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
         """
-        return {}
+        return self._fold.flags(**categories)
+
+    @cached_property
+    def _fold(self) -> Fold:
+        return Fold.as_one_layer(self)
 
     # -- key sets -----------------------------------------------------------
 
@@ -3116,7 +3089,7 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
         return None
     rel = matching(record.properties[ENTITY], {CTYPE: (ctype,)})
     names = _taken(schema, ctype, schema.properties[ENTITY])
-    defaulted = with_defaults(schema, ENTITY, rel, names, _connection(record))
+    defaulted = with_defaults(schema, ENTITY, rel, names, record.con)
     return _empty_for_none(defaulted.project(star(exclude=[CTYPE])))
 
 
