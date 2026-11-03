@@ -935,6 +935,16 @@ def test_a_plain_identifier_is_accepted(name):
             "exactly one of `dtype` and `one_of`, not neither",
             id="property-neither",
         ),
+        pytest.param(
+            lambda: Dimension.model_validate({"one_of": "country"}),
+            "Input should be a valid tuple",
+            id="one-of-a-dim-name-on-a-dim",
+        ),
+        pytest.param(
+            lambda: PropertySpec.model_validate({"one_of": ["lower", "upper"]}),
+            "Input should be a valid string",
+            id="one-of-a-list-on-a-property",
+        ),
     ],
 )
 def test_a_dtype_takes_its_kinds_mathspec_forms(build, match):

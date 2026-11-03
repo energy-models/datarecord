@@ -10,9 +10,12 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
+from datarecord.protocols import EMPTY
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.specs import AttributeSpec
@@ -197,3 +200,32 @@ def test_a_child_widens_the_schema_with_a_new_attribute(parent):
     assert "site_quality" not in parent.record.schema.attributes, (
         "the parent reads as written"
     )
+
+
+def test_a_schema_narrowing_is_refused(store, parent):
+    """A layer cannot redefine what an attribute means.
+
+    Notes
+    -----
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    """
+    narrowed = parent.manifest.schema.model_copy(deep=True)
+    narrowed.attributes["p_max_pu"] = AttributeSpec(dtype="float", dims=frozenset())
+
+    class _Narrowed:
+        """The record's own source, with one attribute's dims taken away."""
+
+        schema = narrowed
+        dims = EMPTY
+        attributes = EMPTY
+
+        def flags(self):
+            return {}
+
+    claim = store.claim(parent=parent)
+    with pytest.raises(ValueError, match="no longer varies over"):
+        claim.commit(_Narrowed())
+    assert [r.id for r in store.revisions()] == [parent.id], (
+        "the layer is claimed, but without its manifest nothing reaches it"
+    )
+    assert not Path(store.manifest_uri(claim.id)).exists()

@@ -570,7 +570,7 @@ def test_a_revision_crosses_a_process_boundary(workspace, tree):
 
 
 def test_threads_share_one_folded_owner_map(workspace, tree):
-    """Each thread reads on its own cursor, and the fold is done once.
+    """Each thread reads on its own cursor, and the fold is done once, keeping no step's table.
 
     Notes
     -----
@@ -591,6 +591,11 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
         "SELECT table_name FROM duckdb_tables() WHERE table_name LIKE 'owner_map_%'"
     ).fetchall()
     assert [t for (t,) in tables if child.id.hex in t], "the map is a shared table"
+    child.materialise()
+    steps = workspace.con.sql(
+        "SELECT table_name FROM duckdb_tables() WHERE starts_with(table_name, '_fold_')"
+    ).fetchall()
+    assert steps == [], "the fold keeps no table of its steps"
 
 
 @pytest.mark.parametrize("working", [False, True], ids=["frozen", "working"])
