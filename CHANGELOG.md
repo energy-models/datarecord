@@ -358,6 +358,8 @@ All notable changes to datarecord are documented here. The format follows
 - The cold fold of a deep record's owner map takes about half the time:
   each layer's owner rows are aggregated once, unions bind once per arm, and
   the parts of the plan a schema fixes are built once per schema.
+  `Revision.materialise` writes the fold its workspace already holds rather
+  than folding again.
 - An edit inside a transaction the caller holds open on the same cursor is
   refused with a `TransactionException` that says so, since an edit runs in
   its own transaction.

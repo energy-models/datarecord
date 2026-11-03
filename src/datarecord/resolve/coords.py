@@ -380,6 +380,18 @@ def _base_and_above(
     return None, list(sources)
 
 
+@overload
+def _held(source: LayerSource, owner_map: Literal[True]) -> Fold | None: ...
+
+
+@overload
+def _held(source: LayerSource, owner_map: Literal[False]) -> Coords | None: ...
+
+
+@overload
+def _held(source: LayerSource, owner_map: bool) -> Fold | Coords | None: ...
+
+
 def _held(source: LayerSource, owner_map: bool) -> Fold | Coords | None:
     """`source`'s node's fold from the workspace's shared tables, `None` where they lack it.
 
