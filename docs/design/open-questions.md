@@ -26,7 +26,7 @@ A [results layer](tools/pypsa.md#writing-results) replaces the SubNetworks of it
 
 ### Filtering a record before `build`
 
-Selecting one period or chosen outputs is a separate feature. It has no design yet.
+Selecting one period or chosen outputs is a separate feature. [DEP 31](proposals/dep-0031-a-record-selects-a-view.md) drafts it as a selected view of the record.
 
 ### Whether a `WorkingRecord` over an open record stages against a snapshot
 
