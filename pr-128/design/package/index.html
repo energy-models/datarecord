@@ -1388,11 +1388,11 @@ Each framework lives in one tool module under <code>datarecord/tools/</code>, wh
 <a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>├── mutable.py         # WorkingRecord, StagedSource
 <a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>├── settle.py          # settle, the broadcast rule over long rows
 <a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>├── store/
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── __init__.py    # re-exports Workspace, Store, Revision
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── store.py       # Workspace, Store, Revision, ancestry
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>│   ├── store.py       # Workspace, Store, Claim, Revision, ancestry
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── files.py       # Files, LocalFiles, RemoteFiles
 <a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── cache.py       # materialised node caches
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   ├── manifest.py    # read_schema, reconcile_schema
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   ├── manifest.py    # Manifest, LayerFiles, ClaimFile: a layer's manifest.json and claim.json
 <a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│   └── write.py       # write_layer, layer_data
 <a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>└── tools/
 <a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    ├── base.py        # Tool, Schema, Attr, Requirements, UnsupportedRecordError
@@ -1405,9 +1405,9 @@ Nothing outside <code>tools/</code> imports <code>tools/</code>.
 An import under <code>TYPE_CHECKING</code> may point the other way, as when <code>resolve/</code> names <code>Workspace</code> in an annotation.</p>
 <p>A subpackage's <code>__init__.py</code> re-exports its user-facing names, and <code>datarecord/__init__.py</code> imports them from there, so a user imports from <code>datarecord</code> alone.
 Code inside the package imports a name from the module that defines it, so no internal import runs through an <code>__init__.py</code>.</p>
-<p><code>Workspace</code>, <code>Store</code> and <code>Revision</code> share <code>store/store.py</code> because they need each other at runtime.
-<code>Revision</code> is a pydantic model with a field of type <code>Store</code>, and it attaches to <code>Workspace.process()</code> when it loads from its serialised form.
-<code>Store</code> constructs <code>Revision</code>s.
+<p><code>Workspace</code>, <code>Store</code>, <code>Claim</code> and <code>Revision</code> share <code>store/store.py</code> because they need each other at runtime.
+<code>Claim</code> and <code>Revision</code> are pydantic models with a field of type <code>Store</code>, and each attaches to <code>Workspace.process()</code> when it loads from its serialised form.
+<code>Store</code> constructs both.
 The modules in <code>resolve/</code> take a <code>Workspace</code> and look up <code>workspace.con</code> on each call, so they reach the calling thread's cursor (<a href="../storage/concurrency/#a-cursor-per-thread">a cursor per thread</a>).
 <code>store/</code> decides where a connection and a location come from, so <code>duck.py</code> holds no state.
 <code>mutable.py</code> is one module because <code>StagedSource</code> reads the private members of <code>WorkingRecord</code>.</p>

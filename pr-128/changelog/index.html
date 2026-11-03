@@ -987,20 +987,42 @@ SPDX-License-Identifier: CC-BY-4.0
   is called.</li>
 <li>A multi-dim is a broadcast coordinate like any dim. A NULL multi-dim value
   means every tuple of the multi-dim, and <code>partial</code> may name a multi-dim.</li>
-<li><code>Workspace</code> holds the DuckDB database and <code>Store</code> holds one location. A
-  store keeps a revision file per revision as <code>revisions/&lt;id&gt;.json</code>, so a
-  <code>Revision</code> serialises as its location and id and reads its ancestry in a new
-  process. <code>ws.con</code> is the cursor of the calling thread. The write and edit
-  boundary rejects a relation from another connection or thread.</li>
-<li>Writing is <code>store.root(source)</code>, <code>rev.child(source)</code> and
-  <code>ws.write(source, uri)</code>. <code>rev.child(w.edits)</code> writes the edits of a
-  <code>WorkingRecord</code> as a child layer, and <code>ws.write(w, uri)</code> writes the
-  flattened record. A tree write puts the revision file last, so a failed
-  write leaves no revision and does not widen the manifest.</li>
+<li><code>Workspace</code> holds the DuckDB database and <code>Store</code> holds one location. Each
+  layer under <code>layers/&lt;id&gt;/</code> carries its own <code>manifest.json</code>, a <code>Manifest</code>
+  holding its id, its parent, the full schema it was written under, the files
+  it wrote and a flat <code>meta</code> of strings, integers, finite floats and booleans.
+  A read opens exactly the files the manifest lists and globs nothing. A
+  <code>Revision</code> is its location and id: it compares, hashes and serialises as
+  them, and reads its ancestry in a new process. <code>rev.manifest</code> and
+  <code>rev.meta</code> answer from the workspace's <code>revisions</code> and <code>schemas</code> tables,
+  which cache each manifest whole. <code>ws.con</code> is the cursor of the calling
+  thread. The write and edit boundary rejects a relation from another
+  connection or thread.</li>
+<li>Writing is <code>store.commit(source, parent=..., meta=...)</code>, with <code>parent=None</code>
+  for a new root, and <code>ws.write(source, uri, meta=...)</code>.
+  <code>store.claim(parent=, meta=)</code> hands out a layer id by a create-only
+  <code>claim.json</code> before any data is written, and <code>claim.commit(source, meta=...)</code>
+  writes the data into <code>layers/&lt;id&gt;/</code> and then the manifest, create-only.
+  Until then the layer is pending and no read reaches it. A commit may add
+  <code>meta</code> keys but not change a claimed one. A child whose schema is not
+  <code>compatible_with</code> its parent's, or a parent from another store, is refused.
+  <code>store.commit(w)</code> writes the edits of a <code>WorkingRecord</code> as a child of the
+  revision it was built over, and refuses one built over anything else,
+  naming <code>ws.write(w, uri)</code>, which writes the flattened record. Each claim and
+  manifest is written once, create-only.</li>
+<li>A <code>Claim</code> serialises and pickles as its store's location and id, and reads
+  its parent, <code>meta</code> and claim time back from its <code>claim.json</code>, so a job in
+  another process commits it. <code>store.claims()</code> lists the pending layers,
+  oldest first, with their <code>meta</code>, and <code>store.revisions(meta={...})</code> returns
+  the revisions whose <code>meta</code> holds every pair given.</li>
+<li><code>store.cleanup(ids=[...])</code> and <code>store.cleanup(older_than=timedelta(...))</code>
+  delete pending layers, and refuse an id that is not pending. Nothing else
+  deletes.</li>
 <li>A store or standalone directory on <code>s3://</code>, through boto3 behind the
-  <code>datarecord[remote]</code> extra and configured by the AWS environment. Revision
-  files are written create-only and the manifest by compare-and-swap, so two
-  writers that widen one schema both keep their widening.</li>
+  <code>datarecord[remote]</code> extra and configured by the AWS environment. Claims and
+  manifests are written create-only, and each writer checks its schema
+  against its parent's manifest, which never changes, so two writers never
+  race.</li>
 <li><code>Tool.to_datarecord(model, con)</code> takes the connection that its frames are
   planned on.</li>
 <li>Removing an entity removes the group tuples that name it, and the values of
@@ -1075,6 +1097,10 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>A workspace validates each distinct schema once. Revisions sharing a schema
+  hand out one <code>Schema</code> object, so reading a long lineage no longer re-runs the
+  schema's checks per layer. A <code>Schema</code> obtained from a revision is shared:
+  copy it before changing it.</li>
 <li>A materialised node no longer copies its axes into <code>resolved/dims/</code>.
   <code>resolved/dim_owners.parquet</code> names, per dim, the layer whose
   <code>dims/&lt;dim&gt;.parquet</code> is the deepest at or below the node, and a read opens
@@ -1178,13 +1204,14 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>Schema.input_key</code> is <code>Schema.owner_map_key</code>, <code>Schema.input_columns</code> is
   <code>Schema.owner_map_columns</code>, and <code>Requirements.unsupported_keys</code> reports
   <code>"owner_map_key"</code>.</li>
-<li>A <code>Record</code> is constructed from <code>revision_id</code>, <code>sources</code>, <code>workspace</code> and
-  <code>schema</code>. A caller reads it through its mappings: <code>rev.record.sources</code>,
-  <code>dims[dim]</code>, <code>properties[dim]</code> and <code>attributes[name]</code>.
-  <code>attributes[name]</code> raises <code>KeyError</code> for an undeclared attribute.</li>
+<li>A <code>Record</code> is constructed from <code>revision_id</code>, <code>sources</code> and <code>workspace</code>, and
+  reads under its last source's schema. A caller reads it through its
+  mappings: <code>rev.record.sources</code>, <code>dims[dim]</code>, <code>properties[dim]</code> and
+  <code>attributes[name]</code>. <code>attributes[name]</code> raises <code>KeyError</code> for an undeclared
+  attribute.</li>
 <li><code>PyPSA.build</code> raises <code>TypeError</code> for a <code>RecordLike</code> that is not a <code>Record</code>.
-  <code>Schema.long_columns_for</code> raises <code>KeyError</code> for an attribute that the schema
-  does not declare.</li>
+  <code>Schema.long_columns_for</code> and <code>Schema.coordinates_of</code> raise <code>KeyError</code> for an
+  attribute that the schema does not declare.</li>
 <li><code>LayerData</code> declares no <code>frozen</code>, and its <code>axes()</code>, <code>groups()</code> and
   <code>attributes()</code> return <code>set[str]</code>. A whole <code>Record</code> reaches the writer
   through the adapter for a <code>RecordLike</code>.</li>
@@ -1207,8 +1234,9 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>A reference to a removed label in a group tuple or a property is checked in
   every subject that a layer restates, whole. A reference that an ancestor
   left dangling fails the next layer that restates its subject.</li>
-<li>A standalone record's id is <code>Schema.id</code>, an optional field that its
-  <code>manifest.json</code> carries. A tree's manifest carries none.</li>
+<li>A layer's id is its manifest's. A standalone directory is one layer with
+  no parent, and <code>ws.at</code> refuses a manifest naming one, a layer of a tree
+  being read alone through <code>store.layer(id)</code>.</li>
 <li>A value over a dim or group outside <code>partial</code> that names a removed label is
   dropped at read, including the per-bus values of a removed <code>bus</code> label. A
   materialised node keeps the removed labels in <code>resolved/dead/</code>.</li>
@@ -1229,16 +1257,26 @@ SPDX-License-Identifier: CC-BY-4.0
   out along the labels a parent row names there. The fold refuses a layer
   written otherwise that leaves such a crossing, naming the layer, the
   attribute, the dim and the key.</li>
+<li>The writer refuses a <code>dims/</code> file of a dim that the schema does not declare,
+  as it refuses an undeclared attribute. A descendant declaring the dim would
+  read its labels.</li>
 <li>The writer accepts two rows that each name a dim the other leaves NULL
   where a row naming both is there, so <code>ws.write(w, uri)</code> writes a record of
   several layers. The read of a <code>WorkingRecord</code> refuses two staged rows that
   cross with no staged row naming both.</li>
-<li>A materialised owner map keyed on another <code>partial</code> set than the schema's
-  is ignored, and the read folds that node from its layers.</li>
+<li>The fold reads each layer under the schema in its own manifest. Where a
+  deeper layer's schema is wider, the map folded so far, materialised or not,
+  is extended to it, so a materialised node keeps counting after a descendant
+  adds a dim to <code>partial</code>, and a workspace holds one fold table per node,
+  <code>owner_map_&lt;id&gt;</code>. A layer that restates a key along a dim outside <code>partial</code>
+  and omits a label its parent held there deletes that value, and a later
+  widening of <code>partial</code> no longer brings it back.</li>
 <li><code>Attr.resolve</code> and <code>Schema.resolve</code> take <code>labels</code> and <code>flags</code>, and settle
   each source by the broadcast rule over <code>labels</code> before a rename or a
   computation. <code>settle(rel, labels, flags)</code>, exported from <code>datarecord</code>, does
   the same for one relation, dropping rows that name a label outside <code>labels</code>.</li>
+<li>A failed write, local or remote, leaves its files in the pending layer
+  rather than staging them locally and renaming the directory into place.</li>
 </ul>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1268,6 +1306,10 @@ SPDX-License-Identifier: CC-BY-4.0
 <li><code>Schema.membership_keys</code>, <code>Schema.group_coordinates</code>,
   <code>Group.coordinates</code>, <code>WorkingRecord.set</code>'s <code>indexed_by</code>, <code>entity_types</code> and
   the <code>entity_type</code> dim with its member files are gone.</li>
+<li><code>store.root</code>, <code>rev.child</code>, <code>Schema.id</code>, the store's one <code>manifest.json</code>
+  with its compare-and-swap, and the <code>revisions/</code> tree are gone, as is the
+  local staging directory of a write. A store written before has no layer
+  manifests, so it is unreadable and is written again.</li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1313,13 +1355,14 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>Removing an entity drops the values of every group row that names it, in any
   field. A <code>contract</code> over <code>(from, to)</code> loses its values when either party is
   removed, and <code>flags(ctype)</code> counts such a row for the type of each party.</li>
-<li>Writing a layer whose <code>manifest.json</code> write keeps losing, as it does with a
-  credential that can write the manifest but not read it, stops after ten
-  attempts with an error that names <code>s3:GetObject</code>.</li>
 <li><code>materialise()</code> writes <code>owner_map/inputs.parquet</code> last and each file through
   a temporary name, so a node reads as materialised only when its cache is
   complete.</li>
-<li>A fold cached before the manifest widened reads under the wider schema.</li>
+<li>A map materialised under a parent's schema reads under a child's wider one.</li>
+<li>An attribute whose <code>dims</code> gained a dim reads its earlier rows, NULL along
+  it, where that dim is in <code>partial</code> too. <code>flags()</code> reports such rows as
+  broadcast along the gained dim, whether it is in <code>partial</code> or not, and
+  whether or not the schema declared it before.</li>
 <li>Reading an attribute over a <code>partial</code> dim scales linearly with the length of
   that dim. Folding the owner map no longer compares every row with every
   label of the dim's axis, so the first read of a record with long series is

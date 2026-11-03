@@ -1525,28 +1525,34 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="writing">Writing<a class="headerlink" href="#writing" title="Permanent link">&para;</a></h1>
-<p>There are three ways to write: <code>store.root</code>, <code>rev.child</code> and <code>ws.write</code>.
-Each one writes one layer from a <code>LayerData</code> source and returns what it made.
+<p>There are two destinations: a store, written by <code>store.commit</code>, or by <code>store.claim</code> and <code>claim.commit</code>, and a standalone directory, written by <code>ws.write</code>.
+Each call writes one layer from a <code>LayerData</code> source and returns what it made.
 The writer casts every column to its declared type.
 It refuses rows that do not fit the schema or that name labels the layer's axes lack, and it refuses an axis whose order differs from its parent's.
-A tree write puts the revision file last, so a layer becomes reachable only once it is complete.
+A store write puts the layer's manifest last, so a layer becomes reachable only once it is complete.
 A standalone directory gets its manifest last for the same reason.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">store</span><span class="o">.</span><span class="n">root</span><span class="p">(</span><span class="n">source</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span>  <span class="c1"># a new root with this layer</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">source</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span>  <span class="c1"># a new child of rev with this layer</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">uri</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Record</span>  <span class="c1"># a standalone directory, read back</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">store</span><span class="o">.</span><span class="n">claim</span><span class="p">(</span><span class="o">*</span><span class="p">,</span> <span class="n">parent</span><span class="p">:</span> <span class="n">Revision</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">meta</span><span class="p">:</span> <span class="n">Meta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Claim</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">claim</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">meta</span><span class="p">:</span> <span class="n">Meta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">parent</span><span class="p">:</span> <span class="n">Revision</span> <span class="o">|</span> <span class="kc">None</span><span class="p">,</span> <span class="n">meta</span><span class="p">:</span> <span class="n">Meta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">meta</span><span class="p">:</span> <span class="n">Meta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Revision</span>  <span class="c1"># w a WorkingRecord</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">uri</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span> <span class="n">meta</span><span class="p">:</span> <span class="n">Meta</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Record</span>  <span class="c1"># a standalone directory, read back</span>
 </code></pre></div>
-<p>There is one call per destination, and each is named for what it returns.
-A tree write needs the location and the tree, a directory write needs only a connection, and the two return different things.
-<code>child</code> lives on the parent, so the call names the store once.
-Its name says that it makes something new, since layers are <a href="../../layers/tree/#a-layers-data-is-write-once">write-once</a> and <code>rev</code> itself never changes.</p>
+<p><code>store.commit</code> is <code>store.claim(...).commit(source)</code> in one call.
+<code>parent</code> is a required keyword, so a new root is written out as <code>parent=None</code>, and a root and a child differ by an argument.</p>
+<p>A claim hands out the id before any data is written.
+A job submitted with a claim commits it at its end, days later if need be, and until then <code>store.claims()</code> lists the layer as pending, with its <code>meta</code>, and no <a href="../../storage/store/#cleanup">cleanup</a> by age reaches it while it is young.</p>
+<p>A <code>WorkingRecord</code> brings its parent.
+<code>store.commit(w)</code> writes <code>w</code>'s <a href="../editing/#edits">edits</a>, a delta, as a child of the revision <code>w</code> was built over.</p>
+<p><code>meta</code> is the revision's own, as its <a href="../../storage/store/#the-layers">manifest</a> holds it, and <code>store.revisions(meta={...})</code> finds the revisions whose <code>meta</code> holds every pair given.
+What a commit checks before it writes, its parent, its <code>meta</code> and its schema, is in <a href="../../storage/store/#a-revision-exists-only-by-its-file">a revision exists only by its file</a>.</p>
 <h2 id="a-write-makes-a-new-layer">A write makes a new layer<a class="headerlink" href="#a-write-makes-a-new-layer" title="Permanent link">&para;</a></h2>
-<p>Each call writes <code>source</code> as a new layer.
-An existing layer directory is an error, so a write never half-replaces what a record holds.
+<p>Each call writes <code>source</code> as a new layer, under an id that is claimed once, so a write never half-replaces what a record holds.
 <code>ws.write</code> refuses anything that already exists at <code>uri</code>: locally the path, even an empty directory, and remotely any key under it.</p>
 <p>The writer looks up keys one at a time and writes each file before it builds the next.
 A lazily-building source therefore does one read per file written.
-Locally, the layer is staged into a sibling directory and renamed on success, so a frame that fails validation leaves no layer.
-Remotely, a failed write can leave part of a layer, which nothing reaches without the <a href="../../storage/store/#a-revision-exists-only-by-its-file">revision file</a> or the manifest written after it.</p>
+Data goes straight into the layer directory, locally as remotely, and nothing is staged and renamed.
+A frame that fails validation leaves the files written before it and no manifest, so the layer stays <a href="../../storage/store/#a-revision-exists-only-by-its-file">pending</a> and no read reaches it.
+A failed <code>ws.write</code> leaves its files at <code>uri</code> the same way, and they block a write there until the caller deletes them.</p>
 <h2 id="types">Types<a class="headerlink" href="#types" title="Permanent link">&para;</a></h2>
 <p>The writer casts every column that the schema declares a type for, so a record's files carry the schema's types and a reader can trust them.
 It holds each column to its dtype as <a href="../editing/#set"><code>set</code></a> holds a frame's.
@@ -1565,7 +1571,8 @@ A <a href="../../model/multi-dims/">multi-dim</a>'s column must be its struct, w
 Two rows of one attribute that cover one coordinate are refused when both name the same dims, or when each names a dim the other leaves NULL and no row there names both, naming the attribute and the coordinate.
 A record holding rows of several layers, written whole by <code>ws.write(w, uri)</code>, passes: wherever two of its rows cross, it holds the row naming both (<a href="../../layers/resolution/#crossing-rows">crossing rows</a>).
 A child layer that leaves a dim outside <code>partial</code> NULL over a parent row naming it, with no row naming the dim there, is refused by the fold rather than the writer (<a href="../../layers/resolution/#a-dim-outside-partial">a dim outside <code>partial</code></a>).</p>
-<p>A <code>dims/</code> file of a declared dim must carry the dim's key column, the struct column named for it for a multi-dim.</p>
+<p>A <code>dims/</code> file of a dim that the schema does not declare is refused, since a descendant declaring the dim would read its labels.
+A <code>dims/</code> file of a declared dim must carry the dim's key column, the struct column named for it for a multi-dim.</p>
 <h2 id="axes-and-labels">Axes and labels<a class="headerlink" href="#axes-and-labels" title="Permanent link">&para;</a></h2>
 <p>A <code>dims/</code> file is the whole axis at the new revision, a multi-dim's tuples included, in order (<a href="../../layers/removal/">removing labels</a>).
 The writer refuses a file that holds a key twice, or that carries a column other than its key and its subject's declared properties.

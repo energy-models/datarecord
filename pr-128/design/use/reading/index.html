@@ -1550,7 +1550,7 @@ DuckDB is the one engine from fold to consumer.</p>
 <code>Record</code> is the interface over <a href="../../layers/resolution/#one-record-over-one-fold">one fold</a>, and <code>Revision.record</code> and <code>Workspace.at(uri)</code> both return one.
 The class has the short name because a caller constructs and holds it.
 The protocol is read-only.
-<a href="../writing/">Writing</a> goes through <code>store.root(source)</code>, <code>rev.child(source)</code> or <code>ws.write(source, uri)</code>, and <a href="../../storage/format/">the record format</a> is how a record is stored.</p>
+<a href="../writing/">Writing</a> goes through <code>store.commit(source, parent=...)</code>, <code>store.claim(...)</code> and <code>claim.commit(source)</code>, or <code>ws.write(source, uri)</code>, and <a href="../../storage/format/">the record format</a> is how a record is stored.</p>
 <p>Each accessor holds one section of <a href="../../model/schema/">the schema</a>: <code>dims</code> the labels, <code>properties</code> the metadata of those labels, and <code>attributes</code> the data.
 What a name is declared as decides where its values are read.</p>
 <p>A <a href="../../model/multi-dims/">multi-dim</a> reads as any dim does.

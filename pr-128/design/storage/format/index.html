@@ -1508,14 +1508,16 @@ An axis file holds its key, then its properties, in order.
 An attribute file holds the attribute's own coordinates, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code>.
 The section in which a name is declared decides the file its values go in.</p>
 <p><a href="../../use/writing/">A write</a> produces the directory, and <code>Workspace.at(uri)</code> reads it.
-A record that is never written has no directory and answers <a href="../../use/reading/">the protocol</a> all the same.</p>
+A record that is never written has no directory and answers <a href="../../use/reading/">the protocol</a> all the same.
+A layer of a <a href="../store/#the-layers">store</a> has the same layout under <code>layers/&lt;id&gt;/</code>, beside its <code>claim.json</code> and its <code>resolved/</code> node caches.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>record/
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── manifest.json                   # the schema, and the record's id
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── manifest.json                   # its id, parent, full schema, files and meta
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── dims/&lt;dim&gt;.parquet              # one axis per declared dim but those with one_of, multi-dims included: labels and properties
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>└── attributes/&lt;attr&gt;.parquet       # one attribute per file, results included
 </code></pre></div>
 <p>Each file is named for what it holds: <code>dims/scenario.parquet</code> holds the <code>scenario</code> axis, and <code>attributes/p_nom.parquet</code> holds <code>p_nom</code>.
-A file takes the declared name unchanged, so the dim <code>bus</code> lives in <code>dims/bus.parquet</code>.</p>
+A file takes the declared name unchanged, so the dim <code>bus</code> lives in <code>dims/bus.parquet</code>.
+The <a href="../store/#the-layers">manifest</a> lists the files by these names, and a read opens exactly those and ignores any other file in the directory.</p>
 <h2 id="axis-files">Axis files<a class="headerlink" href="#axis-files" title="Permanent link">&para;</a></h2>
 <p><code>dims/&lt;dim&gt;.parquet</code> holds the labels of the dim that exist at the layer's node, in order, with the properties that describe each.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;dim&gt; | &lt;property&gt; ...

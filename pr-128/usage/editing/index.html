@@ -1214,7 +1214,7 @@ Staged rows live in DuckDB tables on the record's connection, so they vanish wit
 <h2 id="writing-the-edits">Writing the edits<a class="headerlink" href="#writing-the-edits" title="Permanent link">&para;</a></h2>
 <p>A <code>WorkingRecord</code> does not write.
 The record stays unchanged until you hand its edits to a writer (<a href="../../design/use/editing/#edits">design</a>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">new</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># a patch layer under a new child of the base</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">new</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>  <span class="c1"># a patch layer under a new child of the base</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone record, flattened</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># clear the staging area, if you are done</span>
 </code></pre></div>
@@ -1222,7 +1222,7 @@ The record stays unchanged until you hand its edits to a writer (<a href="../../
 The fold resolves the rest from the parent.
 <code>w</code> itself is the resolved result, what is staged plus what the record already reads.
 A standalone directory needs that, since it has no parent to resolve against.</p>
-<p>The edits are a delta against the revision <code>w</code> was built over, so <code>child</code> raises if you write them under another one.
+<p>The edits are a delta against the revision <code>w</code> was built over, so <code>claim.commit(w)</code> raises if the claim's parent is another one.
 Layers are write-once, so the layer lands in the new child (<a href="../../design/layers/tree/#a-layers-data-is-write-once">design</a>).
 The returned revision reads the edits back:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">new</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>

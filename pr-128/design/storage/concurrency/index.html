@@ -1033,10 +1033,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-manifests-compare-and-swap" class="md-nav__link">
+  <a href="#writers-never-share-a-file" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The manifest's compare-and-swap
+        Writers never share a file
       
     </span>
   </a>
@@ -1489,10 +1489,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#the-manifests-compare-and-swap" class="md-nav__link">
+  <a href="#writers-never-share-a-file" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The manifest's compare-and-swap
+        Writers never share a file
       
     </span>
   </a>
@@ -1539,9 +1539,8 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="threads-processes-and-concurrent-writers">Threads, processes and concurrent writers<a class="headerlink" href="#threads-processes-and-concurrent-writers" title="Permanent link">&para;</a></h1>
 <p>Each thread reads through its own DuckDB cursor, and relations are the only objects bound to one.
 Fold results are shared tables keyed by the id of the layer they fold, so a fold that one thread builds serves every thread.
-A revision serialises as its location and id, so it resolves again in a fresh process.
-Two writers to one store meet only at the manifest.
-A bounded compare-and-swap settles that race and keeps both widenings.</p>
+A revision or a claim serialises as its location and id, so it resolves again in a fresh process.
+Two writers to one store never write the same file, and each checks its schema against its parent's manifest, which never changes, so they have no race to settle.</p>
 <h2 id="a-cursor-per-thread">A cursor per thread<a class="headerlink" href="#a-cursor-per-thread" title="Permanent link">&para;</a></h2>
 <p>A DuckDB connection is unsafe to use from two threads at once, and DuckDB's answer is a cursor per thread.
 The workspace's <code>con</code> is the calling thread's cursor on the workspace's one database.
@@ -1562,13 +1561,10 @@ Its <a href="../../layers/resolution/#a-label-outside-the-key">dead labels</a> a
 A last table, <code>dim_owners_&lt;id&gt;</code>, has the shape of a node cache's <a href="../../layers/resolution/#materialised-node-caches"><code>dim_owners.parquet</code></a>, a row <code>(dim, layer_uuid, has_dead)</code> per folded axis.
 It is created after them, so a reader that finds it finds them all.
 A reader opens <code>dead_&lt;dim&gt;_&lt;id&gt;</code> only where <code>has_dead</code> is true.
-The <a href="../../layers/resolution/#owner-map">owner map</a> is <code>owner_map_&lt;key&gt;_&lt;id&gt;</code> beside them, where <code>&lt;key&gt;</code> is the owner map's key columns joined by commas.
+The <a href="../../layers/resolution/#owner-map">owner map</a> is <code>owner_map_&lt;id&gt;</code> beside them.
 A dim's name is spelled as declared, since the schema <a href="../../model/schema/#names">holds every name to a plain identifier</a>.
-<code>&lt;id&gt;</code> is the node whose frozen layers were folded: a revision's id, the base's id for a <code>WorkingRecord</code>, or the <a href="../../model/schema/#one-schema-per-record">id in the manifest</a> for a standalone directory.</p>
-<p>The schema is no part of the key beyond <code>partial</code>, so a fold made before the manifest widened is read as it is under the wider schema, while one made before a dim joined or left <code>partial</code> is folded again.
-A <a href="../../model/schema/#versioning">compatible widening</a> only adds, and changes no column a table already has.
-The one addition a table can lack is the new dim's field in the <a href="../../layers/resolution/#owner-map">flag structs</a>.
-Each reader of a flag takes a missing field as unset, and decides this from the struct's type when it builds the query.
+<code>&lt;id&gt;</code> is the node whose frozen layers were folded: a revision's id, the base's id for a <code>WorkingRecord</code>, or the <a href="../store/#the-layers">id in its manifest</a> for a standalone directory.</p>
+<p>The fold reads each layer under <a href="../../layers/resolution/#extending-the-map-to-a-wider-schema">its own schema</a>, so what it folds for a node depends on the node's ancestry alone, and one table per node serves every reader.
 A materialised owner map is cast to the declared types.
 These tables are left as the fold produced them, and each holds what the same fold returns uncached.</p>
 <p>A fold that one thread builds serves every thread.
@@ -1582,36 +1578,32 @@ The bind fails for a relation from another connection or from another thread's c
 <code>as_relation</code> re-raises that failure as a <code>ValueError</code> that names the fix: build the frame on <code>record.con</code> in this thread, or hand over a pandas, polars or arrow frame to land.
 Copying the relation onto the target connection would collect it in full, which the caller never asked for, and fails anyway once that connection is closed.</p>
 <h2 id="crossing-a-process-boundary">Crossing a process boundary<a class="headerlink" href="#crossing-a-process-boundary" title="Permanent link">&para;</a></h2>
-<p><code>Revision</code> serialises its store as its location: <code>{"id": …, "parent": …, "store": "/data/a"}</code>.
-It validates back through <code>Workspace.process().store(uri).revision(id)</code>, which reads the revision file and each parent the process lacks, so <code>ancestry()</code> answers in a fresh process.
+<p><code>Revision</code> serialises its store as its location: <code>{"id": …, "store": "/data/a"}</code>.
+It validates back through <code>Workspace.process().store(uri).revision(id)</code>, which reads its manifest and each parent's the process lacks, so <code>ancestry()</code> answers in a fresh process.
 <code>Store</code> pickles the same way.</p>
+<p>A <code>Claim</code> serialises alike, as its location and id, and validates or unpickles back by reading its claim file, so its parent and <code>meta</code> come from the store and nothing cached travels.
+A job handed a claim commits it in its own process, days later if it runs that long.</p>
 <p><code>Workspace.process()</code> is the one default workspace, and only deserialisation reaches it implicitly.
 It is created on first use, on <code>:memory:</code>.
 Code that wants its own records to join with deserialised ones names it.</p>
-<h2 id="the-manifests-compare-and-swap">The manifest's compare-and-swap<a class="headerlink" href="#the-manifests-compare-and-swap" title="Permanent link">&para;</a></h2>
-<p>Two writers race on <code>manifest.json</code> when they create a location's first layers or widen its schema at once.
-The manifest is therefore written through a <a href="../store/#files-local-and-remote">conditional write</a>.
-A writer reads the manifest with its version, or <code>Absent</code> where there is none, checks compatibility, and writes only if the manifest is still at that version.
-A writer that loses re-reads and checks again.
-Two writers that widen at once end with both widenings, the later schema including the earlier, or with the later writer's incompatibility reported.
-No widening is silently lost.</p>
-<p>The retry is bounded.
-A writer that loses ten times, with a jittered backoff in between, gives up with an error.
-A credential that can write <code>manifest.json</code> but cannot read it meets the same error, because a remote read answered 403 counts as missing and every create-only write then fails.</p>
-<p><code>materialise()</code> follows the same rule.
+<h2 id="writers-never-share-a-file">Writers never share a file<a class="headerlink" href="#writers-never-share-a-file" title="Permanent link">&para;</a></h2>
+<p>Each writer claims a fresh id, writes its data into its own layer directory and commits by its own manifest, all create-only but the parquet, which no other writer names.
+A layer's schema is checked against its parent's manifest, which no later write changes.
+Two writers that widen one parent at once therefore both land, each child under its own schema, and neither sees the other's widening.
+A widening reaches only the revisions whose ancestry declares it, and two sibling branches may declare one name differently.</p>
+<p><code>materialise()</code> writes the one kind of file that is not create-only.
 <code>owner_map.parquet</code> <a href="../../layers/resolution/#materialised-node-caches">marks a node as materialised</a>, so it is written last, after the dim owners and dead labels.
 Locally each file is written under a temporary name and renamed.
-A parquet file appears at its final path before it is complete, and a reader that meets it mid-write fails.
+A remote object appears whole or not at all, so it needs neither.
 Two writers that materialise one node write the same content, so that race is harmless.</p>
 <h2 id="a-standalone-directory">A standalone directory<a class="headerlink" href="#a-standalone-directory" title="Permanent link">&para;</a></h2>
-<p>A standalone directory has no revision file, so its manifest is written last.
+<p>A standalone directory has no claim, so its manifest, written last and create-only, is all that orders its write.
 <code>ws.at</code> requires a manifest, so a directory whose write failed reads as no record.</p>
 <p><code>ws.write</code> writes to a URI that does not exist yet and refuses one that does: locally the path, even an empty directory, and remotely any key under it.
-A whole-record write refuses an existing layer in the same way.
-The caller picks this URI, unlike a layer's UUID, and a write over an existing record would mix the two records under the old manifest.
-The check and the write are two steps, so two writers racing to one new URI can still mix.
+The caller picks this URI, unlike a layer's id, and a write over an existing record would replace its data files before its create-only manifest refused the write.
+The check and the write are two steps, so two writers racing to one new URI can still mix their data files, though only one manifest lands.
 A standalone directory has one writer.</p>
-<p>Each write gives the record a fresh <a href="../../model/schema/#one-schema-per-record">id</a> in its manifest.
+<p>Each write gives the record a fresh <a href="../store/#the-layers">id</a> in its manifest.
 A record deleted and written again at one URI is therefore a new layer to every workspace, and no cached fold of the old record applies to it.
 <code>ws.write</code> and <code>ws.at</code> resolve a local path as <code>ws.store</code> does.</p>
 

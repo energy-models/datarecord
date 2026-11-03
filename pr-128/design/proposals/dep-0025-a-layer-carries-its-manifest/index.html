@@ -2475,7 +2475,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td>Status</td>
-<td>Draft (2026-10-29)</td>
+<td>Implemented (2026-11-03)</td>
 </tr>
 <tr>
 <td>Requires</td>
@@ -2490,7 +2490,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
 <p>Each layer carries its own <code>manifest.json</code>: its id, its parent, the full schema it was written under, the files it wrote and a flat <code>meta</code> map. The manifest replaces both the store's one <code>manifest.json</code> and the <code>revisions/</code> tree. A layer is claimed by a create-only <code>claim.json</code> when its id is handed out and committed by its manifest, so a job may hold a revision open for days. Every file in a store is then written once, and the manifest's compare-and-swap goes.</p>
 <h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">&para;</a></h2>
-<p>Layers and revision files are write-once, but the store's <code>manifest.json</code> is not. Every write that widens the schema races on it through a <a href="../../storage/concurrency/#the-manifests-compare-and-swap">bounded compare-and-swap</a>, a writer can lose that race after its layer is written, and a credential that cannot read the manifest fails every write. Because the store has one schema, adding an attribute <a href="../../model/schema/#one-schema-per-record">amends the root schema</a>, so one branch's experiment widens its siblings.</p>
+<p>Layers and revision files are write-once, but the store's <code>manifest.json</code> is not. Every write that widens the schema races on it through a <a href="../../storage/concurrency/#writers-never-share-a-file">bounded compare-and-swap</a>, a writer can lose that race after its layer is written, and a credential that cannot read the manifest fails every write. Because the store has one schema, adding an attribute <a href="../../model/schema/#one-schema-per-record">amends the root schema</a>, so one branch's experiment widens its siblings.</p>
 <p>A workflow that writes one revision per run has nowhere to put the run's id beside the revision, and keeps the mapping outside the store. A run that takes days writes its layer files long before the <a href="../../storage/store/#a-revision-exists-only-by-its-file">revision file</a> makes them reachable; until then they look like the leftovers of a failed write, and a cleanup cannot tell the two apart.</p>
 <p>A standalone directory and a layer differ only by where the manifest sits, yet <code>ws.at</code> and <code>store.layer</code> read the same files under two rules.</p>
 <h2 id="specification">Specification<a class="headerlink" href="#specification" title="Permanent link">&para;</a></h2>

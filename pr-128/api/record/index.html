@@ -911,6 +911,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#datarecord.resolve.record.Record.schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#datarecord.resolve.record.Record.con" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1200,6 +1211,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#datarecord.resolve.record.Record.schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        <code class="doc-symbol doc-symbol-toc doc-symbol-attribute"></code>&nbsp;schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#datarecord.resolve.record.Record.con" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1388,8 +1410,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">revision_id</span><span class="p">:</span> <span class="n"><span title="uuid.UUID">UUID</span></span><span class="p">,</span>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">sources</span><span class="p">:</span> <span class="n"><span title="list">list</span></span><span class="p">[</span><span class="n"><span title="datarecord.resolve.sources.LayerSource">LayerSource</span></span><span class="p">],</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>    <span class="n">workspace</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Workspace (datarecord.store.store.Workspace)" href="../store/#datarecord.store.store.Workspace">Workspace</a></span><span class="p">,</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">schema</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Schema (datarecord.schema.schema.Schema)" href="../schema/#datarecord.schema.schema.Schema">Schema</a></span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="p">)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="p">)</span>
 </code></pre></div>
 
     <div class="doc doc-contents first">
@@ -1468,22 +1489,6 @@ staged rows are one more source on the end.</p>
                 <em>required</em>
             </td>
           </tr>
-          <tr class="doc-section-item">
-            <td>
-                <code>schema</code>
-            </td>
-            <td>
-                  <code><a class="autorefs autorefs-internal" title="            Schema (datarecord.schema.schema.Schema)" href="../schema/#datarecord.schema.schema.Schema">Schema</a></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>The record's one manifest, which every source carries too.</p>
-              </div>
-            </td>
-            <td>
-                <em>required</em>
-            </td>
-          </tr>
       </tbody>
     </table>
 
@@ -1515,6 +1520,30 @@ staged rows are one more source on the end.</p>
 
 
 
+
+<div class="doc doc-object doc-attribute">
+
+
+
+<h3 id="datarecord.resolve.record.Record.schema" class="doc doc-heading">
+<code class="doc-symbol doc-symbol-heading doc-symbol-attribute"></code>            <span class="doc doc-object-name doc-attribute-name">schema</span>
+
+
+  <span class="doc doc-labels">
+      <small class="doc doc-label doc-label-property"><code>property</code></small>
+  </span>
+
+<a href="#datarecord.resolve.record.Record.schema" class="headerlink" title="Permanent link">&para;</a></h3>
+<div class="doc-signature highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">schema</span><span class="p">:</span> <span class="n"><a class="autorefs autorefs-internal" title="            Schema (datarecord.schema.schema.Schema)" href="../schema/#datarecord.schema.schema.Schema">Schema</a></span>
+</code></pre></div>
+
+    <div class="doc doc-contents ">
+
+        <p>The schema the record is read under: its last source's.</p>
+
+    </div>
+
+</div>
 
 <div class="doc doc-object doc-attribute">
 
@@ -1614,21 +1643,21 @@ staged rows are one more source on the end.</p>
 
             <details class="mkdocstrings-source">
               <summary>Source code in <code>src/datarecord/resolve/record.py</code></summary>
-              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-363">363</a></span>
+              <div class="highlight"><table class="highlighttable"><tr><td class="linenos"><div class="linenodiv"><pre><span></span><span class="normal"><a href="#__codelineno-0-361">361</a></span>
+<span class="normal"><a href="#__codelineno-0-362">362</a></span>
+<span class="normal"><a href="#__codelineno-0-363">363</a></span>
 <span class="normal"><a href="#__codelineno-0-364">364</a></span>
 <span class="normal"><a href="#__codelineno-0-365">365</a></span>
 <span class="normal"><a href="#__codelineno-0-366">366</a></span>
 <span class="normal"><a href="#__codelineno-0-367">367</a></span>
-<span class="normal"><a href="#__codelineno-0-368">368</a></span>
-<span class="normal"><a href="#__codelineno-0-369">369</a></span>
-<span class="normal"><a href="#__codelineno-0-370">370</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-363" name="__codelineno-0-363"></a><span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span>
-<a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="w">    </span><span class="sd">"""Straight off the owner map, which folded these in for free.</span>
-<a id="__codelineno-0-365" name="__codelineno-0-365"></a>
-<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-368" name="__codelineno-0-368"></a><span class="sd">    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)</span>
-<a id="__codelineno-0-369" name="__codelineno-0-369"></a><span class="sd">    """</span>
-<a id="__codelineno-0-370" name="__codelineno-0-370"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fold</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="o">**</span><span class="n">categories</span><span class="p">)</span>
+<span class="normal"><a href="#__codelineno-0-368">368</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-361" name="__codelineno-0-361"></a><span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span>
+<a id="__codelineno-0-362" name="__codelineno-0-362"></a><span class="w">    </span><span class="sd">"""Straight off the owner map, which folded these in for free.</span>
+<a id="__codelineno-0-363" name="__codelineno-0-363"></a>
+<a id="__codelineno-0-364" name="__codelineno-0-364"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-365" name="__codelineno-0-365"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-366" name="__codelineno-0-366"></a><span class="sd">    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)</span>
+<a id="__codelineno-0-367" name="__codelineno-0-367"></a><span class="sd">    """</span>
+<a id="__codelineno-0-368" name="__codelineno-0-368"></a>    <span class="k">return</span> <span class="bp">self</span><span class="o">.</span><span class="n">_fold</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="o">**</span><span class="n">categories</span><span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
@@ -1661,7 +1690,7 @@ staged rows are one more source on the end.</p>
 
 
         <p>What a record answers, however it is backed, as DuckDB relations.</p>
-<p>Read-only: writing is <code>store.root(source)</code>, <code>rev.child(source)</code> or
+<p>Read-only: writing is <code>store.commit(source, parent=...)</code> or
 <code>ws.write(source, uri)</code>, whose writer reads a <code>LayerData</code> rather than this -
 a framework's own <code>RecordLike</code> reaches it through an adapter.</p>
 
