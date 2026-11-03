@@ -54,6 +54,7 @@ nav:
           - The record format: design/storage/format.md
           - Workspaces and stores: design/storage/store.md
           - Threads, processes and concurrent writers: design/storage/concurrency.md
+          - Registered views: design/storage/views.md
       - Frameworks:
           - Tools: design/tools/index.md
           - PyPSA: design/tools/pypsa.md

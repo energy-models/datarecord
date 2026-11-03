@@ -161,3 +161,45 @@ record/
 ├── dims/<dim>.parquet       # one axis per declared dim, multi-dims included: labels and their properties
 └── attributes/<attr>.parquet  # one attribute per file, whatever its dims, results included
 ```
+
+## Reading from SQL
+
+`register` names a record's relations as views in the workspace's database, so a client that speaks only SQL reads it, over a DuckDB server too ([design](../design/storage/views.md)).
+Over a `WorkingRecord` the views follow every edit:
+
+```python
+from datarecord import WorkingRecord
+
+w = WorkingRecord(store.revision(rev_id).record)
+w.register("edit_3f2a")
+```
+
+```sql
+SELECT entity, value FROM edit_3f2a.attributes.p_nom;
+SELECT * FROM edit_3f2a.properties.bus WHERE carrier = 'AC';
+```
+
+```python
+w.set("p_nom", 150.0, entity="wind1")  # the next SELECT reads 150.0
+```
+
+The views are raw, as `attributes` is: a NULL coordinate means every label, and a client [settles rows](#settling-rows) itself.
+
+A commit leaves the views reading `w`.
+To go on editing the new revision, drop them and register a fresh `WorkingRecord`:
+
+```python
+child = store.commit(w)
+ws.unregister("edit_3f2a")
+WorkingRecord(child.record).register("edit_8c01")
+ws.registered()  # name | revision | working | created
+```
+
+`registered()` reads the table `registered`, which a SQL client queries directly.
+One registration's views are listed by DuckDB's catalog, where `duckdb_views().schema_name` holds only the last part of a nested schema's path, so join the schemas for the rest:
+
+```sql
+SELECT s.parent_schema, s.schema_name, v.view_name
+FROM duckdb_views() v JOIN duckdb_schemas() s ON v.schema_oid = s.oid
+WHERE s.parent_schema = 'edit_8c01';
+```
