@@ -35,6 +35,7 @@ from duckdb import (
     DuckDBPyRelation,
     Expression,
     FunctionExpression,
+    TransactionException,
 )
 from duckdb import SQLExpression as sql
 from duckdb.sqltypes import DuckDBPyType
@@ -73,6 +74,39 @@ def write_parquet(
     """
     order = "" if ordered else ", PRESERVE_ORDER false"
     con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
+
+
+@contextmanager
+def transaction(con: DuckDBPyConnection, operation: str, page: str) -> Iterator[None]:
+    """Run the block in one transaction on `con`, committed where it returns, rolled back where it raises.
+
+    Parameters
+    ----------
+    operation
+        What runs, named in the refusal.
+    page
+        The design page the refusal links to.
+
+    Raises
+    ------
+    TransactionException
+        Where `con` already holds an open transaction, which DuckDB cannot nest
+        and the block could not roll back alone.
+    """
+    try:
+        con.begin()
+    except TransactionException as e:
+        msg = (
+            f"`{operation}` runs in its own transaction, and this cursor already "
+            f"holds one open; commit or roll it back before calling it ({page})"
+        )
+        raise TransactionException(msg) from e
+    try:
+        yield
+    except BaseException:
+        con.rollback()
+        raise
+    con.commit()
 
 
 def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:

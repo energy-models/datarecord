@@ -15,8 +15,10 @@ Notes
 
 from __future__ import annotations
 
+import threading
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
@@ -566,3 +568,15 @@ def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
         assert len(winners) == 1, f"at {full} no one row names {set(union)}: {rows}"
         resolved[full] = winners[0]
     return resolved
+
+
+def in_threads(n: int, fn: Callable[[int], Any]) -> list[Any]:
+    """Run `fn(i)` in `n` threads released together, and return the results."""
+    barrier = threading.Barrier(n)
+
+    def run(i: int) -> Any:
+        barrier.wait()
+        return fn(i)
+
+    with ThreadPoolExecutor(n) as pool:
+        return list(pool.map(run, range(n)))
