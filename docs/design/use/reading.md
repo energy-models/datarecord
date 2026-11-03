@@ -69,6 +69,8 @@ Relations = Mapping[str, DuckDBPyRelation]
 ```
 
 A `Record` hands back bare DuckDB relations, each a plan on the record's connection.
+Each mapping lists every name the schema declares in its section, whatever the layers hold.
+A dim or attribute that no layer holds reads an empty relation with its declared columns and types, so a consumer plans on the schema alone.
 Every record is DuckDB underneath, so a value handed over as itself costs no wrapping per read, and a caller who wants SQL needs no unwrapping.
 A consumer filters, joins and aggregates with relation calls or SQL, and fetches with `.df()`, `.pl()` or `.to_arrow_table()`.
 

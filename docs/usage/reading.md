@@ -22,6 +22,7 @@ record.flags(ctype="Generator")  # which axes each attribute actually uses
 
 Every value is a `duckdb.DuckDBPyRelation` on `record.con`, which is a query plan.
 Nothing is read until you fetch it with `.df()`, `.pl()` or `.to_arrow_table()`, and listing the keys reads nothing ([design](../design/use/reading.md#relations)).
+The keys are every name the schema declares, and one that no layer holds reads an empty relation with its declared columns.
 
 ```python
 entities = record.properties["entity"]

@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | -------------------------------------------------------------------- |
 | Title    | the fold is a fixed plan                                             |
 | Author   | Jonas Hörsch                                                         |
-| Status   | Draft (2026-11-03)                                                   |
+| Status   | Implemented (2026-11-03)                                             |
 | Requires | [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md) |
 | Created  | 2026-11-03                                                           |
 
@@ -122,7 +122,7 @@ rel.fetchall()  # holds 150.0
 6. The contested flag carried as data, and the read ranking only the rows of contested layers.
 7. The staged owner-map rows in per-attribute tables that every edit refreshes.
 8. Last writer wins in `set`.
-9. The refusal of a frozen layer checked inside the statement that checkpoints its fold, with no fetch of its own.
+9. The refusal of a frozen layer checked once, when a workspace first folds it, rather than on every read.
 10. Each layer's owner rows aggregated once into its checkpoint, and one union per layer in place of two binds.
 11. The parts of the plan derived from a schema built once per fold and layer schema.
 12. `materialise` reusing the frozen fold a workspace already holds.

@@ -47,12 +47,12 @@ A layer that touches one connection's value restates the attribute's whole exten
 An attribute over such a multi-dim and no other `partial` coordinate has the key `(attribute)` alone, the grain of a record-level weighting.
 
 The map holds one row per layer and per distinct key the layer wrote, a NULL key column left NULL, and the overlap rows of [crossing rows](#crossing-rows).
-The fold builds it along the path from the root: the parent's map, extended to the layer's schema, minus removals and the rows the layer covers, union the layer's own keys and its overlap rows.
+The fold builds it along the path from [the nearest fold at hand](#a-fold-starts-from-the-nearest-fold-at-hand): the parent's map, extended to the layer's schema, minus removals and the rows the layer covers, union the layer's own keys and its overlap rows.
 A revision whose caches are [materialised](#materialised-node-caches) persists the map and pointers to the layers holding its resolved axes.
 A read then needs the ancestry only back to the nearest materialised revision, which is what lets a deep tree scale.
 
 The fold applies removals to every key column.
-`fold_attributes` drops the parent rows that name a label of a partial dim, or a tuple of a partial multi-dim, which the layer's restatement omits and the previous restatement held ([removing labels](removal.md)).
+`fold_layer` drops the parent rows that name a label of a partial dim, or a tuple of a partial multi-dim, which the layer's restatement omits and the previous restatement held ([removing labels](removal.md)).
 A multi-dim's removed tuples are one NULL-safe anti-join on its struct column, its file's own key, which is the shape every dim's removal takes.
 A layer's removals apply to its parents' keys.
 Its own rows pass through.
@@ -79,7 +79,30 @@ A layer folds onto its parent's map in five steps:
 
 An overlap row carries the owning layer's `varies` and `broadcast`, so the layer's value row finds it by the same NULL-safe join as its own key and reads the overlap row's labels.
 To a later fold it is an ordinary row, which that fold drops, crosses or removes like any other.
-The pairs are found by one equi-join per pair of named sets, over the dims both name, so no join compares every row with every other.
+
+### One plan for every layer
+
+The fold of one layer is one query, and its joins do not depend on which named sets the rows hold.
+A row's named set over the `partial` dims is a bitmask, a column of the row rather than a loop in the plan.
+Steps 2 to 4 above are then a fixed number of joins:
+
+- Pruning is one anti-join per `partial` dim.
+- Covering expands each parent row to one copy per subset of its named set, tagged with the subset and its labels on it.
+  One semi-join on attribute, subset and labels against the layer's rows, keyed by their own named set, finds every parent row a row of the layer covers.
+  One anti-join drops them.
+- Crossing expands both sides to the named sets the other side's row may hold without either containing the other.
+  One equi-join keeps the pairs whose labels agree on the dims both name, and each pair gives an overlap row.
+  An attribute over at most one `partial` dim cannot cross, and the schema decides that it runs no crossing join.
+
+Each row's candidate masks are computed from its own mask and its attribute's domain, the `partial` dims the attribute is over.
+The plan therefore does not grow with the masks a schema allows.
+A named set that no row holds costs nothing, and only owner-map rows are expanded, never value rows.
+A row is copied at most 2^k times for k `partial` dims, and no join compares every row with every other.
+Under a layer's own schema the masks are taken over that schema's `partial` dims, after the map is [extended to it](#extending-the-map-to-a-wider-schema).
+
+One fold serves every purpose: the frozen prefix and its materialised map, [the staged step](../use/editing.md#reading-with-pending-edits), `flags()` and the write of a whole record.
+Enumerating the named sets a schema allows would also give a fixed plan, but most of its joins would run on empty inputs in every fold of every layer.
+A constant list of candidate masks in the plan grows as 4^k, and at nine `partial` dims building the plan alone takes seconds.
 
 ### Why the map holds keys as written
 
@@ -145,7 +168,8 @@ child as written: (wind, NULL) = 0.9   (wind, 0) = 0.9   (wind, 1) = 0.9
 ```
 
 The child's rows at `wind` name `entity` and `snapshot`, a strict superset of the root's, so nothing crosses and the root's series stays as written.
-The fold refuses a layer written otherwise that leaves such a crossing, naming the layer, the attribute, the dim and the key.
+A layer written otherwise that leaves such a crossing is refused, naming the layer, the attribute, the dim and the key.
+The check runs when a workspace first folds the frozen layer, so a layer from any writer is checked, and once per workspace rather than on every read.
 
 ### Extending the map to a wider schema
 
@@ -284,10 +308,16 @@ An overlap row reads its labels, so a layer that also wrote a row naming those l
 Where a layer holds rows of an attribute naming different sets of `partial` dims, the read keeps at each coordinate the row that names every `partial` dim another row there names, [the more specific one](../model/attributes.md#the-broadcast-rule), through a window over the attribute's coordinates.
 A coordinate with no such row, or with two at one breakpoint, fails the read, naming the attribute and the coordinate.
 `breakpoint` is no coordinate, so the window keeps or drops a curve whole.
-An attribute whose layers each name one set of dims, the common case, skips the window.
 
-A staged layer has not met [the write's refusal](../use/writing.md#shape) of two rows neither more specific.
-So the read of a [`WorkingRecord`](../use/editing.md#reading-with-pending-edits) fails where two staged rows cross and no staged row names both, naming the attribute and the coordinate.
+A layer is contested for an attribute where its rows name different sets of `partial` dims, so it reaches some coordinates twice.
+Only the value rows of a contested layer need the window.
+Whether a layer is contested is a column of the map's rows, so the read joins the rows of contested layers in one arm, which ranks them, and those of every other layer in a second arm, which passes them straight through.
+Over frozen layers alone, an attribute that no layer contests, the common case, takes the second arm only.
+Past the frozen prefix the plan cannot ask the rows, so every attribute is planned with both arms.
+Ranking every value row instead would keep the plan fixed too, but made the read of a single base layer with a long series several times slower.
+
+A staged layer meets [the write's refusal](../use/writing.md#shape) of two rows neither more specific as it is staged.
+A [`set`](../use/editing.md#set) that crosses an earlier staged row also stages the row naming both, and one whose own rows cross is refused.
 
 A `partial` multi-dim column such as `connection` joins NULL-aware exactly as `scenario` does, and a NULL there [reaches](../model/attributes.md#the-broadcast-rule) every tuple of the resolved multi-dim.
 DuckDB hash-joins `IS NOT DISTINCT FROM` on a `STRUCT` key directly.
@@ -298,7 +328,7 @@ A curve is owned whole ([wide and long rows](../model/attributes.md#wide-and-lon
 Dims outside the key pass through unchanged, because the rows of one key come from one layer.
 
 An attribute that no layer wrote is absent from the map.
-Its relation is empty, and the consumer applies [the schema's `default`](../model/attributes.md#attributespec).
+Its relation is empty and typed, listed under its name like any declared attribute, and the consumer applies [the schema's `default`](../model/attributes.md#attributespec).
 
 ### A label outside the key
 
@@ -358,3 +388,17 @@ Materialising is a policy: every N layers, at a branch point, or on demand.
 It only adds files under `resolved/`, so it changes no answer, only how many layers a read touches.
 No manifest lists them: they are written after the commit, at any later time, and a read opens each by name.
 The persisted map is the fold's result, and a NULL in it reaches the labels of the node read, so a label added below the node is reached as it would be without the cache.
+Where the workspace already holds the node's fold, materialising writes it rather than folding again.
+
+### A fold starts from the nearest fold at hand
+
+A fold starts from the deepest proper ancestor whose fold is at hand: materialised on disk, or held by the workspace as [shared tables](../storage/concurrency.md#a-cursor-per-thread) for as long as its connection lives.
+It takes that fold's owner map, axes and dead labels as its seed, and folds and checks only the layers above it.
+A record opened on a child after a commit thus folds one layer onto its parent's fold.
+A node never seeds its own fold, since that would return the cached answer and fold nothing on top.
+
+Each layer's fold is kept in a table before the next layer folds onto it, and each layer's owner rows are built once into it.
+DuckDB binds a relation's whole tree at every step, and the checks and the crossing join each read the map below, so a plan left unchecked for several layers doubles with each one.
+A checkpoint every fourth layer made a depth-16 fold about eight times slower than one every layer.
+The fixed plan cuts the joins per layer, not the statements, so a cold fold stays linear in depth.
+When a deep ancestry should materialise its map is [open](../open-questions.md#when-a-deep-ancestry-materialises-its-map).
