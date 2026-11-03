@@ -43,7 +43,10 @@ from datarecord.duck import (
 from datarecord.resolve.coords import (
     Coords,
     _base_and_above,
+    _coord_table,
     _dead_keys,
+    _dim_owners_table,
+    _table_name,
     resolve_coords,
 )
 from datarecord.resolve.fold import read_owner_map
@@ -54,18 +57,6 @@ from datarecord.schema.schema import (
     LAYER_UUID_TYPE,
     Schema,
 )
-
-
-def _table_name(revision_id: UUID) -> str:
-    return f"owner_map_{revision_id.hex}"
-
-
-def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
-    """The shared table one folded axis, dead label set or owner map is kept in.
-
-    `name` is spelled as declared, which `Schema` holds to a plain identifier.
-    """
-    return f"{kind}_{name}_{revision_id.hex}"
 
 
 def _shared(
@@ -813,7 +804,7 @@ def _fold_map(
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     schema = sources[-1].schema
-    base, above = _base_and_above(sources, con)
+    base, above = _base_and_above(sources, con, owner_map=True)
     rel: DuckDBPyRelation | None = None
     keyed, held, dead = schema, dict.fromkeys(_pruned(schema)), {}
     if base is not None:
@@ -1112,5 +1103,5 @@ def _frozen_coords(
             _shared(con, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
         return coords.owners(con)
 
-    rel = _shared(con, f"dim_owners_{revision_id.hex}", lambda: nullcontext(fold()))
+    rel = _shared(con, _dim_owners_table(revision_id), lambda: nullcontext(fold()))
     return [(dim, layer, has_dead) for dim, layer, has_dead in rel.fetchall()]

@@ -41,10 +41,14 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
-from datarecord.resolve.coords import Coords, one_of_axis, resolve_coords
+from datarecord.resolve.coords import (
+    Coords,
+    one_of_axis,
+    resolve_coords,
+    tabled_coords,
+)
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import (
-    _coord_table,
     _frozen_coords,
     _frozen_table,
     _mask,
@@ -451,20 +455,12 @@ class Record:
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
         con = self.con
-        rows = self._dim_owners
-        axes = {
-            d: con.table(_coord_table("dims", d, self.revision_id)) for d, _, _ in rows
+        held = tabled_coords(self.revision_id, self.schema, self._dim_owners, con)
+        axes = held.axes | {
+            n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims
         }
-        axes |= {n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims}
-        return Coords(
-            schema=self.schema,
-            axes={n: axes[n] for n in self.schema.dimensions if n in axes},
-            dim_owners={d: layer for d, layer, _ in rows},
-            dead={
-                d: con.table(_coord_table("dead", d, self.revision_id))
-                for d, _, has_dead in rows
-                if has_dead
-            },
+        return dataclasses.replace(
+            held, axes={n: axes[n] for n in self.schema.dimensions if n in axes}
         )
 
     @cached_property

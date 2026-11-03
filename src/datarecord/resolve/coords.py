@@ -15,8 +15,10 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import reduce
+from typing import Literal, overload
 from uuid import UUID
 
+import duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
@@ -26,6 +28,22 @@ from datarecord.duck import fn, values_relation
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
+
+
+def _table_name(revision_id: UUID) -> str:
+    return f"owner_map_{revision_id.hex}"
+
+
+def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
+    """The shared table one folded axis, dead label set or owner map is kept in.
+
+    `name` is spelled as declared, which `Schema` holds to a plain identifier.
+    """
+    return f"{kind}_{name}_{revision_id.hex}"
+
+
+def _dim_owners_table(revision_id: UUID) -> str:
+    return f"dim_owners_{revision_id.hex}"
 
 
 def _fold_axis(
@@ -318,26 +336,106 @@ def _dead_keys(
     return dead
 
 
+@overload
 def _base_and_above(
-    sources: Sequence[LayerSource], con: DuckDBPyConnection
-) -> tuple[Fold | None, list[LayerSource]]:
-    """Split `sources` at the deepest materialised one: its `Fold`, then the rest.
+    sources: Sequence[LayerSource],
+    con: DuckDBPyConnection,
+    *,
+    owner_map: Literal[True],
+) -> tuple[Fold | None, list[LayerSource]]: ...
 
-    The deepest materialised source's `Fold` is the fold's base - already folded
-    over everything at or below it - and only the sources above it are folded on
-    top. No materialised source means no base and the whole list folds from the
-    root.
+
+@overload
+def _base_and_above(
+    sources: Sequence[LayerSource],
+    con: DuckDBPyConnection,
+    *,
+    owner_map: Literal[False],
+) -> tuple[Fold | Coords | None, list[LayerSource]]: ...
+
+
+def _base_and_above(
+    sources: Sequence[LayerSource], con: DuckDBPyConnection, *, owner_map: bool
+) -> tuple[Fold | Coords | None, list[LayerSource]]:
+    """Split `sources` at the deepest one whose fold is at hand: that fold, then the rest.
+
+    A fold is at hand where the source is materialised, or where the workspace
+    holds its node's fold as shared tables (`_held`). It is the fold's base -
+    already folded over everything at or below it - and only the sources above
+    it are folded on top. No fold at hand means no base and the whole list
+    folds from the root. Where `owner_map`, a held fold counts only with its
+    owner map, and the base is a `Fold`.
 
     The last source is never the base: a node resolves from its own layer, never
     from its own cache. Reading a node through its own materialised `Fold` would
     return the cached answer instead of resolving it, and folding *nothing* on
     top - the same reason `sources_to_read` truncates only at proper ancestors.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     for i in range(len(sources) - 2, -1, -1):
-        base = sources[i].materialised(con)
+        base = sources[i].materialised(con) or _held(sources[i], con, owner_map)
         if base is not None:
             return base, list(sources[i + 1 :])
     return None, list(sources)
+
+
+def _held(
+    source: LayerSource, con: DuckDBPyConnection, owner_map: bool
+) -> Fold | Coords | None:
+    """`source`'s node's fold from the workspace's shared tables, `None` where they lack it.
+
+    The tables are keyed by the node a `Record` reads, and hold the fold over
+    its whole ancestry, so they stand for the source only as the last of its
+    own ancestry - as every proper ancestor in a source list is. The coords
+    and the owner map are tabled independently, so each is looked up; where
+    `owner_map`, the owner map is required beside the coords, which its fold
+    reads too.
+    """
+    rid = source.layer_id
+    try:
+        rows = con.table(_dim_owners_table(rid)).fetchall()
+        rel = con.table(_table_name(rid)) if owner_map else None
+    except duckdb.CatalogException:
+        return None
+    coords = tabled_coords(rid, source.schema, rows, con)
+    if rel is None:
+        return coords
+    return Fold(
+        schema=coords.schema,
+        axes=coords.axes,
+        dim_owners=coords.dim_owners,
+        owner_map=rel,
+        dead=coords.dead,
+    )
+
+
+def tabled_coords(
+    revision_id: UUID,
+    schema: Schema,
+    rows: Sequence[tuple[str, UUID, bool]],
+    con: DuckDBPyConnection,
+) -> Coords:
+    """The coords `revision_id`'s shared tables hold, given its `dim_owners` rows.
+
+    A `one_of` dim's axis is the schema's, so it is not among them.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    """
+    return Coords(
+        schema=schema,
+        axes={d: con.table(_coord_table("dims", d, revision_id)) for d, _, _ in rows},
+        dim_owners={d: layer for d, layer, _ in rows},
+        dead={
+            d: con.table(_coord_table("dead", d, revision_id))
+            for d, _, has_dead in rows
+            if has_dead
+        },
+    )
 
 
 def resolve_coords(
@@ -355,7 +453,7 @@ def resolve_coords(
     con : DuckDBPyConnection
     split
         A folded seed and the sources to fold onto it, where the caller
-        already holds them: `_base_and_above(sources, ...)`, or a frozen
+        already holds them: `_base_and_above`, or a frozen
         prefix's coords and the sources after it.
 
     Returns
@@ -374,7 +472,7 @@ def resolve_coords(
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     schema = sources[-1].schema
-    base, above = split or _base_and_above(sources, con)
+    base, above = split or _base_and_above(sources, con, owner_map=False)
     restated = {d for d in schema.dimensions if d not in schema.one_of_dims}
     held_files = [source.axes() if source.frozen else restated for source in above]
     for source, names in zip(above, held_files, strict=True):

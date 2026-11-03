@@ -342,6 +342,9 @@ All notable changes to datarecord are documented here. The format follows
   two meet, rather than the read failing.
 - The edits of a `WorkingRecord` restate an axis only where it differs from
   the base's, and write no attribute without rows.
+- A fold starts from the deepest proper ancestor whose fold is materialised
+  or already held by the workspace, so a record opened on a child after a
+  commit folds only the child's layer.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
