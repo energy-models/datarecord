@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression, sqltypes
+from duckdb import DuckDBPyRelation, Expression, TransactionException, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
@@ -265,6 +265,12 @@ def _atomic(edit: Callable[..., None]) -> Callable[..., None]:
     So a refused edit leaves the staging tables as they were, and a reader on
     another cursor sees each edit whole or not at all.
 
+    Raises
+    ------
+    TransactionException
+        Where the cursor already holds an open transaction, which DuckDB cannot
+        nest and an edit could not roll back alone.
+
     Notes
     -----
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
@@ -273,7 +279,15 @@ def _atomic(edit: Callable[..., None]) -> Callable[..., None]:
     @wraps(edit)
     def run(self: WorkingRecord, *args: Any, **kwargs: Any) -> None:
         con = self.con
-        con.begin()
+        try:
+            con.begin()
+        except TransactionException as e:
+            msg = (
+                f"`{edit.__name__}` runs in its own transaction, and this cursor "
+                f"already holds one open; commit or roll it back before the edit "
+                f"(https://energy-models.github.io/datarecord/design/use/editing/#edits)"
+            )
+            raise TransactionException(msg) from e
         try:
             self._dirty.clear()
             edit(self, *args, **kwargs)

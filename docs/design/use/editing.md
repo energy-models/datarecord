@@ -252,6 +252,10 @@ The destination chooses the rows: a store takes `w.edits`, and a standalone dire
 `rollback()` clears the staging area.
 A write clears nothing, so a `WorkingRecord` that still holds its edits reads exactly what it did before.
 
+Each edit runs in one transaction on the record's cursor.
+A refused edit rolls back whole, so the staging tables read as they did before it, and a reader on another cursor sees an edit whole or not at all.
+DuckDB nests no transaction and has no savepoint, so an edit is refused while the caller holds a transaction open on the same cursor.
+
 Edits written as a child of any other revision would be a delta computed against the wrong parent, since an axis edit restates its base's whole axis, so a commit [refuses them](../storage/store.md#a-revision-exists-only-by-its-file).
 
 An edited axis, a multi-dim's included, is restated whole, whatever [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) says.

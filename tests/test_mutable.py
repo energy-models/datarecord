@@ -12,6 +12,7 @@ Notes
 import re
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -1782,3 +1783,35 @@ def test_one_call_spans_component_types(staged):
     staged.set("p_nom", 150.0, entity=["Manchester Wind", "DC link"])
     got = _entity_values(staged, "p_nom")
     assert got["Manchester Wind"] == got["DC link"] == 150.0, "a scalar at every label"
+
+
+def test_a_set_refused_after_it_staged_leaves_the_staging_tables_as_they_were(staged):
+    """`set` stages its rows before it refuses two of them that cross.
+
+    The refusal rolls back the edit's transaction, rows and owner tables
+    alike, so the record reads as it did before the call.
+    """
+    staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
+    before = _rows(staged.attributes["p_max_pu"])
+    crossing = pd.DataFrame(
+        {
+            "entity": ["Manchester Gas", None],
+            "snapshot": [None, pd.Timestamp("2015-01-01")],
+            "value": [0.1, 0.2],
+        }
+    )
+    with pytest.raises(ValueError, match="neither is the more specific"):
+        staged.set("p_max_pu", crossing)
+    assert _rows(staged.attributes["p_max_pu"]) == before, (
+        "the refused edit staged nothing"
+    )
+
+
+def test_an_edit_inside_an_open_transaction_is_refused(staged):
+    """An edit opens its own transaction, which DuckDB cannot nest."""
+    staged.con.begin()
+    try:
+        with pytest.raises(duckdb.TransactionException, match="already holds one open"):
+            staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
+    finally:
+        staged.con.rollback()
