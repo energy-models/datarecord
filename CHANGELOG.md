@@ -122,6 +122,12 @@ All notable changes to datarecord are documented here. The format follows
   as a thin layer. The layer restates the SubNetworks of `base` and sets
   NULL on the results of `base` that it does not write again. A NULL series
   value on export leaves the component at its static value.
+- A source vouches that an attribute's rows hold no two at one coordinate
+  through the protocol `UniqueCoordinates`, with one member `is_unique(attribute)`, and
+  the writer skips its check for two rows naming the same dims where told
+  True. A `Record` vouches for every attribute, and the PyPSA tool where every
+  pandas index the rows are built from is unique, so neither an hourly
+  network's export nor `ws.write(record, uri)` hashes every row of a file.
 
 ### Changed
 

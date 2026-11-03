@@ -369,6 +369,21 @@ class Record:
         """
         return self._fold.flags(**categories)
 
+    def is_unique(self, attribute: str) -> bool:
+        """True: no two rows of `attribute` agree on every coordinate and `breakpoint`.
+
+        Every layer holds one row per coordinate, as the format requires, and
+        the resolved read hands a layer's row over once per key that layer
+        owns, keeping the more specific row where one layer covers a key twice
+        and failing when fetched where neither is.
+
+        Notes
+        -----
+        - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
+        - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
+        """
+        return True
+
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 
     def _axis_frame(self, dim: str) -> DuckDBPyRelation:

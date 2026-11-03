@@ -20,33 +20,12 @@ from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
     empty_child,
-    example,
     export_network,
     relation,
-    rename_components,
     write_attribute,
     write_scenarios,
 )
 from tests.test_roundtrip import assert_networks_equal
-
-
-@pytest.fixture(scope="session")
-def stochastic():
-    """PyPSA's `stochastic_network`, with its generators renamed off their carriers.
-
-    The example names each `Generator` after its `Carrier`, which collides in a
-    record. The generators move rather than the carriers, since the
-    `carrier` attribute *values* reference the carrier names.
-
-    Notes
-    -----
-    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
-    """
-    import pypsa
-
-    n = example(pypsa.examples.stochastic_network)
-    rename_components(n, "Generator", " Gen")
-    return n
 
 
 @pytest.fixture(scope="module")

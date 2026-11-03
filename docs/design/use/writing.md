@@ -54,6 +54,7 @@ The read path projects only the attribute's own coordinates, so such a column wo
 A source that emits one disagrees with the schema about the attribute, and the error reports that disagreement.
 A [multi-dim](../model/multi-dims.md)'s column must be its struct, with exactly its coordinates as fields.
 Two rows of one attribute that cover one coordinate are refused when both name the same dims, or when each names a dim the other leaves NULL and no row there names both, naming the attribute and the coordinate.
+The first of the two goes unchecked for an attribute whose source vouches its rows unique ([`UniqueCoordinates`](#uniquecoordinates)).
 A record holding rows of several layers, written whole by `ws.write(w, uri)`, passes: wherever two of its rows cross, it holds the row naming both ([crossing rows](../layers/resolution.md#crossing-rows)).
 A child layer that leaves a dim outside `partial` NULL over a parent row naming it, with no row naming the dim there, is refused by the fold rather than the writer ([a dim outside `partial`](../layers/resolution.md#a-dim-outside-partial)).
 
@@ -109,3 +110,32 @@ This holds for a `Record`, a `WorkingRecord` among them, and for a framework obj
 The writer wraps a `RecordLike` in a thin adapter that reads its `Relations` mappings through the same enumerate-and-read pairs, so the writer has one code path.
 The adapter takes each value as [`set`](editing.md#set) does: a relation on the writer's connection, or a pandas, polars or arrow frame that DuckDB scans.
 A `WorkingRecord` is read through a pinned copy that folds its staged edits once for the write.
+
+### `UniqueCoordinates`
+
+A source vouches that an attribute's rows hold no two at one coordinate through a protocol of its own, satisfied by shape beside `LayerData` or `RecordLike`.
+
+```python
+@runtime_checkable
+class UniqueCoordinates(Protocol):
+    def is_unique(self, attribute: str) -> bool: ...
+```
+
+`is_unique(a)` True claims that no two rows of `a` agree on every coordinate of `a` and on `breakpoint`, NULL agreeing with NULL, exactly the pairs that [Shape](#shape) refuses as naming the same dims.
+False claims nothing, and a source that does not satisfy the protocol is never vouched for.
+The writer asks once per attribute it writes and skips that one check where told True.
+The check for crossing rows, the label checks, and every type, shape and axis check run as before.
+The answer is about the rows handed over in that write, and the layer stores nothing of it.
+The adapter forwards it, so a `RecordLike` handed to `store.root`, `rev.child` or `ws.write` vouches as itself.
+
+A `Record` vouches for every attribute, a `WorkingRecord` among them.
+The format holds that no two rows of a layer's attribute agree on every coordinate column, NULL agreeing with NULL, and the [resolved read](../layers/resolution.md#resolving-a-relation) hands a layer's row over once per key that layer owns, keeping the more specific row where one layer covers a key twice.
+A directory written by hand with two such rows is no valid store, so a `Record` over it is trusted as a source vouching wrongly is.
+A staged layer, `w.edits`, does not vouch: its rows are one per key, but staged edits are small and gain little.
+The [PyPSA tool](../tools/pypsa.md#unique-coordinates) vouches where every pandas index its rows are built from is unique, and on a stochastic network only for an attribute over `scenario`.
+
+A source that vouches wrongly writes a layer holding two rows at a coordinate, and nothing refuses it afterwards.
+A read of the attribute fails at that coordinate when fetched where some layer holds one of its keys both as a label and as NULL, and otherwise hands both rows over, which `build` meets as a duplicate in its pivot and a SQL consumer sums twice.
+The layer is write-once, so the repair is a new layer from a corrected source.
+The writer accepts that risk as it trusts a source's values: a melt putting a value at the wrong snapshot is refused nowhere.
+A claim of unique coordinates is made by code that built the rows in the same process from what it reads the claim off, never by a caller's argument, and no switch re-runs the check for a vouched attribute.

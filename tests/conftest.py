@@ -43,3 +43,24 @@ def ac_dc():
         columns=["efficiency", "marginal_cost", "capital_cost"]
     )
     return n
+
+
+@pytest.fixture(scope="session")
+def stochastic():
+    """PyPSA's `stochastic_network`, with its generators renamed off their carriers.
+
+    The example names each `Generator` after its `Carrier`, which collides in a
+    record. The generators move rather than the carriers, since the
+    `carrier` attribute *values* reference the carrier names.
+
+    Notes
+    -----
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
+    """
+    import pypsa
+
+    from tests.fixtures import example, rename_components
+
+    n = example(pypsa.examples.stochastic_network)
+    rename_components(n, "Generator", " Gen")
+    return n

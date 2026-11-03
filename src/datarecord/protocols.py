@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The `RecordLike` and `LayerData` protocols, and the relations a record hands over.
+"""The `RecordLike`, `LayerData` and `UniqueCoordinates` protocols, and the relations a record hands over.
 
 `resolve.record.Record` is the one record this package provides; a framework
 object presenting itself as a record satisfies the protocol structurally, which
@@ -226,3 +226,27 @@ class LayerData(Protocol):
 
     def attributes(self) -> set[str]: ...
     def attribute(self, name: str) -> DuckDBPyRelation | None: ...
+
+
+@runtime_checkable
+class UniqueCoordinates(Protocol):
+    """A source vouching, per attribute, that its rows hold no twin.
+
+    Satisfied by shape beside `LayerData` or `RecordLike`: `write_layer` asks
+    once per attribute it writes and skips its check for two rows naming the
+    same dims at one coordinate where told True. A source lacking it is never
+    vouched for.
+
+    Notes
+    -----
+    - [UniqueCoordinates](https://energy-models.github.io/datarecord/design/use/writing/#uniquecoordinates)
+    """
+
+    def is_unique(self, attribute: str) -> bool:
+        """Whether no two rows of `attribute` agree on every coordinate of it and on `breakpoint`.
+
+        NULL agrees with NULL. True is a claim the writer trusts unchecked;
+        False claims nothing. The answer is about the relation handed over in
+        this write.
+        """
+        ...
