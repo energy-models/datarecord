@@ -77,15 +77,15 @@ def write_parquet(
 
 
 @contextmanager
-def transaction(con: DuckDBPyConnection, operation: str, page: str) -> Iterator[None]:
+def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[None]:
     """Run the block in one transaction on `con`, committed where it returns, rolled back where it raises.
 
     Parameters
     ----------
     operation
         What runs, named in the refusal.
-    page
-        The design page the refusal links to.
+    url
+        The design page the refusal links to, as a URL.
 
     Raises
     ------
@@ -98,7 +98,7 @@ def transaction(con: DuckDBPyConnection, operation: str, page: str) -> Iterator[
     except TransactionException as e:
         msg = (
             f"`{operation}` runs in its own transaction, and this cursor already "
-            f"holds one open; commit or roll it back before calling it ({page})"
+            f"holds one open; commit or roll it back before calling it ({url})"
         )
         raise TransactionException(msg) from e
     try:

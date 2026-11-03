@@ -83,7 +83,7 @@ def _read_views(con, name, declared):
 
 
 def _read_relations(record):
-    """Every relation of `record`, built afresh, as `_read_views` reads its views."""
+    """Every relation of `record`, as `record` gives it now, read as `_read_views` reads its views."""
     return {
         (kind, view): _rows(getattr(record, kind)[view])
         for kind in KINDS
@@ -129,7 +129,7 @@ def test_views_on_a_working_record_follow_its_edits(workspace, small, working):
     for step, edit in enumerate(EDITS):
         edit(working)
         assert _read_views(con, "edit", declared) == _read_relations(working), (
-            f"after edit {step} every view reads as its relation built afresh"
+            f"after edit {step} every view reads as the record's relation"
         )
 
 
