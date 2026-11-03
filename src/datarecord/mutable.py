@@ -19,7 +19,7 @@ import operator
 import sys
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import reduce, wraps
+from functools import cached_property, reduce, wraps
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Concatenate, cast
 from uuid import UUID, uuid4
@@ -50,7 +50,7 @@ from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import owner_keys
 from datarecord.resolve.owner_map import named_sets, names_exactly, unsettled
-from datarecord.resolve.record import Record, _empty_long
+from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
@@ -260,6 +260,14 @@ class StagedSource:
         if not arms:
             return None
         return union_all_by_name(arms)
+
+
+class _StagedPerCursor(_PerCursor):
+    """What a `WorkingRecord` keeps per thread besides a `Record`'s."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.labels: dict[str, DuckDBPyRelation] = {}
 
 
 def _atomic[**P](
@@ -2031,6 +2039,10 @@ class WorkingRecord(Record):
                 .project(*(col("l", c) for c in columns))
             )
         return rel
+
+    @cached_property
+    def _per_cursor(self) -> _StagedPerCursor:
+        return _StagedPerCursor()
 
     def _labels(self, dim: str) -> DuckDBPyRelation:
         """The labels of `dim`'s staged axis, each flagged `_kept`, aliased `k`.
