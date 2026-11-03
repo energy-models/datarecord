@@ -30,7 +30,7 @@ A relation and a `WorkingRecord` belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
 
 A fold caches its results as shared tables.
-The frozen prefix's folded axes are the tables `dims_<dim>_<id>`, a [multi-dim](../model/multi-dims.md)'s like any other.
+The frozen layers' folded axes are the tables `dims_<dim>_<id>`, a [multi-dim](../model/multi-dims.md)'s like any other.
 Its [dead labels](../layers/resolution.md#a-label-outside-the-key) are the tables `dead_<dim>_<id>`, one per coordinate that has any.
 A last table, `dim_owners_<id>`, has the shape of a node cache's [`dim_owners.parquet`](../layers/resolution.md#materialised-node-caches), a row `(dim, layer_uuid, has_dead)` per folded axis.
 It is created after them, so a reader that finds it finds them all.
