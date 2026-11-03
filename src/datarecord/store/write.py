@@ -16,7 +16,7 @@ Notes
 
 from __future__ import annotations
 
-from functools import cached_property
+from functools import cached_property, partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -29,6 +29,7 @@ from duckdb import StarExpression as star
 from datarecord.duck import as_relation, fn, null_safe, write_parquet
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
+    Coords,
     one_of_axis,
     refuse_one_of_file,
     refuse_twice,
@@ -42,6 +43,8 @@ from datarecord.schema.schema import DERIVED, Schema
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.resolve.sources import LayerSource
@@ -125,57 +128,67 @@ def write_layer(
     - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
     """
     schema = data.schema
+    con = workspace.con
     written: dict[str, list[str]] = {"dims": [], "attributes": []}
+
+    def _written(
+        read: Callable[[str], DuckDBPyRelation | None], kind: str, key: str
+    ) -> DuckDBPyRelation | None:
+        """`read(key)`, called once, validated, written and read back; `None` where it is."""
+        rel = read(key)
+        if rel is None:
+            return None
+        _validate_frame(rel, kind, key, schema)
+        return con.read_parquet(_write_frame(rel, base, kind, key, schema, con))
+
     try:
         refuse_one_of_file(schema, data.axes(), "the layer")
-        kinds = [
-            (
-                "dims",
-                sorted(data.axes(), key=schema.multi_dims.__contains__),
-                data.axis,
-            ),
-            ("attributes", data.attributes(), data.attribute),
-        ]
-        resolved: dict[str, DuckDBPyRelation | None] = {}
-
-        def final(name: str) -> DuckDBPyRelation | None:
-            if name not in resolved:
-                resolved[name] = _parent_axis(parent, schema, name, workspace.con)
-            return resolved[name]
-
-        for kind, keys, read in kinds:
-            for key in keys:
-                rel = read(
-                    key
-                )  # looked up exactly once (https://energy-models.github.io/datarecord/design/use/writing/)
-                if rel is None:
+        for key in sorted(data.axes(), key=schema.multi_dims.__contains__):
+            frame = _written(data.axis, "dims", key)
+            if frame is None:
+                continue
+            written["dims"].append(key)
+            file = f"dims/{key}.parquet"
+            refuse_twice(frame, [key], file)
+            before = _parent_axis(parent, schema, key, con)
+            if before is not None:
+                _refuse_reordered(frame, before, key, file)
+        held: Callable[[str], DuckDBPyRelation | None]
+        held = partial(_parent_axis, parent, schema, con=con)
+        if data.axes():
+            dims = LayerFiles(dims=tuple(written["dims"]), attributes=())
+            manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
+            layer = DirectorySource(base, manifest, workspace, manifest.id)
+            parents = [] if parent is None else parent.sources
+            coords = resolve_coords([*parents, layer])
+            held = coords.axes.get
+            for key in written["dims"]:
+                if key not in schema.multi_dims:
                     continue
-                _validate_frame(rel, kind, key, schema)
-                uri = _write_frame(rel, base, kind, key, schema, workspace.con)
-                written[kind].append(key)
-                frame = workspace.con.read_parquet(uri)
-                file = f"{kind}/{key}.parquet"
-                if kind == "attributes":
-                    _refuse_unordered(frame, key, schema)
-                    coordinates = schema.coordinates_of(key)
-                    refuse_unheld(frame, schema, coordinates, final, file, staged=False)
-                    continue
-                if key in schema.multi_dims:
-                    refuse_unheld(
-                        frame, schema, [key], final, file, staged=False, subject=key
-                    )
-                resolved[key] = frame
-                refuse_twice(frame, [key], file)
-                before = _parent_axis(parent, schema, key, workspace.con)
-                if before is not None:
-                    _refuse_reordered(frame, before, key, file)
+                file = f"dims/{key}.parquet"
+                refuse_unheld(
+                    coords.axes[key],
+                    schema,
+                    [key],
+                    held,
+                    file,
+                    staged=False,
+                    subject=key,
+                )
+        for key in data.attributes():
+            frame = _written(data.attribute, "attributes", key)
+            if frame is None:
+                continue
+            written["attributes"].append(key)
+            file = f"attributes/{key}.parquet"
+            _refuse_unordered(frame, key, schema)
+            coordinates = schema.coordinates_of(key)
+            refuse_unheld(frame, schema, coordinates, held, file, staged=False)
         files = LayerFiles(
             dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
         )
         if data.axes():
-            manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=files)
-            layer = DirectorySource(base, manifest, workspace, manifest.id)
-            _require_living_references(parent, layer, schema)
+            _require_living_references(parent, layer, coords)
     finally:
         if isinstance(data, _RecordLikeAsLayerData):
             data.release()
@@ -339,9 +352,7 @@ def _parent_axis(
 
 
 def _require_living_references(
-    parent: Record | None,
-    layer: LayerSource,
-    schema: Schema,
+    parent: Record | None, layer: LayerSource, coords: Coords
 ) -> None:
     """Reject a layer leaving a reference to a dead label in a subject it touches.
 
@@ -365,6 +376,7 @@ def _require_living_references(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
+    schema = coords.schema
     touched = layer.axes()
     references = [
         *(
@@ -398,8 +410,6 @@ def _require_living_references(
             killed[dim] = gone
     if not whole and not killed:
         return
-    parents = [] if parent is None else parent.sources
-    coords = resolve_coords([*parents, layer])
     problems = []
     for subject, column, label, dim, restated in references:
         dead = coords.dead.get(dim)
