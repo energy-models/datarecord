@@ -21,7 +21,7 @@ from collections.abc import Callable, Collection, Container, Iterable, Mapping, 
 from dataclasses import dataclass
 from functools import reduce, wraps
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, Concatenate, cast
 from uuid import UUID, uuid4
 
 from duckdb import CoalesceOperator as coalesce
@@ -260,7 +260,9 @@ class StagedSource:
         return union_all_by_name(arms)
 
 
-def _atomic(edit: Callable[..., None]) -> Callable[..., None]:
+def _atomic[**P](
+    edit: Callable[Concatenate[WorkingRecord, P], None],
+) -> Callable[Concatenate[WorkingRecord, P], None]:
     """Run an edit in one transaction on the record's cursor, rolled back where it raises.
 
     So a refused edit leaves the staging tables as they were, and a reader on
@@ -278,7 +280,7 @@ def _atomic(edit: Callable[..., None]) -> Callable[..., None]:
     """
 
     @wraps(edit)
-    def run(self: WorkingRecord, *args: Any, **kwargs: Any) -> None:
+    def run(self: WorkingRecord, *args: P.args, **kwargs: P.kwargs) -> None:
         con = self.con
         try:
             con.begin()

@@ -16,6 +16,7 @@ import threading
 import weakref
 from collections.abc import Callable
 from functools import wraps
+from typing import Concatenate
 from uuid import UUID
 
 from duckdb import ColumnExpression as col
@@ -107,7 +108,9 @@ def _fingerprint(schema: Schema) -> str:
     return key
 
 
-def _per_schema[T](build: Callable[..., T]) -> Callable[..., T]:
+def _per_schema[**P, T](
+    build: Callable[Concatenate[Schema, P], T],
+) -> Callable[Concatenate[Schema, P], T]:
     """`build` memoised on a `Schema` and further hashable arguments, for the last 64 keys.
 
     A schema is unhashable, and every layer holds its own equal copy, so it is
@@ -117,13 +120,13 @@ def _per_schema[T](build: Callable[..., T]) -> Callable[..., T]:
     lock = threading.Lock()
 
     @wraps(build)
-    def memo(schema: Schema, *args: object) -> T:
-        key = (_fingerprint(schema), *args)
+    def memo(schema: Schema, *args: P.args, **kwargs: P.kwargs) -> T:
+        key = (_fingerprint(schema), *args, *sorted(kwargs.items()))
         with lock:
             found = held.get(key)
         if found is not None:
             return found
-        value = build(schema, *args)
+        value = build(schema, *args, **kwargs)
         with lock:
             held[key] = value
             if len(held) > 64:
