@@ -28,6 +28,7 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
@@ -169,67 +170,232 @@ def with_columns(
     return rel.project(star(), *added)
 
 
-def fold_attributes(
-    source: LayerSource,
-    con: DuckDBPyConnection,
+def fold_layer(
     parent: DuckDBPyRelation | None,
+    own: DuckDBPyRelation | None,
     removed: Mapping[str, DuckDBPyRelation],
+    schema: Schema,
+    con: DuckDBPyConnection,
+    attribute: str | None = None,
+    *,
+    refuse: UUID | None = None,
 ) -> DuckDBPyRelation | None:
-    """This layer's owner map: its `attributes/` keys as written, folded over `parent`.
+    """One layer's owner-map rows `own` folded onto `parent`, the map below it.
 
-    `parent` must already be extended to the layer's own schema (`_widened`),
-    which keys and flags both. The parent rows naming a label `removed` holds are
-    dropped first, per `partial` dim. A label inside a struct is reached
-    through its tuple, which the layer removed with it. A parent row this
-    layer's rows cover whole is dropped; one they cross stays as written, and
-    the layer owns an overlap row for each crossing pair (`_overlaps`). `None`
-    where neither side holds a row.
+    `schema` is the layer's own, which `parent` must already be extended to
+    (`_widened`). The parent rows naming a label `removed` holds are dropped
+    first, per `partial` dim; a label inside a struct is reached through its
+    tuple, which the layer removed with it. A parent row a row of `own`
+    covers, naming no `partial` dim the parent row leaves NULL, is dropped;
+    one an own row crosses stays as written, and the layer owns an overlap
+    row naming every label either names. `None` where neither side holds a
+    row.
+
+    The plan is fixed by the schema: whatever named sets the rows hold, it
+    runs one join per removal, two for covering and, unless `attribute` is
+    over at most one `partial` dim and cannot cross, one for crossing.
+
+    Parameters
+    ----------
+    attribute
+        The one attribute `parent` and `own` hold rows of, where they hold one.
+    refuse
+        The layer `own` is, where it is checked for leaving a dim outside
+        `partial` unfilled: a frozen layer, as a workspace first folds it.
 
     Raises
     ------
     ValueError
-        Where a row of this layer leaves a dim outside `partial` NULL over a
-        parent row naming it, and the layer holds no row naming it there
-        (`_refuse_unfilled`).
+        Where `refuse` is given and a row of `own` leaves a dim outside
+        `partial` NULL over a parent row naming it, and the layer holds no row
+        naming it there.
 
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    schema = source.schema
-    own = _own(source)
     if parent is None:
         return own
-    kept = parent
-    for name, gone in removed.items():
-        gone = gone.project(col(name).alias("_gone"))
-        kept = kept.join(gone, col(name) == col("_gone"), how="anti")
+    kept = _prune(parent, removed)
     if own is None:
         return kept
-    dims = schema.partial_dims
-    masks = named_sets(own, dims)
-    for mask in masks:
-        drop = own.filter(names_exactly(dims, mask)).project(
-            *(col(c).alias(f"_o_{c}") for c in ("attribute", *mask))
-        )
-        covered = ex_all(col(c) == col(f"_o_{c}") for c in ("attribute", *mask))
-        kept = kept.join(drop, covered, how="anti")
-    patterns = named_sets(kept, dims) if any(masks) else []
-    pairs = {
-        (p, o): _pair(kept, own, p, o, schema)
-        for o in masks
-        for p in patterns
-        if not o <= p
-    }
-    _refuse_unfilled(pairs, own, source)
-    overlaps = [
-        _overlaps(pair, o, schema) for (p, o), pair in pairs.items() if not p <= o
-    ]
-    if not overlaps:
+    kept = _uncovered_by(kept, own, schema)
+    if refuse is not None:
+        pairs = _meeting(kept, own, schema, attribute, _not_within)
+        _refuse_unfilled(pairs, own, schema, refuse)
+    if attribute is not None and _domain(schema, attribute).bit_count() < 2:
         return union_all_by_name([kept, own], con)
-    crossed = reduce(DuckDBPyRelation.union, overlaps).distinct()
-    return union_all_by_name([kept, own, crossed], con)
+    pairs = _meeting(kept, own, schema, attribute, _incomparable)
+    return union_all_by_name([kept, own, _overlaps(pairs, schema).distinct()], con)
+
+
+def _prune(
+    parent: DuckDBPyRelation, removed: Mapping[str, DuckDBPyRelation]
+) -> DuckDBPyRelation:
+    """`parent` without the rows naming a label `removed` holds, per `partial` dim."""
+    for name, gone in removed.items():
+        gone = gone.project(col(name).alias("_gone"))
+        parent = parent.join(gone, col(name) == col("_gone"), how="anti")
+    return parent
+
+
+def _mask(dims: Sequence[str]) -> Expression:
+    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`."""
+    return reduce(
+        operator.add,
+        (
+            col(d).isnotnull().cast(sqltypes.INTEGER) * lit(1 << i)
+            for i, d in enumerate(dims)
+        ),
+        lit(0),
+    )
+
+
+def _domain(schema: Schema, attribute: str) -> int:
+    """The `partial` dims `attribute` is over, as a `_mask` bitmask; every one for an undeclared attribute."""
+    if attribute not in schema.attributes:
+        return (1 << len(schema.partial_dims)) - 1
+    over = schema.coordinates_of(attribute)
+    return sum(1 << i for i, d in enumerate(schema.partial_dims) if d in over)
+
+
+def _domain_of(schema: Schema) -> Expression:
+    """Each row's `_domain`, by a CASE over its attribute."""
+    full = (1 << len(schema.partial_dims)) - 1
+    by: dict[int, list[str]] = {}
+    for name in schema.attributes:
+        by.setdefault(_domain(schema, name), []).append(name)
+    cases = [
+        (col("attribute").isin(*map(lit, names)), lit(dom))
+        for dom, names in by.items()
+        if dom != full
+    ]
+    if not cases:
+        return lit(full)
+    (first, value), *rest = cases
+    case = duckdb.CaseExpression(first, value)
+    for when, then in rest:
+        case = case.when(when, then)
+    return case.otherwise(lit(full))
+
+
+def _incomparable(p: str, o: str) -> str:
+    """Whether a parent row naming `p` and an own row naming `o` can cross."""
+    return f"({p} & {o}) <> {p} AND ({p} & {o}) <> {o}"
+
+
+def _not_within(p: str, o: str) -> str:
+    """Whether an own row naming `o` names a dim a parent row naming `p` leaves NULL."""
+    return f"({o} & {p}) <> {o}"
+
+
+def _choices(
+    schema: Schema, attribute: str | None, allowed: Callable[[str, str], str]
+) -> Expression:
+    """Per row, the masks `x` within its attribute's domain that `allowed(_m, x)` admits.
+
+    Computed per row rather than bound as a constant list, whose size grows
+    as 4 to the number of `partial` dims.
+    """
+    dom = _domain_of(schema) if attribute is None else lit(_domain(schema, attribute))
+    n = 1 << len(schema.partial_dims)
+    return sql(
+        f"list_filter(range({n}), lambda x: (x & {dom}) = x AND {allowed('_m', 'x')})"
+    )
+
+
+def _expanded(
+    rel: DuckDBPyRelation, schema: Schema, choices: Expression, prefix: str = ""
+) -> DuckDBPyRelation:
+    """`rel` with `_m` its row's named set, and one copy per mask in `choices`.
+
+    Each copy holds its mask in `_x` and, in `_k_<dim>`, the row's label on
+    each `partial` dim the mask names, NULL elsewhere: the key the row
+    agrees with any row naming exactly that mask on. Every column is
+    prefixed `prefix`.
+    """
+    dims = schema.partial_dims
+    rel = rel.project(star(), _mask(dims).alias("_m"))
+    rel = rel.project(star(), fn.unnest(choices).alias("_x"))
+    keys = [
+        duckdb.CaseExpression(sql(f"(_x & {1 << i}) <> 0"), col(d)).alias(f"_k_{d}")
+        for i, d in enumerate(dims)
+    ]
+    rel = rel.project(star(), *keys)
+    return rel.project(*(col(c).alias(f"{prefix}{c}") for c in rel.columns))
+
+
+def _uncovered_by(
+    kept: DuckDBPyRelation, own: DuckDBPyRelation, schema: Schema
+) -> DuckDBPyRelation:
+    """`kept` without each row a row of `own` covers naming no `partial` dim it leaves NULL.
+
+    Each row of `kept` is expanded into one copy per subset of its named
+    set, keyed by its labels there, which an own row naming exactly that
+    subset equals: one semi-join finds the covered rows, one anti-join drops
+    them.
+    """
+    dims = schema.partial_dims
+    probe = _expanded(
+        kept.project(col("attribute"), *map(col, dims)),
+        schema,
+        sql("list_filter(range(_m + 1), lambda x: (x & _m) = x)"),
+    )
+    keys = own.project(
+        col("attribute").alias("_o_attribute"),
+        _mask(dims).alias("_o__m"),
+        *(col(d).alias(f"_o__k_{d}") for d in dims),
+    )
+    on = ex_all(
+        [
+            col("attribute") == col("_o_attribute"),
+            col("_x") == col("_o__m"),
+            *(_same(f"_k_{d}", f"_o__k_{d}") for d in dims),
+        ]
+    )
+    covered = probe.join(keys, on, how="semi").project(
+        *(col(c).alias(f"_c_{c}") for c in ("attribute", *dims))
+    )
+    gone = ex_all(_same(c, f"_c_{c}") for c in ("attribute", *dims))
+    return kept.join(covered, gone, how="anti")
+
+
+def _same(a: str, b: str) -> Expression:
+    """NULL-safe equality of two columns, which DuckDB hashes."""
+    return sql(f"{col(a)} IS NOT DISTINCT FROM {col(b)}")
+
+
+def _meeting(
+    kept: DuckDBPyRelation,
+    own: DuckDBPyRelation,
+    schema: Schema,
+    attribute: str | None,
+    allowed: Callable[[str, str], str],
+) -> DuckDBPyRelation:
+    """Each row of `kept` beside each row of `own` it shares a key with, where `allowed(named(parent), named(own))`.
+
+    Two rows share a key where they agree on the dims both name. Each side
+    is expanded into a copy per named set the other side's row may hold
+    under `allowed`, keyed by its labels on the dims the two sets share; one
+    equi-join on (attribute, the two named sets, those labels) then matches
+    each pair exactly once. The own row's columns are prefixed `_o_`.
+    """
+    dims = schema.partial_dims
+    left = _expanded(kept, schema, _choices(schema, attribute, allowed))
+    right = _expanded(
+        own, schema, _choices(schema, attribute, lambda o, p: allowed(p, o)), "_o_"
+    )
+    on = ex_all(
+        [
+            col("attribute") == col("_o_attribute"),
+            col("_x") == col("_o__m"),
+            col("_m") == col("_o__x"),
+            *(_same(f"_k_{d}", f"_o__k_{d}") for d in dims),
+        ]
+    )
+    return left.join(right, on)
 
 
 def named_sets(rel: DuckDBPyRelation, columns: Sequence[str]) -> list[frozenset[str]]:
@@ -289,28 +455,7 @@ def unsettled(
         yield a, b, meets
 
 
-def _pair(
-    kept: DuckDBPyRelation,
-    own: DuckDBPyRelation,
-    p: frozenset[str],
-    o: frozenset[str],
-    schema: Schema,
-) -> DuckDBPyRelation:
-    """Each parent row naming exactly `p` beside each row of `own` naming exactly `o` it covers a common key with.
-
-    The own row's columns are prefixed `_o_`. Two rows cover a common key
-    where they agree on every dim both name, an equi-join on those alone.
-    """
-    dims = schema.partial_dims
-    mine = own.filter(names_exactly(dims, o))
-    mine = mine.project(*(col(c).alias(f"_o_{c}") for c in mine.columns))
-    on = [col(c) == col(f"_o_{c}") for c in ("attribute", *(o & p))]
-    return join_on(kept.filter(names_exactly(dims, p)), mine, on)
-
-
-def _overlaps(
-    pairs: DuckDBPyRelation, o: frozenset[str], schema: Schema
-) -> DuckDBPyRelation:
+def _overlaps(pairs: DuckDBPyRelation, schema: Schema) -> DuckDBPyRelation:
     """The overlap row of each crossing pair: every label either row names, owned as the own row is.
 
     The own row's layer and flags go with it, so a value row of that layer
@@ -324,7 +469,7 @@ def _overlaps(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     return pairs.project(
-        *_met(o, schema),
+        *_met(schema),
         *(
             col(f"_o_{c}").alias(c)
             for c in ("attribute", LAYER_COLUMN, "varies", "broadcast", "breakpoints")
@@ -332,48 +477,44 @@ def _overlaps(
     )
 
 
-def _met(o: frozenset[str], schema: Schema) -> list[Expression]:
-    """A crossing pair's overlap key: the own row's label on each dim of `o`, the parent row's elsewhere."""
-    return [col(f"_o_{d}" if d in o else d).alias(d) for d in schema.partial_dims]
+def _met(schema: Schema) -> list[Expression]:
+    """A pair's common key: the own row's label on each dim it names, the parent row's elsewhere."""
+    return [coalesce(col(f"_o_{d}"), col(d)).alias(d) for d in schema.partial_dims]
 
 
 def _refuse_unfilled(
-    pairs: Mapping[tuple[frozenset[str], frozenset[str]], DuckDBPyRelation],
-    own: DuckDBPyRelation,
-    source: LayerSource,
+    pairs: DuckDBPyRelation, own: DuckDBPyRelation, schema: Schema, layer_id: UUID
 ) -> None:
     """Refuse a layer leaving a dim outside its `partial` NULL over a parent row naming it, unfilled.
 
     The layer must hold a row naming the dim at the key the two share.
-    `pairs` is `_pair` per `(p, o)`.
+    `pairs` is `_meeting` of the parent rows and `own` where the own row
+    names a dim the parent row leaves NULL.
 
     Raises
     ------
     ValueError
-        Naming the attribute, the dim and the key.
+        Naming the layer, the attribute, the dim and the key.
 
     Notes
     -----
     - [a dim outside `partial`](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
     """
-    schema = source.schema
     dims = schema.partial_dims
     others = [d for d in schema.broadcast_dims if d not in dims]
-    if not others or not pairs:
+    if not others:
         return
-
     unset = lit(False)  # noqa: FBT003
-
-    def keyed(o: frozenset[str], pair: DuckDBPyRelation) -> DuckDBPyRelation:
-        need = {d: _field("varies", d) & ~_field("_o_varies", d) for d in others}
-        return pair.filter(reduce(operator.or_, need.values())).project(
-            *_met(o, schema),
+    need = {d: _field("varies", d) & ~_field("_o_varies", d) for d in others}
+    open_ = (
+        pairs.filter(reduce(operator.or_, need.values()))
+        .project(
+            *_met(schema),
             col("attribute"),
             *(need[d].alias(f"_need_{d}") for d in others),
         )
-
-    open_ = reduce(DuckDBPyRelation.union, (keyed(o, r) for (_, o), r in pairs.items()))
-    open_ = open_.set_alias("k")
+        .set_alias("k")
+    )
     filled = own.project(
         *(col(c) for c in ("attribute", *dims)),
         *(_field("varies", d).alias(f"_has_{d}") for d in others),
@@ -402,29 +543,32 @@ def _refuse_unfilled(
     dim = next(d for d, n in zip(others, row[1 + len(dims) :], strict=True) if n)
     at = {d: k for d, k in zip(dims, key, strict=True) if k is not None}
     msg = (
-        f"layer {source.layer_id} leaves {dim!r} NULL for {attribute!r} at {at} "
+        f"layer {layer_id} leaves {dim!r} NULL for {attribute!r} at {at} "
         f"where a parent row names it; write it along the parent's {dim!r} "
         f"labels there, as `WorkingRecord.set` does"
     )
     raise ValueError(msg)
 
 
-def _own(source: LayerSource) -> DuckDBPyRelation | None:
-    """`source`'s owner-map rows under its own schema: one per key as written, `None` without attributes.
+def _own(
+    rel: DuckDBPyRelation,
+    schema: Schema,
+    layer_id: UUID,
+    attribute: str | None = None,
+) -> DuckDBPyRelation:
+    """The owner-map rows of one layer's attribute rows `rel`, under its `schema`: one per key as written.
+
+    `attribute` names the one attribute `rel` holds rows of, where it holds one.
 
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    rel = source.all_attributes()
-    if rel is None:
-        return None
-    schema = source.schema
-    tagged = _tagged(schema, rel, source.layer_id)
+    tagged = _tagged(schema, rel, layer_id)
     return tagged.aggregate(
         [
             *(col(c) for c in (*schema.owner_map_key, LAYER_COLUMN)),
-            *_flags(schema),
+            *_flags(schema, attribute),
         ]
     )
 
@@ -442,15 +586,22 @@ def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelat
     )
 
 
-def _flags(schema: Schema) -> list[Expression]:
+def _flags(schema: Schema, attribute: str | None = None) -> list[Expression]:
     """The aggregates giving one key's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
+
+    `attribute` names the one attribute the rows are of, where they are of one.
 
     Notes
     -----
     - [flags](https://energy-models.github.io/datarecord/design/layers/resolution/#flags)
     """
     broadcast = schema.broadcast_dims
-    over = {d: _over(schema, d) for d in broadcast}
+    over = {
+        d: _over(schema, d)
+        if attribute is None
+        else lit(d in schema.coordinates_of(attribute))
+        for d in broadcast
+    }
     return [
         struct_of(
             {d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
@@ -780,7 +931,10 @@ def _fold_onto(
                     )
                 )
             held[name] = now
-        rel = fold_attributes(source, con, rel, removed)
+        rows = source.all_attributes()
+        own = None if rows is None else _own(rows, keyed, source.layer_id)
+        refuse = source.layer_id if source.frozen else None
+        rel = fold_layer(rel, own, removed, keyed, con, refuse=refuse)
         if made is not None and rel is not None:
             rel = _checkpoint(rel, made, con)
     if rel is None:

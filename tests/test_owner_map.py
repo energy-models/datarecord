@@ -80,7 +80,7 @@ def test_union_all_by_name_folds_every_relation_by_name(store):
 def keys(revision):
     """The owner map's keys: `(name, attribute)`, no type.
 
-    The map is pruned in the fold (`fold_attributes` anti-joins each keyed
+    The map is pruned in the fold (`fold_layer` anti-joins each keyed
     membership's removed labels), so a key whose component or multi-dim tuple was
     removed is already gone from it - the read needs no further gating.
 
