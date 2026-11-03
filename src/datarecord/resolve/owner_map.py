@@ -838,6 +838,8 @@ def _table(
     sources: Sequence[LayerSource],
     frozen_coords: Coords,
     attribute: str | None = None,
+    *,
+    in_frozen: bool = True,
 ) -> DuckDBPyRelation:
     """The owner map for `revision_id`, materialised as far as `frozen` allows.
 
@@ -848,7 +850,9 @@ def _table(
     staging table reads whatever the table holds when it is collected.
     `frozen_coords` are the frozen layers' coords, which a restatement above
     them removes labels from. Where `attribute` is given, only its rows,
-    folded one attribute at a time above the frozen layers (`_fold_onto`).
+    folded one attribute at a time above the frozen layers (`_fold_onto`),
+    and onto no map unless `in_frozen`, which says whether the frozen layers'
+    map holds rows of it: a write-once table answers that for good.
 
     Notes
     -----
@@ -861,7 +865,7 @@ def _table(
     rel = _frozen_table(revision_id, frozen)
     keyed = frozen[-1].schema if frozen else schema
     if attribute is not None and rel is not None:
-        rel = rel.filter(col("attribute") == lit(attribute))
+        rel = rel.filter(col("attribute") == lit(attribute)) if in_frozen else None
     held = {name: frozen_coords.axes.get(name) for name in _pruned(schema)}
     return _fold_onto(
         rel,

@@ -2022,17 +2022,28 @@ class WorkingRecord(Record):
         rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
         for name in self.schema.dimensions:
-            held = self._rows(f"{_AXIS_PREFIX}{name}")
-            if held is None or name not in columns:
+            if name in self.schema.one_of_dims or name not in columns:
                 continue
-            kept = held.project(col(name), lit(True).alias("_kept"))  # noqa: FBT003
             rel = (
                 rel.set_alias("l")
-                .join(kept.set_alias("k"), null_safe("l", "k", [name]), how="left")
+                .join(self._labels(name), null_safe("l", "k", [name]), how="left")
                 .filter(col("l", name).isnull() | col("k", "_kept").isnotnull())
                 .project(*(col("l", c) for c in columns))
             )
         return rel
+
+    def _labels(self, dim: str) -> DuckDBPyRelation:
+        """The labels of `dim`'s staged axis, each flagged `_kept`, aliased `k`.
+
+        Built once per thread (`_collapsed_attribute` joins it per attribute):
+        it reads the staging table by name, so it reads every later edit.
+        """
+        labels = self._per_cursor.labels
+        if dim not in labels:
+            held = self.con.table(self._staged[f"{_AXIS_PREFIX}{dim}", None])
+            kept = held.project(col(dim), lit(True).alias("_kept"))  # noqa: FBT003
+            labels[dim] = kept.set_alias("k")
+        return labels[dim]
 
     # -- what edits write (https://energy-models.github.io/datarecord/design/use/editing/#edits) ------------------------------------------
 
