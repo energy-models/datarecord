@@ -389,7 +389,7 @@ class WorkingRecord(Record):
             self._fill(kind, attribute)
         shape = self._table(_OWNERS)
         empty = empty_relation(self.con, attribute=sqltypes.VARCHAR)
-        owner_keys(empty, self.schema, self._layer_id).create(shape)
+        owner_keys(empty, self.schema, self._layer_id, ()).create(shape)
         for attribute in self.schema.attributes:
             name = self._table(_OWNERS, attribute)
             self.con.execute(f"CREATE TABLE {name} AS FROM {shape}")
@@ -526,7 +526,9 @@ class WorkingRecord(Record):
             table = self._staged[_OWNERS, attribute]
             self.con.execute(f"DELETE FROM {table}")
             rows = self._collapsed_attribute(attribute)
-            owner_keys(rows, self.schema, self._layer_id, attribute).insert_into(table)
+            owner_keys(rows, self.schema, self._layer_id, (attribute,)).insert_into(
+                table
+            )
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
         name = self._staged.get((kind, attribute))

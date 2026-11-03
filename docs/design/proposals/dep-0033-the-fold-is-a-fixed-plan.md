@@ -93,7 +93,7 @@ Each edit recomputes the owner rows of the attributes it touched, which adds a f
 
 A relation that stays valid across edits still pays for each of them. DuckDB 2.0 re-binds every Python relation after any committed write, to any table, schema or cursor. A consumer should therefore hold few relations across a write.
 
-The fixed fold cuts the joins per layer, not the statements, so a cold fold stays linear in depth: about 0.18 s per layer over 64 layers.
+The fixed fold cuts the joins per layer, not the statements, so a cold fold stays linear in depth: about 0.11 s per layer over 64 layers.
 
 ## Usage
 

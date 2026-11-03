@@ -260,7 +260,7 @@ class Fold:
         """
         schema, attributes, con = record.schema, record.attributes, record.con
         layer = uuid4()
-        owned = [owner_keys(attributes[a], schema, layer, a) for a in attributes]
+        owned = [owner_keys(attributes[a], schema, layer, (a,)) for a in attributes]
         owner_map = (
             union_all_by_name(owned)
             if owned

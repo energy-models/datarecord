@@ -113,6 +113,7 @@ def fold_layer(
     attribute: str | None = None,
     *,
     refuse: UUID | None = None,
+    keep: Callable[[DuckDBPyRelation], DuckDBPyRelation] = lambda rel: rel,
 ) -> DuckDBPyRelation | None:
     """One layer's owner-map rows `own` folded onto `parent`, the map below it.
 
@@ -127,7 +128,8 @@ def fold_layer(
 
     The plan is fixed by the schema: whatever named sets the rows hold, it
     runs one join per removal, two for covering and, unless `attribute` is
-    over at most one `partial` dim and cannot cross, one for crossing.
+    over at most one `partial` dim and cannot cross, one for crossing. Where
+    `refuse` is given, the crossing pairs are taken from the check's.
 
     Parameters
     ----------
@@ -136,6 +138,9 @@ def fold_layer(
     refuse
         The layer `own` is, where it is checked for leaving a dim outside
         `partial` unfilled: a frozen layer, as a workspace first folds it.
+    keep
+        Applied to `own`, the parent rows it leaves and the pairs the check
+        reads, each read more than once: `_checkpoint` keeps them in tables.
 
     Raises
     ------
@@ -150,18 +155,23 @@ def fold_layer(
     - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
+    if own is not None:
+        own = keep(own)
     if parent is None:
         return own
     kept = _prune(parent, removed)
     if own is None:
         return kept
-    kept = _uncovered_by(kept, own, schema)
+    kept = keep(_uncovered_by(kept, own, schema))
     if refuse is not None:
-        pairs = _meeting(kept, own, schema, attribute, _not_within)
-        _refuse_unfilled(pairs, own, schema, refuse)
+        within = keep(_meeting(kept, own, schema, attribute, _not_within))
+        _refuse_unfilled(within, own, schema, refuse)
     if attribute is not None and _domain(schema, attribute).bit_count() < 2:
         return union_all_by_name([kept, own])
-    pairs = _meeting(kept, own, schema, attribute, _incomparable)
+    if refuse is None:
+        pairs = _meeting(kept, own, schema, attribute, _incomparable)
+    else:
+        pairs = within.filter(sql(_not_within("_o__m", "_m")))
     return union_all_by_name([kept, own, _overlaps(pairs, schema).distinct()])
 
 
@@ -615,6 +625,7 @@ def _split(
     filed = [*now.broadcast_dims, "attribute", LAYER_COLUMN, "breakpoint"]
     grouped = [*key_cols, *joining, "attribute", LAYER_COLUMN, *carried]
     pairs = rows.project(col(LAYER_COLUMN), col("attribute")).distinct().fetchall()
+    attributes = tuple(sorted({a for _, a in pairs}))
     files = [
         _tagged(now, rel, layer)
         for layer, attribute in pairs
@@ -635,7 +646,7 @@ def _split(
         *(col("m", c).alias(c) for c in (*key_cols, *carried)),
         *(col("f", c).alias(c) for c in filed),
     )
-    split = joined.aggregate([*map(col, grouped), *_flags(now)]).project(
+    split = joined.aggregate([*map(col, grouped), *_flags(now, attributes)]).project(
         *(col(f"_key_{k}").alias(k) if k in keys else col(k) for k in now.partial_dims),
         *(col(c) for c in ("attribute", LAYER_COLUMN, *FLAG_COLUMNS)),
     )
@@ -746,7 +757,7 @@ def _fold_onto(
     Where `made` is a list, each source's fold is kept in a table of its own
     before the next folds onto it, since DuckDB binds a relation's whole
     tree at every step, which makes a long chain quadratic to build; so are
-    its owner rows, which its fold reads several times. The
+    the pieces of its fold read more than once (`fold_layer`). The
     table the map is read from is left named in `made`, for the caller to
     drop once it has read the map (`_checkpointed`).
 
@@ -773,6 +784,9 @@ def _fold_onto(
     def owner(layer: UUID) -> LayerSource:
         return source_for(sources, layer)
 
+    def keep(rel: DuckDBPyRelation) -> DuckDBPyRelation:
+        return rel if made is None else _checkpoint(rel, made, con)
+
     for source in sources:
         if rel is not None:
             rel = _widened(rel, keyed, source.schema, dead_at, owner, con)
@@ -796,10 +810,10 @@ def _fold_onto(
                 )
             held[name] = now
         own = _layer_owners(source, attribute)
-        if made is not None and own is not None:
-            own = _checkpoint(own, made, con)
         refuse = source.layer_id if source.frozen else None
-        rel = fold_layer(rel, own, removed, keyed, con, attribute, refuse=refuse)
+        rel = fold_layer(
+            rel, own, removed, keyed, con, attribute, refuse=refuse, keep=keep
+        )
         if made is not None and rel is not None:
             rel = _checkpoint(rel, made, con)
             _drop_but_last(made, con)
@@ -824,14 +838,17 @@ def _layer_owners(
         rows = source.attribute(attribute)
         if rows is None:
             return None
-        return owner_keys(rows, source.schema, source.layer_id, attribute)
+        return owner_keys(rows, source.schema, source.layer_id, (attribute,))
     owned = [
         k for a in sorted(source.attributes()) if (k := source.owners(a)) is not None
     ]
     if owned:
         return union_all_by_name(owned)
     rows = source.all_attributes()
-    return None if rows is None else owner_keys(rows, source.schema, source.layer_id)
+    if rows is None:
+        return None
+    held = tuple(sorted(source.attributes()))
+    return owner_keys(rows, source.schema, source.layer_id, held)
 
 
 def source_for(sources: Sequence[LayerSource], layer_uuid: UUID) -> LayerSource:
