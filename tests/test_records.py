@@ -271,7 +271,7 @@ def test_node_record_orders_members(store):
 
 
 def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
-    """A record with no `dims/connection.parquet` has no such key, not an error.
+    """A record with no `dims/connection.parquet` reads an empty axis, not an error.
 
     Notes
     -----
@@ -280,7 +280,7 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])
 
-    assert "connection" not in store.layer(layer.commit().id).dims
+    assert store.layer(layer.commit().id).dims["connection"].fetchall() == []
 
 
 def test_missing_key_raises(both):

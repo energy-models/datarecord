@@ -988,11 +988,12 @@ def test_results_without_sub_networks_list_none(
     n.c["Bus"].dynamic["marginal_price"] = pd.DataFrame(
         1.0, index=n.snapshots, columns=n.c["Bus"].static.index
     )
-    record = _results_over(base, n).record
-    axis = record.dims.get("sub_network")
-    assert (None if axis is None else _sub_networks_of(axis)) == (
-        [] if over_solved else None
-    ), "the axis is restated only where `base` has one"
+    revision = _results_over(base, n)
+    record = revision.record
+    assert _sub_networks_of(record.dims["sub_network"]) == []
+    assert ("sub_network" in revision.manifest.files.dims) == over_solved, (
+        "the axis is restated only where `base` has one"
+    )
     assert "marginal_price" in record.attributes, "the results are written"
     slack = record.attributes.get("slack_bus")
     assert slack is None or slack.df().empty, "no stale SubNetwork keeps a result"
@@ -1360,9 +1361,7 @@ def test_schema_dims_stay_generic(exported):
     revision = _with_schema(exported, dims={**_DIMS, "vintage": "str"})
     record = revision.record
     assert "vintage" in record.schema.dims
-    # No axis rows anywhere, so the dim is absent from the mapping rather than
-    # present-and-empty (https://energy-models.github.io/datarecord/design/use/reading/#relations).
-    assert "vintage" not in record.dims
+    assert record.dims["vintage"].fetchall() == [], "no axis rows anywhere"
     # PyPSA's own required dims are still satisfied, and the extra dim is
     # simply not something the tool looks at.
     assert not PyPSA.verify(revision.record)

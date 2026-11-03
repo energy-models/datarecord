@@ -15,7 +15,7 @@ A `Fold` is held as a base, never one of the `sources` folded on top of it.
 The folding that builds
 a live `Fold` stays in `coords.py` and `owner_map.py`, where the DuckDB
 expression machinery lives; `Fold.read` reads a materialised one back, and the
-map reads gated by the fold (`owners`, `attributes`, `flags`) are here, on the
+map reads gated by the fold (`owners`, `flags`) are here, on the
 object that holds the map.
 
 Notes
@@ -36,11 +36,7 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
 
-from datarecord.duck import (
-    distinct_values,
-    fn,
-    struct_of,
-)
+from datarecord.duck import fn, struct_of
 from datarecord.protocols import Flags
 from datarecord.schema.categories import (
     categorized_dim,
@@ -131,17 +127,6 @@ class Fold:
     dim_owners: dict[str, UUID]
     owner_map: DuckDBPyRelation
     dead: dict[str, DuckDBPyRelation]
-
-    def attributes(self) -> list[str]:
-        """Return every attribute the owner map holds a row for.
-
-        Ordered, so a `Record` over this has a stable key order.
-
-        Notes
-        -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-        """
-        return list(distinct_values(self.owner_map, "attribute"))
 
     def owners(self, attribute: str) -> DuckDBPyRelation:
         """The owner-map rows for one attribute - which layer owns each of its keys.

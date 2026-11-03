@@ -466,6 +466,53 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
     assert committed["Manchester Wind"] == 22.0, "the later edit to a key commits"
 
 
+def _rows(rel):
+    return sorted(map(repr, rel.fetchall()))
+
+
+@pytest.mark.parametrize(
+    ("member", "name", "edit"),
+    [
+        (
+            "attributes",
+            "p_nom_max",
+            lambda w: w.set("p_nom_max", 10.0, entity="Norway Gas"),
+        ),
+        ("attributes", "p_nom", lambda w: w.remove("entity", ["Norway Gas"])),
+        (
+            "properties",
+            "entity",
+            lambda w: w.set("entity.carrier", {"Norway Gas": "wind"}),
+        ),
+        ("dims", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
+        ("dims", "scenario", lambda w: w.add("scenario", ["high"])),
+    ],
+    ids=[
+        "set-without-rows",
+        "remove-entity",
+        "set-property",
+        "add-label",
+        "add-to-an-empty-dim",
+    ],
+)
+def test_a_relation_built_before_an_edit_reads_it(staged, member, name, edit):
+    """A relation of a `WorkingRecord` is planned from the schema and table names alone.
+
+    So one built before an edit, as a view of it is, reads what one built
+    after does.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    """
+    rel = getattr(staged, member)[name]
+    before = _rows(rel)
+    edit(staged)
+    after = _rows(getattr(staged, member)[name])
+    assert after != before, "the edit changes the relation"
+    assert _rows(rel) == after, "the relation built before the edit reads it"
+
+
 @pytest.mark.parametrize(
     "materialised",
     [None, "root", "base"],
@@ -1511,9 +1558,10 @@ def _set_p_nom(w):
 def test_rollback_reads_as_a_fresh_working_record(request, fresh_reads, fixture, edit):
     """Every read is the fresh staging area's, so one staging area serves a module.
 
-    Read through relations built before the edit, which name no staging table
-    and so still read once `rollback()` drops them. An edit refused after
-    another wrote is rolled back with it.
+    Read through relations built before the edit, which `rollback()` leaves
+    reading since it empties the staging tables rather than dropping them; one
+    built after plans the same SQL. An edit refused after another wrote is
+    rolled back with it.
 
     Notes
     -----
@@ -1526,21 +1574,6 @@ def test_rollback_reads_as_a_fresh_working_record(request, fresh_reads, fixture,
 
     staged.rollback()
     assert _reads(staged, built) == fresh_reads(staged), "it reads as a fresh one"
-
-
-def test_a_key_set_read_before_rollback_raises_after_it(store):
-    """An attribute only the staged layer owned is owned by no layer after `rollback()`.
-
-    Notes
-    -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
-    """
-    staged = WorkingRecord(_small(store).record)
-    staged.set("p_max_pu", 0.5, entity=["Norway Wind"])
-    attributes = staged.attributes
-    staged.rollback()
-    with pytest.raises(KeyError, match="p_max_pu"):
-        attributes["p_max_pu"]
 
 
 def test_writing_the_edits_clears_nothing(staged, root):

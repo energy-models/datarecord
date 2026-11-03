@@ -34,6 +34,7 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
+    empty_relation,
     fn,
     null_safe,
     struct_of,
@@ -45,11 +46,12 @@ from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import (
     _coord_table,
     _frozen_coords,
+    _frozen_table,
+    _mask,
     _table,
     frozen_prefix,
     owned_rows,
     source_for,
-    unsettled,
     with_columns,
 )
 from datarecord.resolve.sources import LayerSource
@@ -142,6 +144,48 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     return {a: (layers, bool(c)) for a, layers, c in rows}
 
 
+def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
+    """`stored` with `_contested` set on each row of a layer whose keys name different sets of `dims`.
+
+    `stored` is one attribute's map rows as `_as_stored` gives them. Only a
+    value row of such a layer can meet another at one coordinate, so only
+    those rows need `_most_specific`: as data, so the plan stays fixed.
+    """
+    named = str(_mask(dims))
+    over = f"OVER (PARTITION BY {col(LAYER_COLUMN)})"
+    contested = f"min({named}) {over} <> max({named}) {over}"
+    return stored.project(star(), sql(contested).alias("_contested"))
+
+
+def _empty_long(
+    schema: Schema, attribute: str, con: DuckDBPyConnection
+) -> DuckDBPyRelation:
+    """A row-less relation shaped like `attribute`'s long file, typed as declared.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    """
+    types = {
+        c: schema.value_type(attribute) if c == "value" else schema.column_type(c)
+        for c in schema.long_columns_for(attribute)
+    }
+    return empty_relation(con, **{c: t or sqltypes.VARCHAR for c, t in types.items()})
+
+
+def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
+    """A row-less relation shaped like `dims/<dim>.parquet`: its key and its properties.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    """
+    names = (dim, *schema.properties.get(dim, {}))
+    return empty_relation(
+        con, **{n: schema.column_type(n, dim) or sqltypes.VARCHAR for n in names}
+    )
+
+
 def _named_mask(alias: str, dims: Sequence[str]) -> Expression:
     """Return a bitmask with one bit per dim in `dims`, set where the row under `alias` names a label of that dim."""
     return reduce(
@@ -221,27 +265,6 @@ def _refusal(attribute: str, coordinates: Sequence[str], why: str) -> Expression
                 "(https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
             ),
         )
-    )
-
-
-def _crossings(
-    rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
-) -> DuckDBPyRelation | None:
-    """Rows failing the read at each key two rows of `rel` cover and neither names every dim of, unless a third names both.
-
-    `rel` is one layer's rows as written. `None` where no two named sets are
-    incomparable, sparing the read the joins.
-
-    Notes
-    -----
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    """
-    crossed = [meets for _, _, meets in unsettled(rel, coordinates)]
-    if not crossed:
-        return None
-    return reduce(DuckDBPyRelation.union, crossed).filter(
-        _refusal(attribute, coordinates, _INCOMPARABLE).isnull()
     )
 
 
@@ -344,19 +367,33 @@ class Record:
         """
         return frozen_prefix(self.sources) == len(self.sources)
 
+    @property
+    def _fixed(self) -> bool:
+        """Whether this record's relations are planned from the schema and table names alone.
+
+        So where a source past the frozen prefix can still change under a
+        relation already built, which then reads every later edit.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+        """
+        return not self.frozen
+
     @_stable_cache
     def dims(self) -> LazyRelations:
-        return LazyRelations(tuple(self._coords.axes), self._axis_frame)
+        """Every dim the schema declares, an empty axis where no layer holds one."""
+        return LazyRelations(tuple(self.schema.dimensions), self._axis_frame)
 
     @_stable_cache
     def properties(self) -> LazyRelations:
-        coords = self._coords
-        subjects = tuple(s for s in self.schema.properties if s in coords.axes)
-        return LazyRelations(subjects, self._property_frame)
+        """Every subject the schema declares properties of, an empty axis where no layer holds one."""
+        return LazyRelations(tuple(self.schema.properties), self._property_frame)
 
     @_stable_cache
     def attributes(self) -> LazyRelations:
-        return LazyRelations(tuple(self._fold.attributes()), self._relation)
+        """Every attribute the schema declares, an empty relation where no layer holds a row."""
+        return LazyRelations(tuple(self.schema.attributes), self._relation)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
         """Straight off the owner map, which folded these in for free.
@@ -369,11 +406,15 @@ class Record:
 
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 
+    def _axis(self, dim: str) -> DuckDBPyRelation:
+        axis = self._coords.axes.get(dim)
+        return _empty_axis(self.schema, dim, self.con) if axis is None else axis
+
     def _axis_frame(self, dim: str) -> DuckDBPyRelation:
-        return self._coords.axes[dim].project(col(dim))
+        return self._axis(dim).project(col(dim))
 
     def _property_frame(self, subject: str) -> DuckDBPyRelation:
-        rel = with_properties(self.schema, self._coords.axes[subject], subject)
+        rel = with_properties(self.schema, self._axis(subject), subject)
         names = (subject, *self.schema.properties[subject])
         return rel.project(*(col(n) for n in names))
 
@@ -469,19 +510,19 @@ class Record:
 
         Joins the owning layers' rows to the owner map; a broadcast dim stored
         NULL takes each value it is owned for. Unmaterialised, in the long
-        schema (`schema.long_columns_for`).
+        schema (`schema.long_columns_for`), and empty where no layer owns a
+        row of `attribute`. Past the frozen prefix the plan is fixed: the
+        staged layers fold onto the prefix's map one attribute at a time, and
+        only the rows of a layer holding keys both ways are ranked
+        (`_contested`).
 
         Raises
         ------
-        KeyError
-            If no layer owns a row of `attribute`. Only a key set read before
-            `rollback()` and used after it asks for such an attribute.
         ValueError
             If a frozen layer the owner map names holds no file of `attribute`.
         duckdb.Error
             When fetched, where one layer holds two rows covering a key and
-            neither is the more specific there (`_most_specific`), or a staged
-            one holds two crossing rows without one naming both (`_crossings`).
+            neither is the more specific there (`_most_specific`).
 
         Notes
         -----
@@ -491,8 +532,13 @@ class Record:
         """
         con = self.con
         schema = self.schema
-        fold = self._fold
-        om = fold.owners(attribute)
+        if self._fixed:
+            om = _table(self.revision_id, self.sources, con, self._prefix, attribute)
+            dead = self._coords.dead
+        else:
+            fold = self._fold
+            om = fold.owners(attribute)
+            dead = fold.dead
         partial_dims = schema.partial_dims
         # This attribute's own columns, not every declared dim: one file per
         # attribute is one column set per attribute (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema).
@@ -505,33 +551,25 @@ class Record:
         # (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
         coordinates = schema.coordinates_of(attribute)
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)
-        owners, contested = self._owners(attribute, om)
+        owners, contested = self._owners(attribute)
         layers: list[DuckDBPyRelation] = []
-        crossed: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
-            source = self._source_for(layer_uuid)
-            rel = owned_rows(source, attribute)
+            rel = owned_rows(self._source_for(layer_uuid), attribute)
             if rel is None:
                 continue
             rel = with_columns(schema, rel, *columns)
             layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
-            if source.frozen:
-                continue
-            crossing = _crossings(rel, coordinates, attribute)
-            if crossing is not None:
-                crossed.append(crossing)
         if not layers:
-            raise KeyError(attribute)
+            return _empty_long(schema, attribute, con)
         unkeyed = [c for c in columns if c not in partial_dims]
-        named = [_named_mask("l", broadcast_over).alias("_named")] if contested else []
-        resolved = (
-            union_all_by_name(layers, con)
-            .set_alias("l")
-            .join(
-                _as_stored(om, broadcast_over).set_alias("o"),
+        values = union_all_by_name(layers, con).set_alias("l")
+        stored = _as_stored(om, broadcast_over)
+
+        def joined(keys: DuckDBPyRelation, *named: Expression) -> DuckDBPyRelation:
+            return values.join(
+                keys.set_alias("o"),
                 null_safe("l", "o", (LAYER_COLUMN, *broadcast_over)),
-            )
-            .project(
+            ).project(
                 *(
                     coalesce(col("l", dim), col("o", _owned(dim))).alias(dim)
                     if dim in broadcast_over
@@ -540,33 +578,48 @@ class Record:
                 ),
                 *named,
             )
+
+        if not broadcast_over or not contested:
+            return _living(joined(stored), dead, unkeyed)
+        stored = _contested(stored, broadcast_over)
+        alone = joined(stored.filter(~col("_contested")))
+        ranked = _most_specific(
+            joined(
+                stored.filter(col("_contested")),
+                _named_mask("l", broadcast_over).alias("_named"),
+            ),
+            coordinates,
+            attribute,
         )
-        if contested:
-            resolved = _most_specific(resolved, coordinates, attribute)
-        resolved = _living(resolved, fold.dead, unkeyed)
-        if not crossed:
-            return resolved
-        types = dict(zip(resolved.columns, resolved.types, strict=True))
-        failing = [
-            rel.project(*(lit(None).cast(t).alias(c) for c, t in types.items()))
-            for rel in crossed
-        ]
-        return reduce(DuckDBPyRelation.union, failing, resolved)
+        return _living(alone.union(ranked), dead, unkeyed)
 
-    def _owners(self, attribute: str, om: DuckDBPyRelation) -> tuple[list[UUID], bool]:
-        """Return the layers owning a key of `attribute`, and whether one holds keys both ways.
-
-        A layer holds keys both ways where its rows name different sets of
-        `partial` dims. Only then does `_relation` have to pick the more
-        specific row.
+    def _owners(self, attribute: str) -> tuple[list[UUID], bool]:
+        """Return the layers that may own a key of `attribute`, and whether `_relation` ranks rows.
 
         Where every source is frozen, one scan of the map answers every
-        attribute and is kept; otherwise the map may change under the reader,
-        so each call scans `om`, the map's rows of `attribute`.
+        attribute and is kept, and rows are ranked only where a layer holds
+        keys both ways, its rows naming different sets of `partial` dims.
+        Otherwise the layers past the frozen prefix may change under the
+        reader, so each is a possible owner and every attribute is planned for
+        ranking, which `_contested` restricts to such layers' rows as data.
         """
-        if self.frozen:
+        if not self._fixed:
             return self._cached_owners.get(attribute, ([], False))
-        return _owners(om, self.schema).get(attribute, ([], False))
+        layers, _ = self._frozen_owners.get(attribute, ([], False))
+        tail = [s.layer_id for s in self.sources[frozen_prefix(self.sources) :]]
+        return [*layers, *tail], True
+
+    @cached_property
+    def _frozen_owners(self) -> dict[str, tuple[list[UUID], bool]]:
+        """Return `_owners` for every attribute of the frozen prefix's map.
+
+        What the layers past the prefix fold onto. They may drop a frozen
+        layer's every row of an attribute, which then joins nothing, but add
+        no owner other than themselves.
+        """
+        frozen = frozen_prefix(self.sources)
+        rel = _frozen_table(self.revision_id, self.sources[:frozen], self.con)
+        return {} if rel is None else _owners(rel, self.sources[frozen - 1].schema)
 
     @cached_property
     def _cached_owners(self) -> dict[str, tuple[list[UUID], bool]]:
@@ -619,5 +672,6 @@ class PinnedRecord(Record):
         if "_fold" in self.__dict__:
             self.con.execute(f"DROP TABLE IF EXISTS {self._table}")
 
-    def _owners(self, attribute: str, om: DuckDBPyRelation) -> tuple[list[UUID], bool]:
-        return self._cached_owners.get(attribute, ([], False))
+    @property
+    def _fixed(self) -> bool:
+        return False

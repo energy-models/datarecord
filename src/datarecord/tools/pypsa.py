@@ -2757,7 +2757,10 @@ class _ResultsSource(_NetworkSource):
         A solve without SubNetworks over a `base` with a `sub_network` axis
         restates it empty, so the record lists none of `base`'s.
         """
-        held = len(self._sub_networks) > 0 or SUB_NETWORK in self.base.dims
+        axis = self.base.dims.get(SUB_NETWORK)
+        held = len(self._sub_networks) > 0 or (
+            axis is not None and bool(axis.limit(1).fetchall())
+        )
         return (SUB_NETWORK,) if held else ()
 
     def _sub_network_rel(self) -> DuckDBPyRelation:

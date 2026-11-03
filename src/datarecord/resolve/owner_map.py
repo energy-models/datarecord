@@ -870,6 +870,7 @@ def _fold_onto(
     keyed: Schema,
     dead: Mapping[str, DuckDBPyRelation],
     made: list[str] | None = None,
+    attribute: str | None = None,
 ) -> DuckDBPyRelation:
     """Fold each of `sources` onto the owner map `rel`, keyed by `keyed`, `None` being no map yet.
 
@@ -890,6 +891,10 @@ def _fold_onto(
     table the map is read from is left named in `made`, for the caller to
     drop once it has read the map (`_checkpointed`).
 
+    Where `attribute` is given, `rel` holds its rows alone and each source
+    folds its rows of it alone, a plan fixed by the schema and table names
+    (`fold_layer`).
+
     Notes
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
@@ -904,7 +909,7 @@ def _fold_onto(
 
     def dead_at(name: str) -> DuckDBPyRelation | None:
         axis = held[name]
-        return None if axis is None else _dead_keys(past[name], axis, name)
+        return None if axis is None else _dead_keys(past[name], axis, name, fixed=False)
 
     def owner(layer: UUID) -> LayerSource:
         return source_for(sources, layer)
@@ -931,15 +936,40 @@ def _fold_onto(
                     )
                 )
             held[name] = now
-        rows = source.all_attributes()
-        own = None if rows is None else _own(rows, keyed, source.layer_id)
+        own = _layer_owners(source, attribute, con)
         refuse = source.layer_id if source.frozen else None
-        rel = fold_layer(rel, own, removed, keyed, con, refuse=refuse)
+        rel = fold_layer(rel, own, removed, keyed, con, attribute, refuse=refuse)
         if made is not None and rel is not None:
             rel = _checkpoint(rel, made, con)
     if rel is None:
         return _empty_relation(keyed, con, *keyed.owner_map_columns)
     return rel
+
+
+def _layer_owners(
+    source: LayerSource, attribute: str | None, con: DuckDBPyConnection
+) -> DuckDBPyRelation | None:
+    """`source`'s owner-map rows, of `attribute` alone where given; `None` where it holds none.
+
+    The rows a layer keeps (`LayerSource.owners`) where it keeps them, so the
+    fold does not aggregate a staging area's rows once per use; a file
+    layer's are aggregated from its rows.
+    """
+    if attribute is not None:
+        kept = source.owners(attribute)
+        if kept is not None:
+            return kept
+        rows = source.attribute(attribute)
+        if rows is None:
+            return None
+        return _own(rows, source.schema, source.layer_id, attribute)
+    owned = [
+        k for a in sorted(source.attributes()) if (k := source.owners(a)) is not None
+    ]
+    if owned:
+        return union_all_by_name(owned, con)
+    rows = source.all_attributes()
+    return None if rows is None else _own(rows, source.schema, source.layer_id)
 
 
 def source_for(sources: Sequence[LayerSource], layer_uuid: UUID) -> LayerSource:
@@ -986,6 +1016,7 @@ def _table(
     sources: Sequence[LayerSource],
     con: DuckDBPyConnection,
     prefix: Coords,
+    attribute: str | None = None,
 ) -> DuckDBPyRelation:
     """The owner map for `revision_id`, materialised as far as `frozen` allows.
 
@@ -995,7 +1026,8 @@ def _table(
     area's edits are picked up with no bookkeeping at all: a relation over a
     staging table reads whatever the table holds when it is collected.
     `prefix` is the frozen prefix's coords, which a restatement after it
-    removes labels from.
+    removes labels from. Where `attribute` is given, only its rows, folded
+    one attribute at a time past the prefix (`_fold_onto`).
 
     Notes
     -----
@@ -1007,8 +1039,18 @@ def _table(
     frozen = frozen_prefix(sources)
     rel = _frozen_table(revision_id, sources[:frozen], con)
     keyed = sources[frozen - 1].schema if frozen else schema
+    if attribute is not None and rel is not None:
+        rel = rel.filter(col("attribute") == lit(attribute))
     held = {name: prefix.axes.get(name) for name in _pruned(schema)}
-    return _fold_onto(rel, sources[frozen:], held, con, keyed=keyed, dead=prefix.dead)
+    return _fold_onto(
+        rel,
+        sources[frozen:],
+        held,
+        con,
+        keyed=keyed,
+        dead=prefix.dead,
+        attribute=attribute,
+    )
 
 
 def _frozen_table(
