@@ -925,6 +925,30 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
+@pytest.mark.parametrize(
+    "set_value",
+    [False, True],
+    ids=["add-remove", "add-set-remove"],
+)
+def test_an_add_undone_by_a_remove_writes_nothing(staged, root, set_value):
+    """A label added and removed in one staging area leaves no axis and no attribute.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    staged.add("entity", ["Solar"], ctype=GEN)
+    if set_value:
+        staged.set("p_nom", 5.0, entity="Solar")
+    staged.remove("entity", ["Solar"])
+    assert staged.edits.axes() == set(), "no axis is staged"
+    assert staged.edits.attributes() == set(), "no attribute is staged"
+
+    layer = ParquetLayer(root.store.commit(staged).manifest, root.store)
+    assert layer.axis("entity") is None, "the commit writes no axis"
+    assert layer.attribute("p_nom") is None, "the commit writes no attribute"
+
+
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/use/editing/#add-remove, https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim) --------------------------------------
 
 
@@ -1523,7 +1547,7 @@ def _set_p_nom(w):
             "connected",
             lambda w: (
                 w.add("entity", ["Solar"], ctype=GEN),
-                w.set("p_nom", 5.0, entity="Solar"),
+                w.set("p_nom", 5.0, entity=["Solar", "Norway Wind"]),
                 w.remove("entity", ["Solar"]),
             ),
         ),
