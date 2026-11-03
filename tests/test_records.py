@@ -12,7 +12,7 @@ Notes
 from dataclasses import dataclass
 
 import pytest
-from duckdb import DuckDBPyRelation
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord.mutable import WorkingRecord
 from datarecord.protocols import Flags, RecordLike, Relations
@@ -88,6 +88,7 @@ def both(written):
 @dataclass(frozen=True)
 class DictRecord:
     schema: Schema
+    con: DuckDBPyConnection
     dims: Relations
     properties: Relations
     attributes: Relations
@@ -112,6 +113,7 @@ def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
     )
     return DictRecord(
         schema(),
+        store.workspace.con,
         {"entity": entity_axis.project("entity")},
         {"entity": entity_axis},
         {"p_nom": long},

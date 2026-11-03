@@ -36,7 +36,8 @@ class WorkingRecord(Record):
 
 `WorkingRecord(revision.record)` stages on the base's connection, `record.con`.
 The base must be a `Record`.
-Any other `RecordLike` is refused, since a framework object has no layer layout to fold the edits over.
+Any other `RecordLike` is written first, `WorkingRecord(ws.write(source, uri))`, so its rows are checked once and folded as a layer like any other.
+A base so written has no parent in a store, and `ws.write(w, uri)` writes it with the edits.
 
 `WorkingRecord` is a subclass of `Record`.
 Its sources are the base's sources plus one [staged source](#staging), so it reads as a record one layer deeper than its base.

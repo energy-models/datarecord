@@ -145,8 +145,15 @@ All notable changes to datarecord are documented here. The format follows
   as a thin layer. The layer restates the SubNetworks of `base` and sets
   NULL on the results of `base` that it does not write again. A NULL series
   value on export leaves the component at its static value.
+- `PyPSA.build` takes any `RecordLike`, so `PyPSA.build(PyPSA.to_datarecord(n, con))`
+  builds the network its committed record does.
 
 ### Changed
+
+- Breaking: `RecordLike` declares `con`, the connection its relations are
+  planned on; a hand-written `RecordLike` adds it.
+- `WorkingRecord` over a `RecordLike` that is no `Record` raises a `TypeError`
+  naming the fix, `WorkingRecord(ws.write(source, uri))`.
 
 - Breaking: the PyPSA dialect declares every component attribute over
   `scenario`, except those PyPSA keeps the same in every scenario

@@ -140,10 +140,16 @@ def test_the_record_layer_imports_no_tool():
     assert subprocess.run([sys.executable, "-c", code], check=False).returncode == 0
 
 
-def test_build_takes_only_a_record(workspace, ac_dc):
-    """A `RecordLike` that is no `Record` is refused, the tool's own network source included."""
-    with pytest.raises(TypeError, match="builds from a Record"):
-        PyPSA.build(PyPSA.to_datarecord(ac_dc, workspace.con))
+def test_build_reads_the_network_source_as_its_written_record(workspace, ac_dc, built):
+    """`build` takes any `RecordLike`, so the tool's own source builds what its commit does.
+
+    Notes
+    -----
+    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    """
+    got = PyPSA.build(PyPSA.to_datarecord(ac_dc, workspace.con))
+    pd.testing.assert_index_equal(got.snapshots, built.snapshots)
+    assert_networks_equal(got, built)
 
 
 def test_verify_accepts_a_complete_record(single_revision):

@@ -49,6 +49,7 @@ from datarecord.resolve.coords import (
     tabled_coords,
 )
 from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_keys import with_columns
 from datarecord.resolve.owner_map import (
     _frozen_dim_owners,
     _frozen_table,
@@ -57,7 +58,6 @@ from datarecord.resolve.owner_map import (
     owned_rows,
     source_for,
     split_frozen,
-    with_columns,
 )
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties

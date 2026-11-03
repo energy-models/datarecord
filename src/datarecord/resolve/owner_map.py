@@ -32,7 +32,6 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
-    empty_relation,
     ex_all,
     fn,
     join_on,
@@ -50,11 +49,18 @@ from datarecord.resolve.coords import (
     resolve_coords,
 )
 from datarecord.resolve.fold import read_owner_map
+from datarecord.resolve.owner_keys import (
+    _empty_relation,
+    _flags,
+    _tagged,
+    cast_declared,
+    owner_keys,
+    with_columns,
+)
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import (
     FLAG_COLUMNS,
     LAYER_COLUMN,
-    LAYER_UUID_TYPE,
     Schema,
 )
 
@@ -95,70 +101,6 @@ def _shared(
                 pass
             break
     return con.table(name)
-
-
-def cast_declared(
-    schema: Schema,
-    rel: DuckDBPyRelation,
-    subject: str | None = None,
-    attribute: str | None = None,
-) -> DuckDBPyRelation:
-    """Return `rel` with each column the schema declares a type for cast to that type.
-
-    Other columns are left as they are. `subject` and `attribute` are as in
-    `Schema.declared`.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-    """
-    cols = [
-        col(c).cast(found[1]).alias(c)
-        if (found := schema.declared(c, subject, attribute))
-        else col(c)
-        for c in rel.columns
-    ]
-    return rel.project(*cols)
-
-
-def _empty_relation(
-    schema: Schema, con: DuckDBPyConnection, *columns: str
-) -> DuckDBPyRelation:
-    """A zero-row relation with `columns`, cast to their declared type, `VARCHAR` if none.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-    """
-    return empty_relation(
-        con, **{c: schema.column_type(c) or sqltypes.VARCHAR for c in columns}
-    )
-
-
-def with_columns(
-    schema: Schema, rel: DuckDBPyRelation, *columns: str
-) -> DuckDBPyRelation:
-    """`rel` with any of `columns` it lacks added as typed NULLs.
-
-    One file carries one attribute's coordinates, so a column another attribute
-    uses is simply absent - and a coordinate an attribute is not addressed by
-    means the value applies across every value of it, which is what NULL means.
-    Materialising it here lets every path downstream project the column
-    unconditionally instead of branching on its presence.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    """
-    missing = [c for c in columns if c not in rel.columns]
-    if not missing:
-        return rel
-    added = [
-        lit(None).cast(schema.column_type(c) or sqltypes.VARCHAR).alias(c)
-        for c in missing
-    ]
-    return rel.project(star(), *added)
 
 
 def fold_layer(
@@ -541,85 +483,6 @@ def _refuse_unfilled(
     raise ValueError(msg)
 
 
-def _own(
-    rel: DuckDBPyRelation,
-    schema: Schema,
-    layer_id: UUID,
-    attribute: str | None = None,
-) -> DuckDBPyRelation:
-    """The owner-map rows of one layer's attribute rows `rel`, under its `schema`: one per key as written.
-
-    `attribute` names the one attribute `rel` holds rows of, where it holds one.
-
-    Notes
-    -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    """
-    tagged = _tagged(schema, rel, layer_id)
-    return tagged.aggregate(
-        [
-            *(col(c) for c in (*schema.owner_map_key, LAYER_COLUMN)),
-            *_flags(schema, attribute),
-        ]
-    )
-
-
-def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelation:
-    """Layer `layer`'s attribute rows `rel`, padded to `schema`'s coordinates and cast, as `_flags` reads them."""
-    rel = cast_declared(
-        schema, with_columns(schema, rel, "breakpoint", *schema.broadcast_dims)
-    )
-    return rel.project(
-        *(col(d) for d in schema.broadcast_dims),
-        col("attribute"),
-        lit(str(layer)).cast(LAYER_UUID_TYPE).alias(LAYER_COLUMN),
-        col("breakpoint"),
-    )
-
-
-def _flags(schema: Schema, attribute: str | None = None) -> list[Expression]:
-    """The aggregates giving one key's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
-
-    `attribute` names the one attribute the rows are of, where they are of one.
-
-    Notes
-    -----
-    - [flags](https://energy-models.github.io/datarecord/design/layers/resolution/#flags)
-    """
-    broadcast = schema.broadcast_dims
-    over = {
-        d: _over(schema, d)
-        if attribute is None
-        else lit(d in schema.coordinates_of(attribute))
-        for d in broadcast
-    }
-    return [
-        struct_of(
-            {d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
-        ).alias("varies"),
-        struct_of({d: fn.bool_or(col(d).isnull() & over[d]) for d in broadcast}).alias(
-            "broadcast"
-        ),
-        fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
-    ]
-
-
-def _over(schema: Schema, dim: str) -> Expression:
-    """Whether a row's attribute is over `dim`.
-
-    An attribute not over `dim` holds NULL there for want of the column, which
-    is neither a label nor a broadcast.
-
-    Notes
-    -----
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
-    """
-    lacking = [a for a in schema.attributes if dim not in schema.coordinates_of(a)]
-    if not lacking:
-        return lit(True)  # noqa: FBT003
-    return ~col("attribute").isin(*(lit(a) for a in lacking))
-
-
 def _gained(was: Schema, now: Schema, dim: str) -> list[str]:
     """The attributes of `was` over `dim` under `now` but not under `was`."""
     return [
@@ -734,7 +597,7 @@ def _split(
 
     One NULL-safe join of each row's key, as its layer stored it, to that
     layer's file rows of its attribute. Each new key's flags are aggregated
-    afresh from the file rows it names, as `_own` does: inherited, a row
+    afresh from the file rows it names, as `owner_keys` does: inherited, a row
     holding a dim both ways would also join the layer's row NULL there and
     answer its label twice. A new key naming a label `dead` holds is dropped,
     since the read hid that row while the dim was outside `partial` and none
@@ -950,14 +813,14 @@ def _layer_owners(
         rows = source.attribute(attribute)
         if rows is None:
             return None
-        return _own(rows, source.schema, source.layer_id, attribute)
+        return owner_keys(rows, source.schema, source.layer_id, attribute)
     owned = [
         k for a in sorted(source.attributes()) if (k := source.owners(a)) is not None
     ]
     if owned:
         return union_all_by_name(owned, source.con)
     rows = source.all_attributes()
-    return None if rows is None else _own(rows, source.schema, source.layer_id)
+    return None if rows is None else owner_keys(rows, source.schema, source.layer_id)
 
 
 def source_for(sources: Sequence[LayerSource], layer_uuid: UUID) -> LayerSource:
