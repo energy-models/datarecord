@@ -1592,6 +1592,9 @@ A solve writes its results as a thin child layer.</p>
 <p>PyPSA's registry decides what is a property and what is an attribute.
 The properties of <code>entity</code> are exactly <code>ctype</code>, <code>carrier</code>, <code>sign</code> and <code>type</code>, and <code>role</code> is a property of <code>connection</code>.
 Every other input, every number among them, is an attribute, so <code>p_nom</code> is long rows of <code>attributes/p_nom.parquet</code> (<a href="../../storage/format/#where-a-value-lives">where a value lives</a>).</p>
+<p>Every component attribute is declared over <code>scenario</code>, except those PyPSA keeps the same in every scenario: <code>active</code>, <code>build_year</code>, <code>committable</code>, <code>lifetime</code>, <code>weight</code>, <code>*_nom_extendable</code>, <code>*_nom_mod</code> and the <code>*_nom_opt</code> results.
+A fixed <code>p_nom</code> may thus differ per scenario, while the capacity decision <code>p_nom_opt</code> stays one value.
+<code>to_datarecord</code> writes a value the same in every scenario as one row with a NULL <code>scenario</code>, and a network without scenarios writes no <code>scenario</code> value.</p>
 <p><code>entity.ctype</code> is <code>{one_of: ctype}</code>, where <code>ctype</code> is a dim with <code>one_of</code> that holds the types exported as entities.
 <code>connection.role</code> is <code>{one_of: role}</code>, where <code>role</code> is a dim with <code>one_of</code> that holds <code>input</code>, <code>output</code> and <code>attached</code>.
 <code>to_datarecord</code> writes neither axis: the axis of a <a href="../../model/dims/#a-dim-with-one_of">dim with <code>one_of</code></a> is its list, every type and role, those the network leaves unused included.
