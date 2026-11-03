@@ -126,11 +126,6 @@ def fold_layer(
     row naming every label either names. `None` where neither side holds a
     row.
 
-    The plan is fixed by the schema: whatever named sets the rows hold, it
-    runs one join per removal, two for covering and, unless `attribute` is
-    over at most one `partial` dim and cannot cross, one for crossing. Where
-    `refuse` is given, the crossing pairs are taken from the check's.
-
     Parameters
     ----------
     attribute
@@ -153,6 +148,7 @@ def fold_layer(
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
+    - [one plan for every layer](https://energy-models.github.io/datarecord/design/layers/resolution/#one-plan-for-every-layer)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     if own is not None:
@@ -749,17 +745,14 @@ def _fold_onto(
     the previous restatement held and its own omits. `held` is that previous
     restatement per `_pruned` membership of the node's schema as of the first
     source, `None` where there is none, so a first restatement removes
-    nothing. A membership
-    outside a source's `partial` is no key column there, so its restatements
-    are kept instead, beside `dead`, its labels removed as of the first
-    source, until it joins `partial`.
+    nothing. A membership outside a source's `partial` is no key column there,
+    so its restatements are kept instead, beside `dead`, its labels removed as
+    of the first source, until it joins `partial`.
 
     Where `made` is a list, each source's fold is kept in a table of its own
-    before the next folds onto it, since DuckDB binds a relation's whole
-    tree at every step, which makes a long chain quadratic to build; so are
-    the pieces of its fold read more than once (`fold_layer`). The
-    table the map is read from is left named in `made`, for the caller to
-    drop once it has read the map (`_checkpointed`).
+    before the next folds onto it, and so are the pieces of its fold read more
+    than once (`fold_layer`). The table the map is read from is left named in
+    `made`, for the caller to drop once it has read the map (`_checkpointed`).
 
     Where `attribute` is given, `rel` holds its rows alone and each source
     folds its rows of it alone, a plan that reads no staged row
@@ -769,6 +762,7 @@ def _fold_onto(
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [a fold starts from the nearest fold at hand](https://energy-models.github.io/datarecord/design/layers/resolution/#a-fold-starts-from-the-nearest-fold-at-hand)
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
     held = dict(held)

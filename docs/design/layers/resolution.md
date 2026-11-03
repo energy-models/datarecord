@@ -314,7 +314,7 @@ Only the value rows of a contested layer need the window.
 Whether a layer is contested is a column of the map's rows, so the read joins the rows of contested layers in one arm, which ranks them, and those of every other layer in a second arm, which passes them straight through.
 Over frozen layers alone, an attribute that no layer contests, the common case, takes the second arm only.
 Past the frozen prefix the plan cannot ask the rows, so every attribute is planned with both arms.
-Ranking every value row instead would keep the plan fixed too, but made the read of a single base layer with a long series several times slower.
+Ranking every value row instead would keep the plan fixed too, but makes the read of a single base layer with a long series several times slower.
 
 A staged layer meets [the write's refusal](../use/writing.md#shape) of two rows neither more specific as it is staged.
 A [`set`](../use/editing.md#set) that crosses an earlier staged row also stages the row naming both, and one whose own rows cross is refused.
@@ -399,6 +399,6 @@ A node never seeds its own fold, since that would return the cached answer and f
 
 Each layer's fold is kept in a table before the next layer folds onto it, and each layer's owner rows are built once into it.
 DuckDB binds a relation's whole tree at every step, and the checks and the crossing join each read the map below, so a plan left unchecked for several layers doubles with each one.
-A checkpoint every fourth layer made a depth-16 fold about eight times slower than one every layer.
+A checkpoint every fourth layer makes a depth-16 fold about eight times slower than one every layer.
 The fixed plan cuts the joins per layer, not the statements, so a cold fold stays linear in depth.
 When a deep ancestry should materialise its map is [open](../open-questions.md#when-a-deep-ancestry-materialises-its-map).
