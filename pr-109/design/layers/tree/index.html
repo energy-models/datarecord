@@ -1493,7 +1493,7 @@ That question differs from the one <a href="../../model/attributes/#attributespe
 <ul>
 <li>Which dims may an attribute vary over?
   This belongs to the attribute, as <code>AttributeSpec.dims</code>.
-  <code>p_max_pu</code> varies over scenario and snapshot, and <code>p_nom</code> over neither.</li>
+  <code>p_max_pu</code> varies over scenario and snapshot, and <code>p_nom_opt</code> over neither.</li>
 <li>May a layer patch single values along an axis, or must it restate the axis whole?
   This belongs to the dim, as <code>schema.partial</code>.
   A layer patches <code>scenario</code> value by value, and restates <code>snapshot</code> whole for every attribute.</li>
@@ -1515,10 +1515,10 @@ A schema that patches entity by entity lists <code>entity</code>, as PyPSA's <co
 A layer that patches a per-bus <code>marginal_price</code> one bus at a time needs <code>bus</code> in <code>partial</code>.
 A layer that patches one connection's <code>efficiency</code> needs <code>connection</code> there, and the connection's bus is patched with it inside the <code>connection</code> column.
 Under PyPSA's <code>partial</code>, <code>p_max_pu</code> is owned per entity and per scenario, so a patch to one hour restates that entity and scenario's whole series.
-<code>marginal_cost</code> is owned per entity and scenario, and <code>p_nom</code> per entity, once across everything else.</p>
-<p>Splitting the two questions lets the schema tell <code>p_max_pu</code> from <code>p_nom</code>.
+<code>marginal_cost</code> is owned per entity and scenario, and <code>p_nom_opt</code> per entity, once across everything else.</p>
+<p>Splitting the two questions lets the schema tell <code>p_max_pu</code> from <code>p_nom_opt</code>.
 A flag on the dim alone would make every attribute owned per scenario, including the ones a scenario must not change.
-A <code>p_nom</code> row that carries <code>scenario</code> is refused at write, since <code>p_nom</code> is not addressed by <code>scenario</code> (<a href="../../storage/format/#the-long-schema">the long schema</a>).
+A <code>p_nom_opt</code> row that carries <code>scenario</code> is refused at write, since <code>p_nom_opt</code> is not addressed by <code>scenario</code> (<a href="../../storage/format/#the-long-schema">the long schema</a>).
 A first-stage decision turned into a per-scenario one is the error worth catching.</p>
 <p>The owner-map key is <code>(*partial_dims, attribute)</code>, one fixed tuple for every attribute.
 An attribute that does not vary over a key coordinate writes NULL there, and the key compares NULL-safe.
