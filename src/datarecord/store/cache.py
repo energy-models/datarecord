@@ -52,7 +52,7 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
 
     A materialised owner map is already folded over everything above it, so
     nothing further up need be read. The node stopped at stays a plain
-    `ParquetLayer`; its `materialised(con)` yields the base `Fold` the live fold
+    `ParquetLayer`; its `materialised()` yields the base `Fold` the live fold
     starts from, so the fold folds only the layers below it.
 
     Only proper ancestors count: the node being resolved is always read from its
@@ -108,7 +108,7 @@ def materialise(
     """
     con = store.workspace.con
     _materialise_dims(revision_id, sources, store)
-    with _checkpointed(sources, con) as owner_map:
+    with _checkpointed(sources) as owner_map:
         _to_parquet(owner_map, store.owner_map_uri(revision_id), con)
 
 
@@ -137,7 +137,7 @@ def _materialise_dims(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
-    coords = resolve_coords(sources, con)
+    coords = resolve_coords(sources)
     dead = f"{store.resolved_dir(revision_id)}dead/"
     ensure_local_dir(dead if coords.dead else store.resolved_dir(revision_id))
     for name, rel in coords.dead.items():

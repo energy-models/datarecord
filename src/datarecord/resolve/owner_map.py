@@ -784,7 +784,6 @@ def _split(
 
 def _fold_map(
     sources: Sequence[LayerSource],
-    con: DuckDBPyConnection,
     *,
     made: list[str] | None = None,
 ) -> DuckDBPyRelation:
@@ -803,8 +802,8 @@ def _fold_map(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    schema = sources[-1].schema
-    base, above = _base_and_above(sources, con, owner_map=True)
+    schema, con = sources[-1].schema, sources[-1].con
+    base, above = _base_and_above(sources, owner_map=True)
     rel: DuckDBPyRelation | None = None
     keyed, held, dead = schema, dict.fromkeys(_pruned(schema)), {}
     if base is not None:
@@ -815,19 +814,17 @@ def _fold_map(
 
 
 @contextmanager
-def _checkpointed(
-    sources: Sequence[LayerSource], con: DuckDBPyConnection
-) -> Iterator[DuckDBPyRelation]:
+def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
     """`_fold_map` with each source's fold kept in a table, every one dropped on exit.
 
     The relation entered reads the last table, so it is read before exit.
     """
     made: list[str] = []
     try:
-        yield _fold_map(sources, con, made=made)
+        yield _fold_map(sources, made=made)
     finally:
         for name in made:
-            con.execute(f"DROP TABLE IF EXISTS {name}")
+            sources[-1].con.execute(f"DROP TABLE IF EXISTS {name}")
 
 
 def _checkpoint(
@@ -927,7 +924,7 @@ def _fold_onto(
                     )
                 )
             held[name] = now
-        own = _layer_owners(source, attribute, con)
+        own = _layer_owners(source, attribute)
         refuse = source.layer_id if source.frozen else None
         rel = fold_layer(rel, own, removed, keyed, con, attribute, refuse=refuse)
         if made is not None and rel is not None:
@@ -938,7 +935,7 @@ def _fold_onto(
 
 
 def _layer_owners(
-    source: LayerSource, attribute: str | None, con: DuckDBPyConnection
+    source: LayerSource, attribute: str | None
 ) -> DuckDBPyRelation | None:
     """`source`'s owner-map rows, of `attribute` alone where given; `None` where it holds none.
 
@@ -958,7 +955,7 @@ def _layer_owners(
         k for a in sorted(source.attributes()) if (k := source.owners(a)) is not None
     ]
     if owned:
-        return union_all_by_name(owned, con)
+        return union_all_by_name(owned, source.con)
     rows = source.all_attributes()
     return None if rows is None else _own(rows, source.schema, source.layer_id)
 
@@ -1003,7 +1000,6 @@ def split_frozen(
 def _table(
     revision_id: UUID,
     sources: Sequence[LayerSource],
-    con: DuckDBPyConnection,
     prefix: Coords,
     attribute: str | None = None,
 ) -> DuckDBPyRelation:
@@ -1026,7 +1022,7 @@ def _table(
     """
     schema = sources[-1].schema
     frozen, above = split_frozen(sources)
-    rel = _frozen_table(revision_id, frozen, con)
+    rel = _frozen_table(revision_id, frozen)
     keyed = frozen[-1].schema if frozen else schema
     if attribute is not None and rel is not None:
         rel = rel.filter(col("attribute") == lit(attribute))
@@ -1035,7 +1031,7 @@ def _table(
         rel,
         above,
         held,
-        con,
+        sources[-1].con,
         keyed=keyed,
         dead=prefix.dead,
         attribute=attribute,
@@ -1043,7 +1039,7 @@ def _table(
 
 
 def _frozen_table(
-    revision_id: UUID, sources: Sequence[LayerSource], con: DuckDBPyConnection
+    revision_id: UUID, sources: Sequence[LayerSource]
 ) -> DuckDBPyRelation | None:
     """The frozen prefix's owner map, its own materialised one or a cached fold.
 
@@ -1065,6 +1061,7 @@ def _frozen_table(
     if not sources:
         return None
     last = sources[-1]
+    con = last.con
     if isinstance(last, ParquetLayer) and last.layer_id == revision_id:
         rel = read_owner_map(revision_id, con, last.store)
         if rel is not None:
@@ -1072,12 +1069,12 @@ def _frozen_table(
     return _shared(
         con,
         _table_name(revision_id),
-        lambda: _checkpointed(sources, con),
+        lambda: _checkpointed(sources),
     )
 
 
 def _frozen_dim_owners(
-    revision_id: UUID, sources: Sequence[LayerSource], con: DuckDBPyConnection
+    revision_id: UUID, sources: Sequence[LayerSource]
 ) -> list[tuple[str, UUID, bool]]:
     """The `(dim, layer_uuid, has_dead)` rows of this frozen fold (`Coords.owners`).
 
@@ -1090,8 +1087,10 @@ def _frozen_dim_owners(
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
+    con = sources[-1].con
+
     def fold() -> DuckDBPyRelation:
-        coords = resolve_coords(sources, con)
+        coords = resolve_coords(sources)
         made = [
             *(("dims", dim, coords.axes[dim]) for dim in coords.dim_owners),
             *(("dead", name, rel) for name, rel in coords.dead.items()),

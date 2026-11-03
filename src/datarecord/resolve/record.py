@@ -450,7 +450,7 @@ class Record:
         _, above = split_frozen(self.sources)
         if not above:
             return frozen
-        return resolve_coords(self.sources, self.con, (frozen, above))
+        return resolve_coords(self.sources, (frozen, above))
 
     @property
     def _frozen_coords(self) -> Coords:
@@ -491,7 +491,7 @@ class Record:
         Plain data, which any thread computes the same.
         """
         frozen, _ = split_frozen(self.sources)
-        return _frozen_dim_owners(self.revision_id, frozen, self.con)
+        return _frozen_dim_owners(self.revision_id, frozen)
 
     @property
     def _fold(self) -> Fold:
@@ -506,9 +506,7 @@ class Record:
             schema=self.schema,
             axes=coords.axes,
             dim_owners=coords.dim_owners,
-            owner_map=_table(
-                self.revision_id, self.sources, self.con, self._frozen_coords
-            ),
+            owner_map=_table(self.revision_id, self.sources, self._frozen_coords),
             dead=coords.dead,
         )
 
@@ -552,9 +550,7 @@ class Record:
         con = self.con
         schema = self.schema
         if self._fixed:
-            om = _table(
-                self.revision_id, self.sources, con, self._frozen_coords, attribute
-            )
+            om = _table(self.revision_id, self.sources, self._frozen_coords, attribute)
             dead = self._coords.dead
         else:
             fold = self._fold
@@ -640,7 +636,7 @@ class Record:
         no owner other than themselves.
         """
         frozen, _ = split_frozen(self.sources)
-        rel = _frozen_table(self.revision_id, frozen, self.con)
+        rel = _frozen_table(self.revision_id, frozen)
         return {} if rel is None else _owners(rel, frozen[-1].schema)
 
     @cached_property

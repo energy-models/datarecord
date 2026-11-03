@@ -175,7 +175,7 @@ def write_layer(
         if data.axes():
             manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=files)
             layer = DirectorySource(base, manifest, workspace, manifest.id)
-            _require_living_references(parent, layer, workspace.con, schema)
+            _require_living_references(parent, layer, schema)
     finally:
         if isinstance(data, _RecordLikeAsLayerData):
             data.release()
@@ -326,24 +326,21 @@ def _refuse_reordered(
 def _parent_axis(
     parent: Record | None, schema: Schema, name: str, con: DuckDBPyConnection
 ) -> DuckDBPyRelation | None:
-    """`parent`'s axis `name`, `None` where it has none; a `one_of` dim's is `schema`'s list.
+    """`parent`'s axis `name`, `None` where there is none; a `one_of` dim's is `schema`'s list.
 
-    Read from the coords the workspace holds of `parent` (`Record._frozen_coords`),
-    so a write checks against the fold every read takes.
-
-    Notes
-    -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+    The axis every read of `parent` takes, its labels alone; a declared dim
+    without rows is an empty one, which holds nothing as `None` does.
     """
     if name in schema.one_of_dims:
         return one_of_axis(schema, name, con)
-    return None if parent is None else parent._frozen_coords.axes.get(name)
+    if parent is None or name not in parent.dims:
+        return None
+    return parent.dims[name]
 
 
 def _require_living_references(
     parent: Record | None,
     layer: LayerSource,
-    con: DuckDBPyConnection,
     schema: Schema,
 ) -> None:
     """Reject a layer leaving a reference to a dead label in a subject it touches.
@@ -384,7 +381,7 @@ def _require_living_references(
     whole = any(r[4] for r in references)
     killed = {}
     for dim in layer.axes() & referenced:
-        before = _parent_axis(parent, schema, dim, con)
+        before = _parent_axis(parent, schema, dim, layer.con)
         now = layer.axis(dim)
         if before is None or now is None:
             continue
@@ -402,7 +399,7 @@ def _require_living_references(
     if not whole and not killed:
         return
     parents = [] if parent is None else parent.sources
-    coords = resolve_coords([*parents, layer], con)
+    coords = resolve_coords([*parents, layer])
     problems = []
     for subject, column, label, dim, restated in references:
         dead = coords.dead.get(dim)
