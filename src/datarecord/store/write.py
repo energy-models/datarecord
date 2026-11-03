@@ -29,11 +29,11 @@ from duckdb import StarExpression as star
 from datarecord.duck import as_relation, fn, null_safe, write_parquet
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
+    one_of_axis,
     refuse_one_of_file,
     refuse_twice,
     refuse_unheld,
     resolve_coords,
-    resolve_one,
 )
 from datarecord.resolve.owner_map import cast_declared, unsettled
 from datarecord.resolve.record import PinnedRecord, Record
@@ -42,8 +42,6 @@ from datarecord.schema.schema import DERIVED, Schema
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.resolve.sources import LayerSource
@@ -74,7 +72,7 @@ def write_layer(
     base: str,
     workspace: Workspace,
     *,
-    parents: Sequence[LayerSource] = (),
+    parent: Record | None = None,
 ) -> LayerFiles:
     """Write `data`'s files into the layer directory `base`, and return what it wrote.
 
@@ -89,8 +87,8 @@ def write_layer(
     data
         The layer's contents, validated against its own schema as each frame is
         built.
-    parents
-        The sources the layer folds over, root first; none for a root or a
+    parent
+        The revision's record the layer folds over; none for a root or a
         standalone record.
 
     Raises
@@ -142,7 +140,7 @@ def write_layer(
 
         def final(name: str) -> DuckDBPyRelation | None:
             if name not in resolved:
-                resolved[name] = resolve_one(schema, parents, workspace.con, name)
+                resolved[name] = _parent_axis(parent, schema, name, workspace.con)
             return resolved[name]
 
         for kind, keys, read in kinds:
@@ -168,7 +166,7 @@ def write_layer(
                     )
                 resolved[key] = frame
                 refuse_twice(frame, [key], file)
-                before = resolve_one(schema, parents, workspace.con, key)
+                before = _parent_axis(parent, schema, key, workspace.con)
                 if before is not None:
                     _refuse_reordered(frame, before, key, file)
         files = LayerFiles(
@@ -177,7 +175,7 @@ def write_layer(
         if data.axes():
             manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=files)
             layer = DirectorySource(base, manifest, workspace, manifest.id)
-            _require_living_references(parents, layer, workspace.con, schema)
+            _require_living_references(parent, layer, workspace.con, schema)
     finally:
         if isinstance(data, _RecordLikeAsLayerData):
             data.release()
@@ -325,8 +323,25 @@ def _refuse_reordered(
         raise ValueError(msg)
 
 
+def _parent_axis(
+    parent: Record | None, schema: Schema, name: str, con: DuckDBPyConnection
+) -> DuckDBPyRelation | None:
+    """`parent`'s axis `name`, `None` where it has none; a `one_of` dim's is `schema`'s list.
+
+    Read from the coords the workspace holds of `parent` (`Record._frozen_coords`),
+    so a write checks against the fold every read takes.
+
+    Notes
+    -----
+    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+    """
+    if name in schema.one_of_dims:
+        return one_of_axis(schema, name, con)
+    return None if parent is None else parent._frozen_coords.axes.get(name)
+
+
 def _require_living_references(
-    parents: Sequence[LayerSource],
+    parent: Record | None,
     layer: LayerSource,
     con: DuckDBPyConnection,
     schema: Schema,
@@ -369,7 +384,7 @@ def _require_living_references(
     whole = any(r[4] for r in references)
     killed = {}
     for dim in layer.axes() & referenced:
-        before = resolve_one(schema, parents, con, dim)
+        before = _parent_axis(parent, schema, dim, con)
         now = layer.axis(dim)
         if before is None or now is None:
             continue
@@ -386,6 +401,7 @@ def _require_living_references(
             killed[dim] = gone
     if not whole and not killed:
         return
+    parents = [] if parent is None else parent.sources
     coords = resolve_coords([*parents, layer], con)
     problems = []
     for subject, column, label, dim, restated in references:

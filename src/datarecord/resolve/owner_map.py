@@ -981,25 +981,23 @@ def source_for(sources: Sequence[LayerSource], layer_uuid: UUID) -> LayerSource:
     return layer.sibling(layer_uuid)
 
 
-def frozen_prefix(sources: Sequence[LayerSource]) -> int:
-    """How many leading sources cannot change under a reader.
+def split_frozen(
+    sources: Sequence[LayerSource],
+) -> tuple[list[LayerSource], list[LayerSource]]:
+    """Split `sources` into the leading ones that cannot change under a reader, then the rest.
 
     The one rule the source list has to carry: **the fold is materialised up to
     the last frozen source; everything after it stays a relation.** Everything a
     `Record` caches rests on layers being write-once, which a staging area is
-    not - so a staged source ends the prefix, and a frozen one under it stays
-    outside without either needing to know about the other.
+    not - so a staged source ends the frozen ones, and a frozen one under it
+    stays above without either needing to know about the other.
 
     Notes
     -----
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     """
-    prefix = 0
-    for source in sources:
-        if not source.frozen:
-            break
-        prefix += 1
-    return prefix
+    count = next((i for i, s in enumerate(sources) if not s.frozen), len(sources))
+    return list(sources[:count]), list(sources[count:])
 
 
 def _table(
@@ -1027,15 +1025,15 @@ def _table(
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     schema = sources[-1].schema
-    frozen = frozen_prefix(sources)
-    rel = _frozen_table(revision_id, sources[:frozen], con)
-    keyed = sources[frozen - 1].schema if frozen else schema
+    frozen, above = split_frozen(sources)
+    rel = _frozen_table(revision_id, frozen, con)
+    keyed = frozen[-1].schema if frozen else schema
     if attribute is not None and rel is not None:
         rel = rel.filter(col("attribute") == lit(attribute))
     held = {name: prefix.axes.get(name) for name in _pruned(schema)}
     return _fold_onto(
         rel,
-        sources[frozen:],
+        above,
         held,
         con,
         keyed=keyed,
@@ -1078,7 +1076,7 @@ def _frozen_table(
     )
 
 
-def _frozen_coords(
+def _frozen_dim_owners(
     revision_id: UUID, sources: Sequence[LayerSource], con: DuckDBPyConnection
 ) -> list[tuple[str, UUID, bool]]:
     """The `(dim, layer_uuid, has_dead)` rows of this frozen fold (`Coords.owners`).

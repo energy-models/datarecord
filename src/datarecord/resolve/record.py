@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import dataclasses
 import operator
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cached_property, reduce, wraps
@@ -49,13 +50,13 @@ from datarecord.resolve.coords import (
 )
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import (
-    _frozen_coords,
+    _frozen_dim_owners,
     _frozen_table,
     _mask,
     _table,
-    frozen_prefix,
     owned_rows,
     source_for,
+    split_frozen,
     with_columns,
 )
 from datarecord.resolve.sources import LayerSource
@@ -306,6 +307,13 @@ def _stable_cache(method: Callable[[Record], LazyRelations]) -> property:
     return property(get)
 
 
+class _PerCursor(threading.local):
+    """What a `Record` keeps per thread, so per cursor: relations are planned on one."""
+
+    def __init__(self) -> None:
+        self.frozen_coords: Coords | None = None
+
+
 @dataclass(frozen=True)
 class Record:
     """A record's layers folded last-writer-wins, read as DuckDB relations.
@@ -369,7 +377,8 @@ class Record:
         -----
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
         """
-        return frozen_prefix(self.sources) == len(self.sources)
+        _, above = split_frozen(self.sources)
+        return not above
 
     @property
     def _fixed(self) -> bool:
@@ -428,7 +437,7 @@ class Record:
     def _coords(self) -> Coords:
         """Return every declared dim's folded relation, and the dead labels.
 
-        The frozen prefix's fold is a set of shared tables (`_frozen_coords`),
+        The frozen prefix's fold is a set of shared tables (`_frozen_dim_owners`),
         read on the calling thread's cursor. The sources after it are folded
         per call onto those tables, so a read with staged edits opens no file.
 
@@ -437,23 +446,35 @@ class Record:
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
         """
-        prefix = self._prefix
-        if self.frozen:
-            return prefix
-        above = self.sources[frozen_prefix(self.sources) :]
-        return resolve_coords(self.sources, self.con, (prefix, above))
+        frozen = self._frozen_coords
+        _, above = split_frozen(self.sources)
+        if not above:
+            return frozen
+        return resolve_coords(self.sources, self.con, (frozen, above))
 
     @property
-    def _prefix(self) -> Coords:
-        """Return the frozen prefix's coords, its shared tables read on the calling thread's cursor.
+    def _frozen_coords(self) -> Coords:
+        """Return the frozen layers' coords, their shared tables read on the calling thread's cursor.
 
-        A `one_of` dim's axis is the schema's, so it is not among the tables.
+        Built once per thread: the tables are write-once, and a relation over
+        a table reads it as it is when collected.
 
         Notes
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
+        cache = self._per_cursor
+        if cache.frozen_coords is None:
+            cache.frozen_coords = self._tabled_frozen_coords()
+        return cache.frozen_coords
+
+    @cached_property
+    def _per_cursor(self) -> _PerCursor:
+        return _PerCursor()
+
+    def _tabled_frozen_coords(self) -> Coords:
+        """The frozen layers' coords from its shared tables, a `one_of` dim's axis being the schema's."""
         con = self.con
         held = tabled_coords(self.revision_id, self.schema, self._dim_owners, con)
         axes = held.axes | {
@@ -469,8 +490,8 @@ class Record:
 
         Plain data, which any thread computes the same.
         """
-        prefix = self.sources[: frozen_prefix(self.sources)]
-        return _frozen_coords(self.revision_id, prefix, self.con)
+        frozen, _ = split_frozen(self.sources)
+        return _frozen_dim_owners(self.revision_id, frozen, self.con)
 
     @property
     def _fold(self) -> Fold:
@@ -485,7 +506,9 @@ class Record:
             schema=self.schema,
             axes=coords.axes,
             dim_owners=coords.dim_owners,
-            owner_map=_table(self.revision_id, self.sources, self.con, self._prefix),
+            owner_map=_table(
+                self.revision_id, self.sources, self.con, self._frozen_coords
+            ),
             dead=coords.dead,
         )
 
@@ -529,7 +552,9 @@ class Record:
         con = self.con
         schema = self.schema
         if self._fixed:
-            om = _table(self.revision_id, self.sources, con, self._prefix, attribute)
+            om = _table(
+                self.revision_id, self.sources, con, self._frozen_coords, attribute
+            )
             dead = self._coords.dead
         else:
             fold = self._fold
@@ -602,7 +627,8 @@ class Record:
         if not self._fixed:
             return self._cached_owners.get(attribute, ([], False))
         layers, _ = self._frozen_owners.get(attribute, ([], False))
-        tail = [s.layer_id for s in self.sources[frozen_prefix(self.sources) :]]
+        _, above = split_frozen(self.sources)
+        tail = [s.layer_id for s in above]
         return [*layers, *tail], True
 
     @cached_property
@@ -613,9 +639,9 @@ class Record:
         layer's every row of an attribute, which then joins nothing, but add
         no owner other than themselves.
         """
-        frozen = frozen_prefix(self.sources)
-        rel = _frozen_table(self.revision_id, self.sources[:frozen], self.con)
-        return {} if rel is None else _owners(rel, self.sources[frozen - 1].schema)
+        frozen, _ = split_frozen(self.sources)
+        rel = _frozen_table(self.revision_id, frozen, self.con)
+        return {} if rel is None else _owners(rel, frozen[-1].schema)
 
     @cached_property
     def _cached_owners(self) -> dict[str, tuple[list[UUID], bool]]:
