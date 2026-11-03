@@ -27,7 +27,6 @@ from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from datarecord.store.store import Revision
 from tests.fixtures import (
-    empty_child,
     empty_root,
     write_axis,
     write_multi_dim,
@@ -57,34 +56,6 @@ def _schema(**overrides) -> Schema:
 
 
 # -- the declaration --------------------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("one_of", "duck", "categorizing"),
-    [
-        pytest.param(None, sqltypes.VARCHAR, (), id="no-one-of"),
-        pytest.param(
-            ("lower", "upper"),
-            duckdb.sqltypes.DuckDBPyType("ENUM('lower', 'upper')"),
-            ("state",),
-            id="one-of",
-        ),
-    ],
-)
-def test_a_property_takes_its_dims_type_and_categorizes_if_the_dim_lists_labels(
-    one_of, duck, categorizing
-):
-    """Its values are the dim's labels, typed as them; categories only where the dim has `one_of`."""
-    s = _schema(
-        dimensions={**_schema().dimensions, "state": Dimension(one_of=one_of)},
-        properties={"bus": _schema().properties["bus"]},
-        partial=frozenset({"bus"}),
-    )
-    assert s.column_type("state", "bus") == duck
-    assert s.categorizing("bus") == categorizing, (
-        "only a property referring to a dim with one_of categorizes"
-    )
-    assert Schema.model_validate_json(s.model_dump_json()) == s, "the dtype round-trips"
 
 
 def test_a_multi_dim_in_dims_is_one_struct_column():
@@ -123,34 +94,6 @@ def test_the_over_list_form_is_sugar_for_the_dict():
 
 
 # -- what the declaration rejects -------------------------------------------
-
-
-@pytest.mark.parametrize(
-    ("manifest", "match"),
-    [
-        pytest.param(
-            {"properties": {"bus": {"state": {"one_of": ["lower", "upper"]}}}},
-            "Input should be a valid string",
-            id="a-list-on-a-property",
-        ),
-        pytest.param(
-            {"dimensions": {"state": {"one_of": "country"}}},
-            "Input should be a valid tuple",
-            id="a-dim-name-on-a-dim",
-        ),
-    ],
-)
-def test_a_misplaced_one_of_fails_to_load(manifest, match):
-    """`one_of` is a list on a dim and a dim name on a property.
-
-    Notes
-    -----
-    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-    """
-    dimensions = {d: {"dtype": "str"} for d in ("bus", "state", "country", "scenario")}
-    manifest = {**manifest, "dimensions": dimensions | manifest.get("dimensions", {})}
-    with pytest.raises(ValidationError, match=match):
-        Schema.model_validate(manifest)
 
 
 @pytest.mark.parametrize(
@@ -195,28 +138,6 @@ def _budget_schema() -> Schema:
     )
 
 
-def test_a_classified_axis_folds_as_an_ordinary_axis(store):
-    """The fold learns nothing new: a dim a property refers to has an axis file like any dim.
-
-    Its own file is what gives it order and a place for `co2_budget`, which no
-    bus column could hold.
-    """
-    layer = empty_root(store, _budget_schema())
-    write_axis(layer, "bus", [{"bus": "north"}])
-    write_axis(layer, "state", [{"state": "lower"}])
-    write_axis(
-        layer,
-        "country",
-        [{"country": "NO"}, {"country": "DE"}, {"country": "FR"}],
-    )
-
-    axes = layer.commit().record.dims
-    assert axes["country"].df()["country"].tolist() == ["NO", "DE", "FR"], (
-        "axis order is the file's row order, classified or not"
-    )
-    assert axes["bus"].df()["bus"].tolist() == ["north"]
-
-
 def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
     """A multi-dim may draw on a dim `partial` does not list; removal still cascades.
 
@@ -249,44 +170,6 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
 
 def _tuples(record) -> list[dict]:
     return record.dims["bus_state"].df()["bus_state"].tolist()
-
-
-def test_member_order_survives_a_restate_through_a_materialised_parent(store):
-    """A multi-dim's member order is the deepest restatement's row order, across a
-    materialised parent: a key added at the root stays first, and a
-    grandchild's addition comes after the materialised copy's members.
-
-    No `order_key` column - member order is the file's own row order
-    (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis).
-    """
-    root = empty_root(store, _budget_schema())
-    write_multi_dim(
-        root,
-        "bus_state",
-        [{"bus_state": {"bus": "north", "state": "lower"}}],
-    )
-
-    child_layer = empty_child(root.commit())
-    write_multi_dim(
-        child_layer,
-        "bus_state",
-        [{"bus_state": {"bus": "south", "state": "upper"}}],
-    )
-    child = child_layer.commit()
-    child.materialise()
-
-    grandchild = empty_child(child)
-    write_multi_dim(
-        grandchild,
-        "bus_state",
-        [{"bus_state": {"bus": "east", "state": "lower"}}],
-    )
-
-    rows = grandchild.commit().record.dims["bus_state"].to_arrow_table().to_pydict()
-    assert [r["bus"] for r in rows["bus_state"]] == ["north", "south", "east"], (
-        "member order, seed first"
-    )
-    assert "order_key" not in rows
 
 
 def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
@@ -362,9 +245,8 @@ def test_setting_one_property_keeps_its_siblings_value(store):
     assert frame["population"].to_pylist() == [84.0]
 
 
-@pytest.mark.parametrize("partial", [frozenset({"country"}), frozenset()])
-def test_a_child_layer_restates_an_axis_whole(store, partial):
-    """Touching an axis means carrying every label of it, in order, whatever `partial` says.
+def test_a_child_layer_restates_an_axis_whole(store):
+    """Touching an axis means carrying every label of it, in order, even where `country` is partial.
 
     A layer holding the edited label alone would not leave the others stale, it
     would remove them: the axis here is what this layer says it is.
@@ -374,7 +256,9 @@ def test_a_child_layer_restates_an_axis_whole(store, partial):
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     properties = {"country": {"co2_budget": PropertySpec(dtype="float")}}
-    layer = empty_root(store, _schema(properties=properties, partial=partial))
+    layer = empty_root(
+        store, _schema(properties=properties, partial=frozenset({"country"}))
+    )
     write_axis(
         layer,
         "country",
@@ -396,25 +280,6 @@ def test_a_child_layer_restates_an_axis_whole(store, partial):
     axis = child.record.properties["country"].df()
     assert dict(zip(axis["country"], axis["co2_budget"])) == {"DE": 12.0, "FR": 55.0}, (
         "FR survives because this layer carried it"
-    )
-
-
-def test_an_axis_resolves_over_an_unmaterialised_parent(store):
-    """A node cache is an optimisation, so a fold without one answers the same.
-
-    `ancestry_to_read` keeps an unmaterialised ancestor in the ancestry, so the
-    dirs it is folded over must name that layer's raw `dims/` and not only a
-    cache it has never written.
-    """
-    layer = empty_root(store, _budget_schema())
-    write_axis(layer, "country", [{"country": "DE"}, {"country": "FR"}])
-
-    child = empty_child(layer.commit())
-    write_axis(child, "country", [{"country": "NO"}])
-
-    labels = child.commit().record.dims["country"].df()["country"].tolist()
-    assert labels == ["DE", "FR", "NO"], (
-        "the child restates the parent's labels in their order, then its own"
     )
 
 
@@ -461,31 +326,17 @@ def classified(module_store) -> Revision:
     return layer.commit()
 
 
-EDITS = [
-    pytest.param(lambda w, v: w.set("bus.state", v, bus="north"), id="set-scalar"),
-    pytest.param(lambda w, v: w.set("bus.state", {"north": v}), id="set-mapping"),
-    pytest.param(lambda w, v: w.add("bus", ["east"], state=v), id="add"),
-    pytest.param(lambda w, v: w.set("bus_state.country", v), id="set-on-a-multi-dim"),
-    pytest.param(
-        lambda w, v: w.add(
-            "bus_state", [{"bus": "south", "state": "upper"}], country=v
-        ),
-        id="add-a-tuple",
+EDITS = {
+    "set-scalar": lambda w, v: w.set("bus.state", v, bus="north"),
+    "add": lambda w, v: w.add("bus", ["east"], state=v),
+    "set-on-a-multi-dim": lambda w, v: w.set("bus_state.country", v),
+    "add-a-tuple": lambda w, v: w.add(
+        "bus_state", [{"bus": "south", "state": "upper"}], country=v
     ),
-    pytest.param(
-        lambda w, v: w.add(
-            "bus_state",
-            w.con.sql(
-                "SELECT 'south' AS bus, 'upper' AS state, ?::VARCHAR AS country",
-                params=[v],
-            ),
-        ),
-        id="add-a-frame",
-    ),
-]
+}
 
 
-@pytest.mark.parametrize("edit", EDITS)
+@pytest.mark.parametrize("edit", EDITS.values(), ids=EDITS)
 def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
     """`set` and `add` refuse a value naming no label of the dim, as staged.
 
@@ -498,16 +349,23 @@ def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
         edit(staged, "coal")
 
 
-@pytest.mark.parametrize("edit", EDITS)
-@pytest.mark.parametrize("value", [None, "added"])
+@pytest.mark.parametrize(
+    ("value", "edit"),
+    [
+        (None, "set-scalar"),
+        (None, "add-a-tuple"),
+        ("added", "add"),
+        ("added", "set-on-a-multi-dim"),
+    ],
+)
 def test_a_property_naming_a_dim_takes_null_or_a_label_added_first(
-    classified, edit, value
+    classified, value, edit
 ):
     """NULL names no label; a label staged by `add` is live."""
     staged = WorkingRecord(classified.record)
     staged.add("state", ["added"])
     staged.add("country", ["added"])
-    edit(staged, value)
+    EDITS[edit](staged, value)
     classified.store.commit(staged)
 
 

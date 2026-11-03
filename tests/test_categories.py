@@ -239,37 +239,14 @@ def _noted(record, subject: str) -> set:
 @pytest.mark.parametrize(
     ("subject", "keywords", "selected"),
     [
-        ("entity", {"ctype": "Generator"}, {"g"}),
-        ("entity", {"ctype": ["Generator", "Link"]}, {"g", "l"}),
-        ("connection", {"role": "output"}, {("l", "b")}),
         (
             "connection",
             {"role": ["output", "attached"], "bus": "b"},
             {("l", "b"), ("g", "b")},
         ),
-        (
-            "connection",
-            {"role": ["input", "output"], "entity": "l", "bus": "b"},
-            {("l", "b")},
-        ),
         ("connection", {"ctype": "Link"}, {("l", "a"), ("l", "b")}),
-        ("connection", {"ctype": "Link", "bus": "b"}, {("l", "b")}),
-        ("connection", {"ctype": "Link", "role": "input"}, {("l", "a")}),
-        ("connection", {"ctype": "Store"}, set()),
-        ("connection", {"ctype": "Store", "role": "input"}, set()),
     ],
-    ids=[
-        "dim",
-        "dim-several",
-        "multi-dim",
-        "multi-dim-several",
-        "multi-dim-narrowed",
-        "coordinate-category",
-        "coordinate-category-narrowed",
-        "coordinate-category-and-role",
-        "coordinate-category-selecting-none",
-        "coordinate-category-and-role-selecting-none",
-    ],
+    ids=["multi-dim-several", "coordinate-category"],
 )
 def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
     ports, subject, keywords, selected

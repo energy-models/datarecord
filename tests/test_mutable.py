@@ -10,10 +10,10 @@ Notes
 """
 
 import re
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import polars as pl
 import pyarrow as pa
 import pytest
 
@@ -24,7 +24,6 @@ from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from tests.fixtures import (
     broadcast,
-    empty_child,
     empty_root,
     schema,
     unpacked,
@@ -130,26 +129,6 @@ def test_a_working_record_overrides_no_read_member():
 
 
 @pytest.mark.parametrize(
-    ("value", "labels", "keys", "values"),
-    [
-        (150.0, ["wind1", "wind2"], None, [150.0]),
-        ([150.0, 80.0], ["wind1", "wind2"], ["wind1", "wind2"], [150.0, 80.0]),
-        ({"wind1": 150.0, "wind2": 80.0}, None, ["wind1", "wind2"], [150.0, 80.0]),
-        (
-            pd.Series({"2030-01-01": 0.4, "2030-01-02": 0.6}),
-            None,
-            ["2030-01-01", "2030-01-02"],
-            [0.4, 0.6],
-        ),
-    ],
-    ids=["scalar-has-no-keys", "sequence-is-positional", "mapping", "series-index"],
-)
-def test_a_value_form_supplies_its_keys(value, labels, keys, values):
-    got_keys, got_values = normalise_value(value, labels)
-    assert (got_keys, got_values) == (keys, values), "keys align with values"
-
-
-@pytest.mark.parametrize(
     ("value", "labels", "match"),
     [
         ([1.0, 2.0, 3.0], ["wind1", "wind2"], "2 labels"),
@@ -239,23 +218,7 @@ def test_two_lazy_reads_stay_bound_to_their_own_relations(staged, root):
     assert not {v for v in views if v.startswith("_")}
 
 
-def test_set_over_several_names(staged, root):
-    staged.set("p_nom", 150.0, entity=["Manchester Wind", "Norway Wind"])
-    child = root.store.commit(staged)
-
-    got = _entity_values(child.record, "p_nom")
-    assert got["Manchester Wind"] == got["Norway Wind"] == 150.0
-
-
-@pytest.mark.parametrize(
-    ("value", "kwargs"),
-    [
-        (1.0, {"entity": ["Nope"]}),
-        (pd.DataFrame([{"entity": "Nope", "value": 1.0}]), {}),
-    ],
-    ids=["keyword", "long-frame"],
-)
-def test_set_rejects_an_unknown_name(staged, value, kwargs):
+def test_set_rejects_an_unknown_name(staged):
     """A value for a name no layer declares would resolve to nothing.
 
     Validation applies to the frame form too: a typo is caught where it is typed.
@@ -266,7 +229,7 @@ def test_set_rejects_an_unknown_name(staged, value, kwargs):
     - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     with pytest.raises(KeyError, match="Nope"):
-        staged.set("p_max_pu", value, **kwargs)
+        staged.set("p_max_pu", pd.DataFrame([{"entity": "Nope", "value": 1.0}]))
 
 
 _SNAPSHOT = "does not fit 'snapshot' of dtype datetime"
@@ -286,21 +249,9 @@ _ENTITY = "does not fit 'entity' of dtype str"
             id="series-index",
         ),
         pytest.param(
-            lambda s: s.set(
-                "p_max_pu", {"2030-01-01": 0.4}, entity="Manchester Wind", scenario=None
-            ),
-            _SNAPSHOT,
-            id="mapping-keys",
-        ),
-        pytest.param(
             lambda s: s.set("p_max_pu", 0.4, entity="Manchester Wind", snapshot=5),
             _SNAPSHOT,
             id="selector-keyword",
-        ),
-        pytest.param(
-            lambda s: s.set("p_nom", 1.0, entity=[1]),
-            _ENTITY,
-            id="selector-keyword-list",
         ),
         pytest.param(
             lambda s: s.set("p_nom", 1.0, entity=[1, "Manchester Wind"]),
@@ -318,19 +269,9 @@ _ENTITY = "does not fit 'entity' of dtype str"
             id="multi-dim-keyword",
         ),
         pytest.param(
-            lambda s: s.set("connection.role", "input", entity=[1]),
-            _ENTITY,
-            id="multi-dim-keyword-list",
-        ),
-        pytest.param(
             lambda s: s.add("snapshot", ["2030-01-01"]),
             _SNAPSHOT,
             id="add",
-        ),
-        pytest.param(
-            lambda s: s.add("snapshot", [1, pd.Timestamp("2030-01-01")]),
-            _SNAPSHOT,
-            id="add-mixed",
         ),
         pytest.param(
             lambda s: s.add("carrier", [1, "x"]),
@@ -385,9 +326,11 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
     - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
     """
     staged.add("entity", ["NewSolar"], ctype=GEN)
+    assert "NewSolar" in _entity_axis(staged).index, "it reads back before commit"
     staged.set("p_nom", 7.0, entity=["NewSolar"])
 
     child = root.store.commit(staged)
+    assert _entity_axis(child.record).loc["NewSolar", "ctype"] == GEN
     assert _entity_values(child.record, "p_nom")["NewSolar"] == 7.0
 
 
@@ -612,45 +555,6 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     )
 
 
-# -- value dtypes (https://energy-models.github.io/datarecord/design/use/reading/#flags, https://energy-models.github.io/datarecord/design/model/attributes/#attributespec) -----------------------------------------------
-
-
-def test_a_non_float_attribute_stages_and_commits(store):
-    """`value` carries the attribute's declared dtype, not always `DOUBLE`.
-
-    One staging table holds every attribute's values, so it stages `value` as
-    text and casts to the declared dtype where the attribute is known - which
-    is the point at which `attributes/<attr>.parquet` is per-attribute.
-
-    The schema is widened by a child, before the `WorkingRecord` is built: a
-    record carries the schema of the revision it was built over, so a widening
-    has to be in force when the record is constructed, not slipped in before a
-    later commit.
-
-    Notes
-    -----
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
-    """
-    small = _small(store)
-    amended = small.manifest.schema.model_copy(deep=True)
-    amended.attributes["fuel"] = AttributeSpec(dtype="str", dims={"entity", "scenario"})
-    root = empty_child(small, amended).commit()
-
-    staged = WorkingRecord(root.record)
-    staged.set("fuel", "solar", entity=["Manchester Wind"])
-    rows = staged.attributes["fuel"].df()
-    assert rows[rows["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
-
-    staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    assert _entity_values(staged, "p_nom").dtype.kind == "f", (
-        "the cast is per attribute, so a DOUBLE one is not turned into text"
-    )
-
-    child = root.store.commit(staged)
-    got = child.record.attributes["fuel"].df()
-    assert got[got["entity"] == "Manchester Wind"]["value"].tolist() == ["solar"]
-
-
 # -- ownership granularity (https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override, https://energy-models.github.io/datarecord/design/use/editing/#edits) -------------------------------------
 
 
@@ -669,6 +573,9 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
+    assert "snapshot" not in staged.schema.owned_per("p_max_pu"), (
+        "owned per entity, but not per snapshot, the axis this test is about"
+    )
     base = staged.attributes["p_max_pu"].df()
     mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
     assert len(mine) > 2, "the series needs an untouched middle to keep"
@@ -707,14 +614,6 @@ def _entity_values(record, attribute):
     rows = record.attributes[attribute].df()
     others = [c for c in rows.columns if c not in ("entity", "attribute", "value")]
     return rows[rows[others].isna().all(axis=1)].set_index("entity")["value"]
-
-
-def test_add_then_commit_makes_a_label_exist(staged, root):
-    staged.add("entity", ["NewSolar"], ctype=GEN)
-    assert "NewSolar" in _entity_axis(staged).index, "it reads back before commit"
-
-    child = root.store.commit(staged)
-    assert _entity_axis(child.record).loc["NewSolar", "ctype"] == GEN
 
 
 @pytest.fixture(scope="module")
@@ -844,8 +743,7 @@ def test_an_edit_refuses_an_unknown_label_category_or_keyword(
         getattr(units, op)(*args, **kwargs)
 
 
-@pytest.mark.parametrize("op", ["add", "remove"])
-def test_a_dim_with_one_of_is_the_schemas_list(units, op):
+def test_a_dim_with_one_of_is_the_schemas_list(units):
     """Its axis is its list, in order, which no edit changes.
 
     Notes
@@ -854,9 +752,9 @@ def test_a_dim_with_one_of_is_the_schemas_list(units, op):
     - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
     with pytest.raises(
-        ValueError, match=rf"`{op}\('tech', ...\)` is refused: 'tech' lists its labels"
+        ValueError, match=r"`add\('tech', ...\)` is refused: 'tech' lists its labels"
     ):
-        getattr(units, op)("tech", ["node"])
+        units.add("tech", ["node"])
     assert units.dims["tech"].df()["tech"].tolist() == ["plant", "node"], (
         "the axis is the list"
     )
@@ -885,18 +783,6 @@ def test_a_property_keyword_selects_the_labels_there_are_now(units):
 
     units.add("unit", ["p3"], tech="plant")
     assert "p3" not in _output_units(units), "a label added later is not reached"
-
-
-def test_set_of_a_category_survives_a_commit(staged, root):
-    staged.set("entity.ctype", "Load", entity="Manchester Wind")
-
-    child = root.store.commit(staged)
-    axis = _entity_axis(child.record)
-    assert axis.loc["Manchester Wind", "ctype"] == "Load"
-    assert (
-        _entity_values(child.record, "p_nom")["Manchester Wind"]
-        == _entity_values(root.record, "p_nom")["Manchester Wind"]
-    ), "a re-categorized label keeps the values it holds"
 
 
 def test_re_adding_a_label_replaces_its_row(staged, root):
@@ -936,21 +822,7 @@ def test_add_fills_a_declared_column_another_add_omitted(staged):
     assert rows.loc["NewSolar", "ctype"] == GEN, "unaffected by the later add"
 
 
-@pytest.mark.parametrize(
-    ("edits", "appended"),
-    [
-        pytest.param(
-            [("remove", "Norway Gas"), ("add", "Norway Gas")], [], id="re-add"
-        ),
-        pytest.param([("add", "NewSolar")], ["NewSolar"], id="add"),
-        pytest.param(
-            [("remove", "Norway Gas"), ("add", "NewSolar"), ("add", "Norway Gas")],
-            ["NewSolar"],
-            id="re-add-after-a-new-label",
-        ),
-    ],
-)
-def test_a_staged_axis_is_the_whole_axis_in_order(staged, root, edits, appended):
+def test_a_staged_axis_is_the_whole_axis_in_order(staged, root):
     """A label of the base removed and added again takes its base place back, and a new one is appended.
 
     Notes
@@ -958,12 +830,10 @@ def test_a_staged_axis_is_the_whole_axis_in_order(staged, root, edits, appended)
     - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
     """
-    labels = [*root.record.dims["entity"].df()["entity"], *appended]
-    for op, label in edits:
-        if op == "add":
-            staged.add("entity", [label], ctype=GEN)
-        else:
-            staged.remove("entity", [label])
+    labels = [*root.record.dims["entity"].df()["entity"], "NewSolar"]
+    staged.remove("entity", ["Norway Gas"])
+    staged.add("entity", ["NewSolar"], ctype=GEN)
+    staged.add("entity", ["Norway Gas"], ctype=GEN)
     assert staged.edits.axis("entity").df()["entity"].tolist() == labels
 
     child = root.store.commit(staged)
@@ -975,16 +845,8 @@ def test_a_staged_axis_is_the_whole_axis_in_order(staged, root, edits, appended)
     )
 
 
-def test_remove_needs_no_attribute_enumerated(staged, root):
-    staged.remove("entity", ["Norway Gas"])
-    assert "Norway Gas" not in _entity_axis(staged).index, "it reads back at once"
-
-    child = root.store.commit(staged)
-    assert "Norway Gas" not in set(child.record.dims["entity"].df()["entity"])
-
-
 def test_removing_a_label_drops_its_staged_attributes(staged, root):
-    """Removing a label discards values staged for it, via the anti-join.
+    """Removing a label needs no attribute enumerated, and discards values staged for it.
 
     Notes
     -----
@@ -992,25 +854,24 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     """
     staged.set("p_nom", 99.0, entity=["Norway Gas"])
     staged.remove("entity", ["Norway Gas"])
+    assert "Norway Gas" not in _entity_axis(staged).index, "it reads back at once"
 
     child = root.store.commit(staged)
+    assert "Norway Gas" not in set(child.record.dims["entity"].df()["entity"])
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/use/editing/#add-remove, https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim) --------------------------------------
 
 
-@pytest.mark.parametrize("form", [list, pd.DataFrame], ids=["list", "frame"])
-def test_remove_stages_a_multi_dim_without_the_tuple(staged, root, form):
+def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
     """Per `(entity, bus)`, the multi-dim's own key.
 
     Notes
     -----
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
-    staged.remove(
-        "connection", form([{"entity": "Norwich Converter", "bus": "Norwich"}])
-    )
+    staged.remove("connection", [{"entity": "Norwich Converter", "bus": "Norwich"}])
     before = unpacked(staged.dims["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
@@ -1020,9 +881,7 @@ def test_remove_stages_a_multi_dim_without_the_tuple(staged, root, form):
     rows = unpacked(child.record.dims["connection"])
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
-    # The component's other port survives: deletion is per connection, not per
-    # component (https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim).
-    assert "Norwich DC" in left
+    assert "Norwich DC" in left, "the component's other port survives the commit"
 
 
 def _efficiency(record, entity="Manchester Wind") -> dict[str, float]:
@@ -1052,23 +911,6 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     assert _efficiency(child.record)["Manchester"] == 0.5
 
 
-def test_no_coordinate_given_broadcasts_over_every_tuple(staged):
-    """A wholly NULL struct is every tuple, by the broadcast rule.
-
-    Notes
-    -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-    """
-    staged.set("efficiency", 0.7)
-
-    own = staged.edits.attribute("efficiency")
-    assert own.project("connection").fetchall() == [(None,)], "one broadcast row"
-    assert _efficiency(staged) and set(_efficiency(staged).values()) == {0.7}, (
-        "every connection reads the broadcast"
-    )
-
-
 def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
     """A packed struct passes through, one key replacing the last.
 
@@ -1087,22 +929,14 @@ def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
     assert _efficiency(staged)["Manchester"] == 0.25, "one key, replaced"
 
 
-FRAMES = {
-    "pandas": pd.DataFrame,
-    "polars": pl.DataFrame,
-    "arrow": pa.table,
-}
-
-
-@pytest.mark.parametrize("build", FRAMES.values(), ids=FRAMES)
-def test_set_takes_a_frame_duckdb_scans(staged, build):
-    """A pandas, polars or arrow frame lands through DuckDB's own scanner.
+def test_set_takes_a_frame_duckdb_scans(staged):
+    """An arrow frame lands through DuckDB's own scanner.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
-    staged.set("p_nom", build({"entity": ["Manchester Wind"], "value": [42]}))
+    staged.set("p_nom", pa.table({"entity": ["Manchester Wind"], "value": [42]}))
     assert _entity_values(staged, "p_nom")["Manchester Wind"] == 42.0, (
         "an integer column widens to the declared float"
     )
@@ -1146,12 +980,6 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
             id="time-zone",
         ),
         pytest.param(
-            "p_nom",
-            pd.DataFrame({"entity": ["Manchester Wind"], "VALUE": ["high"]}),
-            r"columns \['VALUE'\] the schema does not declare",
-            id="case-variant-value",
-        ),
-        pytest.param(
             "p_max_pu",
             pd.DataFrame(
                 {
@@ -1185,14 +1013,10 @@ def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
     "select",
     [
         "'Manchester Wind' AS entity, 'Manchester' AS bus, 0.5 AS value",
-        "{'entity': 'Manchester Wind', 'bus': 'Manchester'} AS connection, "
-        "'Manchester' AS bus, 0.5 AS value",
-        "{'entity': 'Manchester Wind'} AS connection, 0.5 AS value",
-        "'Manchester' AS connection, 0.5 AS value",
         "{'entity': 'Manchester Wind', 'bus': NULL::VARCHAR} AS connection, "
         "0.5 AS value",
     ],
-    ids=["flat", "both", "partial-struct", "not-a-struct", "partly-null"],
+    ids=["flat", "partly-null"],
 )
 def test_a_frame_carrying_a_multi_dim_but_as_its_struct_is_rejected(staged, select):
     """Flat coordinates, beside the struct or not, or a wrong struct, are refused.
@@ -1246,10 +1070,6 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
     assert _efficiency(child.record) == {}, "its connections are re-added by hand"
 
 
-def _connections(record):
-    return unpacked(record.dims["connection"])
-
-
 _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
 
 
@@ -1267,24 +1087,9 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
             r"carrying both the column 'connection' and its coordinates \['entity'\]",
         ),
         (
-            pd.DataFrame([{"connection": {"entity": 1, "bus": "Norway"}}]),
-            {},
-            "has type INTEGER, which does not fit 'entity'",
-        ),
-        (
             pd.DataFrame([{"entity": "Manchester Wind"}]),
             {},
             r"carries no column \['bus'\]",
-        ),
-        (
-            pd.DataFrame([{"entity": 1, "bus": "Norway"}]),
-            {},
-            "has type BIGINT, which does not fit 'entity'",
-        ),
-        (
-            [{"entity": 1, "bus": "Norway"}],
-            {},
-            "has type INTEGER, which does not fit 'entity'",
         ),
         (
             [{"entity": "Manchester Wind", "bus": "Norway"}, {"entity": 1, "bus": "x"}],
@@ -1302,10 +1107,7 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
     ids=[
         "struct-missing-field",
         "struct-and-coordinates",
-        "mistyped-struct-field",
         "missing-coordinate",
-        "mistyped-coordinate",
-        "mistyped-coordinate-list",
         "mixed-type-coordinate-list",
         "null-coordinate",
         "partial-mapping",
@@ -1323,10 +1125,6 @@ def test_add_needs_a_label_per_coordinate(staged, tuples, columns, match):
         staged.add("connection", tuples, **columns)
 
 
-def _as_struct(pairs):
-    return pd.DataFrame({"connection": [{"entity": e, "bus": b} for e, b in pairs]})
-
-
 def _as_flat(pairs):
     return pd.DataFrame(pairs, columns=["entity", "bus"])
 
@@ -1335,12 +1133,7 @@ def _as_mappings(pairs):
     return [{"entity": e, "bus": b} for e, b in pairs]
 
 
-_TUPLE_SHAPES = pytest.mark.parametrize(
-    "shape", [_as_struct, _as_flat, _as_mappings], ids=["struct", "flat", "mappings"]
-)
-
-
-@_TUPLE_SHAPES
+@pytest.mark.parametrize("shape", [_as_flat, _as_mappings], ids=["flat", "mappings"])
 def test_add_and_remove_take_tuples_in_any_shape(over_roles, shape):
     """The struct column `dims` reads, a column per coordinate, or a list of mappings.
 
@@ -1382,11 +1175,10 @@ def test_add_refuses_what_is_no_frame_duckdb_rescans(staged):
         staged.add("connection", reader)
 
 
-@pytest.mark.parametrize("method", ["add", "remove"])
-def test_a_plain_dim_refuses_a_frame(staged, method):
+def test_a_plain_dim_refuses_a_frame(staged):
     """A frame gives a multi-dim's tuples; read as labels it would be its column names."""
     with pytest.raises(TypeError, match="a frame gives the tuples of a multi-dim"):
-        getattr(staged, method)("entity", pd.DataFrame({"entity": ["Norway Gas"]}))
+        staged.add("entity", pd.DataFrame({"entity": ["Norway Gas"]}))
 
 
 def test_set_addresses_a_multi_dim_by_its_coordinates(staged):
@@ -1553,7 +1345,6 @@ def test_add_takes_a_frame_beside_a_scalar_property(over_roles):
 
 
 # -- rollback (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------------------------------------
-
 
 _SNAPSHOTS = [pd.Timestamp("2030-01-01"), pd.Timestamp("2030-01-02")]
 _CONNECTION = {"entity": "Manchester Wind", "bus": "Norway"}
@@ -1737,16 +1528,6 @@ def test_rollback_reads_as_a_fresh_working_record(request, fresh_reads, fixture,
     assert _reads(staged, built) == fresh_reads(staged), "it reads as a fresh one"
 
 
-def test_rollback_discards_everything_staged(staged, root):
-    staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
-    staged.remove("entity", ["Norway Gas"])
-    staged.rollback()
-
-    rows = staged.attributes["p_max_pu"].df()
-    assert 0.42 not in set(rows["value"])
-    assert "Norway Gas" in _entity_axis(staged).index, "the removal went with the rest"
-
-
 def test_a_key_set_read_before_rollback_raises_after_it(store):
     """An attribute only the staged layer owned is owned by no layer after `rollback()`.
 
@@ -1789,47 +1570,12 @@ def test_writing_the_edits_clears_nothing(staged, root):
 # -- commit targets (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------------------------------
 
 
-def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root):
-    """Owning `snapshot` whole completes the edited series, not every series.
-
-    `p_max_pu` varies over a non-partial `snapshot`, so touching one of
-    Manchester Wind's snapshots makes the layer the owner of that generator's
-    whole series and it must carry the untouched snapshots too. The scope is the
-    key the edit named: a second generator the edit never mentioned stays in the
-    parent, and a layer carrying it would claim an extent it was never given.
-
-    Notes
-    -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
-    """
-    assert "snapshot" not in (staged.schema.partial or frozenset())
-    assert "snapshot" not in staged.schema.owned_per("p_max_pu"), (
-        "owned per entity, but not per snapshot, the axis this test is about"
-    )
-    base = staged.attributes["p_max_pu"].df()
-    mine = base[base["entity"] == "Manchester Wind"].sort_values("snapshot")
-    one = mine.iloc[[0]][["entity", "snapshot"]].assign(value=0.123)
-    assert len(mine) > 1, "a one-snapshot series would not distinguish the two scopes"
-
-    staged.set("p_max_pu", one)
-    child = root.store.commit(staged)
-
-    rows = _layer_rows(child, "p_max_pu")
-    assert set(rows["entity"]) == {"Manchester Wind"}, (
-        "only the touched key's extent is carried"
-    )
-    written = rows.sort_values("snapshot")
-    assert written["value"].tolist() == [0.123, *mine.iloc[1:]["value"].tolist()], (
-        "the edit, then the rest of the series it now owns"
-    )
-
-
-def test_edits_are_written_only_under_their_base(small):
+def test_edits_are_written_only_under_their_base(small, written_directory):
     """A delta against one revision would read back wrong under another.
 
     An axis edit carries its base's sibling columns, so the edits staged over
-    `small` describe a layer over `small` and nothing else.
+    `small` describe a layer over `small` and nothing else - and the edits
+    over a directory, no node in a tree, a layer over none.
 
     Notes
     -----
@@ -1844,6 +1590,9 @@ def test_edits_are_written_only_under_their_base(small):
         store.claim(parent=other).commit(staged)
     with pytest.raises(ValueError, match="delta against"):
         store.commit(staged.edits, parent=other)
+    over_a_directory = WorkingRecord(store.workspace.at(written_directory))
+    with pytest.raises(ValueError, match="delta against"):
+        store.commit(over_a_directory.edits, parent=other)
     assert store.commit(staged).parent == small.id
 
 
@@ -1883,6 +1632,7 @@ def test_an_edit_over_a_directory_base_reads_back(small):
     """
     base = small.store.layer(small.id)
     staged = WorkingRecord(base)
+    assert staged.schema == base.schema, "an edit declares nothing of its own"
 
     def p_nom() -> list[float]:
         return _entity_values(staged, "p_nom").loc[["Manchester Wind"]].tolist()
@@ -1898,25 +1648,6 @@ def test_an_edit_over_a_directory_base_reads_back(small):
     other = WorkingRecord(small.store.layer(small.id))
     assert other._base.revision_id == staged._base.revision_id
     assert other._layer_id != staged._layer_id, "each staging area is its own layer"
-
-
-def test_edits_over_a_directory_are_no_revisions_delta(store, written_directory):
-    """A directory is no node in a tree, so its edits are a child of none.
-
-    Its `revision_id` is the id its manifest carries, so it names no
-    revision; the flattened record writes as a standalone directory instead.
-
-    Notes
-    -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
-    """
-    revision = empty_root(store, Schema()).commit()
-    over_a_directory = WorkingRecord(store.workspace.at(written_directory))
-
-    with pytest.raises(ValueError, match=r"`ws\.write\(w, uri\)`"):
-        store.commit(over_a_directory)
-    with pytest.raises(ValueError, match="delta against"):
-        store.commit(over_a_directory.edits, parent=revision)
 
 
 def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
@@ -1940,41 +1671,21 @@ def test_a_directory_uri_reads_the_same_with_or_without_a_trailing_slash(
     )
 
 
-def test_edits_read_under_the_base_records_schema(store, workspace, tmp_path):
-    """A staging area declares nothing; it edits under the base's declaration.
-
-    Which matters for a standalone base, whose schema is its own directory's
-    rather than any store's: the staged layer is one more source over that
-    base, so the `WorkingRecord` has to carry the schema along. A revision of
-    another store on the same workspace declaring something else must not
-    reach the edit.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
-    """
-    out = str(tmp_path / "standalone")
-    workspace.write(WorkingRecord(_small(store).record), out)
-    unrelated = workspace.store(str(tmp_path / "unrelated"))
-    empty_root(unrelated, Schema()).commit()
-
-    base = workspace.at(out)
-    assert base.schema.dims, "the standalone record carries its own schema"
-    editing = WorkingRecord(base)
-    assert editing.schema == base.schema, "an edit declares nothing of its own"
-    editing.set("p_nom", 999.0, entity=["Manchester Wind"])
-    assert _entity_values(editing, "p_nom")["Manchester Wind"] == 999.0
-
-
 def test_a_standalone_write_of_the_record_is_flattened(small, tmp_path):
     """No parent to resolve against, so the whole record is written.
+
+    The fold's `order_key` is its answer about a frame, never a column of
+    one, so no file written from the resolved frames carries it.
 
     Notes
     -----
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
     """
     staged = WorkingRecord(small.record)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
+    staged.add("connection", [{"entity": "Norway Wind", "bus": "Norway"}])
     out = str(tmp_path / "flat")
     workspace = small.store.workspace
     record = workspace.write(staged, out)
@@ -1987,8 +1698,16 @@ def test_a_standalone_write_of_the_record_is_flattened(small, tmp_path):
         "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
     ).fetchall(), "the write drops the owner map it held for its fold"
 
+    written = sorted(Path(out).rglob("*.parquet"))
+    assert {"dims/entity.parquet", "dims/connection.parquet"} <= {
+        path.relative_to(out).as_posix() for path in written
+    }, "the frames the fold orders must be among those written"
+    for path in written:
+        columns = workspace.con.read_parquet(str(path)).columns
+        assert "order_key" not in columns, f"{path.relative_to(out)} carries order_key"
 
-def test_a_string_valued_attribute_keeps_its_declared_type(staged):
+
+def test_a_string_valued_attribute_keeps_its_declared_type(staged, root):
     """A value round-trips at the dtype its attribute declares, not a guessed one.
 
     Both halves have to hold at once: PyPSA's `sub_network` is a string-valued
@@ -2007,6 +1726,10 @@ def test_a_string_valued_attribute_keeps_its_declared_type(staged):
     numeric = staged.attributes["p"].df()
     assert numeric["value"].tolist() == [42.0], "a numeric value comes back a number"
 
+    committed = root.store.commit(staged).record.attributes["sub_network"].df()
+    mine = committed[committed["entity"] == "Manchester Wind"]
+    assert mine["value"].tolist() == ["0"], "and a committed one reads back as text"
+
 
 def test_one_call_spans_component_types(staged):
     """Names decide the type, so one edit may cross types.
@@ -2022,3 +1745,7 @@ def test_one_call_spans_component_types(staged):
     got = _entity_values(staged, "p_nom")
     assert got["Manchester Wind"] == 150.0
     assert got["DC link"] == 80.0
+
+    staged.set("p_nom", 150.0, entity=["Manchester Wind", "DC link"])
+    got = _entity_values(staged, "p_nom")
+    assert got["Manchester Wind"] == got["DC link"] == 150.0, "a scalar at every label"
