@@ -114,7 +114,7 @@ def test_child_adds_attribute(network):
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
 
 
-def test_closed_child_reads_own_cache(store, network):
+def test_closed_child_reads_own_cache(store, parent):
     """Reading a closed non-root record uses its own persisted dims/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
@@ -124,16 +124,18 @@ def test_closed_child_reads_own_cache(store, network):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    child = empty_child(network)
+    child = empty_child(parent)
     write_attribute(child, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}])
     child.commit().materialise()
 
     reloaded = store.revision(child.id)
-    n = PyPSA.build(reloaded.record)
-    assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
-
+    assert set(reloaded.record.dims["entity"].df()["entity"]) == {
+        "Manchester Wind",
+        "Norway Wind",
+    }, "the entity axis comes from the root through the cache"
     df = relation(reloaded, "p_max_pu").df()
     assert df[df["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
+    assert len(df[df["entity"] == "Norway Wind"]) == 3
 
 
 def test_resolved_reads_same_as_unresolved(store, parent):
@@ -205,7 +207,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     )
 
 
-def test_a_child_widens_the_schema_with_a_new_attribute(network):
+def test_a_child_widens_the_schema_with_a_new_attribute(parent):
     """A child declares an attribute its parent's schema lacks, in its own manifest.
 
     The child's manifest holds the full schema, so the record is read under it,
@@ -215,18 +217,18 @@ def test_a_child_widens_the_schema_with_a_new_attribute(network):
     -----
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    amended = network.manifest.schema.model_copy(deep=True)
+    amended = parent.manifest.schema.model_copy(deep=True)
     amended.attributes["site_quality"] = AttributeSpec(dtype="float", dims={"entity"})
-    assert amended.compatible_with(network.manifest.schema) == []
+    assert amended.compatible_with(parent.manifest.schema) == []
 
-    child_layer = empty_child(network, amended)
+    child_layer = empty_child(parent, amended)
     write_attribute(
-        child_layer, "site_quality", [{"entity": "Norway Gas", "value": 0.1}]
+        child_layer, "site_quality", [{"entity": "Norway Wind", "value": 0.1}]
     )
     child = child_layer.commit()
     assert relation(child, "site_quality").df()["value"].tolist() == [0.1]
     assert "site_quality" in child.record.schema.attributes
-    assert "site_quality" not in network.record.schema.attributes, (
+    assert "site_quality" not in parent.record.schema.attributes, (
         "the parent reads as written"
     )
 

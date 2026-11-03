@@ -19,7 +19,7 @@ from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from tests.fixtures import empty_root
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def schema():
     """`sign` defaults by type, `Link` a type no label has.
 
@@ -59,10 +59,10 @@ def schema():
     )
 
 
-@pytest.fixture
-def revision(store, schema):
+@pytest.fixture(scope="module")
+def revision(module_store, schema):
     """A generator and a load, each connected to one bus; the generator's `p_max_pu` and the load's `p_set` set."""
-    root = empty_root(store, schema).commit()
+    root = empty_root(module_store, schema).commit()
     staged = WorkingRecord(root.record)
     staged.add("entity", ["g1"], ctype="Generator", carrier="wind")
     staged.add("entity", ["l1"], ctype="Load")
@@ -77,7 +77,7 @@ def revision(store, schema):
     return root.store.commit(staged)
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def record(revision):
     return revision.record
 

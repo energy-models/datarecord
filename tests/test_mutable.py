@@ -17,7 +17,6 @@ import polars as pl
 import pyarrow as pa
 import pytest
 
-from datarecord import Workspace
 from datarecord.mutable import WorkingRecord, normalise_value
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
@@ -27,7 +26,6 @@ from tests.fixtures import (
     broadcast,
     empty_child,
     empty_root,
-    export_network,
     schema,
     unpacked,
 )
@@ -36,31 +34,34 @@ GEN = "Generator"
 
 
 @pytest.fixture(scope="module")
-def root(tmp_path_factory, ac_dc):
-    """`ac_dc` exported and materialised once for the module, to branch edits from.
-
-    Shared, so a test only ever branches a child of it and never declares
-    into its store.
-    """
-    workspace = Workspace()
-    revision = export_network(
-        ac_dc, workspace.store(str(tmp_path_factory.mktemp("ac_dc")))
-    )
-    revision.materialise()
-    yield revision
-    workspace.close()
-
-
-@pytest.fixture
-def staged(root):
-    return WorkingRecord(root.record)
+def root(ac_dc_root):
+    """`ac_dc` exported and materialised, to branch edits from."""
+    return ac_dc_root
 
 
 @pytest.fixture(scope="module")
-def written_directory(root, tmp_path_factory):
-    """`root` written standalone, as a URI a caller could pass to `Workspace.at`."""
+def _over_root(root):
+    """One staging area over `root` for the module, rolled back after each test."""
+    return WorkingRecord(root.record)
+
+
+@pytest.fixture
+def staged(_over_root):
+    yield _over_root
+    _over_root.rollback()
+
+
+@pytest.fixture(scope="module")
+def small(module_store):
+    """`_small` once for the module; a test only ever branches a child of it."""
+    return _small(module_store)
+
+
+@pytest.fixture(scope="module")
+def written_directory(small, tmp_path_factory):
+    """`small` written standalone, as a URI a caller could pass to `Workspace.at`."""
     out = str(tmp_path_factory.mktemp("written") / "standalone")
-    root.store.workspace.write(root.record, out)
+    small.store.workspace.write(small.record, out)
     return out
 
 
@@ -716,11 +717,11 @@ def test_add_then_commit_makes_a_label_exist(staged, root):
     assert _entity_axis(child.record).loc["NewSolar", "ctype"] == GEN
 
 
-@pytest.fixture
-def units(store):
-    """An empty record over `unit` and `hour`, `unit` carrying a category and a site."""
-    root = empty_root(
-        store,
+@pytest.fixture(scope="module")
+def _over_units(module_store):
+    """A record over `unit` and `hour`, `unit` carrying a category and a site."""
+    base = empty_root(
+        module_store,
         Schema(
             dimensions={
                 "unit": Dimension(dtype="str"),
@@ -740,7 +741,7 @@ def units(store):
             partial=frozenset({"unit"}),
         ),
     ).commit()
-    staged = WorkingRecord(root.record)
+    staged = WorkingRecord(base.record)
     staged.add("hour", [0])
     staged.add(
         "unit",
@@ -748,7 +749,13 @@ def units(store):
         tech=["plant", "plant", "node"],
         site=["north", "south", "north"],
     )
-    return staged
+    return WorkingRecord(module_store.commit(staged).record)
+
+
+@pytest.fixture
+def units(_over_units):
+    yield _over_units
+    _over_units.rollback()
 
 
 def _unit_axis(record):
@@ -1334,33 +1341,32 @@ _TUPLE_SHAPES = pytest.mark.parametrize(
 
 
 @_TUPLE_SHAPES
-def test_add_and_remove_take_tuples_in_any_shape(store, shape):
+def test_add_and_remove_take_tuples_in_any_shape(over_roles, shape):
     """The struct column `dims` reads, a column per coordinate, or a list of mappings.
 
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
-    staged = WorkingRecord(_with_roles(store).record)
+    staged = over_roles
     staged.add("entity", ["l2"])
     staged.add("connection", shape([("l2", "b0")]), role="mid")
     staged.remove("connection", shape([("l1", "b0")]))
     assert _roles(staged) == {("l1", "b1"): "out", ("l2", "b0"): "mid"}
 
 
-def test_add_takes_back_what_dims_reads(store):
+def test_add_takes_back_what_dims_reads(roles, over_roles):
     """`dims["connection"]` is a frame `add` takes as it stands.
 
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
     """
-    root = _with_roles(store)
-    staged = WorkingRecord(root.record)
+    staged = over_roles
     staged.remove("entity", ["l1"])
     assert _roles(staged) == {}
     staged.add("entity", ["l1"])
-    staged.add("connection", root.record.dims["connection"], role="back")
+    staged.add("connection", roles.record.dims["connection"], role="back")
     assert _roles(staged) == {("l1", "b0"): "back", ("l1", "b1"): "back"}
 
 
@@ -1434,10 +1440,11 @@ def test_every_declared_multi_dim_reads_its_staged_rows(store):
     ], "the second multi-dim reads its own rows, not the first's"
 
 
-def _with_roles(store):
+@pytest.fixture(scope="module")
+def roles(module_store):
     """A root whose `l1` attaches to `b0` and `b1`, `role` a property of `connection`."""
-    root = empty_root(
-        store,
+    base = empty_root(
+        module_store,
         Schema(
             dimensions={
                 "entity": Dimension(dtype="str"),
@@ -1451,7 +1458,7 @@ def _with_roles(store):
             partial=frozenset({"entity", "connection"}),
         ),
     ).commit()
-    staged = WorkingRecord(root.record)
+    staged = WorkingRecord(base.record)
     staged.add("entity", ["l1"])
     staged.add("bus", ["b0", "b1"])
     staged.add(
@@ -1459,7 +1466,19 @@ def _with_roles(store):
         [{"entity": "l1", "bus": "b0"}, {"entity": "l1", "bus": "b1"}],
         role=["in", "out"],
     )
-    return root.store.commit(staged)
+    return module_store.commit(staged)
+
+
+@pytest.fixture(scope="module")
+def _over_roles(roles):
+    return WorkingRecord(roles.record)
+
+
+@pytest.fixture
+def over_roles(_over_roles):
+    """A staging area over `roles`, rolled back after the test."""
+    yield _over_roles
+    _over_roles.rollback()
 
 
 def _roles(record):
@@ -1468,22 +1487,22 @@ def _roles(record):
     return dict(zip(zip(rows["entity"], rows["bus"]), rows["role"]))
 
 
-def test_a_multi_dim_property_is_a_column_of_its_axis_file(store):
+def test_a_multi_dim_property_is_a_column_of_its_axis_file(roles, over_roles):
     """And `set` with the multi-dim's coordinates as keywords patches the tuples they select.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
-    root = _with_roles(store)
-    on_disk = pd.read_parquet(f"{store.layer_dir(root.id)}dims/connection.parquet")
+    store = roles.store
+    on_disk = pd.read_parquet(f"{store.layer_dir(roles.id)}dims/connection.parquet")
     assert "role" in on_disk.columns
 
-    staged = WorkingRecord(root.record)
+    staged = over_roles
     staged.set("connection.role", "both", entity="l1", bus="b1")
     assert _roles(staged) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
 
-    child = root.store.commit(staged)
+    child = store.commit(staged)
     assert _roles(child.record) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
     patch = pd.read_parquet(f"{store.layer_dir(child.id)}dims/connection.parquet")
     assert patch["role"].tolist() == ["in", "both"], (
@@ -1491,23 +1510,23 @@ def test_a_multi_dim_property_is_a_column_of_its_axis_file(store):
     )
 
 
-def test_a_multi_dim_property_with_no_coordinate_reaches_every_tuple(store):
-    staged = WorkingRecord(_with_roles(store).record)
+def test_a_multi_dim_property_with_no_coordinate_reaches_every_tuple(over_roles):
+    staged = over_roles
     staged.set("connection.role", "any")
     assert set(_roles(staged).values()) == {"any"}
 
 
-def test_a_multi_dim_property_refuses_what_is_no_coordinate(store):
-    staged = WorkingRecord(_with_roles(store).record)
+def test_a_multi_dim_property_refuses_what_is_no_coordinate(over_roles):
+    staged = over_roles
     with pytest.raises(ValueError, match="whose tuples its coordinates"):
         staged.set("connection.role", "x", snapshot="2020")
     with pytest.raises(KeyError, match="selects no tuple"):
         staged.set("connection.role", "x", entity="l1", bus="nowhere")
 
 
-def test_add_refuses_an_attribute(store):
+def test_add_refuses_an_attribute(over_roles):
     """An axis row carries properties and keys; an attribute is long rows of `attributes/`."""
-    staged = WorkingRecord(_with_roles(store).record)
+    staged = over_roles
     with pytest.raises(ValueError, match=r"attributes \['efficiency'\].*`set"):
         staged.add("entity", ["l2"], efficiency=0.5)
     frame = pd.DataFrame([{"entity": "l1", "bus": "b0", "efficiency": 0.9}])
@@ -1515,17 +1534,17 @@ def test_add_refuses_an_attribute(store):
         staged.add("connection", frame)
 
 
-def test_add_refuses_a_case_variant_of_a_property(store):
+def test_add_refuses_a_case_variant_of_a_property(over_roles):
     """DuckDB matches a column by name whatever its case, so only the declared spelling is taken."""
-    staged = WorkingRecord(_with_roles(store).record)
+    staged = over_roles
     frame = pd.DataFrame([{"entity": "l1", "bus": "b0", "Role": 1}])
     with pytest.raises(ValueError, match=r"columns \['Role'\] the schema does not"):
         staged.add("connection", frame)
 
 
-def test_add_takes_a_frame_beside_a_scalar_property(store):
+def test_add_takes_a_frame_beside_a_scalar_property(over_roles):
     """A frame carries its own rows, so a keyword beside it is one value for all."""
-    staged = WorkingRecord(_with_roles(store).record)
+    staged = over_roles
     frame = pd.DataFrame({"entity": ["l1"], "bus": ["b0"]})
     staged.add("connection", frame, role="mid")
     assert _roles(staged) == {("l1", "b0"): "mid", ("l1", "b1"): "out"}
@@ -1534,6 +1553,188 @@ def test_add_takes_a_frame_beside_a_scalar_property(store):
 
 
 # -- rollback (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------------------------------------
+
+
+_SNAPSHOTS = [pd.Timestamp("2030-01-01"), pd.Timestamp("2030-01-02")]
+_CONNECTION = {"entity": "Manchester Wind", "bus": "Norway"}
+
+
+@pytest.fixture(scope="module")
+def _over_connected(small):
+    """A child of `small` with two snapshots, a `p_max_pu` series and one connection."""
+    staged = WorkingRecord(small.record)
+    staged.add("snapshot", _SNAPSHOTS)
+    staged.add("connection", [_CONNECTION])
+    staged.set("p_max_pu", [0.4, 0.6], entity="Manchester Wind", snapshot=_SNAPSHOTS)
+    staged.set("efficiency", 0.9, **_CONNECTION)
+    return WorkingRecord(small.store.commit(staged).record)
+
+
+@pytest.fixture
+def connected(_over_connected):
+    yield _over_connected
+    _over_connected.rollback()
+
+
+def _relations(record):
+    return {
+        (member, name): rel
+        for member in ("dims", "properties", "attributes")
+        for name, rel in getattr(record, member).items()
+    }
+
+
+def _read(relations):
+    """Every relation's rows, in order but for an attribute's, which hold none."""
+    return {
+        key: (sorted if key[0] == "attributes" else list)(map(repr, rel.fetchall()))
+        for key, rel in relations.items()
+    }
+
+
+def _reads(record, relations):
+    return {
+        **_read(relations),
+        ("flags", None): record.flags(),
+        ("edits", None): (record.edits.axes(), record.edits.attributes()),
+    }
+
+
+@pytest.fixture(scope="module")
+def fresh_reads():
+    """What a fresh `WorkingRecord` over a record's base reads, once per base."""
+    held = {}
+
+    def reads(record):
+        base = record._base
+        if base.revision_id not in held:
+            fresh = WorkingRecord(base)
+            held[base.revision_id] = _reads(fresh, _relations(fresh))
+        return held[base.revision_id]
+
+    return reads
+
+
+def _then_refused(edit, refused, error):
+    def run(w):
+        edit(w)
+        with pytest.raises(error):
+            refused(w)
+
+    return run
+
+
+def _set_p_nom(w):
+    w.set("p_nom", 150.0, entity="Norway Wind")
+
+
+@pytest.mark.parametrize(
+    ("fixture", "edit"),
+    [
+        ("connected", _set_p_nom),
+        (
+            "connected",
+            lambda w: w.set(
+                "p_max_pu",
+                pd.Series([0.1], index=pd.Index(_SNAPSHOTS[:1], name="snapshot")),
+                entity=["Norway Wind"],
+            ),
+        ),
+        ("connected", lambda w: w.set("e_nom", 10.0, entity="Norway Wind")),
+        ("connected", lambda w: w.set("efficiency", 0.5, **_CONNECTION)),
+        ("connected", lambda w: w.set("entity.ctype", {"Norway Wind": "Load"})),
+        ("units", lambda w: w.set("unit.site", {"p1": "east"})),
+        ("units", lambda w: w.set("unit.tech", "node", unit=["p2"])),
+        (
+            "over_roles",
+            lambda w: w.set("connection.role", "both", entity="l1", bus="b1"),
+        ),
+        ("connected", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
+        ("connected", lambda w: w.add("scenario", ["high"])),
+        (
+            "connected",
+            lambda w: w.add("connection", [{"entity": "Norway Wind", "bus": "Norway"}]),
+        ),
+        (
+            "over_roles",
+            lambda w: w.add(
+                "connection", pd.DataFrame([{"entity": "l1", "bus": "b0"}]), role="mid"
+            ),
+        ),
+        ("connected", lambda w: w.remove("entity", ["Manchester Wind"])),
+        ("connected", lambda w: w.remove("snapshot", _SNAPSHOTS[:1])),
+        ("connected", lambda w: w.remove("connection", [_CONNECTION])),
+        (
+            "connected",
+            lambda w: (
+                w.add("entity", ["Solar"], ctype=GEN),
+                w.set("p_nom", 5.0, entity="Solar"),
+                w.remove("entity", ["Solar"]),
+            ),
+        ),
+        (
+            "connected",
+            _then_refused(
+                _set_p_nom, lambda w: w.set("p_nom", 1.0, entity=["Nope"]), KeyError
+            ),
+        ),
+        (
+            "units",
+            _then_refused(
+                lambda w: w.add("unit", ["p3"], tech="plant"),
+                lambda w: w.set("unit.tech", "nowhere", unit=["p3"]),
+                ValueError,
+            ),
+        ),
+        (
+            "over_roles",
+            _then_refused(
+                lambda w: w.set("connection.role", "both"),
+                lambda w: w.set("connection.role", "x", entity="l1", bus="nowhere"),
+                KeyError,
+            ),
+        ),
+    ],
+    ids=[
+        "set-scalar",
+        "set-series",
+        "set-without-base-rows",
+        "set-multi-dim-attribute",
+        "set-category",
+        "set-property",
+        "set-category-of-a-partial-dim",
+        "set-multi-dim-property",
+        "add-label",
+        "add-to-an-empty-dim",
+        "add-tuple",
+        "add-tuple-with-property",
+        "remove-label",
+        "remove-series-label",
+        "remove-tuple",
+        "add-set-remove",
+        "refused-set",
+        "refused-category",
+        "refused-tuple",
+    ],
+)
+def test_rollback_reads_as_a_fresh_working_record(request, fresh_reads, fixture, edit):
+    """Every read is the fresh staging area's, so one staging area serves a module.
+
+    Read through relations built before the edit, which name no staging table
+    and so still read once `rollback()` drops them. An edit refused after
+    another wrote is rolled back with it.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    staged = request.getfixturevalue(fixture)
+    built = _relations(staged)
+    edit(staged)
+    assert staged.edits.axes() | staged.edits.attributes(), "the edit stages a change"
+
+    staged.rollback()
+    assert _reads(staged, built) == fresh_reads(staged), "it reads as a fresh one"
 
 
 def test_rollback_discards_everything_staged(staged, root):
@@ -1624,26 +1825,26 @@ def test_a_completed_axis_carries_the_touched_key_and_no_other(staged, root):
     )
 
 
-def test_edits_are_written_only_under_their_base(store):
+def test_edits_are_written_only_under_their_base(small):
     """A delta against one revision would read back wrong under another.
 
     An axis edit carries its base's sibling columns, so the edits staged over
-    `root` describe a layer over `root` and nothing else.
+    `small` describe a layer over `small` and nothing else.
 
     Notes
     -----
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
-    root = _small(store)
-    other = empty_root(store, root.manifest.schema).commit()
-    staged = WorkingRecord(root.record)
+    store = small.store
+    other = empty_root(store, small.manifest.schema).commit()
+    staged = WorkingRecord(small.record)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
 
     with pytest.raises(ValueError, match="delta against"):
         store.claim(parent=other).commit(staged)
     with pytest.raises(ValueError, match="delta against"):
         store.commit(staged.edits, parent=other)
-    assert store.commit(staged).parent == root.id
+    assert store.commit(staged).parent == small.id
 
 
 def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root):
@@ -1666,7 +1867,7 @@ def test_the_edits_land_in_the_child_not_the_node_branched_from(staged, root):
     assert len(_entity_values(child.record, "p_nom")) > 1, "the fold resolves the rest"
 
 
-def test_an_edit_over_a_directory_base_reads_back(root):
+def test_an_edit_over_a_directory_base_reads_back(small):
     """A staged edit must win over a directory base, as it does over a layered one.
 
     The two are separate sources of one fold, and `_source_for` tells them apart
@@ -1680,22 +1881,21 @@ def test_an_edit_over_a_directory_base_reads_back(root):
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    staged = WorkingRecord(root.store.layer(root.id))
+    base = small.store.layer(small.id)
+    staged = WorkingRecord(base)
 
-    def marginal_cost() -> list[float]:
-        frame = staged.attributes["marginal_cost"].df()
-        return frame[frame["entity"] == "Manchester Wind"]["value"].tolist()
+    def p_nom() -> list[float]:
+        return _entity_values(staged, "p_nom").loc[["Manchester Wind"]].tolist()
 
-    before = marginal_cost()
-    staged.set("marginal_cost", 4242.0, entity=["Manchester Wind"])
-    assert marginal_cost() == [4242.0], (
+    assert p_nom() == [80.0], "the base holds a value for the edit to displace"
+    staged.set("p_nom", 4242.0, entity=["Manchester Wind"])
+    assert p_nom() == [4242.0], (
         "the staged layer owns the key, so the read takes its value"
     )
-    assert before != [4242.0], "otherwise the assertion above proves nothing"
 
     # The base's id is derived from its revision's rather than allocated, so
     # two readers of one layer agree on which layer they are reading.
-    other = WorkingRecord(root.store.layer(root.id))
+    other = WorkingRecord(small.store.layer(small.id))
     assert other._base.revision_id == staged._base.revision_id
     assert other._layer_id != staged._layer_id, "each staging area is its own layer"
 
@@ -1766,22 +1966,24 @@ def test_edits_read_under_the_base_records_schema(store, workspace, tmp_path):
     assert _entity_values(editing, "p_nom")["Manchester Wind"] == 999.0
 
 
-def test_a_standalone_write_of_the_record_is_flattened(staged, root, tmp_path):
+def test_a_standalone_write_of_the_record_is_flattened(small, tmp_path):
     """No parent to resolve against, so the whole record is written.
 
     Notes
     -----
     - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
     """
+    staged = WorkingRecord(small.record)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
     out = str(tmp_path / "flat")
-    record = root.store.workspace.write(staged, out)
+    workspace = small.store.workspace
+    record = workspace.write(staged, out)
     assert record.schema == staged.schema
-    members = _entity_axis(record)
-    assert _entity_values(record, "p_nom")["Manchester Wind"] == 150.0
-    # Flattened: every component is present, not left to a parent to supply.
-    assert (members["ctype"] == GEN).sum() == 6
-    assert not root.store.workspace.con.sql(
+    assert _entity_values(record, "p_nom").to_dict() == {
+        "Manchester Wind": 150.0,
+        "Norway Wind": 100.0,
+    }, "flattened: the parent's values are written, not left to a parent"
+    assert not workspace.con.sql(
         "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
     ).fetchall(), "the write drops the owner map it held for its fold"
 
