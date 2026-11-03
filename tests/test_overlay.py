@@ -10,6 +10,7 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -18,6 +19,7 @@ import pytest
 from datarecord.protocols import EMPTY
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
+from datarecord.schema.schema import schema_digest
 from datarecord.schema.specs import AttributeSpec
 from datarecord.store.cache import sources_to_read
 from datarecord.store.store import lineage
@@ -186,8 +188,11 @@ def test_a_child_widens_the_schema_with_a_new_attribute(parent):
     -----
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    amended = parent.manifest.schema.model_copy(deep=True)
-    amended.attributes["site_quality"] = AttributeSpec(dtype="float", dims={"entity"})
+    schema = parent.manifest.schema
+    site_quality = AttributeSpec(dtype="float", dims={"entity"})
+    amended = schema.model_copy(
+        update={"attributes": {**schema.attributes, "site_quality": site_quality}}
+    )
     assert amended.compatible_with(parent.manifest.schema) == []
 
     child_layer = empty_child(parent, amended)
@@ -202,6 +207,16 @@ def test_a_child_widens_the_schema_with_a_new_attribute(parent):
     )
 
 
+def test_a_schema_digest_is_that_of_its_manifest(store, parent):
+    """A schema's `digest` is the one its written manifest's schema JSON hashes to, also after a copy changes it."""
+    schema = parent.manifest.schema
+    raw = json.loads(Path(store.manifest_uri(parent.id)).read_text())["schema"]
+    assert schema.digest == schema_digest(raw)[1]
+    changed = schema.model_copy(update={"meta": {"crs": "EPSG:4326"}})
+    assert changed.digest != schema.digest, "a copy drops the original's digest"
+    assert changed.digest == schema_digest(json.loads(changed.model_dump_json()))[1]
+
+
 def test_a_schema_narrowing_is_refused(store, parent):
     """A layer cannot redefine what an attribute means.
 
@@ -209,8 +224,11 @@ def test_a_schema_narrowing_is_refused(store, parent):
     -----
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    narrowed = parent.manifest.schema.model_copy(deep=True)
-    narrowed.attributes["p_max_pu"] = AttributeSpec(dtype="float", dims=frozenset())
+    schema = parent.manifest.schema
+    p_max_pu = AttributeSpec(dtype="float", dims=frozenset())
+    narrowed = schema.model_copy(
+        update={"attributes": {**schema.attributes, "p_max_pu": p_max_pu}}
+    )
 
     class _Narrowed:
         """The record's own source, with one attribute's dims taken away."""

@@ -16,16 +16,15 @@ Notes
 
 from __future__ import annotations
 
-import hashlib
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter
 from pydantic.dataclasses import dataclass
 
-from datarecord.schema.schema import Schema
+from datarecord.schema.schema import Schema, schema_digest
 
 if TYPE_CHECKING:
     from datarecord.store.files import Files
@@ -147,21 +146,6 @@ class ClaimFile:
 _MANIFEST = TypeAdapter(Manifest)
 _CLAIM = TypeAdapter(ClaimFile)
 _META = TypeAdapter(Meta)
-
-
-def schema_digest(raw: Any) -> tuple[str, str]:
-    """`raw`, a schema's JSON form, as compact JSON text and that text's sha256.
-
-    Keys keep their order, which a schema means: a multi-dim's members are
-    ordered.
-    """
-    text = json.dumps(raw, separators=(",", ":"))
-    return text, hashlib.sha256(text.encode()).hexdigest()
-
-
-def written_digest(schema: Schema) -> tuple[str, str]:
-    """`schema_digest` of `schema` as `Manifest.write` writes it."""
-    return schema_digest(json.loads(schema.model_dump_json()))
 
 
 def _create[T](files: Files, uri: str, adapter: TypeAdapter[T], value: T) -> None:

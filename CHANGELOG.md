@@ -150,6 +150,9 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- Breaking: the schema models (`Schema`, `Dimension`, `AttributeSpec`,
+  `PropertySpec`) are frozen; derive a changed one with
+  `model_copy(update=...)`. `Schema.digest` is the sha256 of its manifest JSON.
 - Breaking: `RecordLike` declares `con`, the connection its relations are
   planned on; a hand-written `RecordLike` adds it.
 - `WorkingRecord` over a `RecordLike` that is no `Record` raises a `TypeError`
