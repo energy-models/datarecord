@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | ---------------------------- |
 | Title    | a layer carries its manifest |
 | Author   | Jonas Hörsch                 |
-| Status   | Draft (2026-10-29)           |
+| Status   | Implemented (2026-11-03)     |
 | Requires | [DEP 9](dep-0009-store.md)   |
 | Created  | 2026-10-29                   |
 
