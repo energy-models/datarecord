@@ -294,6 +294,8 @@ class _PerCursor(threading.local):
 
     def __init__(self) -> None:
         self.frozen_coords: Coords | None = None
+        self.coords: Coords | None = None
+        self.labels: dict[str, DuckDBPyRelation] = {}
 
 
 @dataclass(frozen=True)
@@ -464,8 +466,10 @@ class Record:
         """Return every declared dim's folded relation, and the dead labels.
 
         The frozen layers' fold is a set of shared tables (`Coords.shared`),
-        read on the calling thread's cursor. The sources after it are folded
-        per call onto those tables, so a read with staged edits opens no file.
+        read on the calling thread's cursor. The sources above them are folded
+        onto those tables once per thread too, so a read with staged edits
+        opens no file: that fold's plan is fixed, reading the staging tables
+        by name, so it reads every later edit.
 
         Notes
         -----
@@ -476,7 +480,10 @@ class Record:
         _, above = split_frozen(self.sources)
         if not above:
             return frozen
-        return Coords.resolve(self.sources, (frozen, above))
+        cache = self._per_cursor
+        if cache.coords is None:
+            cache.coords = Coords.resolve(self.sources, (frozen, above))
+        return cache.coords
 
     @property
     def _frozen_coords(self) -> Coords:
@@ -530,9 +537,9 @@ class Record:
         NULL takes each value it is owned for. Unmaterialised, in the long
         schema (`schema.long_columns_for`), and empty where no layer owns a
         row of `attribute`. Above the frozen layers the plan is fixed: the
-        staged layers fold onto their map one attribute at a time, and
-        only the rows of a layer holding keys both ways are ranked
-        (`_contested`).
+        staged layers fold onto their map one attribute at a time, onto none
+        where the frozen layers hold no row of it, and only the rows of a
+        layer holding keys both ways are ranked (`_contested`).
 
         Raises
         ------
@@ -551,7 +558,14 @@ class Record:
         con = self.con
         schema = self.schema
         if self._fixed:
-            om = _table(self.revision_id, self.sources, self._frozen_coords, attribute)
+            in_frozen = attribute in self._frozen_owners
+            om = _table(
+                self.revision_id,
+                self.sources,
+                self._frozen_coords,
+                attribute,
+                in_frozen=in_frozen,
+            )
             dead = self._coords.dead
         else:
             fold = self._fold
