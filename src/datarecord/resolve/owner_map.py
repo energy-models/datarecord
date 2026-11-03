@@ -4,7 +4,7 @@
 
 """The owner map: which layer owns each key, folded over a record's layers.
 
-The fold over a frozen prefix is kept in tables the workspace shares, the owner
+The fold over a record's frozen layers is kept in tables the workspace shares, the owner
 map's and the coords' alike.
 
 Notes
@@ -885,19 +885,19 @@ def split_frozen(
 def _table(
     revision_id: UUID,
     sources: Sequence[LayerSource],
-    prefix: Coords,
+    frozen_coords: Coords,
     attribute: str | None = None,
 ) -> DuckDBPyRelation:
     """The owner map for `revision_id`, materialised as far as `frozen` allows.
 
-    The frozen prefix is folded once and kept as a connection-scoped table,
+    The frozen layers are folded once and kept as a connection-scoped table,
     which never needs invalidating since layers are write-once. Whatever follows
     it is folded on top per call and handed back as a relation, so a staging
     area's edits are picked up with no bookkeeping at all: a relation over a
     staging table reads whatever the table holds when it is collected.
-    `prefix` is the frozen prefix's coords, which a restatement after it
-    removes labels from. Where `attribute` is given, only its rows, folded
-    one attribute at a time past the prefix (`_fold_onto`).
+    `frozen_coords` are the frozen layers' coords, which a restatement above
+    them removes labels from. Where `attribute` is given, only its rows,
+    folded one attribute at a time above the frozen layers (`_fold_onto`).
 
     Notes
     -----
@@ -911,14 +911,14 @@ def _table(
     keyed = frozen[-1].schema if frozen else schema
     if attribute is not None and rel is not None:
         rel = rel.filter(col("attribute") == lit(attribute))
-    held = {name: prefix.axes.get(name) for name in _pruned(schema)}
+    held = {name: frozen_coords.axes.get(name) for name in _pruned(schema)}
     return _fold_onto(
         rel,
         above,
         held,
         sources[-1].con,
         keyed=keyed,
-        dead=prefix.dead,
+        dead=frozen_coords.dead,
         attribute=attribute,
     )
 
@@ -926,11 +926,11 @@ def _table(
 def _frozen_table(
     revision_id: UUID, sources: Sequence[LayerSource]
 ) -> DuckDBPyRelation | None:
-    """The frozen prefix's owner map, its own materialised one or a cached fold.
+    """The frozen layers' owner map, its own materialised one or a cached fold.
 
     `None` over no source, so that the tail folds onto no map.
 
-    Keyed by `revision_id` rather than by the prefix: the prefix *is* what that
+    Keyed by `revision_id` rather than by the layers: they *are* what that
     node resolves from, a staged source only ever being appended after it. The
     map is keyed by the last source's schema, which `revision_id` fixes, so
     the table, `owner_map_<id>`, is shared by every cursor on the workspace and

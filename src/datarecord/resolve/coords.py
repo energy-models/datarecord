@@ -471,8 +471,8 @@ def resolve_coords(
         frozen, a staging area, restates every axis but those with `one_of`.
     split
         A folded seed and the sources to fold onto it, where the caller
-        already holds them: `_base_and_above`, or a frozen
-        prefix's coords and the sources after it.
+        already holds them: `_base_and_above`, or the frozen
+        layers' coords and the sources above them.
 
     Returns
     -------

@@ -410,7 +410,7 @@ A written layer is folded once and cached, and the staged layer cannot be, since
 So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top stays a relation.
 An edit then needs no invalidation, since nothing that depends on it is cached.
 
-The plan of a relation of a `WorkingRecord` never depends on the staged rows; it may depend on the rows of the frozen prefix, which do not change while the `WorkingRecord` lives. So a relation built before an edit reads it:
+The plan of a relation of a `WorkingRecord` never depends on the staged rows; it may depend on the rows of the frozen layers, which do not change while the `WorkingRecord` lives. So a relation built before an edit reads it:
 
 ```python
 rel = w.attributes["p_nom"]

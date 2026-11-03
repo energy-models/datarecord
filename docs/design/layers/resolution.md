@@ -100,7 +100,7 @@ A named set that no row holds costs nothing, and only owner-map rows are expande
 A row is copied at most 2^k times for k `partial` dims, and no join compares every row with every other.
 Under a layer's own schema the masks are taken over that schema's `partial` dims, after the map is [extended to it](#extending-the-map-to-a-wider-schema).
 
-One fold serves every purpose: the frozen prefix and its materialised map, [the staged step](../use/editing.md#reading-with-pending-edits), `flags()` and the write of a whole record.
+One fold serves every purpose: the frozen layers and their materialised map, [the staged step](../use/editing.md#reading-with-pending-edits), `flags()` and the write of a whole record.
 Enumerating the named sets a schema allows would also give a fixed plan, but most of its joins would run on empty inputs in every fold of every layer.
 A constant list of candidate masks in the plan grows as 4^k, and at nine `partial` dims building the plan alone takes seconds.
 
@@ -313,7 +313,7 @@ A layer is contested for an attribute where its rows name different sets of `par
 Only the value rows of a contested layer need the window.
 Whether a layer is contested is a column of the map's rows, so the read joins the rows of contested layers in one arm, which ranks them, and those of every other layer in a second arm, which passes them straight through.
 Over frozen layers alone, an attribute that no layer contests, the common case, takes the second arm only.
-Past the frozen prefix the plan cannot ask the rows, so every attribute is planned with both arms.
+Above the frozen layers the plan cannot ask the rows, so every attribute is planned with both arms.
 Ranking every value row instead would keep the plan fixed too, but makes the read of a single base layer with a long series several times slower.
 
 A staged layer meets [the write's refusal](../use/writing.md#shape) of two rows neither more specific as it is staged.

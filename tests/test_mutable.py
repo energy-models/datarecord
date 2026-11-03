@@ -453,7 +453,7 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
     """Set, read, set again, read again: the second read must see the second edit.
 
     That is the whole content of "the staged step is not cached", and it fails
-    loudly if anyone later materialises past the frozen prefix - a
+    loudly if anyone later materialises above the frozen layers - a
     `cached_property` over the tail, or a `.create()` that does not stop where
     `frozen` does. The first read is what arms it: it builds the fold, so a
     cache introduced anywhere in it would be populated before the second `set`.

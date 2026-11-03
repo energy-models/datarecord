@@ -382,9 +382,9 @@ class Record:
 
     @property
     def _fixed(self) -> bool:
-        """Whether this record's relations are planned without reading a row past the frozen prefix.
+        """Whether this record's relations are planned without reading a row above its frozen layers.
 
-        True where a source past the prefix can still change, so a relation
+        True where a source above them can still change, so a relation
         built before an edit reads it.
 
         Notes
@@ -437,7 +437,7 @@ class Record:
     def _coords(self) -> Coords:
         """Return every declared dim's folded relation, and the dead labels.
 
-        The frozen prefix's fold is a set of shared tables (`_frozen_dim_owners`),
+        The frozen layers' fold is a set of shared tables (`_frozen_dim_owners`),
         read on the calling thread's cursor. The sources after it are folded
         per call onto those tables, so a read with staged edits opens no file.
 
@@ -486,7 +486,7 @@ class Record:
 
     @cached_property
     def _dim_owners(self) -> list[tuple[str, UUID, bool]]:
-        """Return the frozen prefix's `(dim, layer_uuid, has_dead)` rows.
+        """Return the frozen layers' `(dim, layer_uuid, has_dead)` rows.
 
         Plain data, which any thread computes the same.
         """
@@ -528,8 +528,8 @@ class Record:
         Joins the owning layers' rows to the owner map; a broadcast dim stored
         NULL takes each value it is owned for. Unmaterialised, in the long
         schema (`schema.long_columns_for`), and empty where no layer owns a
-        row of `attribute`. Past the frozen prefix the plan is fixed: the
-        staged layers fold onto the prefix's map one attribute at a time, and
+        row of `attribute`. Above the frozen layers the plan is fixed: the
+        staged layers fold onto their map one attribute at a time, and
         only the rows of a layer holding keys both ways are ranked
         (`_contested`).
 
@@ -616,7 +616,7 @@ class Record:
         Where every source is frozen, one scan of the map answers every
         attribute and is kept, and rows are ranked only where a layer holds
         keys both ways, its rows naming different sets of `partial` dims.
-        Otherwise the layers past the frozen prefix may change under the
+        Otherwise the layers above the frozen ones may change under the
         reader, so each is a possible owner and every attribute is planned for
         ranking, which `_contested` restricts to such layers' rows as data.
         """
@@ -629,9 +629,9 @@ class Record:
 
     @cached_property
     def _frozen_owners(self) -> dict[str, tuple[list[UUID], bool]]:
-        """Return `_owners` for every attribute of the frozen prefix's map.
+        """Return `_owners` for every attribute of the frozen layers' map.
 
-        What the layers past the prefix fold onto. They may drop a frozen
+        What the layers above them fold onto. They may drop a frozen
         layer's every row of an attribute, which then joins nothing, but add
         no owner other than themselves.
         """
