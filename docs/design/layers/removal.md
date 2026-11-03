@@ -27,7 +27,7 @@ A hand-written layer whose axis file holds only a few labels is a restatement to
 Removing the entity `e1` removes its `p_nom`, its `p_max_pu` at every snapshot and scenario, and its value in every other attribute.
 
 The fold removes the values.
-[`fold_attributes`](resolution.md#owner-map) drops the parent's owner-map rows that name a label or tuple the layer removes.
+[`fold_layer`](resolution.md#owner-map) drops the parent's owner-map rows that name a label or tuple the layer removes.
 A key whose label or tuple was removed is then absent from the resolved map.
 A row that leaves the coordinate NULL names no label and stays.
 A dim outside `partial`, multi or not, is in no key, so its rows are [dropped at read](resolution.md#a-label-outside-the-key) against that coordinate's dead labels.
