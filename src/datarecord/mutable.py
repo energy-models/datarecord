@@ -1348,7 +1348,74 @@ class WorkingRecord(Record):
             broadcast=self._staged_coordinates(attribute),
         )
         self._complete_owned_whole(attribute, table)
+        self._overwrite_crossing(attribute, shaped, table)
         self._refuse_crossing(attribute)
+
+    def _overwrite_crossing(
+        self, attribute: str, rows: DuckDBPyRelation, table: str
+    ) -> None:
+        """Stage `rows`' value where one crosses an earlier staged row that no staged row names both with.
+
+        The later `set` wins there, as it does over an earlier row it covers
+        (`_delete_covered`): the row staged names every label either names,
+        so it is the more specific at the coordinates the two share. `rows`
+        is what the `set` staged, and an earlier row is any other of
+        `attribute`'s staged rows. A staged row already naming both keeps its
+        value, being the more specific.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
+        """
+        coordinates = self.schema.coordinates_of(attribute)
+        if not coordinates:
+            return
+        staged = self._collapsed_attribute(attribute)
+        earlier = (
+            staged.set_alias("s")
+            .join(rows.set_alias("r"), null_safe("s", "r", coordinates), how="anti")
+            .project(*map(col, coordinates))
+            .distinct()
+        )
+        parts = []
+        for a in named_sets(rows, coordinates):
+            for b in named_sets(earlier, coordinates):
+                if a <= b or b <= a:
+                    continue
+                on = [col("r", c) == col("e", c) for c in coordinates if c in a & b]
+                met = join_on(
+                    rows.filter(names_exactly(coordinates, a)).set_alias("r"),
+                    earlier.filter(names_exactly(coordinates, b)).set_alias("e"),
+                    on,
+                )
+                parts.append(
+                    met.project(
+                        *(
+                            coalesce(col("r", c), col("e", c)).alias(c)
+                            for c in coordinates
+                        ),
+                        *(col("r", c) for c in ("attribute", "breakpoint", "value")),
+                    )
+                )
+        if not parts:
+            return
+        meets = (
+            reduce(DuckDBPyRelation.union, parts)
+            .distinct()
+            .set_alias("m")
+            .join(
+                self.con.table(table).set_alias("t"),
+                null_safe("m", "t", coordinates),
+                how="anti",
+            )
+        )
+        snapshot = f"{table}_snapshot"
+        meets.create(snapshot)
+        try:
+            self._insert(self.con.table(snapshot), table, {})
+        finally:
+            self.con.execute(f"DROP TABLE {snapshot}")
 
     def _refuse_crossing(self, attribute: str) -> None:
         """Refuse two staged rows of `attribute` that cross where no staged row names both.
