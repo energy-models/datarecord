@@ -45,7 +45,7 @@ Two records under one schema register the same views, since every record lists e
 
 - `Record.register(name: str) -> None` creates `name` and its views, and adds a row for `name` to the workspace's `registered` table, in one transaction. It raises if `name` exists.
 - `Workspace.unregister(name: str) -> None` drops `name` with its views and its row, in one transaction.
-- `Workspace.registered() -> DuckDBPyRelation` reads the `registered` table: `name`, `location`, `revision`, `working` and `created`. A SQL client reads the table itself.
+- `Workspace.registered() -> DuckDBPyRelation` reads the `registered` table: `name`, `revision`, `working` and `created`. For a `WorkingRecord`, `revision` is the revision it was opened on. A SQL client reads the table itself.
 - `WorkingRecord.rollback()` leaves the views valid, since it refills the staging tables rather than dropping them (DEP 33).
 - `store.commit(w)` leaves the views on `w` as they are. A server drops them and registers a `WorkingRecord` on the new revision.
 
