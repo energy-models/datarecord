@@ -2582,7 +2582,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tbody>
 </table>
 <p>A record holds its schemas from construction, created or not. A <code>Record</code> over revision <code>rid</code> folds <code>rid</code>'s layer and the ancestors down to the deepest materialised one, and reads <code>_fold.&lt;rid&gt;</code> and, where it holds them, an ancestor's <code>_fold.&lt;id&gt;</code>. When the last holder of a schema releases it, the workspace drops it with every table in it. A registration takes its hold inside the transaction that creates its views, so no <code>unregister</code> sees it unheld.</p>
-<p>A workspace opened on a file lists every registration in <code>registered</code> as a holder of nothing: unregistering one drops its views.</p>
+<p>A registration's row in <code>registered</code> lists the schemas it holds in a <code>held</code> column, and a workspace opened on a file holds them again for it: its views read on, and unregistering one drops them.</p>
 <h3 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>Record.close() -&gt; None</code> releases the record's holds. A second call does nothing.</li>
@@ -2636,7 +2636,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <ul>
 <li>Who unregisters an abandoned registration, and by what rule. Unregistering now frees its tables, so the rule decides how long they stay.</li>
 <li>Whether a record's planned relations form a reference cycle with it, which would delay its finaliser to the cycle collector.</li>
-<li>A workspace reopened on a file keeps an earlier run's <code>_staged</code> and <code>_fold</code> schemas, which its registrations may read and no record holds. Sweeping those no registration reads needs a registration to list its schemas in <code>registered</code>.</li>
+<li>A workspace reopened on a file keeps an earlier run's <code>_staged</code> and <code>_fold</code> schemas, which its registrations may read and no record holds. Those no <code>held</code> column lists could be swept, and nothing does yet.</li>
 </ul>
 
 

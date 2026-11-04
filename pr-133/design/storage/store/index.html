@@ -1665,7 +1665,7 @@ A registration holds every schema its record holds, until <code>Workspace.unregi
 The workspace drops a schema, with every table in it, once no holder keeps it.
 A <code>Record</code> collected unclosed gives its schemas to the workspace, which keeps them for its life: <code>store.revision(rid).record.attributes["p_nom"].df()</code> collects the record before <code>.df()</code> reads its fold.
 A closed record refuses every read with <code>ValueError</code>, and <code>Revision.record</code> builds a new one once its cached record is closed.
-A workspace reopened on a file lists every registration in <code>registered</code>, so <code>unregister</code> drops its views there too.</p>
+A workspace reopened on a file holds again, for every registration in <code>registered</code>, the schemas its <code>held</code> column lists, so its views read on and <code>unregister</code> drops them there too.</p>
 <h3 id="the-layers">The layers<a class="headerlink" href="#the-layers" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;location&gt;/
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>└── layers/&lt;id&gt;/

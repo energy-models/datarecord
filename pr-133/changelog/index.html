@@ -1115,7 +1115,8 @@ SPDX-License-Identifier: CC-BY-4.0
   registration holds it. A record collected unclosed keeps its folds for the
   workspace's life, so a chained read stays valid. A closed record raises
   <code>ValueError</code> on every read, and <code>Revision.record</code> builds a new one once its
-  cached record is closed.</li>
+  cached record is closed. <code>Workspace.registered()</code> lists the schemas each
+  registration <code>held</code>, which a reopened workspace holds for it again.</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
