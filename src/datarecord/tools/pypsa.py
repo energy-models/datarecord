@@ -961,11 +961,24 @@ def _names(index: pd.Index) -> pd.Index:
     return index.get_level_values("name") if isinstance(index, pd.MultiIndex) else index
 
 
-def _unscoped(frame: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
-    """`frame` less `scenario`, one row per `keys`: a member or connection is not scoped per scenario."""
+def _unscoped(frame: pd.DataFrame, keys: list[str], what: str) -> pd.DataFrame:
+    """`frame` less `scenario`, one row per `keys`: a member or connection is not scoped per scenario.
+
+    Raises
+    ------
+    ValueError
+        If a column's values at one row of `keys` differ by scenario (`_agreed`).
+    """
     if SCENARIO not in frame.columns:
         return frame
-    return frame.drop(columns=[SCENARIO]).drop_duplicates(subset=keys)
+    unscoped = frame.drop(columns=[SCENARIO]).drop_duplicates(subset=keys)
+    if unscoped.empty:
+        return unscoped
+    scoped = frame.set_index([SCENARIO, *keys])
+    for column in scoped.columns:
+        by = scoped[column].groupby(level=SCENARIO, sort=False)
+        _agreed(what, column, {s: v.droplevel(SCENARIO) for s, v in by}, SCENARIO)
+    return unscoped
 
 
 def _union_all(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation | None:
@@ -1158,7 +1171,7 @@ def _outlined(n: pypsa.Network) -> dict[str, pd.DataFrame]:
     static = _own_static(n.c[_SHAPE])
     keys = ["component", "idx", "type"]
     wkt = pd.DataFrame(static[keys]).assign(geometry=static.geometry.to_wkt())
-    frame = _unscoped(wkt.reset_index(), ["name"])
+    frame = _unscoped(wkt.reset_index(), ["name"], _SHAPE)
     frame[keys] = frame[keys].replace("", None)
     lacking = frame[frame[keys].isna().any(axis=1)]
     if len(lacking):
@@ -2763,17 +2776,18 @@ class _NetworkSource:
         return [dim for dim in self._shapes if dim not in declared]
 
     def check(self) -> None:
-        """Refuse a network a full export cannot write: its shapes as `_outlined` refuses them, or a custom property referring to a dim with a value naming no label of it.
+        """Refuse a network a full export cannot write: a property of a label or entity differing by scenario (`_unscoped`), its shapes as `_outlined` refuses them, or a custom property referring to a dim with a value naming no label of it.
 
         Raises
         ------
         ValueError
-            If either is found.
+            If any is found.
 
         Notes
         -----
         - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
         """
+        _ = self._axes, self._entity_frame
         schema = self.schema
         for subject, typed in self.custom.properties.items():
             for name in typed:
@@ -2921,7 +2935,7 @@ class _NetworkSource:
         static = _own_static(self.n.c[ctype])
         columns = [p for p in self.schema.properties[dim] if p in static.columns]
         frame = static[columns].rename_axis(index={"name": dim}).reset_index()
-        return self._with_shapes(_unscoped(_none_for_empty(frame), [dim]), dim)
+        return self._with_shapes(_unscoped(_none_for_empty(frame), [dim], ctype), dim)
 
     def _with_shapes(self, frame: pd.DataFrame, dim: str) -> pd.DataFrame:
         """`frame`, labels of `dim` in order, with the geometries of those shapes outline (`_outlined`)."""
@@ -2963,7 +2977,7 @@ class _NetworkSource:
             if frames
             else pd.DataFrame(columns=["entity", "bus", "role"])
         )
-        flat = self.con.from_df(_unscoped(rows, [ENTITY, BUS]))
+        flat = self.con.from_df(_unscoped(rows, [ENTITY, BUS], CONNECTION))
         return flat.project(
             _connection_struct(col(ENTITY), col(BUS)), star(exclude=[ENTITY, BUS])
         )
@@ -3284,7 +3298,7 @@ class _NetworkSource:
         static = _own_static(self.n.c[ctype])
         columns = [p for p in self.schema.properties[ENTITY] if p in static.columns]
         frame = static[columns].reset_index().rename(columns={"name": "entity"})
-        return _unscoped(frame, [ENTITY])
+        return _unscoped(frame, [ENTITY], ctype)
 
     def _tagged_long_rel(
         self,

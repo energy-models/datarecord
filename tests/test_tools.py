@@ -2027,6 +2027,39 @@ class TestPyPSA:
             ("high", "split"): {"efficiency": 0.5, "efficiency2": 0.4},
         }, "each scenario's port values land in their own columns"
 
+    def test_a_custom_attribute_differing_per_scenario_survives_a_round_trip(
+        self, store
+    ):
+        """A numeric custom column is an attribute over `scenario`, as `p_nom` is.
+
+        Notes
+        -----
+        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        """
+        n = _north()
+        n.set_scenarios({"low": 0.5, "high": 0.5})
+        n.c.Generator.static["score"] = [1.0, 2.0]
+
+        built = PyPSA.build(export_network(n, store).record)
+        assert built.c.Generator.static["score"].to_dict() == {
+            ("low", "gen"): 1.0,
+            ("high", "gen"): 2.0,
+        }, "each scenario keeps its value"
+
+    def test_a_custom_property_differing_per_scenario_is_refused(self, workspace):
+        """A text custom column is a property, which has no `scenario` dim.
+
+        Notes
+        -----
+        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        """
+        n = _north()
+        n.set_scenarios({"low": 0.5, "high": 0.5})
+        n.c.Bus.static["country"] = ["DE", "FR"]
+
+        with pytest.raises(ValueError, match="'north' has `country` .* by scenario"):
+            PyPSA.to_datarecord(n, workspace.con)
+
     @pytest.mark.parametrize("attr", ["p_nom_extendable", "p_nom_opt"])
     def test_only_pypsas_scenario_invariant_attributes_lack_the_scenario_dim(
         self, attr
