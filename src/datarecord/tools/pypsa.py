@@ -39,7 +39,6 @@ from duckdb import (
     Expression,
     sqltypes,
 )
-from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
@@ -151,7 +150,7 @@ _SCENARIO_INVARIANT = frozenset(
 _CUSTOM = "custom_columns"
 #: How close two floats held by members of a collection agree, as `numpy.isclose`'s defaults.
 _RTOL, _ATOL = 1e-5, 1e-8
-#: The DuckDB types `_apart` compares within that tolerance.
+#: The DuckDB types `_clash` compares within that tolerance.
 _FLOATS = (sqltypes.DOUBLE, sqltypes.FLOAT)
 
 
@@ -722,7 +721,9 @@ def _names(index: pd.Index) -> pd.Index:
     return index.get_level_values("name") if isinstance(index, pd.MultiIndex) else index
 
 
-def _unscoped(frame: pd.DataFrame, keys: list[str], what: str) -> pd.DataFrame:
+def _unscoped(
+    frame: pd.DataFrame, keys: list[str], what: str, con: DuckDBPyConnection
+) -> pd.DataFrame:
     """`frame` less `scenario`, one row per `keys`: a member or connection is not scoped per scenario.
 
     Raises
@@ -739,7 +740,7 @@ def _unscoped(frame: pd.DataFrame, keys: list[str], what: str) -> pd.DataFrame:
     for column in scoped.columns:
         by = scoped[column].groupby(level=SCENARIO, sort=False)
         values = {s: v.droplevel(SCENARIO) for s, v in by}
-        _agreed(what, column, values, SCENARIO, "the scenarios")
+        _agreed(what, column, values, SCENARIO, con, "the scenarios")
     return unscoped
 
 
@@ -914,7 +915,7 @@ class _Custom:
         return cls(columns, properties, attributes)
 
 
-def _outlined(n: pypsa.Network) -> dict[str, pd.DataFrame]:
+def _outlined(n: pypsa.Network, con: DuckDBPyConnection) -> dict[str, pd.DataFrame]:
     """`n`'s shapes as the properties of the labels they outline, by dim: each label and its `shape_{type}` geometries as WKT, in network order.
 
     A shape's `component` names its dim: a PyPSA type its dim (`_dim_of`),
@@ -934,7 +935,7 @@ def _outlined(n: pypsa.Network) -> dict[str, pd.DataFrame]:
     static = _own_static(n.c[_SHAPE])
     keys = ["component", "idx", "type"]
     wkt = pd.DataFrame(static[keys]).assign(geometry=static.geometry.to_wkt())
-    frame = _unscoped(wkt.reset_index(), ["name"], _SHAPE)
+    frame = _unscoped(wkt.reset_index(), ["name"], _SHAPE, con)
     frame[keys] = frame[keys].replace("", None)
     lacking = frame[frame[keys].isna().any(axis=1)]
     if len(lacking):
@@ -1392,25 +1393,20 @@ def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
                 raise ValueError(msg)
 
 
-def _clashing(long: pd.Series, keys: list[int]) -> pd.Series:
-    """Per row of `long`, whether the members' values at its label clash.
+def _clash(rel: DuckDBPyRelation) -> str:
+    """The SQL aggregate over rows of `rel` at one label, true where their `value`s clash.
 
     Floats agree within `_RTOL` and `_ATOL` of their largest magnitude, an
-    infinity only with one of its sign, any other dtype where equal; missing
-    clashes with held. A missing key is a label like any other.
+    infinity only with one of its sign, any other type where equal; missing
+    clashes with held.
     """
-    grouped = long.groupby(level=keys, sort=False, dropna=False)
-    held = long.notna().groupby(level=keys, sort=False, dropna=False)
-    mixed = held.transform("any") & ~held.transform("all")
-    unequal = grouped.transform("nunique") > 1
-    if not pd.api.types.is_float_dtype(long):
-        return mixed | unequal
-    spread = grouped.transform("max") - grouped.transform("min")
-    scale = long.abs().groupby(level=keys, sort=False, dropna=False).transform("max")
-    infinite = np.isinf(long).groupby(level=keys, sort=False, dropna=False)
-    return (
-        mixed | (spread > _ATOL + _RTOL * scale) | (infinite.transform("any") & unequal)
-    )
+    unequal = "count(DISTINCT value) > 1"
+    if rel.types[rel.columns.index("value")] in _FLOATS:
+        unequal += (
+            f" AND (bool_or(isinf(value)) OR max(value) - min(value) > "
+            f"{_ATOL} + {_RTOL} * max(abs(value)))"
+        )
+    return f"(0 < count(value) AND count(value) < count(*)) OR ({unequal})"
 
 
 def _agreed(
@@ -1418,6 +1414,7 @@ def _agreed(
     attr: str,
     values: Mapping[Any, pd.Series],
     by: str,
+    con: DuckDBPyConnection,
     across: str = "the members holding it",
 ) -> pd.Series:
     """One value per label, from each member's `values` that holds it, in the order first held.
@@ -1432,13 +1429,16 @@ def _agreed(
     Raises
     ------
     ValueError
-        If two members hold values for one label that do not agree (`_clashing`).
+        If two members hold values for one label that do not agree (`_clash`).
     """
     long = pd.concat(values, names=[by])
     keys = list(range(1, long.index.nlevels))
-    apart = _clashing(long, keys)
-    if apart.any():
-        label, held = _first_apart(long, apart)
+    group = long.groupby(level=keys, sort=False, dropna=False).ngroup().to_numpy()
+    rel = con.from_df(pd.DataFrame({"g": group, "value": long.to_numpy()}))
+    clashing = rel.aggregate(f"g, {_clash(rel)} AS clash", "g").filter("clash")
+    [(first,)] = clashing.aggregate("min(g)").fetchall()
+    if first is not None:
+        label, held = _first_apart(long, group == first)
         name = label[0] if len(label) == 1 else label
         msg = (
             f"{what} {name!r} has `{attr}` {held} by {by}: a value that does not "
@@ -1448,11 +1448,9 @@ def _agreed(
     return long.groupby(level=keys, sort=False).first()
 
 
-def _first_apart(long: pd.Series, apart: pd.Series) -> tuple[tuple, dict[Any, Any]]:
-    """The label of `long`'s first row `apart` marks, and each member's value there."""
-    keys = list(range(1, long.index.nlevels))
-    group = long.groupby(level=keys, sort=False, dropna=False).ngroup().to_numpy()
-    values = long[group == group[apart.to_numpy()][0]]
+def _first_apart(long: pd.Series, apart: np.ndarray) -> tuple[tuple, dict[Any, Any]]:
+    """The label of `long`'s rows `apart` marks, and each member's value there."""
+    values = long[apart]
     return values.index[0][1:], {key[0]: value for key, value in values.items()}
 
 
@@ -1487,6 +1485,7 @@ def _merge(
     merged: pypsa.Network,
     members: Mapping[Any, pypsa.Network],
     names: Callable[[pypsa.Components], Iterable[str]],
+    con: DuckDBPyConnection,
 ) -> None:
     """Replace each of `names` on `merged` with the `members`' values, then number its SubNetworks.
 
@@ -1520,11 +1519,11 @@ def _merge(
                     if attr in part.static.columns
                 }
                 active = {p: v[v.index.isin(live[p])] for p, v in held.items()}
-                values = _agreed(c.name, attr, active, PERIOD)
+                values = _agreed(c.name, attr, active, PERIOD, con)
                 idle = {
                     p: v.drop(values.index, errors="ignore") for p, v in held.items()
                 }
-                values = pd.concat([values, _agreed(c.name, attr, idle, PERIOD)])
+                values = pd.concat([values, _agreed(c.name, attr, idle, PERIOD, con)])
                 c.static[attr] = values.reindex(c.static.index, fill_value=default)
             if len(series) > 0:
                 wide = [
@@ -1551,7 +1550,7 @@ def _dense(
 
 
 def _over_periods(
-    members: Mapping[Any, pypsa.Network], results_only: bool
+    members: Mapping[Any, pypsa.Network], results_only: bool, con: DuckDBPyConnection
 ) -> pypsa.Network:
     """The multi-period network holding every member's period, its axes and components the union of theirs (`_merge`).
 
@@ -1604,6 +1603,7 @@ def _over_periods(
                 for attr in [*m.c[c.name].static.columns, *m.c[c.name].dynamic]
             }
         ),
+        con,
     )
     for ctype, statics in held.items():
         _retire(merged.c[ctype], statics, list(members))
@@ -2489,7 +2489,7 @@ class _NetworkSource:
     @cached_property
     def _shapes(self) -> dict[str, pd.DataFrame]:
         """The network's shapes as properties of the labels they outline (`_outlined`)."""
-        return _outlined(self.n)
+        return _outlined(self.n, self.con)
 
     @cached_property
     def _shape_dims(self) -> list[str]:
@@ -2666,7 +2666,9 @@ class _NetworkSource:
         static = _own_static(self.n.c[ctype])
         columns = [p for p in self.schema.properties[dim] if p in static.columns]
         frame = static[columns].rename_axis(index={"name": dim}).reset_index()
-        return self._with_shapes(_unscoped(_none_for_empty(frame), [dim], ctype), dim)
+        return self._with_shapes(
+            _unscoped(_none_for_empty(frame), [dim], ctype, self.con), dim
+        )
 
     def _with_shapes(self, frame: pd.DataFrame, dim: str) -> pd.DataFrame:
         """`frame`, labels of `dim` in order, with the geometries of those shapes outline (`_outlined`)."""
@@ -2708,7 +2710,7 @@ class _NetworkSource:
             if frames
             else pd.DataFrame(columns=["entity", "bus", "role"])
         )
-        flat = self.con.from_df(_unscoped(rows, [ENTITY, BUS], CONNECTION))
+        flat = self.con.from_df(_unscoped(rows, [ENTITY, BUS], CONNECTION, self.con))
         return flat.project(
             _connection_struct(col(ENTITY), col(BUS)), star(exclude=[ENTITY, BUS])
         )
@@ -3037,7 +3039,7 @@ class _NetworkSource:
         static = _own_static(self.n.c[ctype])
         columns = [p for p in self.schema.properties[ENTITY] if p in static.columns]
         frame = static[columns].reset_index().rename(columns={"name": "entity"})
-        return _unscoped(frame, [ENTITY], ctype)
+        return _unscoped(frame, [ENTITY], ctype, self.con)
 
     def _tagged_long_rel(
         self,
@@ -3517,40 +3519,21 @@ def _keys(relations: Mapping[Any, Relations]) -> tuple[str, ...]:
 def _differs(held: Mapping[Any, DuckDBPyRelation], labels: Sequence[Any]) -> bool:
     """Whether an attribute's rows, `held` by each member holding it, differ across the members' `labels`.
 
-    Each member is compared with the first in DuckDB, stopping at the first
-    that differs (`_apart`).
+    Each member is stacked with the first in DuckDB, stopping at the first
+    that differs: where a row is held by one alone, or its values clash
+    (`_clash`). A missing key is a label like any other.
     """
     if any(label not in held for label in labels):
         return True
     first, *rest = held.values()
-    return any(_apart(first, other) for other in rest)
+    keys = ", ".join(str(col(c)) for c in first.columns if c != "value")
 
+    def apart(other: DuckDBPyRelation) -> bool:
+        stacked = first.union(other.select(*map(col, first.columns)))
+        clash = f"count(*) < 2 OR {_clash(stacked)} AS clash"
+        return bool(stacked.aggregate(clash, keys).filter("clash").limit(1).fetchall())
 
-def _apart(a: DuckDBPyRelation, b: DuckDBPyRelation) -> bool:
-    """Whether two members' long rows of one attribute differ.
-
-    A row held by one alone differs; one held by both where its values clash.
-    Floats, on both sides, agree as `_clashing` has them, any other type
-    where not distinct; missing clashes with held. A missing key is a label
-    like any other.
-    """
-    keys = [c for c in a.columns if c != "value"]
-    marked = [rel.project(star(), lit(True).alias("_held")) for rel in (a, b)]
-    joined = (
-        marked[0]
-        .set_alias("a")
-        .join(marked[1].set_alias("b"), null_safe("a", "b", keys), how="outer")
-    )
-    x, y = col("a", "value"), col("b", "value")
-    clash = f"{x} IS DISTINCT FROM {y}"
-    if all(r.types[r.columns.index("value")] in _FLOATS for r in (a, b)):
-        clash = (
-            f"({x} IS NULL) <> ({y} IS NULL) OR ({clash} AND (isinf({x}) "
-            f"OR isinf({y}) OR abs({x} - {y}) > {_ATOL} + {_RTOL} * "
-            f"greatest(abs({x}), abs({y}))))"
-        )
-    missing = col("a", "_held").isnull() | col("b", "_held").isnull()
-    return bool(joined.filter(missing | sql(clash)).limit(1).fetchall())
+    return any(apart(other) for other in rest)
 
 
 def _widened(
@@ -3593,7 +3576,7 @@ def _axis_union(
     order = _ordered_union(subject, {label: f.index for label, f in keyed.items()}, by)
     columns = next(iter(keyed.values())).columns
     agreed = {
-        c: _agreed(subject, c, {label: f[c] for label, f in keyed.items()}, by)
+        c: _agreed(subject, c, {label: f[c] for label, f in keyed.items()}, by, con)
         for c in columns
     }
     frame = pd.DataFrame(agreed, index=order, columns=columns)
@@ -4097,7 +4080,7 @@ class PyPSACollectionTool(Tool):
         members = _collection_members(model, base)
         dim = model.index.name
         if dim == PERIOD:
-            merged = _over_periods(members, results_only)
+            merged = _over_periods(members, results_only, con)
             return self.network.to_datarecord(
                 merged, con, results_only=results_only, base=base
             )
