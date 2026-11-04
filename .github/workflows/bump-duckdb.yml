@@ -2,9 +2,9 @@
 #
 # SPDX-License-Identifier: MIT
 
-# DuckDB is pinned exactly, since `register` calls its private `_create_view`
-# and `_render`. This moves the pin to the newest release once the suite passes
-# on it. The suite runs here: a pull request opened with GITHUB_TOKEN starts no
+# DuckDB is capped at the newest release the suite passed on, since `register`
+# calls its private `_create_view` and `_render`. This raises the cap to the
+# newest release once the suite passes on it. The suite runs here: a pull request opened with GITHUB_TOKEN starts no
 # other workflow.
 name: Bump DuckDB
 permissions:
@@ -26,16 +26,16 @@ jobs:
         uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
           run-install: false
-      - name: Pin the newest DuckDB
+      - name: Cap DuckDB at the newest release
         id: pin
         run: |
-          old=$(sed -nE 's/^duckdb = "==(.+)"$/\1/p' pixi.toml)
-          sed -i -E 's/^duckdb = "==.+"$/duckdb = "*"/' pixi.toml
-          sed -i -E 's/"duckdb==[^"]+"/"duckdb"/' pyproject.toml
+          old=$(sed -nE 's/^duckdb = ">=[^,]+,<=(.+)"$/\1/p' pixi.toml)
+          sed -i -E 's/^(duckdb = ">=[^,"]+),<=[^"]+"$/\1"/' pixi.toml
+          sed -i -E 's/"(duckdb>=[^,"]+),<=[^"]+"/"\1"/' pyproject.toml
           pixi update --no-install duckdb python-duckdb
           new=$(grep -oP 'noarch/duckdb-\K[0-9][0-9.]*(?=-)' pixi.lock | sort -uV | tail -1)
-          sed -i -E "s/^duckdb = \"\\*\"$/duckdb = \"==${new}\"/" pixi.toml
-          sed -i -E "s/\"duckdb\"/\"duckdb==${new}\"/" pyproject.toml
+          sed -i -E "s/^(duckdb = \">=[^,\"]+)\"$/\1,<=${new}\"/" pixi.toml
+          sed -i -E "s/\"(duckdb>=[^,\"]+)\"/\"\1,<=${new}\"/" pyproject.toml
           pixi lock
           echo "old=${old}" >> "$GITHUB_OUTPUT"
           echo "new=${new}" >> "$GITHUB_OUTPUT"
@@ -47,10 +47,10 @@ jobs:
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "build: pin DuckDB ${{ steps.pin.outputs.new }}"
-          title: "build: pin DuckDB ${{ steps.pin.outputs.new }}"
+          commit-message: "build: cap DuckDB at ${{ steps.pin.outputs.new }}"
+          title: "build: cap DuckDB at ${{ steps.pin.outputs.new }}"
           body: |
-            Moves the exact DuckDB pin from ${{ steps.pin.outputs.old }} to ${{ steps.pin.outputs.new }}.
+            Raises the DuckDB cap from ${{ steps.pin.outputs.old }} to ${{ steps.pin.outputs.new }}.
             The test suite passed on it in the run that opened this pull request.
           branch: bump-duckdb
           base: main
