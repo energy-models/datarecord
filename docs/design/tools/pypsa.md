@@ -270,6 +270,7 @@ A member holds its own period alone.
 A series is each member's at its snapshots, and a static value such as `p_nom_opt` or a global constraint's `mu` comes from the members that hold the entity.
 Two members holding different static values for one entity are refused, and an entity no member holds is at its default.
 The SubNetworks are numbered once for the whole network rather than per member.
+An asset with a `lifetime`, such as a generator, that a member lacks after an earlier one held it is retired there: its `lifetime` ends at the first period lacking it, as PyPSA-Eur's brownfield step removes a retired asset, and one held again after a gap is refused.
 A static value counts only from the members holding the entity active in their period, so an entity a member holds idle, such as a generator retired before it, agrees with no one; an entity active in no member takes the value the members holding it agree on.
 Over `base`, a member holds only snapshots, buses and entities that `base` holds, and `base`'s results stand at every period, snapshot and entity no member holds ([writing results](#writing-results)).
 A `base` with a dim of its own is refused, since it builds to a collection rather than the one network the members split.
