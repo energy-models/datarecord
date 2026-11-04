@@ -22,7 +22,7 @@ import weakref
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property, partial, wraps
-from typing import TYPE_CHECKING, ClassVar, Self, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
 from uuid import UUID, uuid4
 
 import duckdb
@@ -59,6 +59,7 @@ from datarecord.resolve.owner_map import (
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties
 from datarecord.schema.schema import LAYER_COLUMN, Schema
+from datarecord.select import Selection, select
 
 if TYPE_CHECKING:
     from datarecord.store.store import Workspace, _Holds
@@ -477,6 +478,20 @@ class Record:
         - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
         return self._fold.flags(**categories)
+
+    def select(self, **labels: Any) -> Selection:
+        """This record at the labels named, as `datarecord.select` takes them.
+
+        Raises
+        ------
+        ValueError
+            As `datarecord.select` does, naming the keyword.
+
+        Notes
+        -----
+        - [selecting](https://energy-models.github.io/datarecord/design/use/selecting/)
+        """
+        return select(self, **labels)
 
     def register(self, name: str) -> None:
         """Create the DuckDB schema `name` with a view per dim, property subject and attribute.

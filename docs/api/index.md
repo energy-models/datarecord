@@ -23,16 +23,18 @@ from datarecord import (
     Relations,
     Revision,
     Schema,
+    Selection,
     Store,
     WorkingRecord,
     Workspace,
+    select,
 )
 ```
 
-| page                        | symbols                                                       |
-| --------------------------- | ------------------------------------------------------------- |
-| [Record](record.md)         | `Record`, `RecordLike`, `Relations`, `LazyRelations`, `Flags` |
-| [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                        |
-| [Store](store.md)           | `Workspace`, `Store`, `Claim`, `Revision`, `Manifest`         |
-| [WorkingRecord](mutable.md) | `WorkingRecord`                                               |
-| [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                        |
+| page                        | symbols                                                                              |
+| --------------------------- | ------------------------------------------------------------------------------------ |
+| [Record](record.md)         | `Record`, `RecordLike`, `Relations`, `LazyRelations`, `Flags`, `select`, `Selection` |
+| [Schema](schema.md)         | `Schema`, `Dimension`, `AttributeSpec`                                               |
+| [Store](store.md)           | `Workspace`, `Store`, `Claim`, `Revision`, `Manifest`                                |
+| [WorkingRecord](mutable.md) | `WorkingRecord`                                                                      |
+| [Tools](tools.md)           | `Tool`, `Requirements`, the PyPSA tool                                               |

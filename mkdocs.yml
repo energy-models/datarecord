@@ -48,6 +48,7 @@ nav:
           - Resolution: design/layers/resolution.md
       - Using a record:
           - Reading: design/use/reading.md
+          - Selecting: design/use/selecting.md
           - Editing: design/use/editing.md
           - Writing: design/use/writing.md
       - Storage:

@@ -141,6 +141,56 @@ else:
     ...  # constants for some generators, series for others
 ```
 
+## Selecting a view
+
+`record.select(**labels)` reads the record at some of its labels, as xarray's `sel` does, and is itself a record ([design](../design/use/selecting.md)).
+One label squeezes its dim out of the view, and a list, a slice or a partial date string keeps it:
+
+```python
+from datarecord import select
+
+record.select(period=2030)  # period squeezed; properties referring to it gone
+record.select(period=[2030, 2040])  # kept at two labels
+record.select(period=slice(2030, None))  # 2030 onwards, kept
+record.select(snapshot=slice("2013-02", "2013-03"))  # February and March
+record.select(snapshot="2013-02")  # February, kept
+record.select(scenario="high")  # squeezed
+select(framework_record, scenario="high")  # any RecordLike
+```
+
+Every label that refers to a dropped one goes with it, through properties and multi-dim tuples, and nothing flows back:
+
+```python
+record.select(bus=["north", "south"])  # connections to other buses go
+record.select(carrier=["AC", "wind"])  # AC buses, wind entities, NULL carriers stay
+record.select(entity=["wind1"])  # its connections stay, every bus too
+record.select(country=["DE"])  # buses in German states, through bus.state
+record.select(**{"from": "north"})  # a coordinate narrows its multi-dim's tuples
+record.select(sign=-1.0)  # a property by its bare name narrows its subject
+```
+
+The view reads like any record, and its attributes stay query plans on `record.con`.
+A squeezed dim's column is gone from every attribute, its rows NULL there settled to the label by the broadcast rule.
+Its `labels` are what you asked for, normalized, so you narrow a view by selecting again:
+
+```python
+view = record.select(period=2030).select(carrier=["AC"])
+view.labels  # {"period": 2030, "carrier": ["AC"]}
+view.base  # record, never a selection
+view.attributes["p_nom"].df()
+```
+
+A label the axis lacks, an empty list, a slice with a step, a slice of an axis of text and a slice covering no label are refused at the call, and the error names the keyword.
+So is a squeeze that would hand a label with no category the default `default_by` sets for the squeezed one, such as `ctype="Load"` while an entity has no `ctype`; `ctype=["Load"]` keeps the dim and every default as the record has it.
+
+Rows you compute over a view and write back over the record need the squeezed labels back, which `lift` adds:
+
+```python
+view = record.select(scenario="high")
+result = view.attributes["price"]  # bus | snapshot | attribute | breakpoint | value
+view.lift("price", result)  # bus | snapshot | scenario = 'high' | ...
+```
+
 ## Closing
 
 A record holds the tables its fold is kept in until you `close()` it, and a `with` block closes it on exit.
