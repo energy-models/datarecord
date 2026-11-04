@@ -23,24 +23,22 @@ import re
 import warnings
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass
 from functools import cache, cached_property, reduce
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 import numpy as np
 import pandas as pd
+from duckdb import CoalesceOperator as coalesce
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
 from duckdb import (
-    CaseExpression,
     DuckDBPyConnection,
     DuckDBPyRelation,
     Expression,
     sqltypes,
 )
-from duckdb import CoalesceOperator as coalesce
-from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
-from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype
 
 from datarecord.duck import (
     empty_relation,
@@ -59,6 +57,7 @@ from datarecord.schema.specs import (
     Dimension,
     PropertySpec,
 )
+from datarecord.select import Selection, select
 from datarecord.settle import settle
 from datarecord.tools.base import (
     Requirements,
@@ -299,196 +298,102 @@ def _rebuilt(schema: RecordSchema, **fields: Any) -> RecordSchema:
     return RecordSchema(**{**schema.model_dump(), **fields})
 
 
-#: The column `_Selection._kept` numbers a relation's rows in.
-_ROW = "_kept_row"
-#: The dims `build` selects labels of without squeezing them, a scalar being a one-label list.
-_FILTERED = (SNAPSHOT, BUS, ENTITY, CARRIER)
-#: The dims `build` slices, with a record's own, where their labels are numbers or datetimes.
-_ORDERED = (SNAPSHOT, PERIOD)
 #: PyPSA's `build_year` and `lifetime` where a record declares no default.
 _ACTIVE_FALLBACK = {"build_year": 0, "lifetime": math.inf}
 #: The period a `GlobalConstraint` applies in, NULL applying in every period.
 _INVESTMENT_PERIOD = "investment_period"
-#: The `n.meta` key of the period a single-period network was built at out of several.
-_SELECTED_PERIOD = "datarecord_period"
+#: The dims a network is built from a selection squeezing, beside a record's own.
+_SQUEEZABLE = frozenset({PERIOD, SCENARIO})
+#: The keywords selecting snapshots, at all of which a results layer restates a series.
+_TIME = frozenset({SNAPSHOT, TIMESTEP, PERIOD})
 
 
-@dataclass(frozen=True)
-class _Selection:
-    """`record` at one label of each dim in `squeeze`, and at the labels in `keep` of the others.
+def _root(record: RecordLike) -> RecordLike:
+    """The record `record` selects from, itself where it is no `Selection`."""
+    return record.base if isinstance(record, Selection) else record
 
-    A squeezed dim's attribute rows are those at its label and those NULL on
-    it, settled, the dim dropped, with every attribute over squeezed dims
-    alone and every property referring to one; a squeezed dim of the record's
-    own (`_own_dims`) leaves the schema. A kept dim's axis, properties and
-    attribute rows are those at a kept label, a row NULL on it kept, and
-    `entity` and `bus` keep the `connection` tuples by their fields. A
-    multi-dim loses its coordinates over a squeezed dim, so a squeezed
-    `period` leaves `snapshot` over `timestep` alone, and drops
-    `investment_period`, a single-period network holding no period to name.
-    `scenario_weight` over kept scenarios is renormalised to sum to 1, as
-    PyPSA requires.
+
+def _squeezed(record: RecordLike) -> frozenset[str]:
+    """The dims a selection squeezes out of its base, none for any other record."""
+    dims = record.schema.dimensions
+    return frozenset(d for d in _root(record).schema.dimensions if d not in dims)
+
+
+def _narrowed(record: RecordLike) -> RecordLike:
+    """`record`, a selection building a network, selected once more as PyPSA holds it; any other record as it is.
+
+    A period holding no kept snapshot goes, and an entity attached to a bus
+    the selection drops. Where the selection holds fewer periods than its
+    base, an entity active in none of them (`_active`) goes, and one whose
+    `investment_period` names another (`_applying`). A selection keeping a
+    dim of the record's own is checked alone: `build` narrows each member.
+
+    Raises
+    ------
+    ValueError
+        If the selection squeezes a dim but `period`, `scenario` or a dim of
+        the record's own, holds no snapshot, or as `_active` and `_applying`
+        do.
 
     Notes
     -----
     - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
-    - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-
-    record: RecordLike
-    squeeze: Mapping[str, Any]
-    keep: Mapping[str, list[Any]] = field(default_factory=dict)
-
-    @property
-    def con(self) -> DuckDBPyConnection:
-        return self.record.con
-
-    @cached_property
-    def schema(self) -> RecordSchema:
-        schema = self.record.schema
-        own = self.squeeze.keys() & set(_own_dims(schema))
-        shrunk = {
-            d: schema.dimensions[d].model_copy(update={"over": over})
-            for d, over in self._shrunk.items()
-        }
-        return _rebuilt(
-            schema,
-            dimensions={
-                d: shrunk.get(d, s)
-                for d, s in schema.dimensions.items()
-                if d not in own
-            },
-            properties={
-                subject: {
-                    n: s for n, s in specs.items() if s.one_of not in self.squeeze
-                }
-                for subject, specs in schema.properties.items()
-            },
-            attributes={
-                name: spec.model_copy(update={"dims": spec.dims - own})
-                for name, spec in schema.attributes.items()
-                if not (spec.dims and spec.dims <= self.squeeze.keys())
-                and not (name == _INVESTMENT_PERIOD and PERIOD in self.squeeze)
-            },
-            partial=(schema.partial or frozenset()) - own,
+    if not isinstance(record, Selection):
+        return record
+    base = record.base
+    refused = sorted(_squeezed(record) - _SQUEEZABLE - set(_own_dims(base.schema)))
+    if refused:
+        msg = (
+            f"A network is built from a selection squeezing `period`, `scenario` "
+            f"or a dim of the record's own, not {refused}: select one label as a "
+            "list of one to keep the dim"
         )
-
-    @cached_property
-    def _shrunk(self) -> dict[str, dict[str, str]]:
-        """The coordinates each multi-dim keeps, of those with one over a squeezed dim."""
-        schema = self.record.schema
-        return {
-            d: {c: on for c, on in over.items() if on not in self.squeeze}
-            for d in schema.multi_dims
-            if (over := schema.over(d)).values() & self.squeeze.keys()
-        }
-
-    @property
-    def dims(self) -> LazyRelations:
-        dims = self.record.dims
-        kept = tuple(d for d in dims if d not in self.squeeze)
-        return LazyRelations(kept, lambda dim: self._kept(dims[dim]))
-
-    @property
-    def properties(self) -> LazyRelations:
-        return LazyRelations(tuple(self.record.properties), self._properties_of)
-
-    @property
-    def attributes(self) -> LazyRelations:
-        names = tuple(a for a in self.record.attributes if a in self.schema.attributes)
-        return LazyRelations(names, self._attribute)
-
-    def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """`record`'s flags, overstating the selection's."""
-        flags = self.record.flags(**categories)
-        return {a: f for a, f in flags.items() if a in self.schema.attributes}
-
-    def _properties_of(self, subject: str) -> DuckDBPyRelation:
-        rel = self._kept(self.record.properties[subject])
-        specs = self.record.schema.properties.get(subject, {})
-        gone = [n for n, s in specs.items() if s.one_of in self.squeeze]
-        return rel.project(star(exclude=gone)) if gone else rel
-
-    def _attribute(self, name: str) -> DuckDBPyRelation:
-        if name == SCENARIO_WEIGHT and SCENARIO in self.keep:
-            return self._scenario_weights()
-        rel = self.record.attributes[name]
-        labels = {
-            d: self.record.dims[d].filter(col(d) == lit(label))
-            for d, label in self.squeeze.items()
-            if d in rel.columns
-        }
-        if labels:
-            over = frozenset(labels)
-            settled = settle(rel, labels, Flags(over, over))
-            rel = settled.project(star(exclude=list(labels)))
-        return self._kept(rel)
-
-    def _kept(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`rel` at the kept labels (`_filtered`), each multi-dim's tuples reduced to `_shrunk` (`_reduced`)."""
-        return self._reduced(self._filtered(rel))
-
-    def _reduced(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`rel` with each struct of a `_shrunk` multi-dim reduced to the coordinates kept, a NULL one staying NULL."""
-        shrunk = [c for c in rel.columns if c in self._shrunk]
-        if not shrunk:
-            return rel
-        schema = self.schema
-
-        def reduced(c: str) -> Expression:
-            fields = {f: fn.struct_extract(col(c), lit(f)) for f in self._shrunk[c]}
-            whole = CaseExpression(col(c).isnull(), lit(None))
-            struct = schema.duck_type(schema.dimensions[c])
-            return whole.otherwise(struct_of(fields)).cast(struct).alias(c)
-
-        return rel.project(
-            *(reduced(c) if c in shrunk else col(c) for c in rel.columns)
+        raise ValueError(msg)
+    snapshots = _axis_labels(record, SNAPSHOT)
+    if not snapshots:
+        msg = (
+            f"A network is built from a selection holding no snapshot: {record.labels}"
         )
+        raise ValueError(msg)
+    if _own_dims(record.schema):
+        return record
+    labels: dict[str, Any] = {}
+    selected: list[Any] | None = None
+    if PERIOD in _squeezed(record):
+        selected = [record.labels[PERIOD]]
+    elif _multiperiod(record):
+        axis = _axis_labels(record, PERIOD)
+        held = {s[PERIOD] for s in snapshots}
+        periods = [p for p in axis if p in held]
+        if len(periods) < len(axis):
+            labels[PERIOD] = periods
+        if len(periods) < len(_axis_labels(base, PERIOD)):
+            selected = periods
+    entities = _axis_labels(record, ENTITY)
+    kept = set(entities) - _detached(record)
+    if selected is not None:
+        kept &= _active(record, selected) & _applying(record, selected)
+    if len(kept) < len(entities):
+        labels[ENTITY] = [e for e in entities if e in kept]
+    return record.select(**labels) if labels else record
 
-    def _filtered(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`rel`'s rows at a kept label, or NULL, of each dim in `keep` it carries, `connection`'s fields among them, in `rel`'s order.
 
-        The rows are numbered before the filter and ordered by it after: the
-        semi join DuckDB runs `IN` as loses their order.
-        """
-        on: dict[str, Expression] = {}
-        for dim in self.keep:
-            if dim in rel.columns:
-                on[dim] = col(dim)
-            elif dim in (ENTITY, BUS) and CONNECTION in rel.columns:
-                on[dim] = fn.struct_extract(col(CONNECTION), lit(dim))
-        if not on:
-            return rel
-        kept = rel.project(f"*, row_number() OVER () AS {_ROW}")
-        for dim, value in on.items():
-            labels = self._labels[dim]  # noqa: F841 - bound by name for the query below
-            kept = kept.filter(
-                f"{value} IS NULL OR {value} IN (SELECT {col(dim)} FROM labels)"
-            )
-        return kept.order(_ROW).project(star(exclude=[_ROW]))
+def _detached(record: Selection) -> set[Any]:
+    """The entities with a connection to a bus `record` drops, which PyPSA would hold dangling."""
+    connections = _record_connections(record.base)
+    if connections is None or BUS not in record.schema.dimensions:
+        return set()
+    buses = _axis_labels(record, BUS)
+    return set(connections.loc[~connections[BUS].isin(buses), ENTITY])
 
-    @cached_property
-    def _labels(self) -> dict[str, DuckDBPyRelation]:
-        """The labels of each dim in `keep`, for `_kept` to filter against."""
-        con, schema = self.record.con, self.record.schema
-        return {
-            dim: cast_declared(schema, con.from_df(pd.DataFrame({dim: labels})), dim)
-            for dim, labels in self.keep.items()
-        }
 
-    def _scenario_weights(self) -> DuckDBPyRelation:
-        """The kept scenarios' weights, each as `_weightings` reads it over the whole axis, renormalised."""
-        con = self.record.con
-        whole = replace(
-            self, keep={d: v for d, v in self.keep.items() if d != SCENARIO}
-        )
-        equal = _equal_weighting(_axis_labels(whole, SCENARIO))
-        kept = _weightings(whole, SCENARIO, equal)["weight"].loc[self.keep[SCENARIO]]
-        if not kept.sum() > 0:
-            msg = f"`select` keeps scenarios {list(kept.index)} weighing nothing in all"
-            raise ValueError(msg)
-        return con.from_df((kept / kept.sum()).rename("value").reset_index())
+def _untimed(record: RecordLike) -> RecordLike:
+    """`record` at every snapshot of its base: a selection without its keywords selecting snapshots (`_TIME`)."""
+    if not isinstance(record, Selection):
+        return record
+    rest = {k: v for k, v in record.labels.items() if k not in _TIME}
+    return select(record.base, **rest) if rest else record.base
 
 
 def _equal_weighting(labels: Iterable[Any]) -> pd.DataFrame:
@@ -497,86 +402,31 @@ def _equal_weighting(labels: Iterable[Any]) -> pd.DataFrame:
     return pd.DataFrame({"weight": 1 / len(index)}, index=index)
 
 
-def _axis_labels(record: RecordLike, dim: str) -> list[Any]:
-    """`dim`'s labels in axis order, none where the record holds no axis of it."""
-    axis = record.dims.get(dim)
-    return [] if axis is None else [label for (label,) in axis.fetchall()]
+def _scenario_weights(record: RecordLike, scenarios: pd.Series) -> pd.Series:
+    """The weights of `scenarios`, `record`'s scenario axis, renormalised where it holds fewer than its base.
 
-
-def _is_scalar(value: Any) -> bool:
-    """Whether `value` is one label rather than an iterable or a slice of them, a string being one."""
-    return isinstance(value, str) or not isinstance(value, Iterable | slice)
-
-
-def _keyed_axis(record: RecordLike, dim: str) -> tuple[list[Any], pd.Series]:
-    """`dim`'s labels in axis order, and their positions indexed by what `select` matches: a multi-period snapshot's `timestep`, else the label.
-
-    A timestamp so names a multi-period snapshot in each period holding it.
-    """
-    labels = _axis_labels(record, dim)
-    keys: Any = labels
-    if dim == SNAPSHOT and _multiperiod(record):
-        keys = [label[TIMESTEP] for label in labels]
-    return labels, pd.Series(range(len(labels)), index=pd.Index(keys))
-
-
-def _labels(record: RecordLike, dim: str, value: Any) -> tuple[list[Any], bool]:
-    """The labels of `dim` that `value`, one key, a list or a slice of them, names, in axis order, and whether it names one label.
-
-    A key is matched as pandas' `.loc` matches it on the sorted keys
-    (`_keyed_axis`), so a partial date string names every label in its span
-    and so keeps the dim. A key in a list is matched exactly, read by
-    `pd.Timestamp` on a datetime axis. A slice is pandas' label slice: both
-    ends inclusive, a partial date string covering its span.
+    A scenario no row reaches takes its equal share of the base's whole axis
+    first, so the weights PyPSA requires sum to 1.
 
     Raises
     ------
     ValueError
-        If `value` names no label or one the axis lacks, or is a slice with a
-        step, of a dim `_ORDERED` leaves out or of an axis neither numeric nor
-        datetime, with an end the axis cannot compare, or matching nothing.
+        If the kept scenarios weigh nothing in all.
     """
-    labels, keyed = _keyed_axis(record, dim)
-    ordered = keyed.sort_index(kind="stable")
-
-    def at(positions: Iterable[int]) -> list[Any]:
-        return [labels[i] for i in positions]
-
-    if isinstance(value, slice):
-        sortable = is_numeric_dtype(keyed.index) or is_datetime64_any_dtype(keyed.index)
-        orderable = dim in _ORDERED or dim in _own_dims(record.schema)
-        if value.step is not None or not (orderable and sortable):
-            msg = (
-                f"`select` slices `{dim}` by a step or along an unordered axis: {value}"
-            )
-            raise ValueError(msg)
-        try:
-            within = ordered.loc[value]
-        except (KeyError, TypeError) as err:
-            msg = f"`select` slices `{dim}` by an end its axis cannot compare: {value}"
-            raise ValueError(msg) from err
-        if within.empty:
-            msg = f"`select` slices no label of `{dim}`: {value}"
-            raise ValueError(msg)
-        return at(keyed[keyed.isin(within)]), False
-    if _is_scalar(value):
-        try:
-            found = ordered.loc[value]
-        except (KeyError, TypeError) as err:
-            msg = f"`select` names {value!r}, a label `{dim}`'s axis lacks"
-            raise ValueError(msg) from err
-        if isinstance(found, pd.Series):
-            return at(keyed[keyed.isin(found)]), False
-        return at([found]), True
-    requested = list(value)
-    if isinstance(keyed.index, pd.DatetimeIndex):
-        requested = [pd.Timestamp(key) for key in requested]
-    unknown = [key for key in requested if key not in keyed.index]
-    if not requested or unknown:
-        held = f"labels {unknown} its axis lacks" if unknown else "no label"
-        msg = f"`select` names {held} of `{dim}`"
+    whole = _equal_weighting(_axis_labels(_root(record), SCENARIO))
+    weights = _weightings(record, SCENARIO, whole.loc[scenarios])["weight"]
+    if len(weights) == len(whole):
+        return weights
+    if not weights.sum() > 0:
+        msg = f"The selection keeps scenarios {list(weights.index)} weighing nothing in all"
         raise ValueError(msg)
-    return at(keyed[keyed.index.isin(requested)]), False
+    return weights / weights.sum()
+
+
+def _axis_labels(record: RecordLike, dim: str) -> list[Any]:
+    """`dim`'s labels in axis order, none where the record holds no axis of it."""
+    axis = record.dims.get(dim)
+    return [] if axis is None else [label for (label,) in axis.fetchall()]
 
 
 def _resolved(record: RecordLike, attr: str, fallback: float) -> pd.Series:
@@ -651,97 +501,6 @@ def _applying(record: RecordLike, periods: list[Any]) -> set[Any]:
     """
     invested = _resolved(record, _INVESTMENT_PERIOD, math.nan)
     return set(invested.index[invested.isna() | invested.isin(periods)])
-
-
-def _select(record: RecordLike, select: Mapping[str, Any]) -> _Selection:
-    """`record` at the labels `select` names, and at those referring to none it drops.
-
-    A key naming one label of `period`, `scenario` or a dim of the record's
-    own squeezes the dim; anything else keeps it at the labels named.
-
-    Raises
-    ------
-    ValueError
-        If `select` names a dim it cannot select, no label, an unknown one or
-        a slice `_labels` refuses, or leaves no snapshot.
-
-    Notes
-    -----
-    - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
-    """
-    schema = record.schema
-    squeezable = {PERIOD, SCENARIO, *_own_dims(schema)}
-    selectable = [d for d in schema.dimensions if d in squeezable or d in _FILTERED]
-    squeeze: dict[str, Any] = {}
-    keep: dict[str, list[Any]] = {}
-    for dim, value in select.items():
-        if dim not in selectable:
-            msg = f"`select` takes labels of {selectable}, not of `{dim}`"
-            raise ValueError(msg)
-        labels, one = _labels(record, dim, value)
-        if dim in squeezable and one:
-            squeeze[dim] = labels[0]
-        else:
-            keep[dim] = labels
-    keep = _propagated(record, squeeze, keep)
-    if keep.get(SNAPSHOT) == []:
-        msg = f"`select={dict(select)!r}` leaves no snapshot"
-        raise ValueError(msg)
-    return _Selection(record, squeeze, keep)
-
-
-def _propagated(
-    record: RecordLike, squeeze: Mapping[str, Any], keep: Mapping[str, list[Any]]
-) -> dict[str, list[Any]]:
-    """`keep`, narrowed to the labels referring to no label the selection drops.
-
-    A label whose property refers to a selected dim stays where the value is
-    selected or NULL, naming no label, and a multi-period snapshot where its
-    period is selected. A period holding no kept snapshot goes, since PyPSA
-    takes no period without one. An entity attached to a dropped
-    bus goes, and over selected periods, squeezed or kept, one PyPSA holds
-    active in none of them (`_active`) or whose `investment_period` names
-    another (`_applying`).
-    """
-    chosen = {**{d: [label] for d, label in squeeze.items()}, **keep}
-    schema = record.schema
-    con = record.con
-    kept = dict(keep)
-
-    def narrow(dim: str, allowed: Container[Any]) -> None:
-        labels = kept[dim] if dim in kept else _axis_labels(record, dim)
-        kept[dim] = [label for label in labels if label in allowed]
-
-    for subject, specs in schema.properties.items():
-        refs = [n for n, s in specs.items() if s.one_of in chosen]
-        if not refs or subject not in record.properties:
-            continue
-        frame = with_defaults(
-            schema, subject, record.properties[subject], refs, con
-        ).df()
-        selected = [
-            frame[n].isna() | frame[n].isin(chosen[str(specs[n].one_of)]) for n in refs
-        ]
-        narrow(subject, set(frame.loc[np.logical_and.reduce(selected), subject]))
-    if _multiperiod(record):
-        if PERIOD in chosen:
-            wanted = set(chosen[PERIOD])
-            held = (
-                kept[SNAPSHOT] if SNAPSHOT in kept else _axis_labels(record, SNAPSHOT)
-            )
-            kept[SNAPSHOT] = [s for s in held if s[PERIOD] in wanted]
-        if SNAPSHOT in kept and PERIOD not in squeeze:
-            narrow(PERIOD, {s[PERIOD] for s in kept[SNAPSHOT]})
-    connections = _record_connections(record) if BUS in kept else None
-    if connections is not None:
-        detached = connections.loc[~connections[BUS].isin(kept[BUS]), ENTITY]
-        narrow(ENTITY, set(_axis_labels(record, ENTITY)) - set(detached))
-    periods = [squeeze[PERIOD]] if PERIOD in squeeze else kept.get(PERIOD)
-    if periods:
-        narrow(ENTITY, _active(_Selection(record, squeeze, dict(kept)), periods))
-        others = {d: label for d, label in squeeze.items() if d != PERIOD}
-        narrow(ENTITY, _applying(_Selection(record, others, dict(kept)), periods))
-    return kept
 
 
 def _multiperiod(record: RecordLike) -> bool:
@@ -1379,9 +1138,9 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
         )
     n.snapshot_weightings = _weightings(record, SNAPSHOT, n.snapshot_weightings)
     if shape.stochastic:
-        equal = _equal_weighting(shape.scenarios[SCENARIO].astype(str))
+        scenarios = shape.scenarios[SCENARIO].astype(str)
         # Not `_scenarios_data`: `set_scenarios` gives the empty frames their `scenario` level.
-        n.set_scenarios(_weightings(record, SCENARIO, equal)["weight"])
+        n.set_scenarios(_scenario_weights(record, scenarios))
     return n
 
 
@@ -1601,6 +1360,13 @@ def _collection_members(
         )
         raise ValueError(msg)
     return members
+
+
+def _member_base(base: RecordLike | None, dim: str, label: Any) -> RecordLike | None:
+    """`base` at `label` of `dim`, where that is a dim of its own, so each member restates its label's results alone; else `base` as it is."""
+    if base is None or dim not in _own_dims(base.schema):
+        return base
+    return select(base, **{dim: label})
 
 
 def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
@@ -2069,10 +1835,8 @@ class PyPSATool(Tool):
             ),
         )
 
-    def verify(
-        self, record: RecordLike, *, select: Mapping[str, Any] | None = None
-    ) -> Requirements:
-        """What this record, at `select` as `build` takes it, fails to supply for a PyPSA build; falsy if it is usable.
+    def verify(self, record: RecordLike) -> Requirements:
+        """What this record, a selection narrowed as `build` narrows it, fails to supply for a PyPSA build; falsy if it is usable.
 
         Reports PyPSA's axes the schema lacks, keys and dims of its own this
         tool cannot honour (and nothing else where it finds any), component
@@ -2084,7 +1848,7 @@ class PyPSATool(Tool):
         Raises
         ------
         ValueError
-            If `select` is one `build` refuses.
+            If `record` is a selection `build` refuses (`_narrowed`).
 
         Notes
         -----
@@ -2092,13 +1856,13 @@ class PyPSATool(Tool):
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
         """
-        return self._verify(_select(record, select or {}))[0]
+        return self._verify(_narrowed(record))[0]
 
     def _verify(
         self, record: RecordLike
     ) -> tuple[Requirements, dict[str, _TypeMembers]]:
         """`verify`, with the members it read for each known type, for `build` to reuse; empty where a key check failed."""
-        dims = REQUIRED_DIMS - set(record.schema.dimensions)
+        dims = REQUIRED_DIMS - set(record.schema.dimensions) - _squeezed(record)
         unsupported_keys = self._unsupported_keys(record)
         unsupported_dims = self._unsupported_dims(record)
         if unsupported_keys or unsupported_dims:
@@ -2171,41 +1935,24 @@ class PyPSATool(Tool):
         own = _own_dims(record.schema)
         return set(own) if len(own) > 1 else set()
 
-    def build(
-        self, record: RecordLike, *, select: Mapping[str, Any] | None = None
-    ) -> pypsa.Network | pypsa.NetworkCollection:
+    def build(self, record: RecordLike) -> pypsa.Network | pypsa.NetworkCollection:
         """The resolved network, or the collection of them along the record's dim of its own.
 
         A record declaring a dim PyPSA's schema does not, such as
         `weather_year`, builds a `NetworkCollection` indexed by it in axis
-        order, each member the network of the rows at its label and those at
-        every label. Any other builds a `Network`.
-
-        Parameters
-        ----------
-        select
-            Labels to build from, by dim, as xarray's `sel` takes them. One
-            label of `period`, `scenario` or the record's dim of its own
-            squeezes the dim, a single-period or deterministic network, or a
-            `Network` rather than a collection; a list keeps it at those
-            labels, as does a partial date string naming several.
-            `snapshot`, `bus`, `entity` and `carrier` take a label or a list
-            and are never squeezed, a snapshot named by its timestamp in
-            every period. A slice keeps `snapshot`, `period` or
-            a dim of its own of numbers or datetimes at the labels it covers,
-            as pandas' `.loc` slices. A label referring to one the selection
-            drops goes too: a snapshot of another period, a period of no
-            snapshot, a bus or entity of another carrier, an entity attached
-            to a dropped bus and, over selected periods, an entity active in
-            none of them. One period squeezed out is recorded in `n.meta`,
-            so the network's results write back at it.
+        order, each member the network of `record.select(weather_year=label)`.
+        Any other builds a `Network`. A selection (`Record.select`) builds the
+        network of its labels, selected once more as PyPSA holds it
+        (`_narrowed`): a squeezed `period` is a single-period network, a
+        squeezed `scenario` a deterministic one, and kept scenarios' weights
+        are renormalised.
 
         Raises
         ------
         ValueError
-            If `select` names another dim, no label or one the axis lacks,
-            slices with a step, along an axis of text or over no label,
-            leaves no snapshot, or keeps scenarios weighing nothing in all.
+            If `record` is a selection squeezing a dim but `period`,
+            `scenario` or a dim of its own, holding no snapshot, or keeping
+            scenarios weighing nothing in all.
         UnsupportedRecordError
             If `verify` reports anything missing, of the record or of a member.
 
@@ -2218,22 +1965,19 @@ class PyPSATool(Tool):
         """
         import pypsa
 
-        view = _select(record, select or {})
-        own = _own_dims(view.schema)
+        own = _own_dims(record.schema)
         if len(own) != 1:
-            return self._network(view)
+            return self._network(record)
         (dim,) = own
-        labels = _axis_labels(view, dim)
-        members = [
-            self._network(replace(view, squeeze={**view.squeeze, dim: label}))
-            for label in labels
-        ]
+        labels = _axis_labels(record, dim)
+        members = [self._network(select(record, **{dim: label})) for label in labels]
         return pypsa.NetworkCollection(
             pd.Series(members, index=pd.Index(labels, name=dim))
         )
 
-    def _network(self, record: _Selection) -> pypsa.Network:
-        """`build`'s network of a selection with no dim of its own, a squeezed `period` recorded as `_SELECTED_PERIOD` in `n.meta`."""
+    def _network(self, record: RecordLike) -> pypsa.Network:
+        """`build`'s network of a record with no dim of its own, a selection narrowed first (`_narrowed`), without `investment_period` where it squeezes `period`."""
+        record = _narrowed(record)
         missing, read = self._verify(record)
         if missing:
             raise UnsupportedRecordError(self.name, missing)
@@ -2244,7 +1988,12 @@ class PyPSATool(Tool):
         n = _new_network(record, shape)
         flagged = record.flags()
 
-        over_entity = [a for a in schema.attributes if schema.addresses(a, ENTITY)]
+        periodless = {_INVESTMENT_PERIOD} if PERIOD in _squeezed(record) else set()
+        over_entity = [
+            a
+            for a in schema.attributes
+            if schema.addresses(a, ENTITY) and a not in periodless
+        ]
         scenarios = {SCENARIO: record.dims[SCENARIO]} if shape.stochastic else {}
         tuples = record.dims.get(CONNECTION)
         for ctype in _AXIS_TYPES:
@@ -2285,8 +2034,6 @@ class PyPSATool(Tool):
 
         _add_shapes(n, record)
         _broadcast_standard_types(n)
-        if PERIOD in record.squeeze:
-            n.meta = {**n.meta, _SELECTED_PERIOD: int(record.squeeze[PERIOD])}
         return n
 
     def _add_labels(
@@ -2354,8 +2101,10 @@ class PyPSATool(Tool):
         `base`, whose SubNetworks it then leaves. A series is written at the
         network's snapshots, `base`'s standing at the others; over a
         multi-period `base`, a value over no snapshot is written for the
-        entities active in the network's periods alone, a network built at
-        one period (`build`) written at that period.
+        entities active in the network's periods alone. `base` may be the
+        selection the network was built from (`Record.select`): the layer is
+        then over its record, each row at the labels it squeezes, one period
+        squeezed writing at that period.
 
         A `NetworkCollection`'s labels are those of `collection_dim`, and it
         is checked whole before this returns, so the record builds back. Over
@@ -2370,11 +2119,13 @@ class PyPSATool(Tool):
             If `base` is missing with `results_only`, or given without it
             for a `NetworkCollection`. If a network over a multi-period `base`
             whose investment periods it does not carry is written without
-            `results_only`, or as results carries none and was not built at
-            one. If a single network's results are written over a `base` with
-            a dim of its own, or a deterministic network's over a `base`
-            holding scenarios, or a network's results holding a snapshot, bus
-            or entity `base` lacks. If `collection_dim` is given without a
+            `results_only`, or as results carries none and `base` squeezes
+            none. If a full export is written over a selection. If a single
+            network's results are written over a record with a dim of its
+            own, a deterministic network's over a `base` holding scenarios,
+            results over no `scenario` of fewer scenarios than the record
+            holds, or a network's results holding a snapshot, bus or entity
+            `base` lacks. If `collection_dim` is given without a
             `NetworkCollection`, or missing with one; if the collection is not
             one the dim takes (more than one index level, `collection_dim`
             another dim of PyPSA's, stochastic members, a member of `period`
@@ -2416,13 +2167,22 @@ class PyPSATool(Tool):
         if not isinstance(model, pypsa.NetworkCollection):
             if collection_dim is not None:
                 raise ValueError(msg)
-            own = _own_dims(base.schema) if results_only and base is not None else []
+            if not results_only and isinstance(base, Selection):
+                msg = (
+                    "A full export is written over a record, not over a selection "
+                    "of one: its rows would miss the labels the selection squeezes"
+                )
+                raise ValueError(msg)
+            own = (
+                _own_dims(_root(base).schema)
+                if results_only and base is not None
+                else []
+            )
             if own:
                 msg = (
-                    f"A single network's results are not written over a `base` "
-                    f"with a dim of its own, {own}: NULL on it, they would reach "
-                    "every label. Write the collection `build` gives without "
-                    "selecting one of its labels"
+                    f"A single network's results are not written over a record "
+                    f"with a dim of its own, {own}: write the collection `build` "
+                    "gives, each member at its label"
                 )
                 raise ValueError(msg)
             if not results_only and base is not None and _multiperiod(base):
@@ -2444,7 +2204,9 @@ class PyPSATool(Tool):
         if collection_dim != PERIOD:
             _alike(members, collection_dim)
             sources = {
-                label: self._source(m, con, base, results_only)
+                label: self._source(
+                    m, con, _member_base(base, collection_dim, label), results_only
+                )
                 for label, m in members.items()
             }
             return _StackedSource.of(sources, collection_dim, con)
@@ -2459,6 +2221,9 @@ class PyPSATool(Tool):
         results_only: bool,
     ) -> _NetworkSource:
         """`n` as a full export, over `base` where given, or as results over `base`, once it is checked writable.
+
+        Results over a selection are written over it at every snapshot
+        (`_untimed`), at the period it squeezes.
 
         Raises
         ------
@@ -2475,11 +2240,14 @@ class PyPSATool(Tool):
                 msg = (
                     "A deterministic network's results are not written over a "
                     "`base` holding scenarios: NULL on `scenario`, they would "
-                    "reach every scenario. Build it with the scenario in a list, "
-                    "`select={'scenario': [label]}`"
+                    "reach every scenario. Write them over the selection it was "
+                    "built from, `record.select(scenario=label)`"
                 )
                 raise ValueError(msg)
-            source: _NetworkSource = _ResultsSource(n, con, base)
+            period = None
+            if isinstance(base, Selection) and PERIOD in _squeezed(base):
+                period = base.labels[PERIOD]
+            source: _NetworkSource = _ResultsSource(n, con, _untimed(base), period)
         else:
             source = _NetworkSource(n, con, base)
         source.check()
@@ -2864,7 +2632,7 @@ class _NetworkSource:
                     for ctype, columns in custom.columns.items()
                     if _dim_of(ctype) == ENTITY
                 },
-                "meta": {k: v for k, v in self.n.meta.items() if k != _SELECTED_PERIOD},
+                "meta": self.n.meta,
                 "crs": self.n.crs.to_string(),
             },
         )
@@ -3480,22 +3248,26 @@ class _ResultsSource(_NetworkSource):
     `snapshot` is outside `partial`, `base`'s values standing at the snapshots
     the network lacks (`_elsewhere`); over a multi-period `base` a value over
     no snapshot is written for the entities active in the network's periods
-    alone (`_live_entities`).
+    alone (`_live_entities`). Over a selection, every row is at the labels
+    it squeezes of PyPSA's dims (`_lifted`).
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+    - [lifting rows back](https://energy-models.github.io/datarecord/design/use/selecting/#lifting-rows-back-to-the-base)
     """
 
-    #: The record the network was built from.
+    #: The record the network was built from, or a selection of it at every snapshot (`_untimed`).
     base: RecordLike
+    #: The period `base`'s selection squeezed, at which a single-period network is written.
+    period: Any = None
 
     _DROP_RESULT_DEFAULTS: ClassVar[bool] = False
 
     @cached_property
     def schema(self) -> RecordSchema:
-        """`base`'s schema: a results layer declares nothing the record does not."""
-        return self.base.schema
+        """The schema of the record `base` selects from: a results layer declares nothing the record does not."""
+        return _root(self.base).schema
 
     @cached_property
     def _shapes(self) -> dict[str, pd.DataFrame]:
@@ -3504,24 +3276,24 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _periods(self) -> list[Any]:
-        """The investment periods of a multi-period `base` the network solves: its own, else the one it was built at (`_SELECTED_PERIOD`).
+        """The investment periods of a multi-period `base` the network solves: its own, else `period`.
 
         Raises
         ------
         ValueError
-            If it carries none and was built at none.
+            If it carries none and is written at none.
         """
         if len(self.n.investment_periods) > 0:
             return list(self.n.investment_periods)
-        if _SELECTED_PERIOD not in self.n.meta:
+        if self.period is None:
             msg = (
                 "A network written over a multi-period `base` carries investment "
-                "periods of it, or was built at one: build it with "
-                "`select={'period': ...}`, or set them with "
-                "`n.set_investment_periods`"
+                "periods of it, or is written over the selection at one period "
+                "it was built from, `record.select(period=...)`; else set them "
+                "with `n.set_investment_periods`"
             )
             raise ValueError(msg)
-        return [self.n.meta[_SELECTED_PERIOD]]
+        return [self.period]
 
     @cached_property
     def _snapshots(self) -> pd.DataFrame:
@@ -3542,13 +3314,14 @@ class _ResultsSource(_NetworkSource):
         return pd.DataFrame({PERIOD: self._periods[0], TIMESTEP: snapshots})
 
     def check(self) -> None:
-        """Refuse a network holding a snapshot, bus or entity `base` lacks, at the call rather than the write.
+        """Refuse a network holding a snapshot, bus or entity `base` lacks, or first-stage results of fewer scenarios than the record, at the call rather than the write.
 
         Raises
         ------
         ValueError
             If it holds one.
         """
+        self._refuse_first_stage()
         snapshots = _lacking(self._snapshot_rel, self.base.dims[SNAPSHOT], SNAPSHOT)
         held = {BUS: self._labels("Bus")[BUS], ENTITY: self._entity_frame[ENTITY]}
         unknown = {
@@ -3562,6 +3335,32 @@ class _ResultsSource(_NetworkSource):
             if labels:
                 msg = f"The network has {dim} labels `base` lacks: {labels}"
                 raise ValueError(msg)
+
+    def _refuse_first_stage(self) -> None:
+        """Refuse results over no `scenario`, such as `p_nom_opt`, of a network holding fewer scenarios than the record.
+
+        Such a result is the decision for the scenarios solved alone, which
+        would stand beside the other scenarios' results solved jointly.
+
+        Raises
+        ------
+        ValueError
+            If the network writes one.
+        """
+        scenarios = _axis_labels(_root(self.base), SCENARIO)
+        held = len(self.n.scenarios) if self.n.has_scenarios else 1
+        if len(scenarios) <= held:
+            return
+        attributes = self.schema.attributes
+        first = sorted(a for a in self._restated if SCENARIO not in attributes[a].dims)
+        if first:
+            msg = (
+                f"The network holds {held} of the record's scenarios {scenarios}, "
+                f"so its first-stage results {first}, over no `scenario`, would "
+                "stand for every scenario: solve every scenario together, or "
+                "write a subset solved apart as a collection over a dim of its own"
+            )
+            raise ValueError(msg)
 
     @cached_property
     def _elsewhere(self) -> DuckDBPyRelation | None:
@@ -3609,8 +3408,8 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _restates(self) -> tuple[str, ...]:
-        """The axes this layer restates: `sub_network` where the solve or `base` has one and it is not left to `base` (`_left_to_base`)."""
-        axis = self.base.dims.get(SUB_NETWORK)
+        """The axes this layer restates: `sub_network` where the solve or the record has one and it is not left to `base` (`_left_to_base`)."""
+        axis = _root(self.base).dims.get(SUB_NETWORK)
         held = len(self._sub_networks) > 0 or (
             axis is not None and bool(axis.limit(1).fetchall())
         )
@@ -3618,14 +3417,14 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _left_to_base(self) -> frozenset[str]:
-        """The results this layer leaves to `base`: the `sub_network` axis's, where the network holds fewer buses or entities than `base`.
+        """The results this layer leaves to `base`: the `sub_network` axis's, where the network holds fewer buses or entities than the record.
 
         A selection's SubNetworks are numbered over the selection alone, so
         they name no SubNetwork of the whole network that `base`'s rows at
         the labels it does not hold refer to.
         """
         held = {BUS: len(self._labels("Bus")), ENTITY: len(self._entity_frame)}
-        dims = self.base.dims
+        dims = _root(self.base).dims
         if all(len(dims[d]) == count for d, count in held.items() if d in dims):
             return frozenset()
         return frozenset(
@@ -3640,8 +3439,8 @@ class _ResultsSource(_NetworkSource):
         return cast_declared(self.schema, rel, SUB_NETWORK)
 
     def _dead_sub_networks(self) -> DuckDBPyRelation | None:
-        """`base`'s SubNetworks this solve does not number, aliased `d`; `None` where `base` has no axis."""
-        axis = self.base.dims.get(SUB_NETWORK)
+        """The record's SubNetworks this solve does not number, aliased `d`; `None` where it has no axis."""
+        axis = _root(self.base).dims.get(SUB_NETWORK)
         if axis is None:
             return None
         live = self._sub_network_rel().set_alias("n")
@@ -3661,11 +3460,12 @@ class _ResultsSource(_NetworkSource):
     def _restated(self) -> dict[str, DuckDBPyRelation]:
         """This solve's results but those `_left_to_base`, then each row of `base`'s at labels it holds (`_holds`) it leaves out as NULL, but those of a SubNetwork it drops, and `base`'s series at `_elsewhere` (`_standing`).
 
-        A value over no snapshot is kept to `_live_entities` on both sides.
+        A value over no snapshot is kept to `_live_entities` on both sides,
+        and every row is at the labels `base` squeezes (`_lifted`).
         """
         kept = self._left_to_base
         written = {
-            a: self._live_only(a, r)
+            a: self._live_only(a, self._lifted(a, r))
             for a, r in self._result_rels.items()
             if a not in kept
         }
@@ -3675,8 +3475,7 @@ class _ResultsSource(_NetworkSource):
         for attr in sorted(outputs & set(self.base.attributes)):
             columns = self.schema.long_columns_for(attr)
             keys = [c for c in columns if c != "value"]
-            rows = self.base.attributes[attr].select(*self._as_declared(attr, columns))
-            rows = self._live_only(attr, rows)
+            rows = self._live_only(attr, self._base_rows(attr))
             for dim in self._holds.keys() & set(keys):
                 held = self._holds[dim]  # noqa: F841 - bound by name for the query below
                 on = col(dim)
@@ -3707,6 +3506,27 @@ class _ResultsSource(_NetworkSource):
             )
             restated[attr] = reduce(DuckDBPyRelation.union, parts)
         return restated
+
+    def _lifted(self, attr: str, rows: DuckDBPyRelation) -> DuckDBPyRelation:
+        """The network's `rows` of `attr` at the labels `base` squeezes of PyPSA's dims, such as `scenario`, rather than NULL there.
+
+        A dim of the record's own stays NULL (`_as_declared`), as a member's
+        rows are, which `_StackedSource.of` labels where they differ.
+        """
+        if not isinstance(self.base, Selection):
+            return rows
+        columns = self.base.schema.long_columns_for(attr)
+        lifted = self.base.lift(attr, rows.select(*map(col, columns)))
+        return lifted.select(
+            *self._as_declared(attr, self.schema.long_columns_for(attr))
+        )
+
+    def _base_rows(self, attr: str) -> DuckDBPyRelation:
+        """`base`'s rows of `attr`, as `_lifted` puts the network's."""
+        rows = self.base.attributes[attr]
+        if isinstance(self.base, Selection):
+            rows = self.base.lift(attr, rows)
+        return rows.select(*self._as_declared(attr, self.schema.long_columns_for(attr)))
 
     def _live_only(self, attr: str, rows: DuckDBPyRelation) -> DuckDBPyRelation:
         """`rows` of `attr`, a value over no snapshot only at `_live_entities` or NULL on `entity`."""

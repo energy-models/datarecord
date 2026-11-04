@@ -31,25 +31,35 @@ It returns a `Requirements` that is falsy when the record is usable.
 A stored attribute that a type does not take, such as `p_max_pu` on a load, is left out of the build and listed in `ignored`, and the result stays falsy.
 `build` raises `UnsupportedRecordError` for a record it cannot build in full.
 
-`build` takes `select`, the labels to build from by dim, as xarray's `sel` takes them ([design](../design/tools/pypsa.md#selecting-before-a-build)):
+`build` and `verify` take a [selection](reading.md#selecting-a-view) of a record like any record, so a network is built from some of its labels ([design](../design/tools/pypsa.md#selecting-before-a-build)):
 
 ```python
-PyPSA.build(record, select={"period": 2030})  # single-period, its active entities
-PyPSA.build(record, select={"period": [2030, 2040]})  # multi-period, those two
-PyPSA.build(record, select={"period": slice(2030, None)})  # 2030 onwards, multi-period
-PyPSA.build(record, select={"snapshot": slice("2013-02", "2013-03")})  # Feb and March
-PyPSA.build(record, select={"snapshot": "2013-02-01 06:00"})  # in every period
-PyPSA.build(record, select={"scenario": ["low", "high"]})  # weights renormalised
-PyPSA.build(record, select={"weather_year": 2012})  # a Network, not a collection
-PyPSA.build(record, select={"bus": ["north", "south"]})  # and what attaches to them
-PyPSA.build(record, select={"carrier": ["AC", "wind"]})  # AC buses, wind entities
+PyPSA.build(record.select(period=2030))  # single-period, its active entities
+PyPSA.build(record.select(period=[2030, 2040]))  # multi-period, those two
+PyPSA.build(record.select(period=slice(2030, None)))  # 2030 onwards, multi-period
+PyPSA.build(record.select(snapshot=slice("2013-02", "2013-03")))  # Feb and March
+PyPSA.build(record.select(timestep=["2013-02-01 06:00"]))  # in every period
+PyPSA.build(record.select(scenario=["low", "high"]))  # weights renormalised
+PyPSA.build(record.select(weather_year=2012))  # a Network, not a collection
+PyPSA.build(record.select(bus=["north", "south"]))  # and what attaches to them
+PyPSA.build(record.select(carrier=["AC", "wind"]))  # AC buses, wind entities
 ```
 
 One label of `period`, `scenario` or the record's dim of its own squeezes the dim, and a list keeps it.
-`snapshot`, `bus`, `entity` and `carrier` take a label or a list and are never squeezed.
-A snapshot is named by its timestamp, and a partial date string such as `"2013-02"` names every snapshot in its span.
-A slice keeps an ordered dim, `snapshot`, `period` or a dim of its own of numbers or datetimes, at the labels it covers, both ends included and a partial date string covering its span, as pandas' `.loc` slices.
-A label referring to one the selection drops goes too, such as an entity attached to a dropped bus, and any other dim, an unknown label or an empty list is refused.
+Any other dim the network keeps, `snapshot`, `timestep`, `bus`, `entity` or `carrier`, takes a list, a slice or a partial date string such as `"2013-02"`, and one label of it is refused: write `snapshot=["2013-02-01 06:00"]`.
+A multi-period record's snapshots are selected through `timestep` and `period`.
+On top of the selection, `build` drops a period left without snapshots, an entity attached to a dropped bus and, over fewer periods than the record holds, an entity active in none of them.
+
+A network built from a selection writes its results over that selection, which puts them back at the labels it squeezed:
+
+```python
+view = record.select(period=2030)
+n = PyPSA.build(view)
+n.optimize()
+results = PyPSA.to_datarecord(n, ws.con, results_only=True, base=view)  # at 2030
+```
+
+Results of fewer scenarios than the record holds are refused where they hold a first-stage value such as `p_nom_opt`, since that value is one for every scenario.
 
 ## Buses and carriers
 
