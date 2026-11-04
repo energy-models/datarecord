@@ -32,12 +32,14 @@ from functools import reduce
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
+import duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
 
 from datarecord.duck import fn, struct_of, union_all_by_name
 from datarecord.protocols import Flags
+from datarecord.resolve.coords import Coords, _table_name
 from datarecord.resolve.owner_keys import _empty_relation, owner_keys
 from datarecord.schema.categories import (
     categorized_dim,
@@ -52,7 +54,7 @@ if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
 
     from datarecord.protocols import RecordLike
-    from datarecord.resolve.sources import ParquetLayer
+    from datarecord.resolve.sources import LayerSource, ParquetLayer
     from datarecord.schema.schema import Schema
     from datarecord.store.store import Store
 
@@ -109,26 +111,17 @@ class Fold:
 
     Attributes
     ----------
-    schema
-        The schema the record is read under, which says which broadcast dims the flags carry.
-    axes
-        Each resolved dim's axis relation, keyed by dim.
-    dim_owners
-        Each axis's owner: the layer whose `dims/<dim>.parquet` it resolved
-        to, a dim with `one_of` having none.
+    coords
+        The folded axes, their owners and dead labels, under the schema the
+        record is read under, which says which broadcast dims the flags carry.
     owner_map
         The resolved owner map: `(owner_map_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per key as its layer wrote it,
         expanded along a dim only where a deeper layer crossed it there.
-    dead
-        Each `coords.mortal` coordinate's dead labels, where it has any.
     """
 
-    schema: Schema
-    axes: dict[str, DuckDBPyRelation]
-    dim_owners: dict[str, UUID]
+    coords: Coords
     owner_map: DuckDBPyRelation
-    dead: dict[str, DuckDBPyRelation]
 
     def owners(self, attribute: str) -> DuckDBPyRelation:
         """The owner-map rows for one attribute - which layer owns each of its keys.
@@ -162,20 +155,19 @@ class Fold:
         - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
         - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
-        dims = self.schema.broadcast_dims
+        schema = self.coords.schema
+        dims = schema.broadcast_dims
         if not categories:
             # The structs come back as dicts keyed by dim, so each set is a filter
             # by name rather than a positional slice.
-            return flags_from_rows(
-                self.schema, dims, self._flag_rows(self.owner_map, dims)
-            )
-        dim = categorized_dim(self.schema, categories)
-        chosen = selected(self.schema, dim, categories)
-        axis = self.axes.get(dim)
+            return flags_from_rows(schema, dims, self._flag_rows(self.owner_map, dims))
+        dim = categorized_dim(schema, categories)
+        chosen = selected(schema, dim, categories)
+        axis = self.coords.axes.get(dim)
         if axis is None:
             return {}
         rows = self._owned_reaching(dim, matching(axis, chosen).project(col(dim)))
-        return flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
+        return flags_from_rows(schema, dims, self._flag_rows(rows, dims))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
         """The owner-map rows reaching one of `labels`, on `dim` or a multi-dim's coordinate over it.
@@ -187,13 +179,12 @@ class Fold:
         OR-ed into one condition, which would be a nested loop; a row matched
         twice changes no flag.
         """
+        schema = self.coords.schema
         om = self.owner_map.set_alias("o")
         named = labels.set_alias("l")
         paths: list[tuple[str, str | None]] = [(dim, None)]
         paths += [
-            (m, f)
-            for m in self.schema.multi_dims
-            if (f := self.schema.coordinate_over(m, dim))
+            (m, f) for m in schema.multi_dims if (f := schema.coordinate_over(m, dim))
         ]
         reached = []
         for column, field in paths:
@@ -203,16 +194,12 @@ class Fold:
             reached.append(om.join(named, on, how="semi"))
             if field is None:
                 hit = labels
-            elif (held := self.axes.get(column)) is not None:
+            elif (held := self.coords.axes.get(column)) is not None:
                 on = _path("g", column, field) == col("l", dim)
                 hit = held.set_alias("g").join(named, on, how="semi")
             else:
                 continue
-            over = [
-                a
-                for a in self.schema.attributes
-                if column in self.schema.coordinates_of(a)
-            ]
+            over = [a for a in schema.attributes if column in schema.coordinates_of(a)]
             if over and hit.limit(1).fetchall():
                 reached.append(
                     om.filter(
@@ -266,7 +253,8 @@ class Fold:
             if owned
             else _empty_relation(schema, con, *schema.owner_map_columns)
         )
-        return cls(schema, dict(record.properties), {}, owner_map.materialize(), {})
+        coords = Coords(schema, dict(record.properties), {})
+        return cls(coords, owner_map.materialize())
 
     @classmethod
     def read(cls, layer: ParquetLayer) -> Fold | None:
@@ -286,22 +274,28 @@ class Fold:
         owner_map = read_owner_map(revision_id, con, store)
         if owner_map is None:
             return None
-        rows = read_dim_owners(revision_id, con, store)
         dead = f"{store.resolved_dir(revision_id)}dead/"
-        return cls(
-            schema=layer.schema,
-            axes={
-                dim: con.read_parquet(store.axis_uri(layer, dim))
-                for dim, layer, _ in rows
-            },
-            dim_owners={dim: layer for dim, layer, _ in rows},
-            owner_map=owner_map,
-            dead={
-                dim: con.read_parquet(f"{dead}{dim}.parquet")
-                for dim, _, has_dead in rows
-                if has_dead
-            },
+        coords = Coords.from_rows(
+            layer.schema,
+            read_dim_owners(revision_id, con, store),
+            lambda dim, owner: con.read_parquet(store.axis_uri(owner, dim)),
+            lambda dim: con.read_parquet(f"{dead}{dim}.parquet"),
         )
+        return cls(coords, owner_map)
+
+    @classmethod
+    def held(cls, source: LayerSource) -> Fold | None:
+        """`source`'s node's `Fold` from the workspace's shared tables, `None` where they lack it.
+
+        The coords and the owner map are tabled independently, so each is
+        looked up (`Coords.held`).
+        """
+        try:
+            owner_map = source.con.table(_table_name(source.layer_id))
+        except duckdb.CatalogException:
+            return None
+        coords = Coords.held(source)
+        return None if coords is None else cls(coords, owner_map)
 
 
 def _path(alias: str, column: str, field: str | None) -> Expression:

@@ -41,12 +41,7 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
-from datarecord.resolve.coords import (
-    Coords,
-    one_of_axis,
-    resolve_coords,
-    tabled_coords,
-)
+from datarecord.resolve.coords import Coords, one_of_axis
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import with_columns
 from datarecord.resolve.owner_map import (
@@ -437,7 +432,7 @@ class Record:
         _, above = split_frozen(self.sources)
         if not above:
             return frozen
-        return resolve_coords(self.sources, (frozen, above))
+        return Coords.resolve(self.sources, (frozen, above))
 
     @property
     def _frozen_coords(self) -> Coords:
@@ -463,7 +458,7 @@ class Record:
     def _tabled_frozen_coords(self) -> Coords:
         """The frozen layers' coords from its shared tables, a `one_of` dim's axis being the schema's."""
         con = self.con
-        held = tabled_coords(self.revision_id, self.schema, self._dim_owners, con)
+        held = Coords.tabled(self.revision_id, self.schema, self._dim_owners, con)
         axes = held.axes | {
             n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims
         }
@@ -488,14 +483,8 @@ class Record:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
-        coords = self._coords
-        return Fold(
-            schema=self.schema,
-            axes=coords.axes,
-            dim_owners=coords.dim_owners,
-            owner_map=_table(self.revision_id, self.sources, self._frozen_coords),
-            dead=coords.dead,
-        )
+        owner_map = _table(self.revision_id, self.sources, self._frozen_coords)
+        return Fold(self._coords, owner_map)
 
     def _source_for(self, layer_uuid: UUID) -> LayerSource:
         """Return the source the fold stamped `layer_uuid` from.
@@ -542,7 +531,7 @@ class Record:
         else:
             fold = self._fold
             om = fold.owners(attribute)
-            dead = fold.dead
+            dead = fold.coords.dead
         partial_dims = schema.partial_dims
         # This attribute's own columns, not every declared dim: one file per
         # attribute is one column set per attribute (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema).

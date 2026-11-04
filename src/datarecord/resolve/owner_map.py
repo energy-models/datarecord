@@ -47,9 +47,8 @@ from datarecord.resolve.coords import (
     _dim_owners_table,
     _table_name,
     removed_labels,
-    resolve_coords,
 )
-from datarecord.resolve.fold import read_owner_map
+from datarecord.resolve.fold import Fold, read_owner_map
 from datarecord.resolve.owner_keys import (
     _empty_relation,
     _flags,
@@ -659,7 +658,7 @@ def _fold_map(
     """A record's owner map, folded down over `sources`, checkpointed into `made` as `_fold_onto` does.
 
     Keyed by the last source's schema. The axes fold to a resolved copy
-    instead (`resolve_coords`). The deepest materialised source's map is the
+    instead (`Coords.resolve`). The deepest materialised source's map is the
     fold's *seed* rather than a step of it: it is already folded over
     everything at or below it, so it is read as the starting relation, cast
     and keyed by that node's schema, and only the sources above it are folded
@@ -672,14 +671,19 @@ def _fold_map(
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
     schema, con = sources[-1].schema, sources[-1].con
-    base, above = _base_and_above(sources, owner_map=True)
+    base, above = _base_and_above(sources, _fold_at_hand)
     rel: DuckDBPyRelation | None = None
     keyed, held, dead = schema, dict.fromkeys(_pruned(schema)), {}
     if base is not None:
-        rel = cast_declared(base.schema, base.owner_map)
-        keyed, dead = base.schema, base.dead
-        held = {name: base.axes.get(name) for name in _pruned(schema)}
+        rel = cast_declared(base.coords.schema, base.owner_map)
+        keyed, dead = base.coords.schema, base.coords.dead
+        held = {name: base.coords.axes.get(name) for name in _pruned(schema)}
     return _fold_onto(rel, above, held, con, keyed=keyed, dead=dead, made=made)
+
+
+def _fold_at_hand(source: LayerSource) -> Fold | None:
+    """`source`'s node's `Fold`, materialised or held, `None` where neither."""
+    return source.materialised() or Fold.held(source)
 
 
 @contextmanager
@@ -962,7 +966,7 @@ def _frozen_dim_owners(
     con = sources[-1].con
 
     def fold() -> DuckDBPyRelation:
-        coords = resolve_coords(sources)
+        coords = Coords.resolve(sources)
         made = [
             *(("dims", dim, coords.axes[dim]) for dim in coords.dim_owners),
             *(("dead", name, rel) for name, rel in coords.dead.items()),

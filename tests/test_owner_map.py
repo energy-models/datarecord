@@ -141,7 +141,7 @@ def _coords(store, revision):
     try:
         record = workspace.store(store.uri).revision(revision.id).record
         dims = record.dims
-        dead = record._fold.dead
+        dead = record._fold.coords.dead
         return (
             {d: dims[d].df().to_dict("records") for d in dims},
             {d: sorted(rel.fetchall()) for d, rel in dead.items()},

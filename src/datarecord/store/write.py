@@ -35,7 +35,6 @@ from datarecord.resolve.coords import (
     refuse_twice,
     refuse_unheld,
     removed_labels,
-    resolve_coords,
 )
 from datarecord.resolve.owner_keys import cast_declared
 from datarecord.resolve.owner_map import unsettled
@@ -157,7 +156,7 @@ def write_layer(
         manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
         layer = DirectorySource(base, manifest, workspace, manifest.id)
         parents = [] if parent is None else parent.sources
-        coords = resolve_coords([*parents, layer])
+        coords = Coords.resolve([*parents, layer])
         held = coords.axes.get
         for key in written["dims"]:
             if key not in schema.multi_dims:
