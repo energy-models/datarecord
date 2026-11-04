@@ -23,17 +23,19 @@ import hashlib
 import json
 import operator
 import re
-from collections.abc import Iterable, Mapping
+from collections.abc import Container, Iterable, Mapping
 from functools import cached_property, reduce
 from typing import Any, Self, cast
 
 import duckdb
 from duckdb import ColumnExpression as col
-from duckdb import DuckDBPyRelation, sqltypes
+from duckdb import ConstantExpression as lit
+from duckdb import DuckDBPyRelation, Expression, sqltypes
 from duckdb.sqltypes import DuckDBPyType
 from mathspec._expression_parser import NAME
 from pydantic import Field, model_validator
 
+from datarecord.duck import fn
 from datarecord.schema.dtypes import DUCK_TYPES, enum_type, takes
 from datarecord.schema.specs import (
     AttributeSpec,
@@ -1207,3 +1209,57 @@ class Schema(_Declared):
                     f"owned whole"
                 )
         return problems
+
+
+def packed(
+    schema: Schema, multi: str, present: Container[str], dims: Mapping[str, Any]
+) -> Expression:
+    """The struct column of the multi-dim `multi`, packed from flat coordinates.
+
+    A field is the column of that name where the relation carries one, else
+    the caller's keyword. No field given at all is a NULL struct, every tuple.
+
+    Raises
+    ------
+    ValueError
+        Where some fields are given and others not: a struct NULL in some
+        fields and not all matches no tuple.
+
+    Notes
+    -----
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    over = schema.over(multi)
+    struct = schema.duck_type(schema.dimensions[multi])
+    missing = [c for c in over if c not in present and c not in dims]
+    if len(missing) == len(over):
+        return lit(None).cast(struct)
+    if missing:
+        msg = (
+            f"{multi!r} is keyed by {list(over)}, and {missing} was not given; "
+            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
+        )
+        raise ValueError(msg)
+    fields = {
+        c: col(c)
+        if c in present
+        else lit(dims[c]).cast(schema.duck_type(schema.dimensions[d]))
+        for c, d in over.items()
+    }
+    return fn.struct_pack(**fields).cast(struct)
+
+
+def unpacked(schema: Schema, multi: str, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+    """`rel` with the struct column of the multi-dim `multi` spelled as a column per coordinate, first; as it is where it carries no such column.
+
+    Notes
+    -----
+    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+    """
+    if multi not in rel.columns or multi not in schema.multi_dims:
+        return rel
+    return rel.project(
+        *(col(multi)[c].alias(c) for c in schema.over(multi)),
+        *(col(c) for c in rel.columns if c != multi),
+    )

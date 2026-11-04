@@ -2337,6 +2337,7 @@ class TestPyPSA:
         con = duckdb.connect()
         index = pd.Index(["low", "mid", "high"], name="scenario")
         record = SimpleNamespace(
+            schema=_registry().schema,
             dims={"scenario": con.from_df(index.to_frame(index=False))},
             attributes={"scenario_weight": con.from_df(rows)},
         )

@@ -54,6 +54,7 @@ from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import cast_declared
 from datarecord.schema.categories import matching, with_defaults
 from datarecord.schema.schema import Schema as RecordSchema
+from datarecord.schema.schema import packed, unpacked
 from datarecord.schema.specs import (
     AttributeSpec,
     Dimension,
@@ -223,6 +224,7 @@ class NetworkShape:
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
 
+    schema: RecordSchema
     dims: Relations
 
     def _axis(self, dim: str) -> pd.DataFrame:
@@ -236,7 +238,7 @@ class NetworkShape:
         rel = self.dims.get(SNAPSHOT)
         if rel is None:
             return pd.DataFrame(columns=[SNAPSHOT])
-        return _unpacked(rel, SNAPSHOT).df()
+        return unpacked(self.schema, SNAPSHOT, rel).df()
 
     @property
     def snapshot_levels(self) -> pd.DataFrame:
@@ -671,7 +673,7 @@ def _series_frame(
     group_by = list(shape.snapshots.columns)
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
-    rows = _unpacked(rows, SNAPSHOT).set_alias("r")
+    rows = unpacked(shape.schema, SNAPSHOT, rows).set_alias("r")
     _dr_positioned = rows.join(
         columns, ex_all(col("r", k) == col("k", k) for k in keys)
     ).project(
@@ -1169,7 +1171,7 @@ def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFra
         if weighting.dim != dim or frame is None:
             continue
         rows = settle(frame, labels, overstated, filter=False)
-        rows = _unpacked(rows.project(col(dim), col("value")), dim).df()
+        rows = unpacked(record.schema, dim, rows.project(col(dim), col("value"))).df()
         keys = [c for c in rows.columns if c != "value"]
         values = rows.set_index(keys)["value"].reindex(table.index)
         restored[weighting.column] = values.fillna(table[weighting.column])
@@ -1978,7 +1980,7 @@ class PyPSATool(Tool):
 
         con = record.con
         schema = record.schema
-        shape = NetworkShape(record.dims)
+        shape = NetworkShape(schema, record.dims)
         n = _new_network(record, shape)
         flagged = record.flags()
 
@@ -2010,11 +2012,12 @@ class PyPSATool(Tool):
             for attr, flags in flagged.items():
                 if attr not in carried:
                     continue
-                long = _unpacked(
+                long = unpacked(
+                    schema,
+                    CONNECTION,
                     self.schema.resolve(
                         record, ctype, attr, labels, flagged, filter=False
                     ),
-                    CONNECTION,
                 )
                 if CONNECTION in schema.attributes[attr].dims:
                     for column, rows in _port_columns(
@@ -3540,7 +3543,10 @@ def _keys(relations: Mapping[Any, Relations]) -> tuple[str, ...]:
 
 
 def _differs(
-    held: Mapping[Any, DuckDBPyRelation], labels: Sequence[Any], by: str
+    schema: RecordSchema,
+    held: Mapping[Any, DuckDBPyRelation],
+    labels: Sequence[Any],
+    by: str,
 ) -> bool:
     """Whether an attribute's rows, `held` by each member holding it, differ across the members' `labels` of `by`.
 
@@ -3550,9 +3556,9 @@ def _differs(
     if any(label not in held for label in labels):
         return True
     (first, rel), *rest = held.items()
-    reference = _values(rel)
+    reference = _values(schema, rel)
     for label, other in rest:
-        long = pd.concat({first: reference, label: _values(other)}, names=[by])
+        long = pd.concat({first: reference, label: _values(schema, other)}, names=[by])
         keys = list(range(1, long.index.nlevels))
         grouped = long.groupby(level=keys, sort=False, dropna=False)
         if ((grouped.transform("size") < 2) | _clashing(long, keys)).any():
@@ -3560,9 +3566,11 @@ def _differs(
     return False
 
 
-def _values(rel: DuckDBPyRelation) -> pd.Series:
+def _values(schema: RecordSchema, rel: DuckDBPyRelation) -> pd.Series:
     """One attribute's long rows as its values by their key columns."""
-    frame = _unpacked(rel, CONNECTION, SNAPSHOT).df()
+    for multi in schema.multi_dims:
+        rel = unpacked(schema, multi, rel)
+    frame = rel.df()
     return frame.set_index([c for c in frame.columns if c != "value"])["value"]
 
 
@@ -3600,7 +3608,7 @@ def _axis_union(
     """
     keys = list(schema.over(subject)) or [subject]
     keyed = {
-        label: _unpacked(rel, subject).df().set_index(keys)
+        label: unpacked(schema, subject, rel).df().set_index(keys)
         for label, rel in held.items()
     }
     order = _ordered_union(subject, {label: f.index for label, f in keyed.items()}, by)
@@ -3720,7 +3728,7 @@ class _StackedSource:
             differing = set(names)
         else:
             differing = {
-                a for a in names if _differs(_held(attributes, a), labels, dim)
+                a for a in names if _differs(schema, _held(attributes, a), labels, dim)
             }
         schema = _widened(schema, dim, labels, differing)
         if not apart:
@@ -3754,7 +3762,7 @@ def _record_connections(record: RecordLike) -> pd.DataFrame | None:
     frame = record.properties.get(CONNECTION)
     if frame is None:
         return None
-    return _unpacked(frame, CONNECTION).df()
+    return unpacked(record.schema, CONNECTION, frame).df()
 
 
 def _tuples_of(tuples: DuckDBPyRelation, members: DuckDBPyRelation) -> DuckDBPyRelation:
@@ -3888,35 +3896,14 @@ def _connection_struct(entity: Expression, bus: Expression) -> Expression:
     return fn.struct_pack(**{ENTITY: entity, BUS: bus}).cast(struct).alias(CONNECTION)
 
 
-def _unpacked(rel: DuckDBPyRelation, *columns: str) -> DuckDBPyRelation:
-    """`rel` with each struct of `columns` it carries spread to a column per field, after the others.
-
-    A multi-dim's struct spreads to its coordinates: `connection` to `entity`
-    and `bus`, a multi-period `snapshot` to `period` and `timestep`.
-    """
-    types = dict(zip(rel.columns, rel.types, strict=True))
-    structs = [c for c in columns if c in types and types[c].id == "struct"]
-    if not structs:
-        return rel
-    return rel.project(
-        *(col(c) for c in rel.columns if c not in structs),
-        *(
-            fn.struct_extract(col(c), lit(field)).alias(field)
-            for c in structs
-            for field, _ in types[c].children
-        ),
-    )
-
-
 def _packed(schema: RecordSchema, dim: str, rel: DuckDBPyRelation) -> DuckDBPyRelation:
     """`rel` with the coordinate columns of the multi-dim `dim` packed into its struct, typed as declared, where the first of them stood."""
     over = schema.over(dim)
-    struct = struct_of({c: col(c) for c in over})
-    packed = struct.cast(schema.duck_type(schema.dimensions[dim])).alias(dim)
+    struct = packed(schema, dim, rel.columns, {}).alias(dim)
     first = next(c for c in rel.columns if c in over)
     return rel.project(
         *(
-            packed if c == first else col(c)
+            struct if c == first else col(c)
             for c in rel.columns
             if c == first or c not in over
         )
