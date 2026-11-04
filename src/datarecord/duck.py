@@ -96,8 +96,14 @@ def write_parquet(
 
 
 @contextmanager
-def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[None]:
+def transaction(
+    con: DuckDBPyConnection, operation: str, url: str
+) -> Iterator[Callable[[Callable[[], object]], None]]:
     """Run the block in one transaction on `con`, committed where it returns, rolled back where it raises.
+
+    The block may register undo steps for what it changed outside the
+    database, which the rollback cannot reach: each runs, last first, where
+    the block or the commit fails.
 
     Parameters
     ----------
@@ -105,6 +111,11 @@ def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[N
         What runs, named in the refusal.
     url
         The design page the refusal links to, as a URL.
+
+    Yields
+    ------
+    Callable
+        Registers one undo step.
 
     Raises
     ------
@@ -120,12 +131,18 @@ def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[N
             f"holds one open; commit or roll it back before calling it ({url})"
         )
         raise TransactionException(msg) from e
+    undo: list[Callable[[], object]] = []
     try:
-        yield
+        try:
+            yield undo.append
+        except BaseException:
+            con.rollback()
+            raise
+        con.commit()
     except BaseException:
-        con.rollback()
+        for step in reversed(undo):
+            step()
         raise
-    con.commit()
 
 
 def refuse_open_transaction(con: DuckDBPyConnection, operation: str, url: str) -> None:

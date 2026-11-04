@@ -17,6 +17,7 @@ import duckdb
 import pytest
 
 from datarecord import Workspace
+from datarecord.duck import transaction
 from datarecord.mutable import WorkingRecord
 from tests.fixtures import in_threads, nested_tables, scratch_tables
 from tests.test_mutable import _rows, _small, _staging
@@ -230,6 +231,29 @@ def test_register_and_unregister_refuse_an_open_transaction(workspace, small, ca
             call(workspace, small)
     finally:
         workspace.con.rollback()
+
+
+@pytest.mark.parametrize("fails", [None, "block", "commit"])
+def test_a_transaction_undoes_its_steps_where_it_fails(fails):
+    """The rollback reaches only the database, so a block's undo steps cover
+    the rest, where the commit fails as much as where the block raises."""
+    db = duckdb.connect()
+    db.execute("CREATE SCHEMA s")
+    con, other = db.cursor(), db.cursor()
+    undone: list[str] = []
+    try:
+        with transaction(con, "test", "https://example.org") as on_rollback:
+            on_rollback(lambda: undone.append("first"))
+            on_rollback(lambda: undone.append("last"))
+            con.execute("CREATE TABLE s.t AS SELECT 1")
+            if fails == "block":
+                raise RuntimeError
+            if fails == "commit":
+                other.execute("DROP SCHEMA s CASCADE")
+    except (RuntimeError, duckdb.TransactionException):
+        assert fails is not None, "a transaction that commits raises nothing"
+    expected = [] if fails is None else ["last", "first"]
+    assert undone == expected, "undo steps run, last first, only where it fails"
 
 
 def test_unregister_leaves_a_schema_no_record_registered(workspace):

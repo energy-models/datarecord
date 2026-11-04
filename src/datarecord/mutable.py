@@ -27,7 +27,7 @@ from collections.abc import (
     Sequence,
 )
 from dataclasses import dataclass
-from functools import cached_property, reduce, wraps
+from functools import cached_property, partial, reduce, wraps
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, cast
 from uuid import UUID, uuid4
@@ -325,7 +325,10 @@ def _atomic[**P](
             self.con,
             edit.__name__,
             "https://energy-models.github.io/datarecord/design/use/editing/#edits",
-        ):
+        ) as on_rollback:
+            on_rollback(
+                partial(object.__setattr__, self, "_touched", set(self._touched))
+            )
             self._dirty.clear()
             edit(self, *args, **kwargs)
             self._refresh_owners()
