@@ -20,11 +20,12 @@ Notes
 
 import sys
 import time
-from collections.abc import Callable, Iterable, Mapping, Sequence
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from functools import partial, reduce
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import duckdb
 from duckdb import ColumnExpression as col
@@ -289,3 +290,20 @@ def shared_table(
                 pass
             break
     return con.table(name)
+
+
+@contextmanager
+def scratch_table(
+    con: DuckDBPyConnection, rel: DuckDBPyRelation
+) -> Iterator[DuckDBPyRelation]:
+    """`rel` collected into a table of its own, read as one, and dropped on exit.
+
+    A table both pins what `rel` reads, where a later write would change it,
+    and stops each step over it from binding `rel`'s whole tree again.
+    """
+    name = f"_scratch_{uuid4().hex}"
+    rel.create(name)
+    try:
+        yield con.table(name)
+    finally:
+        con.execute(f"DROP TABLE {name}")
