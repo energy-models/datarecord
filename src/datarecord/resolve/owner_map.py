@@ -244,8 +244,8 @@ def _choices(
     """
     dom = _domain_of(schema) if attribute is None else lit(_domain(schema, attribute))
     n = 1 << len(schema.partial_dims)
-    return sql(
-        f"list_filter(range({n}), lambda x: (x & {dom}) = x AND {allowed('_m', 'x')})"
+    return fn.list_filter(
+        fn.range(lit(n)), sql(f"lambda x: (x & {dom}) = x AND {allowed('_m', 'x')}")
     )
 
 
