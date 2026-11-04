@@ -42,7 +42,7 @@ A named set no row holds costs nothing. Only owner-map rows are expanded, never 
 
 Under [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md) the masks and the candidate masks of a layer are taken over its own schema's `partial` dims, once per distinct layer schema, after the map folded so far is widened to it.
 
-The fold no longer refuses rows. A frozen layer's unfilled rows and unsettled crossings are refused when a workspace first builds the fold over it, so a layer from any writer is still checked. A `set` whose own rows cross each other is refused, and its edit rolled back. `set` fills what it stages, so it runs no check for unfilled rows.
+The fold no longer refuses rows. A frozen layer's unfilled rows are refused when a workspace first builds the fold over it, so a layer from any writer is still checked. Its own rows crossing unsettled are refused by the writer, or, for a layer another writer made, by the read that reaches the coordinate where they meet. A `set` whose own rows cross each other is refused, and its edit rolled back. `set` fills what it stages, so it runs no check for unfilled rows.
 
 ### The read ranks only contested rows
 
@@ -122,7 +122,7 @@ rel.fetchall()  # holds 150.0
 6. The contested flag carried as data, and the read ranking only the rows of contested layers.
 7. The staged owner-map rows in per-attribute tables that every edit refreshes.
 8. Last writer wins in `set`.
-9. The refusal of a frozen layer checked once, when a workspace first folds it, rather than on every read.
+9. The refusal of a frozen layer's unfilled rows checked once, when a workspace first folds it, rather than on every read.
 10. Each layer's owner rows aggregated once into its checkpoint, and one union per layer in place of two binds.
 11. The parts of the plan derived from a schema built once per fold and layer schema.
 12. `materialise` reusing the frozen fold a workspace already holds.
