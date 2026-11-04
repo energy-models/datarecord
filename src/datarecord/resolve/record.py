@@ -21,7 +21,7 @@ import threading
 import weakref
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass, field
-from functools import cached_property, wraps
+from functools import cached_property, partial, wraps
 from typing import TYPE_CHECKING, ClassVar, Self, cast
 from uuid import UUID, uuid4
 
@@ -520,34 +520,28 @@ class Record:
             for view, rel in relations.items()
         }
         holds = self.workspace._holds
-        held = False
-        try:
-            with transaction(
-                con,
-                "register",
-                "https://energy-models.github.io/datarecord/design/storage/views/",
-            ):
-                con.execute(f"CREATE SCHEMA {col(name)}")
-                holds.hold(name, self._kept_schemas)
-                held = True
-                for kind in kinds:
-                    con.execute(f"CREATE SCHEMA {col(name, kind)}")
-                for path, query in rendered.items():
-                    con._create_view(path, query)
-                con.execute(
-                    "INSERT INTO registered (name, revision, working, held)"
-                    " VALUES (?, ?, ?, ?)",
-                    [
-                        name,
-                        self.revision_id,
-                        not self.frozen,
-                        sorted(self._kept_schemas),
-                    ],
-                )
-        except BaseException:
-            if held:
-                holds.release(name)
-            raise
+        with transaction(
+            con,
+            "register",
+            "https://energy-models.github.io/datarecord/design/storage/views/",
+        ) as on_rollback:
+            con.execute(f"CREATE SCHEMA {col(name)}")
+            holds.hold(name, self._kept_schemas)
+            on_rollback(partial(holds.release, name))
+            for kind in kinds:
+                con.execute(f"CREATE SCHEMA {col(name, kind)}")
+            for path, query in rendered.items():
+                con._create_view(path, query)
+            con.execute(
+                "INSERT INTO registered (name, revision, working, held)"
+                " VALUES (?, ?, ?, ?)",
+                [
+                    name,
+                    self.revision_id,
+                    not self.frozen,
+                    sorted(self._kept_schemas),
+                ],
+            )
 
     @property
     def _kept_schemas(self) -> frozenset[str]:
