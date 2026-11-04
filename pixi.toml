@@ -56,22 +56,24 @@ pypsa = "*"
 # toolchain. mkdocstrings imports `datarecord` to read its docstrings, so the
 # environment carries the package itself.
 #
-# Pinned below 2.0 deliberately. MkDocs 2.0 drops the plugin system, rewrites
-# theming and switches config to TOML with no migration path - it would take
-# mkdocstrings, and so the whole API Reference, with it. Material's own advice
-# is to pin `<2`; the successor they point at, Zensical, still calls its
+# Built with ProperDocs, the maintained continuation of MkDocs 1.x, which runs
+# the same plugins unchanged. MkDocs itself is unmaintained, and its 2.0 drops
+# the plugin system - it would take mkdocstrings, and so the whole API
+# Reference, with it. Zensical, Material's successor, still calls its
 # mkdocstrings integration preliminary, so this stays here until that settles.
 [feature.docs.dependencies]
-mkdocs = ">=1.6,<2"
+properdocs = ">=1.6.7,<2"
 mkdocs-material = ">=9.5,<10"
 mkdocstrings-python = ">=1.10"
 mkdocs-redirects = ">=1.2"
 # mkdocstrings formats signatures with one of these; without it every signature
 # renders on a single unwrapped line.
 ruff = "*"
+# rsvg-convert, to look at a figure in both themes before it lands.
+librsvg = "*"
 [feature.docs.tasks]
-docs = "mkdocs serve"
-docs-build = "mkdocs build --strict"
+docs = "properdocs serve -f mkdocs.yml"
+docs-build = "properdocs build --strict -f mkdocs.yml"
 
 # Material prints a red MkDocs 2.0 advisory on every build. It is editorial, not
 # a deprecation of anything used here, and in a CI log it reads as a failure -
