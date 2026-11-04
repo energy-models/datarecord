@@ -13,6 +13,16 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Added
 
+- `select(record, **labels)`, exported beside `settle`, and `Record.select`
+  return a `Selection`: a `RecordLike` holding any record at the labels named,
+  as xarray's `sel` takes them. One label squeezes its dim out of the schema,
+  its attributes' rows settled along it by the broadcast rule; a list, a slice
+  or a partial date string keeps it. A keyword naming a multi-dim's coordinate
+  narrows its tuples, and one naming a property narrows its subject. A label
+  whose property names a dropped label goes, and so does a tuple naming one,
+  until nothing more goes. `Selection.select` merges its labels and selects the
+  base again, and `Selection.lift` puts the squeezed labels back on rows
+  computed over the view. Attributes stay plans on the base's connection.
 - Properties. The schema has a `properties` section (`PropertySpec`) that
   declares, per dim or multi-dim, the values that describe one label. A record
   stores them as columns of `dims/<dim>.parquet`.

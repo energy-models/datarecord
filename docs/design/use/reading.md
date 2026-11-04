@@ -148,6 +148,8 @@ Elsewhere every row names the same coordinates, one row per key, and `settle` ke
 
 The rule needs no knowledge of layers, so `settle` lives in core and reads a plain directory as it reads a tree.
 
+A consumer that reads the record at some of its labels, one scenario or a few buses, [selects](selecting.md) a view of it first, `select(record, **labels)`, itself a `RecordLike`.
+
 ## One engine
 
 The protocol names DuckDB: a `RecordLike` answers `DuckDBPyRelation`s.

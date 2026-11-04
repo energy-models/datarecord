@@ -30,6 +30,7 @@ datarecord/
 │   └── record.py      # Record
 ├── mutable.py         # WorkingRecord, StagedSource
 ├── settle.py          # settle, the broadcast rule over long rows
+├── select.py          # select, Selection: a view of a record at some of its labels
 ├── store/
 │   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
 │   ├── store.py       # Workspace, Store, Claim, Revision, ancestry
@@ -44,7 +45,7 @@ datarecord/
 
 ## The import order
 
-Runtime imports follow the order `duck` → `schema` → `protocols` → `resolve` → `mutable` → `store` → `tools`.
+Runtime imports follow the order `duck` → `schema` → `protocols` → `settle` → `select` → `resolve` → `mutable` → `store` → `tools`.
 A module imports at runtime only from modules earlier in that order or in its own subpackage.
 Nothing outside `tools/` imports `tools/`.
 An import under `TYPE_CHECKING` may point the other way, as when `resolve/` names `Workspace` in an annotation.
