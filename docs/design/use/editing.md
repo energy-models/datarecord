@@ -339,14 +339,16 @@ Each label and tuple check is one DuckDB query that anti-joins the staged rows a
 
 ## Staging
 
-Staged rows live in DuckDB tables on the record's own connection:
+Staged rows live in DuckDB tables in the [workspace's database](../storage/store.md#the-workspaces-database), in a schema of the record's own, named by the layer id's 32-digit hex:
 
 ```sql
-CREATE TABLE staged_attributes_<attr digest>_<id> (<that attribute's long columns>);
-CREATE TABLE staged_axis_<dim digest>_<id>        (<the axis key>, <the dim's properties>, <position>);
+CREATE SCHEMA datarecord._staged."<id>";
+CREATE TABLE datarecord._staged."<id>".attributes_<attr digest> (<that attribute's long columns>);
+CREATE TABLE datarecord._staged."<id>".axis_<dim digest>        (<the axis key>, <the dim's properties>, <position>);
 ```
 
 `<id>` is the staged layer's own id, so two `WorkingRecord`s on one connection share no table.
+The record and each registration of it hold the schema, and the workspace drops it whole once none does ([the database's schemas](../storage/store.md#the-databases-schemas)).
 An attribute or dim name is a caller's string, so the table name carries a digest of it.
 
 Every table is shaped like the file it becomes.

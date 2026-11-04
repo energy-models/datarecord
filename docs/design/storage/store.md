@@ -51,7 +51,7 @@ ws = Workspace("cache.duckdb")  # a file, kept across runs
 ws = Workspace(con=server, name="dr")  # on the server's connection, attached as dr
 ```
 
-Every table datarecord shares between cursors lives in the `main` schema of that database: the `schemas`, `revisions` and `registered` tables, the tables a fold [shares between threads](concurrency.md#a-cursor-per-thread) and the [staging tables](../use/editing.md#staging).
+Every table datarecord shares between cursors lives in that database: the `schemas`, `revisions` and `registered` tables in its `main` schema, and the tables a fold [shares between threads](concurrency.md#a-cursor-per-thread), the [staging tables](../use/editing.md#staging) and a call's scratch tables in [schemas of their own](#the-databases-schemas).
 So does every schema a record [registers](views.md).
 A user's own file opened as a workspace receives these tables beside its own.
 SQL names them in full, `datarecord.main.revisions` or `datarecord.edit.dims.bus`, because a name without its database resolves in the cursor's default database, which is another one.
@@ -66,6 +66,25 @@ The cursors of a passed connection share its instance, so they see the attached 
 `ws.close()` closes every thread's cursor and detaches the database.
 It closes the connection too only where the workspace opened it, and a connection passed in stays open for its owner.
 A passed connection that ran `USE datarecord` runs `USE` on its own database again before `ws.close()`, `USE memory` for an in-memory one, since every statement fails on a connection whose default database was detached.
+
+### The database's schemas
+
+The tables a workspace creates sit in schemas of its database, so its `main` holds only its bookkeeping:
+
+| schema            | holds                                                                            | created by                            |
+| ----------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
+| `main`            | `schemas`, `revisions`, `registered`                                             | the workspace                         |
+| `_fold.<rid>`     | the [shared tables](concurrency.md#a-cursor-per-thread) of revision `rid`'s fold | the first cursor to fold `rid`        |
+| `_staged.<layer>` | a `WorkingRecord`'s [staging tables](../use/editing.md#staging)                  | `WorkingRecord(...)`                  |
+| `_scratch`        | a call's intermediate tables, a fold's checkpoints and an edit's snapshots       | the call using them, which drops them |
+| `<name>`          | the [views of a registration](views.md)                                          | `register(name)`                      |
+
+SQL names each in full, `datarecord._fold.<rid>.owner_map`.
+`_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as taken names.
+The id in a nested schema's name keys its tables, which do not carry it, and is its 32-digit hex, without dashes.
+A `WorkingRecord` holds its schema until it is closed or collected, and a registration of it holds the same schema until `Workspace.unregister(name)`; the workspace drops the schema, with every table in it, once neither does.
+A workspace reopened on a file lists every registration in `registered`, so `unregister` drops its views there too.
+The PyPSA exporter, which holds a record's connection but no workspace, keeps its joins in temporary tables of its cursor instead, dropped by the call too.
 
 ### The layers
 

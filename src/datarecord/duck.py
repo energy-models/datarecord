@@ -26,11 +26,11 @@ Notes
 import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, suppress
 from functools import partial, reduce
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import duckdb
 from duckdb import ColumnExpression as col
@@ -59,6 +59,19 @@ class _Functions:
 
 
 fn = _Functions()
+
+#: The schema each revision's fold is kept in, as a schema of its own inside.
+FOLD = "_fold"
+#: The schema each `WorkingRecord`'s staging tables are kept in, as a schema of its own inside.
+STAGED = "_staged"
+#: The schema a call keeps its intermediate tables in, each dropped by that call.
+SCRATCH = "_scratch"
+
+
+def nested(database: str, parent: str, id: UUID) -> str:
+    """The schema `id` names inside schema `parent` of `database`, quoted for SQL."""
+    return str(col(database, parent, id.hex))
+
 
 #: The options of every parquet file datarecord writes. Format v2 delta-encodes a
 #: series' snapshots and byte-stream-splits its values; the dictionary limit keeps
@@ -113,6 +126,18 @@ def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[N
         con.rollback()
         raise
     con.commit()
+
+
+def refuse_open_transaction(con: DuckDBPyConnection, operation: str, url: str) -> None:
+    """Refuse `operation` where `con` holds an open transaction, as `transaction` does.
+
+    Raises
+    ------
+    TransactionException
+        Where `con` already holds an open transaction.
+    """
+    with transaction(con, operation, url):
+        pass
 
 
 def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
@@ -294,42 +319,86 @@ def empty_relation(
     return values_relation(con, list(columns), [nulls]).limit(0)
 
 
+def create_table(con: DuckDBPyConnection, name: str, rel: DuckDBPyRelation) -> None:
+    """Create table `name` holding `rel`'s rows.
+
+    SQL rather than `rel.create`, which cannot address a table in a nested
+    schema, `datarecord._fold."<id>".owner_map`.
+    """
+    _dr_rel = rel
+    con.execute(f"CREATE TABLE {name} AS FROM _dr_rel")
+
+
+def insert_into(con: DuckDBPyConnection, name: str, rel: DuckDBPyRelation) -> None:
+    """Append `rel`'s rows to table `name`, column by position.
+
+    SQL rather than `rel.insert_into`, for the reason `create_table` gives.
+    """
+    _dr_rel = rel
+    con.execute(f"INSERT INTO {name} FROM _dr_rel")
+
+
+def tables_in(
+    con: DuckDBPyConnection, database: str, parent: str, id: UUID
+) -> set[str]:
+    """The tables of schema `id` inside schema `parent` of `database`, none where it does not exist yet.
+
+    Asked of the catalog rather than found by `con.table` failing: on a
+    missing table DuckDB scans the calling frame's Python variable of the
+    table's name instead.
+    """
+    rows = con.execute(
+        "SELECT t.table_name FROM duckdb_tables() t"
+        " JOIN duckdb_schemas() s ON t.schema_oid = s.oid"
+        " WHERE s.database_name = ? AND s.parent_schema = ? AND s.schema_name = ?",
+        [database, parent, id.hex],
+    ).fetchall()
+    return {table for (table,) in rows}
+
+
 def shared_table(
     con: DuckDBPyConnection,
-    name: str,
+    database: str,
+    parent: str,
+    id: UUID,
+    table: str,
     build: Callable[[], AbstractContextManager[DuckDBPyRelation]],
 ) -> DuckDBPyRelation:
-    """Table `name`, built by whichever cursor misses it first.
+    """Table `table` of schema `id` inside `parent` of `database`, it and its schema built by whichever cursor misses them first.
 
     `build` enters the relation the table is made of, and exits once the
     table holds it, releasing whatever the relation read. Two cursors missing
-    at once both build, and DuckDB fails the second `create` with a
-    write-write conflict rather than a name clash; what it would have created
-    is the winner's table, so that is read instead. The conflict can come
-    before the winner commits, when its table is not yet visible, so the
-    `create` is retried until it either lands or meets the committed table.
+    at once both create, and DuckDB fails the second with a write-write
+    conflict rather than a name clash; what it would have created is the
+    winner's, so that is read instead. The conflict can come before the
+    winner commits, when its schema or table is not yet visible, so each
+    `create` is retried until it either lands or meets the committed one.
 
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
-    try:
+    schema = nested(database, parent, id)
+    name = f"{schema}.{table}"
+    if table in tables_in(con, database, parent, id):
         return con.table(name)
-    except duckdb.CatalogException:
-        pass
-    with build() as rel:
-        while True:
-            try:
-                rel.create(name)
-            except duckdb.TransactionException as e:
-                if "conflict" not in str(e).lower():
-                    raise
-                time.sleep(0.001)
-                continue
-            except duckdb.CatalogException:
-                pass
-            break
+    _past_conflicts(lambda: con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+    with build() as rel, suppress(duckdb.CatalogException):
+        _past_conflicts(lambda: create_table(con, name, rel))
     return con.table(name)
+
+
+def _past_conflicts(create: Callable[[], object]) -> None:
+    """Run `create` again for as long as DuckDB fails it with a write-write conflict."""
+    while True:
+        try:
+            create()
+        except duckdb.TransactionException as e:
+            if "conflict" not in str(e).lower():
+                raise
+            time.sleep(0.001)
+            continue
+        return
 
 
 @contextmanager

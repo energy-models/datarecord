@@ -18,8 +18,8 @@ import pytest
 
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
-from tests.fixtures import in_threads
-from tests.test_mutable import _rows, _small
+from tests.fixtures import in_threads, scratch_tables
+from tests.test_mutable import _rows, _small, _staging
 
 KINDS = ("dims", "properties", "attributes")
 
@@ -139,6 +139,47 @@ def test_views_outlive_their_relations(workspace, working):
     assert read == _read_relations(working)
 
 
+def test_registrations_keep_a_closed_working_records_tables(workspace, working):
+    """Closing a registered record drops nothing a view reads; its last unregister does."""
+    con = workspace.con
+    working.set("p_nom", 123.0, entity="Manchester Wind")
+    working.register("again")
+    declared = _declared(working)
+    expected = _read_relations(working)
+    gc.collect()
+    held = _staging(con)
+    working.close()
+    assert _read_views(con, "edit", declared) == expected, (
+        "a view reads on after its record closes"
+    )
+    workspace.unregister("edit")
+    assert _read_views(con, "again", declared) == expected, (
+        "and on while another registration holds the tables"
+    )
+    workspace.unregister("again")
+    assert held, "the record staged into a schema of its own"
+    assert not held & _staging(con), "the last unregister drops it"
+
+
+def test_a_refused_registration_leaves_the_holder_of_its_name(
+    workspace, small, working
+):
+    """A record registered under a taken name takes no hold, nor releases the name's."""
+    con = workspace.con
+    declared = _declared(working)
+    expected = _read_relations(working)
+    held = _staging(con)
+    with WorkingRecord(small.record) as other:
+        with pytest.raises(duckdb.CatalogException):
+            other.register("edit")
+    working.close()
+    assert _read_views(con, "edit", declared) == expected, (
+        "the views read on, held by the registration that took the name"
+    )
+    workspace.unregister("edit")
+    assert not held & _staging(con), "its unregister drops the tables"
+
+
 def test_a_reader_sees_only_whole_edits(workspace, working):
     """A reader in its own transactions sees each edit whole or not at all."""
     declared = _declared(working)
@@ -240,12 +281,17 @@ def test_views_read_from_a_client_attaching_the_database_under_another_name(
     client.execute(f"ATTACH '{tmp_path / 'workspace.duckdb'}' AS r")
     client.execute("ATTACH ':memory:' AS datarecord")
     tables = client.sql(
-        "SELECT table_name FROM duckdb_tables() WHERE database_name = 'r'"
+        "SELECT s.parent_schema, s.schema_name, t.table_name FROM duckdb_tables() t"
+        " JOIN duckdb_schemas() s ON t.schema_oid = s.oid WHERE t.database_name = 'r'"
     ).fetchall()
-    for (table,) in tables:
+    for parent, schema, table in tables:
+        path = ".".join(f'"{p}"' for p in (parent, schema) if p is not None)
         for database in ("memory", "datarecord"):
+            if parent is not None:
+                client.execute(f'CREATE SCHEMA IF NOT EXISTS {database}."{parent}"')
+            client.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.{path}")
             client.execute(
-                f'CREATE TABLE {database}.main."{table}" AS FROM r.main."{table}" LIMIT 0'
+                f'CREATE TABLE {database}.{path}."{table}" AS FROM r.{path}."{table}" LIMIT 0'
             )
     assert _read_views(client, "edit", declared, "r") == want, (
         "every view reads its own database's tables, whatever the client names alike"
@@ -321,3 +367,76 @@ def test_use_lets_a_cursor_read_by_short_names(workspace, working):
         assert cur.sql("SELECT name, revision FROM registered").fetchall() == (
             workspace.registered().project("name, revision").fetchall()
         ), "`registered` reads as `datarecord.main.registered`"
+
+
+def test_closing_and_unregistering_everything_leaves_no_staging_schema(
+    workspace, small
+):
+    for name in ("one", "two"):
+        with WorkingRecord(small.record) as w:
+            w.set("p_nom", 1.0, entity="Norway Wind")
+            w.register(name)
+            w.register(f"{name}_again")
+    with WorkingRecord(small.record):
+        pass
+    for (name,) in workspace.registered().project("name").fetchall():
+        workspace.unregister(name)
+    gc.collect()
+    assert _staging(workspace.con) == set()
+    assert workspace.con.sql(
+        "SELECT table_name FROM duckdb_tables()"
+        " WHERE database_name = 'datarecord' AND schema_name = 'main'"
+    ).fetchall() == [("registered",), ("revisions",), ("schemas",)], (
+        "`main` keeps only the workspace's bookkeeping"
+    )
+    assert scratch_tables(workspace.con) == set(), (
+        "every call dropped its scratch tables"
+    )
+
+
+@pytest.mark.parametrize("discard", ["close", "collect"])
+def test_a_working_record_over_another_holds_its_base_staging(
+    workspace, small, discard
+):
+    """A record staged over a `WorkingRecord` reads its base's staging tables, so holds them."""
+    con = workspace.con
+    base = WorkingRecord(small.record)
+    base.set("p_nom", 7.0, entity="Norway Wind")
+    over = WorkingRecord(base)
+    over.set("p_nom", 9.0, entity="Manchester Wind")
+    over.register("over")
+    declared = _declared(over)
+    expected = _read_relations(over)
+    if discard == "close":
+        base.close()
+        assert _read_relations(over) == expected, "the record over it reads on"
+    else:
+        del base, over
+        gc.collect()
+    assert _read_views(con, "over", declared) == expected, "and so does its view"
+    workspace.unregister("over")
+    if discard == "close":
+        over.close()
+    gc.collect()
+    assert _staging(con) == set(), "both schemas go with their last holder"
+
+
+@pytest.mark.parametrize("name", ["_fold", "_staged", "_scratch"])
+def test_register_refuses_a_schema_of_the_workspace(small, name):
+    with pytest.raises(duckdb.CatalogException, match="already exists"):
+        small.record.register(name)
+
+
+def test_a_reopened_workspace_unregisters_an_earlier_registration(tmp_path):
+    """`registered` survives in a file database, and so does the means to unregister."""
+    database = str(tmp_path / "workspace.duckdb")
+    ws = Workspace(database)
+    _small(ws.store(str(tmp_path / "store"))).record.register("edit")
+    ws.close()
+    reopened = Workspace(database)
+    try:
+        reopened.unregister("edit")
+        assert reopened.registered().fetchall() == []
+        assert _views(reopened.con, "edit") == dict.fromkeys(KINDS, [])
+    finally:
+        reopened.close()

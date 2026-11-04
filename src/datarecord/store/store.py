@@ -22,7 +22,7 @@ import json
 import os
 import threading
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Hashable, Iterable, Mapping
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
@@ -45,7 +45,7 @@ from pydantic import (
     model_validator,
 )
 
-from datarecord.duck import transaction
+from datarecord.duck import FOLD, SCRATCH, STAGED, transaction
 from datarecord.mutable import StagedSource, WorkingRecord
 from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
@@ -122,6 +122,94 @@ class _Cursors(threading.local):
             workspace._made.add(self.con)
 
 
+class _Holds:
+    """Which holders keep each schema, a schema dropped with its tables once none does.
+
+    A holder is a `WorkingRecord`, by its layer id, or a registration, by its
+    name. A schema is named as SQL reads it, in full and quoted. A finaliser releases on
+    whichever thread the collector runs, maybe inside that thread's open
+    transaction, so drops run on a cursor of their own under the lock. The
+    lock is re-entrant, and a release fired while one drops leaves its
+    schemas to the outer one, the cursor running one transaction at a time.
+
+    Notes
+    -----
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
+    """
+
+    def __init__(self, db: DuckDBPyConnection) -> None:
+        self._con: DuckDBPyConnection | None = db.cursor()
+        self._lock = threading.RLock()
+        self._holders: dict[str, set[Hashable]] = {}
+        self._held: dict[Hashable, set[str]] = {}
+        self._unheld: list[str] = []
+        self._dropping = False
+
+    def hold(self, holder: Hashable, schemas: Iterable[str]) -> None:
+        """Keep `schemas` until `holder` releases them; a holder of none is known all the same.
+
+        Raises
+        ------
+        KeyError
+            Where `holder` already holds here.
+        """
+        with self._lock:
+            if holder in self._held:
+                msg = f"`{holder}` already holds schemas on this workspace"
+                raise KeyError(msg)
+            held = self._held[holder] = set()
+            for schema in schemas:
+                self._holders.setdefault(schema, set()).add(holder)
+                held.add(schema)
+
+    def release(self, holder: Hashable) -> None:
+        """Release what `holder` holds, dropping each schema no one holds any more.
+
+        Raises
+        ------
+        KeyError
+            Where `holder` never held here.
+        """
+        with self._lock:
+            if holder not in self._held:
+                msg = f"`{holder}` holds no schemas on this workspace"
+                raise KeyError(msg)
+            for schema in self._held.pop(holder):
+                holders = self._holders[schema]
+                holders.discard(holder)
+                if not holders:
+                    del self._holders[schema]
+                    self._unheld.append(schema)
+            if self._dropping:
+                return
+            self._dropping = True
+            try:
+                self._drop()
+            finally:
+                self._dropping = False
+
+    def _drop(self) -> None:
+        while self._unheld:
+            schemas, self._unheld = self._unheld, []
+            if self._con is None:
+                continue
+            with transaction(
+                self._con,
+                "release",
+                "https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas",
+            ):
+                for schema in schemas:
+                    self._con.execute(f"DROP SCHEMA {schema} CASCADE")
+
+    def close(self) -> None:
+        """Stop dropping and close the cursor: the schemas go with the database."""
+        with self._lock:
+            if self._con is not None:
+                self._con.close()
+            self._con = None
+
+
 class Workspace:
     """A DuckDB database and the files it reaches, shared by every store on it.
 
@@ -148,6 +236,7 @@ class Workspace:
     -----
     - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
     - [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
@@ -165,9 +254,17 @@ class Workspace:
             setup.execute(f"ATTACH {lit(database)} AS {col(name)}")
             for ddl in (_SCHEMAS, _REVISIONS, _REGISTERED):
                 setup.execute(_in(self, ddl))
+            for schema in (FOLD, STAGED, SCRATCH):
+                setup.execute(f"CREATE SCHEMA IF NOT EXISTS {col(name, schema)}")
+            registered = setup.execute(
+                _in(self, "SELECT name FROM {registered}")
+            ).fetchall()
         self._made: WeakSet[DuckDBPyConnection] = WeakSet()
         self._made_lock = threading.Lock()
         self._cursors = _Cursors(self)
+        self._holds = _Holds(self._db)
+        for (held,) in registered:
+            self._holds.hold(held, ())
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
@@ -190,6 +287,8 @@ class Workspace:
 
     def unregister(self, name: str) -> None:
         """Drop the schema `name` a record registered, with its views and its `registered()` row.
+
+        A closed `WorkingRecord`'s staging tables go with its last registration.
 
         Raises
         ------
@@ -217,6 +316,7 @@ class Workspace:
                 msg = f"no record is registered as `{name}` (`Workspace.registered()`)"
                 raise duckdb.CatalogException(msg)
             con.execute(f"DROP SCHEMA {col(self.name, name)} CASCADE")
+        self._holds.release(name)
 
     def registered(self) -> DuckDBPyRelation:
         """Every registered name, with the `revision` it reads, whether it is `working`, and when it was `created`.
@@ -392,6 +492,7 @@ class Workspace:
         The connection is closed with them only where the workspace opened it;
         one passed in stays open for its owner.
         """
+        self._holds.close()
         with self._made_lock:
             for cursor in list(self._made):
                 cursor.close()

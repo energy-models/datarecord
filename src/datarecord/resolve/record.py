@@ -405,13 +405,15 @@ class Record:
 
         The views sit in `name.dims`, `name.properties` and `name.attributes` of
         the workspace's database, as in `datarecord.name.dims.bus`, each reading as
-        its relation here; over a `WorkingRecord` they follow every edit. `name` is
-        listed in `Workspace.registered()`.
+        its relation here; over a `WorkingRecord` they follow every edit, and hold
+        its staging tables until `unregister(name)`. `name` is listed in
+        `Workspace.registered()`.
 
         Raises
         ------
         duckdb.CatalogException
-            If the schema `name` exists in the workspace's database.
+            If the schema `name` exists in the workspace's database, as
+            `_fold`, `_staged` and `_scratch` always do.
         duckdb.TransactionException
             Where the cursor already holds an open transaction, or another
             cursor registers `name` at the same time.
@@ -432,20 +434,34 @@ class Record:
             for view, rel in relations.items()
         }
         con = self.con
-        with transaction(
-            con,
-            "register",
-            "https://energy-models.github.io/datarecord/design/storage/views/",
-        ):
-            con.execute(f"CREATE SCHEMA {col(ws.name, name)}")
-            for kind in kinds:
-                con.execute(f"CREATE SCHEMA {col(ws.name, name, kind)}")
-            for path, query in rendered.items():
-                con._create_view(path, query)
-            con.execute(
-                f"INSERT INTO {ws.qualified('registered')} (name, revision, working) VALUES (?, ?, ?)",
-                [name, self.revision_id, not self.frozen],
-            )
+        holds = ws._holds
+        held = False
+        try:
+            with transaction(
+                con,
+                "register",
+                "https://energy-models.github.io/datarecord/design/storage/views/",
+            ):
+                con.execute(f"CREATE SCHEMA {col(ws.name, name)}")
+                holds.hold(name, self._kept_schemas)
+                held = True
+                for kind in kinds:
+                    con.execute(f"CREATE SCHEMA {col(ws.name, name, kind)}")
+                for path, query in rendered.items():
+                    con._create_view(path, query)
+                con.execute(
+                    f"INSERT INTO {ws.qualified('registered')} (name, revision, working) VALUES (?, ?, ?)",
+                    [name, self.revision_id, not self.frozen],
+                )
+        except BaseException:
+            if held:
+                holds.release(name)
+            raise
+
+    @property
+    def _kept_schemas(self) -> frozenset[str]:
+        """The schemas this record keeps, which a registration of it keeps too."""
+        return frozenset()
 
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 
