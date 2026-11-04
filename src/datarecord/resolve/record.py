@@ -112,11 +112,11 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     for d in dims:
         stored = fn.list_concat(
             duckdb.CaseExpression(
-                fn.struct_extract(col("varies"), lit(d)),
+                col("varies")[d],
                 fn.list_value(col(d)),
             ),
             duckdb.CaseExpression(
-                fn.struct_extract(col("broadcast"), lit(d)),
+                col("broadcast")[d],
                 fn.list_value(lit(None).cast(types[d])),
             ),
         )
@@ -138,7 +138,7 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     dims = schema.partial_dims
     contested = "false"
     if dims:
-        named = struct_of({d: fn.struct_extract(col("varies"), lit(d)) for d in dims})
+        named = struct_of({d: col("varies")[d] for d in dims})
         ways = struct_of({"l": col(LAYER_COLUMN), "n": named})
         contested = f"count(DISTINCT {ways}) > count(DISTINCT {LAYER_COLUMN})"
     rows = om.aggregate(

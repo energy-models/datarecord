@@ -35,7 +35,7 @@ from uuid import UUID, uuid4
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression, sqltypes
+from duckdb import DuckDBPyRelation, Expression, count_all, sqltypes
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 
@@ -122,7 +122,7 @@ def _field_in(multi: str, field: str, labels: Sequence[Any]) -> Expression:
     """
     if not labels:
         return lit(False)
-    return fn.struct_extract(col(multi), lit(field)).isin(*map(lit, labels))
+    return col(multi)[field].isin(*map(lit, labels))
 
 
 def _is_labels(value: Any) -> bool:
@@ -566,8 +566,8 @@ class WorkingRecord(Record):
         staged = self.con.table(table)
         base = self._base_rows(kind)
         start = max(
-            staged.aggregate(f"coalesce(max({_POSITION}), 0)").fetchall()[0][0],
-            base.count("*").fetchall()[0][0],
+            staged.aggregate([coalesce(col(_POSITION).max(), lit(0))]).fetchall()[0][0],
+            base.aggregate([count_all()]).fetchall()[0][0],
         )
         numbered = rel.project(star(), fn.row_number().over().alias("_n"))
         held = [
@@ -1586,9 +1586,8 @@ class WorkingRecord(Record):
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
         open_ = [c for c in key if c in broadcast]
-        flags = ", ".join(f"{col(c)} IS NULL" for c in open_)
         patterns = (
-            self.con.sql(f"SELECT DISTINCT {flags} FROM rel").fetchall()
+            rel.project(*(col(c).isnull() for c in open_)).distinct().fetchall()
             if open_
             else [()]
         )
@@ -1846,7 +1845,7 @@ class WorkingRecord(Record):
                 continue
             table = self._ensure(f"{_AXIS_PREFIX}{m}")
             for f in fields:
-                self._delete(table, gone, dim, fn.struct_extract(col("t", m), lit(f)))
+                self._delete(table, gone, dim, col("t", m)[f])
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._delete(table, gone, dim, col("t", dim))
 
@@ -2312,7 +2311,7 @@ def _unpacked(
         )
         raise ValueError(msg)
     return rel.project(
-        *(fn.struct_extract(col(multi), lit(c)).alias(c) for c in over),
+        *(col(multi)[c].alias(c) for c in over),
         *(col(c) for c in rel.columns if c != multi),
     )
 
