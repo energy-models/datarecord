@@ -40,6 +40,7 @@ from datarecord.duck import (
     is_frame,
     join_on,
     null_safe,
+    scratch_table,
     struct_of,
     union_all_by_name,
 )
@@ -1440,12 +1441,8 @@ class WorkingRecord(Record):
                 how="anti",
             )
         )
-        snapshot = f"{table}_snapshot"
-        meets.create(snapshot)
-        try:
-            self._insert(self.con.table(snapshot), table, {})
-        finally:
-            self.con.execute(f"DROP TABLE {snapshot}")
+        with scratch_table(self.con, meets) as snapshot:
+            self._insert(snapshot, table, {})
 
     def _refuse_crossing(self, attribute: str) -> None:
         """Refuse two staged rows of `attribute` that cross where no staged row names both.
@@ -1953,12 +1950,8 @@ class WorkingRecord(Record):
         Snapshotted into a table first: the replace-by-key delete would
         otherwise change what `rel` reads.
         """
-        snapshot = f"{table}_snapshot"
-        rel.create(snapshot)
-        try:
-            self._insert(self.con.table(snapshot), table, supplied, key=key)
-        finally:
-            self.con.execute(f"DROP TABLE {snapshot}")
+        with scratch_table(self.con, rel) as snapshot:
+            self._insert(snapshot, table, supplied, key=key)
 
     def _reject_undeclared(
         self, call: str, known: Collection[str], columns: Iterable[str]

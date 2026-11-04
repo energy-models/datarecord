@@ -22,10 +22,10 @@ import math
 import re
 import warnings
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import cache, cached_property
 from typing import TYPE_CHECKING, Any, ClassVar
-from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -40,7 +40,14 @@ from duckdb import (
 )
 from duckdb import StarExpression as star
 
-from datarecord.duck import empty_relation, ex_all, fn, null_safe, struct_of
+from datarecord.duck import (
+    empty_relation,
+    ex_all,
+    fn,
+    null_safe,
+    scratch_table,
+    struct_of,
+)
 from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import cast_declared
@@ -475,20 +482,16 @@ def _left_join_values(
         Names in `values` addressed by `snapshot`, of whose rows only the
         NULL-snapshot ones are static.
     """
-    tag = uuid4().hex
-    tables = [f"_pypsa_static_{tag}"]
-    static.create(tables[0])
-    try:
-        joined = con.table(tables[0]).set_alias("s")
+    with ExitStack() as tables:
+        joined = tables.enter_context(scratch_table(con, static)).set_alias("s")
         exprs = {}
         for i, (name, long) in enumerate(values.items()):
             rows = (
                 long.filter(col(SNAPSHOT).isnull()) if name in over_snapshots else long
             )
-            tables.append(f"_pypsa_value_{tag}_{i}")
-            rows.project(*(col(k) for k in keys), col("value")).create(tables[-1])
             alias = f"a{i}"
-            picked = con.table(tables[-1]).set_alias(alias)
+            held = rows.project(*(col(k) for k in keys), col("value"))
+            picked = tables.enter_context(scratch_table(con, held)).set_alias(alias)
             joined = joined.join(
                 picked, ex_all(col("s", k) == col(alias, k) for k in keys), how="left"
             )
@@ -505,9 +508,6 @@ def _left_join_values(
             .project(star(exclude=["_pos"]))
             .df()
         )
-    finally:
-        for table in tables:
-            con.execute(f"DROP TABLE IF EXISTS {table}")
 
 
 def _series_frame(
