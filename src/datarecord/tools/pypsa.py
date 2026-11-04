@@ -1591,9 +1591,17 @@ def _collection_members(
 
 
 def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
-    """Refuse a member holding other components than the first: it would read their defaults."""
+    """Refuse a member holding other snapshots or components than the first: it would read their defaults."""
     (first, reference), *rest = members.items()
     for label, m in rest:
+        if not m.snapshots.equals(reference.snapshots):
+            apart = reference.snapshots.symmetric_difference(m.snapshots)
+            held = list(apart[:3]) if len(apart) else "the same, reordered"
+            msg = (
+                f"The network of {by} {label!r} holds other snapshots than that "
+                f"of {by} {first!r}: {held}"
+            )
+            raise ValueError(msg)
         for c in reference.components:
             if c.name == "SubNetwork":
                 continue

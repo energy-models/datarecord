@@ -538,6 +538,11 @@ def _reordered_buses(members):
     return members
 
 
+def _without_a_snapshot(members):
+    members["hi"].set_snapshots(members["hi"].snapshots[1:])
+    return members
+
+
 def _with_region_shapes(members):
     for n in members.values():
         _add_shape(n, idx="north", component="region", type="area")
@@ -2875,10 +2880,19 @@ class TestPyPSA:
                 r"holds other Generator .*'Newcomer'",
                 id="entity",
             ),
+            *(
+                pytest.param(
+                    _without_a_snapshot,
+                    dim,
+                    "'hi' holds other snapshots",
+                    id=f"snapshots-{dim}",
+                )
+                for dim in ("sensitivity", "scenario")
+            ),
         ],
     )
     def test_a_collection_must_fit_its_dim(self, store, ac_dc, edit, dim, match):
-        """A member fits its dim, and declares and orders what the others do, with their properties, refused at the call.
+        """A member fits its dim, and holds the snapshots, declares and orders what the others do, with their properties, refused at the call.
 
         Notes
         -----
