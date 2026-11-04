@@ -36,7 +36,6 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression, sqltypes
-from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 
@@ -504,7 +503,7 @@ class WorkingRecord(Record):
         if attribute is not None:
             return
         numbered = self._base_rows(kind).project(
-            star(), sql("row_number() OVER ()").alias(_POSITION)
+            star(), fn.row_number().over().alias(_POSITION)
         )
         self._insert(numbered, self._staged[kind, attribute], {})
 
@@ -570,10 +569,10 @@ class WorkingRecord(Record):
             staged.aggregate(f"coalesce(max({_POSITION}), 0)").fetchall()[0][0],
             base.count("*").fetchall()[0][0],
         )
-        numbered = rel.project(star(), sql("row_number() OVER ()").alias("_n"))
+        numbered = rel.project(star(), fn.row_number().over().alias("_n"))
         held = [
             staged.project(col(key), col(_POSITION)),
-            base.project(col(key), sql("row_number() OVER ()").alias(_POSITION)),
+            base.project(col(key), fn.row_number().over().alias(_POSITION)),
         ]
         joined = numbered.set_alias("r")
         for i, positions in enumerate(held):
@@ -2167,12 +2166,12 @@ class WorkingRecord(Record):
         """Whether the staged axis `kind` differs from the base's, as rows in position order."""
         table = self.con.table(self._staged[kind, None])
         columns = [c for c in table.columns if c != _POSITION]
-        order = sql(f"row_number() OVER (ORDER BY {_POSITION})").alias(_POSITION)
+        order = fn.row_number().over(order_by=[col(_POSITION)]).alias(_POSITION)
         staged = table.project(*map(col, columns), order)
         types = dict(zip(table.columns, table.types, strict=True))
         base = self._base_rows(kind).project(
             *(col(c).cast(types[c]).alias(c) for c in columns),
-            sql("row_number() OVER ()").alias(_POSITION),
+            fn.row_number().over().alias(_POSITION),
         )
         return bool(
             staged.except_(base).limit(1).fetchall()
@@ -2493,12 +2492,9 @@ def _most_named(
     rel: DuckDBPyRelation, by: Sequence[str], columns: Sequence[str]
 ) -> DuckDBPyRelation:
     """`rel`'s `columns`, keeping per `by` the rows whose `_named` is the largest."""
-    # A window stays SQL text: DuckDB's expression API has no window construct.
-    over = ", ".join(str(col(c)) for c in by)
+    over = [col(c) for c in by]
     return (
-        rel.project(
-            star(), sql(f"max(_named) OVER (PARTITION BY {over})").alias("_most")
-        )
+        rel.project(star(), col("_named").max().over(partition_by=over).alias("_most"))
         .filter(col("_named") == col("_most"))
         .project(*(col(c) for c in columns))
     )
