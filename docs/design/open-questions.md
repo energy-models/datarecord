@@ -132,7 +132,7 @@ A server that crashes or forgets leaves its views and the folds they read. The `
 
 ### A public `create_view` taking a qualified name
 
-`register` calls DuckDB's private `_render` and `_create_view`, since `DuckDBPyRelation.create_view` takes one identifier and no nested path ([building the views](storage/views.md#building-the-views)). That pins DuckDB to an exact version until a public method takes a qualified name, which is to be requested upstream.
+`register` calls DuckDB's private `_render` and `_create_view`, since `DuckDBPyRelation.create_view` takes one identifier and no nested path ([building the views](storage/views.md#building-the-views)). That caps DuckDB at the newest release the suite passed on until a public method takes a qualified name, which is to be requested upstream.
 
 ### A reader seeing part of a large committed transaction
 
