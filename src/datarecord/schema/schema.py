@@ -117,7 +117,7 @@ def _misnamed(name: str) -> str | None:
 
     mathspec's `NAME` is the rule, since an expression must be able to write
     the name; it also keeps a dim's name usable unquoted in the fold's shared
-    table names (`_coord_table`).
+    table names (`_fold_name`).
     """
     if name.startswith("_"):
         return "starts with `_`, kept for the columns a fold adds and drops"

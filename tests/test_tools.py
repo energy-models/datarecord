@@ -37,6 +37,7 @@ from tests.fixtures import (
     empty_root,
     export_network,
     schema,
+    scratch_tables,
     unpacked,
     write_attribute,
     write_component,
@@ -150,6 +151,7 @@ def test_build_reads_the_network_source_as_its_written_record(workspace, ac_dc, 
     got = PyPSA.build(PyPSA.to_datarecord(ac_dc, workspace.con))
     pd.testing.assert_index_equal(got.snapshots, built.snapshots)
     assert_networks_equal(got, built)
+    assert scratch_tables(workspace.con) == set(), "the export dropped its join tables"
 
 
 def test_verify_accepts_a_complete_record(single_revision):

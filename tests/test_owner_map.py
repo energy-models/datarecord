@@ -32,6 +32,7 @@ from tests.fixtures import (
     drop_entities,
     empty_child,
     empty_root,
+    nested_tables,
     restate,
     schema,
     write_attribute,
@@ -694,12 +695,10 @@ def test_a_widening_child_splits_its_parents_rows_by_their_labels(store, materia
         assert _p_max_pu(again.revision(child.id)) == _p_max_pu(child)
     finally:
         fresh.close()
-    tables = store.workspace.con.sql(
-        "SELECT table_name FROM duckdb_tables() WHERE starts_with(table_name, 'owner_map_')"
-    ).fetchall()
+    folds = nested_tables(store.workspace.con, "_fold")
     folded = [child] if materialised else [root, child]
-    assert sorted(t for (t,) in tables) == sorted(
-        f"owner_map_{n.id.hex}" for n in folded
+    assert sorted(s for s, tables in folds.items() if "owner_map" in tables) == sorted(
+        n.id.hex for n in folded
     ), "one fold table per node folded, whatever schema reads it"
 
 

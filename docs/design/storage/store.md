@@ -40,6 +40,23 @@ A file-backed database keeps staged edits across a crash and the `revisions` cac
 Every cache keyed by id assumes that an id always names the same content.
 A fresh UUID, claimed once, over write-once files guarantees this, and a location wiped and written again breaks it.
 
+### The database's schemas
+
+The tables a workspace creates sit in schemas of their own, so `main` holds only its bookkeeping:
+
+| schema            | holds                                                                                        | created by                            |
+| ----------------- | -------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `main`            | `schemas`, `revisions`, `registered`                                                         | the workspace                         |
+| `_fold.<rid>`     | the [shared tables](concurrency.md#a-cursor-per-thread) of revision `rid`'s fold             | the first cursor to fold `rid`        |
+| `_staged.<layer>` | a `WorkingRecord`'s [staging tables](../use/editing.md#staging)                              | `WorkingRecord(...)`                  |
+| `_scratch`        | a call's intermediate tables, a fold's checkpoints and the PyPSA exporter's joins among them | the call using them, which drops them |
+| `<name>`          | the [views of a registration](views.md)                                                      | `register(name)`                      |
+
+`_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as taken names.
+The id in a nested schema's name keys its tables, which do not carry it, and is its 32-digit hex, without dashes.
+A `WorkingRecord` holds its schema until it is closed or collected, and a registration of it holds the same schema until `Workspace.unregister(name)`; the workspace drops the schema, with every table in it, once neither does.
+A workspace reopened on a file lists every registration in `registered`, so `unregister` drops its views there too.
+
 ### The layers
 
 ```text

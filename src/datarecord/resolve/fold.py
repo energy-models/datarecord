@@ -32,14 +32,13 @@ from functools import reduce
 from typing import TYPE_CHECKING, Any
 from uuid import UUID, uuid4
 
-import duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
 
-from datarecord.duck import fn, struct_of, union_all_by_name
+from datarecord.duck import FOLD, fn, struct_of, tables_in, union_all_by_name
 from datarecord.protocols import Flags
-from datarecord.resolve.coords import Coords, _table_name
+from datarecord.resolve.coords import Coords, _fold_name
 from datarecord.resolve.owner_keys import _empty_relation, owner_keys
 from datarecord.schema.categories import (
     categorized_dim,
@@ -290,10 +289,10 @@ class Fold:
         The coords and the owner map are tabled independently, so each is
         looked up (`Coords.held`).
         """
-        try:
-            owner_map = source.con.table(_table_name(source.layer_id))
-        except duckdb.CatalogException:
+        rid, con = source.layer_id, source.con
+        if "owner_map" not in tables_in(con, FOLD, rid):
             return None
+        owner_map = con.table(_fold_name(rid, "owner_map"))
         coords = Coords.held(source)
         return None if coords is None else cls(coords, owner_map)
 

@@ -20,33 +20,30 @@ from functools import reduce
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-import duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb.sqltypes import VARCHAR
 
-from datarecord.duck import fn, shared_table, values_relation
+from datarecord.duck import FOLD, fn, nested, shared_table, tables_in, values_relation
 from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
 
 if TYPE_CHECKING:
     from datarecord.resolve.sources import LayerSource
 
 
-def _table_name(revision_id: UUID) -> str:
-    return f"owner_map_{revision_id.hex}"
+def _fold_name(revision_id: UUID, table: str) -> str:
+    """Table `table` of revision `revision_id`'s fold, qualified for SQL.
 
+    The tables are `owner_map`, `dim_owners`, and `dims_<dim>` and
+    `dead_<dim>`, the dim spelled as declared, which `Schema` holds to a plain
+    identifier.
 
-def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
-    """The shared table one folded axis, dead label set or owner map is kept in.
-
-    `name` is spelled as declared, which `Schema` holds to a plain identifier.
+    Notes
+    -----
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     """
-    return f"{kind}_{name}_{revision_id.hex}"
-
-
-def _dim_owners_table(revision_id: UUID) -> str:
-    return f"dim_owners_{revision_id.hex}"
+    return f"{nested(FOLD, revision_id)}.{table}"
 
 
 def _fold_axis(
@@ -486,8 +483,8 @@ class Coords:
         return cls.from_rows(
             schema,
             rows,
-            lambda d, _: con.table(_coord_table("dims", d, revision_id)),
-            lambda d: con.table(_coord_table("dead", d, revision_id)),
+            lambda d, _: con.table(_fold_name(revision_id, f"dims_{d}")),
+            lambda d: con.table(_fold_name(revision_id, f"dead_{d}")),
         )
 
     @classmethod
@@ -499,18 +496,17 @@ class Coords:
         own ancestry - as every proper ancestor in a source list is.
         """
         rid, con = source.layer_id, source.con
-        try:
-            rows = con.table(_dim_owners_table(rid)).fetchall()
-        except duckdb.CatalogException:
+        if "dim_owners" not in tables_in(con, FOLD, rid):
             return None
+        rows = con.table(_fold_name(rid, "dim_owners")).fetchall()
         return cls.tabled(rid, source.schema, rows, con)
 
     @classmethod
     def shared(cls, revision_id: UUID, sources: Sequence[LayerSource]) -> Coords:
         """The coords of the frozen `sources`, kept as shared tables and read on the calling thread's cursor.
 
-        Each axis and dead label set is a table (`_coord_table`), built by
-        whichever cursor misses it first; `dim_owners_<id>` is created after
+        Each axis and dead label set is a table (`_fold_name`), built by
+        whichever cursor misses it first; `dim_owners` is created after
         them, so a reader finding it finds every table it names. A `one_of`
         dim's axis is the schema's, carried so a fold onto these coords binds
         no `VALUES` list per read.
@@ -529,12 +525,14 @@ class Coords:
                 *(("dead", name, rel) for name, rel in coords.dead.items()),
             ]
             for kind, name, rel in made:
-                table = _coord_table(kind, name, revision_id)
-                shared_table(con, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
+                table = f"{kind}_{name}"
+                shared_table(con, FOLD, revision_id, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
             return coords.owners(con)
 
-        index = _dim_owners_table(revision_id)
-        rows = shared_table(con, index, lambda: nullcontext(build())).fetchall()
+        index = shared_table(
+            con, FOLD, revision_id, "dim_owners", lambda: nullcontext(build())
+        )
+        rows = index.fetchall()
         tabled = cls.tabled(revision_id, schema, rows, con)
         axes = tabled.axes | {
             n: one_of_axis(schema, n, con) for n in schema.one_of_dims
