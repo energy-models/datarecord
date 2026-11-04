@@ -23,7 +23,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from functools import cached_property, wraps
 from typing import TYPE_CHECKING, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import duckdb
 from duckdb import CoalesceOperator as coalesce
@@ -638,45 +638,3 @@ class Record:
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         """
         return _owners(self._fold.owner_map, self.schema)
-
-
-@dataclass(frozen=True)
-class PinnedRecord(Record):
-    """A `Record` folding its unfrozen tail once rather than per access.
-
-    For a reader that reads many keys while nothing stages, as `write_layer`
-    does: the folded coords and owner map are built on first access and kept,
-    so each key costs its own join rather than a re-fold. Held correct only
-    while no source changes, and only on the cursor of the thread that built
-    it, the relations kept being planned on that cursor. The owner map is a
-    table in the database from the first access to `_fold` until `release`,
-    which the reader must call.
-
-    Notes
-    -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    """
-
-    @cached_property
-    def _coords(self) -> Coords:  # type: ignore[override]
-        return super()._coords
-
-    @cached_property
-    def _fold(self) -> Fold:  # type: ignore[override]
-        fold = super()._fold
-        fold.owner_map.create(self._table)
-        return dataclasses.replace(fold, owner_map=self.con.table(self._table))
-
-    @cached_property
-    def _table(self) -> str:
-        return f"_pinned_{uuid4().hex}"
-
-    def release(self) -> None:
-        """Drop the table the owner map is held in; nothing reads the fold after."""
-        if "_fold" in self.__dict__:
-            self.con.execute(f"DROP TABLE IF EXISTS {self._table}")
-
-    @property
-    def _fixed(self) -> bool:
-        return False

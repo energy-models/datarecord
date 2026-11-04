@@ -1776,9 +1776,6 @@ def test_a_standalone_write_of_the_record_is_flattened(small, tmp_path):
         "Manchester Wind": 150.0,
         "Norway Wind": 100.0,
     }, "flattened: the parent's values are written, not left to a parent"
-    assert not workspace.con.sql(
-        "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
-    ).fetchall(), "the write drops the owner map it held for its fold"
 
     written = sorted(Path(out).rglob("*.parquet"))
     assert {"dims/entity.parquet", "dims/connection.parquet"} <= {
