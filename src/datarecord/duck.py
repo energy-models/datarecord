@@ -313,8 +313,10 @@ def values_relation(
 ) -> DuckDBPyRelation:
     """Return the literal table `rows`, its columns named `names`.
 
-    A SQL `VALUES` list under a table alias naming its columns; `con.values`
-    has no such alias, so its columns come out `col0`, `col1`, ...
+    A SQL `VALUES` list under a table alias naming its columns, so the rows
+    live in the query text and a registered view can read them. `con.values`
+    holds its rows in the process, which `create_view` refuses, and names its
+    columns `col0`, `col1`, ...
 
     Raises
     ------
