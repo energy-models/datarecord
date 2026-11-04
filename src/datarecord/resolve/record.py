@@ -448,23 +448,19 @@ class Record:
         """
         cache = self._per_cursor
         if cache.frozen_coords is None:
-            cache.frozen_coords = self._tabled_frozen_coords()
+            con = self.con
+            held = Coords.tabled(self.revision_id, self.schema, self._dim_owners, con)
+            axes = held.axes | {
+                n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims
+            }
+            cache.frozen_coords = dataclasses.replace(
+                held, axes={n: axes[n] for n in self.schema.dimensions if n in axes}
+            )
         return cache.frozen_coords
 
     @cached_property
     def _per_cursor(self) -> _PerCursor:
         return _PerCursor()
-
-    def _tabled_frozen_coords(self) -> Coords:
-        """The frozen layers' coords from its shared tables, a `one_of` dim's axis being the schema's."""
-        con = self.con
-        held = Coords.tabled(self.revision_id, self.schema, self._dim_owners, con)
-        axes = held.axes | {
-            n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims
-        }
-        return dataclasses.replace(
-            held, axes={n: axes[n] for n in self.schema.dimensions if n in axes}
-        )
 
     @cached_property
     def _dim_owners(self) -> list[tuple[str, UUID, bool]]:
