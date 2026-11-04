@@ -1263,7 +1263,7 @@ class Revision(_OfStore):
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
         """
-        if self._record is None or not self._record._release.alive:
+        if self._record is None or self._record.closed:
             manifests = lineage(self.store, self.id)
             sources = sources_to_read(manifests, self.store)
             self._record = Record(self.id, sources, self.store.workspace)

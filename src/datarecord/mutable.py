@@ -29,7 +29,7 @@ from collections.abc import (
 from dataclasses import dataclass
 from functools import cached_property, reduce, wraps
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Concatenate, cast
+from typing import TYPE_CHECKING, Any, ClassVar, Concatenate, cast
 from uuid import UUID, uuid4
 
 from duckdb import CoalesceOperator as coalesce
@@ -354,6 +354,12 @@ class WorkingRecord(Record):
     That is what lets the inherited members stay correct - they cache a key
     set only where the fold is stable, which a staged source makes it not.
 
+    Raises
+    ------
+    ValueError
+        On a read, an edit or `edits` once the record is `closed`, and on an
+        edit or `edits` once a `WorkingRecord` it is staged over is.
+
     Notes
     -----
     - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
@@ -382,6 +388,10 @@ class WorkingRecord(Record):
     _touched: set[tuple[str, str | None]]
     #: The `_staged` keys the running edit wrote to.
     _dirty: set[tuple[str, str | None]]
+    _closed_message: ClassVar[str] = (
+        "this `WorkingRecord` is closed and its staging tables released; "
+        "stage edits on a new one over the same base"
+    )
 
     def __init__(self, base: RecordLike) -> None:
         """Stage edits over `base`, which must be a `Record`.
@@ -430,6 +440,7 @@ class WorkingRecord(Record):
         )
         if isinstance(base, _Base):
             object.__setattr__(base, "_release", self._release)
+            object.__setattr__(base, "_holder", self._holder)
         for kind, attribute in self._kinds():
             name = self._table(kind, attribute)
             self._shape(kind, attribute).create(name)
@@ -454,27 +465,6 @@ class WorkingRecord(Record):
         """
         return holds.release
 
-    def _require_open(self) -> None:
-        """Refuse a closed record before DuckDB finds its staging tables gone.
-
-        Called where every use passes before it touches a staging table: a read
-        through `_frozen_coords`, which the coords and the owner map both take,
-        an edit through `_atomic`, a write through `edits`, the last two by
-        way of `_require_editable`. Not `con`, a read member this class leaves
-        to `Record`.
-
-        Raises
-        ------
-        ValueError
-            Once `close()` ran.
-        """
-        if not self._release.alive:
-            msg = (
-                "this `WorkingRecord` is closed and its staging tables released; "
-                "stage edits on a new one over the same base"
-            )
-            raise ValueError(msg)
-
     def _require_editable(self) -> None:
         """Refuse an edit or a write where this record or its base is closed: both read the base.
 
@@ -484,7 +474,7 @@ class WorkingRecord(Record):
             Once `close()` ran here or on a `WorkingRecord` base.
         """
         self._require_open()
-        if not self._base._release.alive:
+        if self._base.closed:
             msg = (
                 "the `WorkingRecord` this one is staged over is closed, and an "
                 "edit reads it; stage over an open one"
