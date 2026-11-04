@@ -16,7 +16,7 @@ Notes
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -93,6 +93,11 @@ class Requirements:
             or self.unsupported_values
             or self.names
         )
+
+    def __or__(self, other: Requirements) -> Requirements:
+        """Everything either requires, or either fails to supply: each field's union."""
+        theirs = asdict(other)
+        return Requirements(**{k: v | theirs[k] for k, v in asdict(self).items()})
 
     def describe(self) -> str:
         """A one-line summary, for an error message or a log line."""
