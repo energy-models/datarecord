@@ -327,8 +327,8 @@ def _narrowed(record: RecordLike) -> RecordLike:
 
     A period holding no kept snapshot goes, and an entity attached to a bus
     the selection drops. Where the selection holds fewer periods than its
-    base, an entity active in none of them (`_active`) goes, and one whose
-    `investment_period` names another (`_applying`). A selection keeping a
+    base, an entity active in none of them goes, and one whose
+    `investment_period` names another (`_active`). A selection keeping a
     dim of the record's own is left as it is: `verify` reports the dim, and
     `PyPSACollection` narrows each member.
 
@@ -336,8 +336,7 @@ def _narrowed(record: RecordLike) -> RecordLike:
     ------
     ValueError
         If the selection squeezes a dim but `period`, `scenario` or a dim of
-        the record's own, holds no snapshot, or as `_active` and `_applying`
-        do.
+        the record's own, holds no snapshot, or as `_active` does.
 
     Notes
     -----
@@ -377,7 +376,7 @@ def _narrowed(record: RecordLike) -> RecordLike:
     entities = _axis_labels(record, ENTITY)
     kept = set(entities) - _detached(record)
     if selected is not None:
-        kept &= _active(record, selected) & _applying(record, selected)
+        kept &= _active(record, selected)
     if len(kept) < len(entities):
         labels[ENTITY] = [e for e in entities if e in kept]
     return record.select(**labels) if labels else record
@@ -433,33 +432,37 @@ def _axis_labels(record: RecordLike, dim: str) -> list[Any]:
     return [] if axis is None else [label for (label,) in axis.fetchall()]
 
 
-def _resolved(record: RecordLike, attr: str, fallback: float) -> pd.Series:
-    """`attr` of each entity, indexed by entity: its row, else the declared default, else `fallback`.
+def _resolved(record: RecordLike, fallbacks: Mapping[str, float]) -> pd.DataFrame:
+    """Each attribute of `fallbacks` of each entity, a column each, indexed by entity: its row, else the declared default, else its fallback.
 
     Raises
     ------
     ValueError
-        If an entity holds several values: the selection keeps a dim it varies over.
+        If an entity holds several values of one: the selection keeps a dim it varies over.
     """
     schema = record.schema
     frame = record.properties[ENTITY].project(col(ENTITY), col(CTYPE)).df()
     entities = {ENTITY: record.dims[ENTITY]}
     over = Flags(frozenset(entities), frozenset(entities))
-    declared = pd.Series(None, index=frame.index, dtype=object)
-    if attr in schema.attributes:
-        declared = frame[CTYPE].map(lambda c: schema.default_for(attr, **{CTYPE: c}))
-    default = declared.where(declared.notna(), fallback).astype(float)
-    rows = record.attributes.get(attr)
-    held = pd.DataFrame(columns=[ENTITY, "value"])
-    if rows is not None:
-        held = settle(rows, entities, over).df()
-    kept = [c for c in held.columns if c in schema.dimensions and c != ENTITY]
-    if held[kept].notna().any(axis=None):
-        msg = f"`{attr}` varies over a dim the selection keeps, of {kept}: select one label of it"
-        raise ValueError(msg)
-    by_entity = held.set_index(ENTITY)["value"]
-    values = frame[ENTITY].map(by_entity).astype(float).fillna(default)
-    return values.set_axis(frame[ENTITY])
+    columns = {}
+    for attr, fallback in fallbacks.items():
+        declared = pd.Series(None, index=frame.index, dtype=object)
+        if attr in schema.attributes:
+            declared = frame[CTYPE].map(
+                lambda c, attr=attr: schema.default_for(attr, **{CTYPE: c})
+            )
+        default = declared.where(declared.notna(), fallback).astype(float)
+        rows = record.attributes.get(attr)
+        held = pd.DataFrame(columns=[ENTITY, "value"])
+        if rows is not None:
+            held = settle(rows, entities, over).df()
+        kept = [c for c in held.columns if c in schema.dimensions and c != ENTITY]
+        if held[kept].notna().any(axis=None):
+            msg = f"`{attr}` varies over a dim the selection keeps, of {kept}: select one label of it"
+            raise ValueError(msg)
+        by_entity = held.set_index(ENTITY)["value"]
+        columns[attr] = frame[ENTITY].map(by_entity).astype(float).fillna(default)
+    return pd.DataFrame(columns).set_axis(frame[ENTITY])
 
 
 def _active_in(
@@ -471,19 +474,22 @@ def _active_in(
     )
 
 
-def _active(record: RecordLike, periods: Iterable[Any]) -> set[Any]:
-    """The entities PyPSA holds active in one of `periods` (`_active_in`).
+def _active(record: RecordLike, periods: list[Any]) -> set[Any]:
+    """The entities PyPSA holds active in one of `periods` (`_active_in`) whose `investment_period` is NULL or one of them.
 
     An entity with no row takes the declared default, else PyPSA's.
 
     Raises
     ------
     ValueError
-        If an entity holds several values of either: the selection keeps a dim it varies over.
+        If an entity holds several values of one: the selection keeps a dim it varies over.
     """
-    start, lifetime = (_resolved(record, a, f) for a, f in _ACTIVE_FALLBACK.items())
-    active = _active_in(start, lifetime, periods)
-    return set(active.index[active])
+    resolved = _resolved(record, {**_ACTIVE_FALLBACK, _INVESTMENT_PERIOD: math.nan})
+    invested = resolved[_INVESTMENT_PERIOD]
+    kept = _active_in(resolved["build_year"], resolved["lifetime"], periods) & (
+        invested.isna() | invested.isin(periods)
+    )
+    return set(kept.index[kept])
 
 
 def _live(c: pypsa.Components, periods: Iterable[Any]) -> pd.Index:
@@ -493,18 +499,6 @@ def _live(c: pypsa.Components, periods: Iterable[Any]) -> pd.Index:
         return _names(static.index).unique()
     active = _active_in(static["build_year"], static["lifetime"], periods)
     return _names(static.index[active.to_numpy()]).unique()
-
-
-def _applying(record: RecordLike, periods: list[Any]) -> set[Any]:
-    """The entities whose `investment_period`, its declared default applied, is NULL or one of `periods`.
-
-    Raises
-    ------
-    ValueError
-        If an entity holds several values: the selection keeps a dim it varies over.
-    """
-    invested = _resolved(record, _INVESTMENT_PERIOD, math.nan)
-    return set(invested.index[invested.isna() | invested.isin(periods)])
 
 
 def _multiperiod(record: RecordLike) -> bool:
@@ -750,13 +744,15 @@ def _unscoped(frame: pd.DataFrame, keys: list[str], what: str) -> pd.DataFrame:
     scoped = frame.set_index([SCENARIO, *keys])
     for column in scoped.columns:
         by = scoped[column].groupby(level=SCENARIO, sort=False)
-        _agreed(what, column, {s: v.droplevel(SCENARIO) for s, v in by}, SCENARIO)
+        values = {s: v.droplevel(SCENARIO) for s, v in by}
+        _agreed(what, column, values, SCENARIO, "the scenarios")
     return unscoped
 
 
-def _union_all(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation | None:
-    """`rels` as one positional `UNION ALL`, `None` where there are none."""
-    return reduce(DuckDBPyRelation.union, rels) if rels else None
+def _union_all(rels: Iterable[DuckDBPyRelation | None]) -> DuckDBPyRelation | None:
+    """`rels` but each `None` as one positional `UNION ALL`, `None` where there are none."""
+    held = [r for r in rels if r is not None]
+    return reduce(DuckDBPyRelation.union, held) if held else None
 
 
 def _dim_of(ctype: str) -> str:
@@ -1424,7 +1420,11 @@ def _clashing(long: pd.Series, keys: list[int]) -> pd.Series:
 
 
 def _agreed(
-    what: str, attr: str, values: Mapping[Any, pd.Series], by: str
+    what: str,
+    attr: str,
+    values: Mapping[Any, pd.Series],
+    by: str,
+    across: str = "the members holding it",
 ) -> pd.Series:
     """One value per label, from each member's `values` that holds it, in the order first held.
 
@@ -1432,6 +1432,8 @@ def _agreed(
     ----------
     values
         Per member label of `by`, its values by label, on one or more index levels.
+    across
+        What the refusal names the value as one across.
 
     Raises
     ------
@@ -1446,7 +1448,7 @@ def _agreed(
         name = label[0] if len(label) == 1 else label
         msg = (
             f"{what} {name!r} has `{attr}` {held} by {by}: a value that does not "
-            f"vary over `{by}` is one across the members holding it"
+            f"vary over `{by}` is one across {across}"
         )
         raise ValueError(msg)
     return long.groupby(level=keys, sort=False).first()
@@ -2513,7 +2515,7 @@ class _NetworkSource:
         -----
         - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
         """
-        _ = self._axes, self._entity_frame
+        _ = self._axes, self._entity_frame  # forced, so `_unscoped` refuses at the call
         schema = self.schema
         for subject, typed in self.custom.properties.items():
             for name in typed:
@@ -2754,7 +2756,7 @@ class _NetworkSource:
         static_backed = attr in c.defaults.index and bool(c.defaults.at[attr, "static"])
         if not varying or static_backed:
             parts.append(self._scalar_rel(c, attr, excluded, unchanged=unchanged))
-        return _union_all([p for p in parts if p is not None])
+        return _union_all(parts)
 
     def _melt_dynamic(self, c: pypsa.Components, attr: str) -> DuckDBPyRelation | None:
         """Melt one varying attribute's wide dynamic frame to long rows, `None` where it has no columns.
@@ -3150,7 +3152,7 @@ class _NetworkSource:
                 for name, port in ports.items()
             ]
         columns = list(self.schema.long_columns_for(attribute))
-        rel = _union_all([r for r in rels if r is not None])
+        rel = _union_all(rels)
         if rel is not None:
             return rel.select(*map(col, columns))
         return empty_relation(
@@ -3170,7 +3172,7 @@ class _NetworkSource:
                 port = ports[column][1] if column in ports else None
                 drop = self._DROP_RESULT_DEFAULTS
                 rels.append(self._rows(c, name, column, port, drop_defaults=drop))
-        rel = _union_all([r for r in rels if r is not None])
+        rel = _union_all(rels)
         if rel is None:
             return None
         held = _registry().schema.long_columns_for(attribute)
@@ -3368,15 +3370,15 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _left_to_base(self) -> frozenset[str]:
-        """The results this layer leaves to `base`: the `sub_network` axis's, where the network holds fewer buses or entities than the record.
+        """The results this layer leaves to `base`: the `sub_network` axis's, where the record holds a bus or entity the network lacks.
 
         A selection's SubNetworks are numbered over the selection alone, so
         they name no SubNetwork of the whole network that `base`'s rows at
         the labels it does not hold refer to.
         """
-        held = {BUS: len(self._labels("Bus")), ENTITY: len(self._entity_frame)}
-        dims = _root(self.base).dims
-        if all(len(dims[d]) == count for d, count in held.items() if d in dims):
+        root = _root(self.base)
+        held = {BUS: self._labels("Bus")[BUS], ENTITY: self._entity_frame[ENTITY]}
+        if all(set(_axis_labels(root, d)) <= set(labels) for d, labels in held.items()):
             return frozenset()
         return _sub_network_results(self.schema)
 
@@ -3742,8 +3744,17 @@ class _StackedSource:
         return cls(schema, dims, properties, rows, con)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Never consulted, as `_NetworkSource.flags` is not."""
-        return {}
+        """The flags of these rows read as one layer, as a record written from them answers.
+
+        Notes
+        -----
+        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+        """
+        return self._fold.flags(**categories)
+
+    @cached_property
+    def _fold(self) -> Fold:
+        return Fold.as_one_layer(self)
 
 
 def _required_attributes(ctype: str) -> frozenset[str]:

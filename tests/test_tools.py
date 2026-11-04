@@ -1187,20 +1187,20 @@ class TestPyPSA:
         assert_networks_equal(PyPSA.build(record), n)
 
     @pytest.mark.parametrize(
-        ("columns", "placed"),
+        ("columns", "kind"),
         [
-            ({"Bus": ("country", "DE")}, ("property", "bus")),
-            ({"Bus": ("nom_max_onwind_2050", 5.0)}, ("attribute", "bus")),
-            ({"Generator": ("country", "DE")}, ("property", "entity")),
-            ({"Generator": ("location", "site")}, ("property", "entity")),
-            ({"Generator": ("e_nom", 5.0)}, ("attribute", "entity")),
-            ({"Generator": ("v_nom", 1.0)}, ("property", "entity")),
-            ({"Carrier": ("efficiency", 0.9)}, ("property", "carrier")),
+            ({"Bus": ("country", "DE")}, "property"),
+            ({"Bus": ("nom_max_onwind_2050", 5.0)}, "attribute"),
+            ({"Generator": ("country", "DE")}, "property"),
+            ({"Generator": ("location", "site")}, "property"),
+            ({"Generator": ("e_nom", 5.0)}, "attribute"),
+            ({"Generator": ("v_nom", 1.0)}, "property"),
+            ({"Carrier": ("efficiency", 0.9)}, "property"),
             (
                 {"Bus": ("country", "DE"), "Generator": ("country", "DE")},
-                ("property", "bus"),
+                "property",
             ),
-            ({"Bus": ("share", 0.5), "Generator": ("share", 0.5)}, ("property", "bus")),
+            ({"Bus": ("share", 0.5), "Generator": ("share", 0.5)}, "property"),
         ],
         ids=[
             "text-bus",
@@ -1215,7 +1215,7 @@ class TestPyPSA:
         ],
     )
     def test_a_custom_column_is_a_property_if_text_or_clashing(
-        self, store, columns, placed
+        self, store, columns, kind
     ):
         """A text column describes its label, and a clashing name would be one attribute over two dims.
 
@@ -1230,12 +1230,12 @@ class TestPyPSA:
             n.c[ctype].static[name] = value
 
         record = export_network(n, store).record
-        (name, _), *_ = columns.values()
-        kind, dim = placed
-        as_property = name in record.schema.properties[dim]
-        assert as_property == (kind == "property"), f"{name} is a {kind} of {dim}"
-        if kind == "attribute":
-            assert record.schema.attributes[name].dims == {dim, "scenario"}
+        for ctype, (name, _) in columns.items():
+            dim = {"Bus": "bus", "Carrier": "carrier"}.get(ctype, "entity")
+            as_property = name in record.schema.properties[dim]
+            assert as_property == (kind == "property"), f"{name} is a {kind} of {dim}"
+            if kind == "attribute":
+                assert record.schema.attributes[name].dims == {dim, "scenario"}
         assert_networks_equal(PyPSA.build(record), n)
 
     def test_a_custom_property_carried_with_two_dtypes_is_refused(self, workspace):
@@ -3387,6 +3387,44 @@ class TestPyPSA:
             assert list(collection.index) == [2013]
             (built,) = collection.networks
         _assert_results_equal(built, sweep["hi"], ("Generator", "p_max_pu"))
+
+    @pytest.mark.parametrize("results_only", [False, True])
+    def test_a_network_is_not_written_over_a_record_with_a_dim_of_its_own(
+        self, store, sweep, results_only
+    ):
+        """A network over the whole of a record with a dim of its own would reach every label, refused at the call.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        years = {2012: sweep["lo"], 2013: sweep["hi"]}
+        record = _collection(years, store, None, "weather_year", results_only=False)
+        with pytest.raises(
+            ValueError, match=r"with a dim of its own, \['weather_year'\]"
+        ):
+            PyPSA.to_datarecord(
+                sweep["lo"], store.workspace.con, results_only=results_only, base=record
+            )
+
+    @pytest.mark.parametrize(("nudge", "agreed"), [(1e-9, True), (1e-3, False)])
+    def test_members_agree_on_a_float_within_tolerance(self, workspace, nudge, agreed):
+        """A bus's `x` the members hold within a relative 1e-5 is one value, the first member's; further apart it is refused.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        members = {2013: _north(), 2019: _north()}
+        members[2013].c.Bus.static["x"] = 1.0
+        members[2019].c.Bus.static["x"] = 1.0 + nudge
+        collection = _over(members, "weather_year")
+        if not agreed:
+            with pytest.raises(ValueError, match="has `x`"):
+                PyPSACollection.to_datarecord(collection, workspace.con)
+            return
+        record = PyPSACollection.to_datarecord(collection, workspace.con)
+        assert record.properties["bus"].df()["x"].tolist() == [1.0]
 
     def test_a_member_holds_the_entities_its_label_keeps(self, workspace, tmp_path):
         """An entity whose property names one label of the dim of its own is no other member's, built whole or at one label.
