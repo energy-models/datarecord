@@ -46,7 +46,6 @@ from datarecord.duck import (
     fn,
     null_safe,
     scratch_table,
-    struct_of,
 )
 from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
 from datarecord.resolve.fold import Fold
@@ -2986,7 +2985,7 @@ def _connection_struct(entity: Expression, bus: Expression) -> Expression:
     """
     schema = _registry_schema()
     struct = schema.duck_type(schema.dimensions[CONNECTION])
-    return struct_of({ENTITY: entity, BUS: bus}).cast(struct).alias(CONNECTION)
+    return fn.struct_pack(**{ENTITY: entity, BUS: bus}).cast(struct).alias(CONNECTION)
 
 
 def _unpack_connection(long: DuckDBPyRelation) -> DuckDBPyRelation:
