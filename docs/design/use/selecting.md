@@ -80,6 +80,10 @@ Then:
 - An attribute over `d` keeps its rows at `l` and those NULL on `d`, settled by [the broadcast rule](../model/attributes.md#the-broadcast-rule) along `d` alone, without the column. One over squeezed dims alone is one value over no dim.
 - `partial` and every `Flags` lose `d`.
 
+<figure class="diagram">
+--8<-- "docs/static/selecting-squeeze.svg"
+</figure>
+
 Any dim squeezes, as in xarray, whatever the consumer.
 A consumer that needs a dim refuses a view in which it is squeezed, as it refuses one missing the dim, and the caller writes it as a list of one.
 A rule that squeezed for one reader and not another would make one call two views.
@@ -92,6 +96,10 @@ A selection keeps every axis closed under reference, as the writer keeps a layer
 - A tuple naming a dropped label goes, the labels it names staying.
 - This repeats until nothing goes, so selecting `country` reaches a bus through `bus.state` and `state.country`.
 - An attribute row naming a dropped label, in its column or in a field of a struct, goes. A row NULL there stays and reaches the kept labels alone.
+
+<figure class="diagram">
+--8<-- "docs/static/selecting-propagate.svg"
+</figure>
 
 Nothing flows the other way.
 A dim keeps a label no kept label refers to: a period no label refers to, a carrier no entity holds, an entity whose connections all went.
@@ -125,6 +133,10 @@ With `view = record.select(scenario="high", period=2030)`:
 | `price`                                               | `bus`, `snapshot`, `scenario` | `bus, snapshot, value`      | `bus, snapshot, scenario = high, value`   |
 | `capacity`                                            | `entity`                      | `entity, value`             | unchanged                                 |
 | `p`, `snapshot` a multi-dim over `(period, timestep)` | `entity`, `snapshot`          | `snapshot = {timestep: t0}` | `snapshot = {period: 2030, timestep: t0}` |
+
+<figure class="diagram">
+--8<-- "docs/static/selecting-lift.svg"
+</figure>
 
 The coordinates come back in the base's column order.
 `lift` inverts a squeeze but one way: a row the base held NULL on the squeezed dim was settled to the label, and comes back at the label.
