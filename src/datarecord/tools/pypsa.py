@@ -531,21 +531,6 @@ class Index:
             index, con.sql("SELECT *, row_number() OVER () AS _pos FROM _dr_keys")
         )
 
-    def expand(self, rel: DuckDBPyRelation, column: str) -> DuckDBPyRelation:
-        """Broadcast rows with a null `column` across this index, others as-is; `rel` must carry its alias."""
-        if len(self.index) == 0:
-            return rel
-        # `IS NULL = true` hashes; the one-sided `IS NULL` is a nested loop.
-        axis = self.rel.project(col(column), lit(True).alias("_broadcast"))  # noqa: FBT003
-        return rel.join(
-            axis.set_alias("_ax"),
-            col(rel.alias, column).isnull() == col("_ax", "_broadcast"),
-            how="left",
-        ).project(
-            *(col(rel.alias, c) for c in rel.columns if c != column),
-            coalesce(col(rel.alias, column), col("_ax", column)).alias(column),
-        )
-
     def left_join(self, other: DuckDBPyRelation, on: Sequence[str]) -> DuckDBPyRelation:
         """LEFT JOIN `other` onto this index, restored to `index`'s row order."""
         return self.rel.join(
@@ -573,9 +558,7 @@ def _assign_static(
     """
     keys = shape.index_names
     if shape.stochastic and SCENARIO not in static.columns:
-        static = scenarios.expand(
-            static.project(f"*, NULL AS {SCENARIO}").set_alias("m"), SCENARIO
-        )
+        static = _at_each_scenario(static, scenarios.rel)
 
     picked: dict[str, DuckDBPyRelation] = {}
     over_snapshots: set[str] = set()
@@ -585,8 +568,7 @@ def _assign_static(
             continue
         rows = long
         if shape.stochastic and SCENARIO not in rows.columns:
-            rows = rows.project(f"*, CAST(NULL AS VARCHAR) AS {SCENARIO}")
-            rows = scenarios.expand(rows, SCENARIO)
+            rows = _at_each_scenario(rows, scenarios.rel)
         picked[attr] = rows
         if addressed:
             over_snapshots.add(attr)
@@ -599,6 +581,15 @@ def _assign_static(
             key=lambda s: s.map({v: i for i, v in enumerate(scenarios.index)}),
         )
     return frame.set_index(keys)
+
+
+def _at_each_scenario(
+    rel: DuckDBPyRelation, scenarios: DuckDBPyRelation
+) -> DuckDBPyRelation:
+    """`rel`, over no `scenario`, at each of `scenarios`, as the broadcast rule reads it."""
+    over = frozenset({SCENARIO})
+    unset = rel.project(star(), lit(None).cast(sqltypes.VARCHAR).alias(SCENARIO))
+    return settle(unset, {SCENARIO: scenarios}, Flags(frozenset(), over))
 
 
 def _left_join_values(
@@ -3409,7 +3400,7 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _restated(self) -> dict[str, DuckDBPyRelation]:
-        """This solve's results but those `_left_to_base`, then each row of `base`'s at labels it holds (`_holds`) it leaves out as NULL, but those of a SubNetwork it drops, and `base`'s series at `_elsewhere` (`_standing`).
+        """This solve's results but those `_left_to_base`, then each row of `base`'s at labels it holds (`_holds`) it leaves out as NULL, but those of a SubNetwork it drops, and `base`'s series settled at `_elsewhere`.
 
         A value over no snapshot is kept to `_live_entities` on both sides,
         and every row is at the labels `base` squeezes (`_lifted`).
@@ -3434,7 +3425,8 @@ class _ResultsSource(_NetworkSource):
             parts = [written[attr]] if attr in written else []
             elsewhere = self._elsewhere
             if SNAPSHOT in keys and elsewhere is not None:
-                parts.append(_standing(rows, columns, elsewhere))
+                over = frozenset({SNAPSHOT})
+                parts.append(settle(rows, {SNAPSHOT: elsewhere}, Flags(over, over)))
                 rows = rows.set_alias("r").join(
                     elsewhere.set_alias("e"),
                     col("r", SNAPSHOT) == col("e", SNAPSHOT),
@@ -3509,29 +3501,6 @@ def _lacking(
     return rel.set_alias("a").join(
         other.set_alias("b"), col("a", dim) == col("b", dim), how="anti"
     )
-
-
-def _standing(
-    rows: DuckDBPyRelation, columns: Sequence[str], elsewhere: DuckDBPyRelation
-) -> DuckDBPyRelation:
-    """`base`'s `rows` of a series at the snapshots `elsewhere`: a row over every snapshot spread over them but where a row names one.
-
-    A layer restates a series whole, `snapshot` outside `partial`, so `base`'s
-    values at the snapshots a network does not solve are written again.
-    """
-    at = rows.set_alias("r").join(
-        elsewhere.set_alias("e"), col("r", SNAPSHOT) == col("e", SNAPSHOT), how="semi"
-    )
-    keys = [c for c in columns if c != "value"]
-    spread = (
-        rows.filter(f"{col(SNAPSHOT)} IS NULL")
-        .project(star(exclude=[SNAPSHOT]))
-        .cross(elsewhere)
-        .select(*map(col, columns))
-        .set_alias("p")
-        .join(at.set_alias("a"), null_safe("p", "a", keys), how="anti")
-    )
-    return at.union(spread)
 
 
 def _held(relations: Mapping[Any, Relations], key: str) -> dict[Any, DuckDBPyRelation]:
