@@ -38,6 +38,7 @@ from datarecord.duck import (
     FOLD,
     empty_relation,
     fn,
+    named_mask,
     nested,
     null_safe,
     struct_of,
@@ -50,7 +51,6 @@ from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import with_columns
 from datarecord.resolve.owner_map import (
     _frozen_table,
-    _mask,
     _table,
     owned_rows,
     source_for,
@@ -60,6 +60,7 @@ from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties
 from datarecord.schema.schema import LAYER_COLUMN, Schema
 from datarecord.select import Selection, select
+from datarecord.settle import most_specific
 
 if TYPE_CHECKING:
     from datarecord.store.store import Workspace, _Holds
@@ -154,7 +155,7 @@ def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelat
     value row of such a layer can meet another at one coordinate, so only
     those rows need `_most_specific`: as data, so the plan stays fixed.
     """
-    named = str(_mask(dims))
+    named = str(named_mask(dims))
     over = f"OVER (PARTITION BY {col(LAYER_COLUMN)})"
     contested = f"min({named}) {over} <> max({named}) {over}"
     return stored.project(star(), sql(contested).alias("_contested"))
@@ -192,39 +193,23 @@ def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRe
 def _most_specific(
     rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
 ) -> DuckDBPyRelation:
-    """Keep, at each coordinate, the row of `rel` that names every dim the other rows there name.
+    """`most_specific` over one layer's rows of `attribute`, refusing twins too.
 
     One layer may hold a row naming a label of a `partial` dim beside a row
-    leaving that dim NULL, and both join the key that label names. The column
-    `_named` holds the `_mask` of the `partial` dims, so the row kept is
-    the one whose mask is the union of all masks at its coordinate. Where no
-    row has that mask, two rows each name a dim the other leaves NULL; where
-    two rows at one breakpoint have that mask, they name the same dims.
-    `write_layer` refuses such a layer, so it was written another way, and the
-    read fails at that coordinate. `breakpoint` is no coordinate, so a curve
-    is kept or dropped whole.
+    leaving that dim NULL, and both join the key that label names. Two rows
+    crossing, or two at one breakpoint naming the same dims, are a layer
+    `write_layer` refuses, so it was written another way, and the read fails
+    at that coordinate.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    by = ", ".join(str(col(c)) for c in coordinates)
-    over = f"OVER (PARTITION BY {by})"
-    # A window stays SQL text: DuckDB's expression API has no window construct.
-    ranked = rel.project(
-        star(),
-        sql(f"bit_or(_named) {over}").alias("_all"),
-        sql(f"max(bit_count(_named)) {over}").alias("_most"),
-        sql(f"count(*) OVER (PARTITION BY {by}, breakpoint, _named)").alias("_twins"),
-    )
-    incomparable = _refusal(attribute, coordinates, _INCOMPARABLE)
-    twins = _refusal(attribute, coordinates, "both name the same dims")
-    keep = sql(
-        f"CASE WHEN bit_count(_all) <> _most THEN {incomparable} "
-        f"WHEN _twins > 1 AND _named = _all THEN {twins} ELSE _named = _all END"
-    )
-    return ranked.filter(keep).project(
-        star(exclude=("_named", "_all", "_most", "_twins"))
+    return most_specific(
+        rel,
+        coordinates,
+        _refusal(attribute, coordinates, _INCOMPARABLE),
+        _refusal(attribute, coordinates, "both name the same dims"),
     )
 
 
@@ -742,7 +727,7 @@ class Record:
         ranked = _most_specific(
             joined(
                 stored.filter(col("_contested")),
-                _mask(broadcast_over, "l").alias("_named"),
+                named_mask(broadcast_over, "l").alias("_named"),
             ),
             coordinates,
             attribute,
