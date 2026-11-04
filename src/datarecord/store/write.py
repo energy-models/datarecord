@@ -22,7 +22,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
 from datarecord.duck import anchored, as_relation, fn, null_safe, write_parquet
@@ -372,7 +371,7 @@ def _require_living_references(
     touched = layer.axes()
     references = [
         *(
-            (m, f, fn.struct_extract(col("t", m), lit(f)), d, False)
+            (m, f, col("t", m)[f], d, False)
             for m in schema.multi_dims
             for f, d in schema.over(m).items()
         ),

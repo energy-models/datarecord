@@ -215,9 +215,7 @@ class Fold:
     ) -> list[tuple[Any, ...]]:
         """`rel`'s flag columns, aggregated per attribute."""
         flag = {
-            c: struct_of(
-                {d: fn.bool_or(fn.struct_extract(col(c), lit(d))) for d in dims}
-            ).alias(c)
+            c: struct_of({d: fn.bool_or(col(c)[d]) for d in dims}).alias(c)
             for c in ("varies", "broadcast")
         }
         return rel.aggregate(
@@ -300,7 +298,7 @@ class Fold:
 def _path(alias: str, column: str, field: str | None) -> Expression:
     """`column` under `alias`, or its struct's `field` where one is given."""
     c = col(alias, column)
-    return c if field is None else fn.struct_extract(c, lit(field))
+    return c if field is None else c[field]
 
 
 def read_owner_map(
