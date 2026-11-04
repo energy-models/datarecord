@@ -76,7 +76,7 @@ The tables the frozen layers fold to are built when the `WorkingRecord` is opene
 A view's SQL is its relation rendered with its literals inline, so it reads no Python object by name and outlives the relation that made it.
 `DuckDBPyRelation.sql_query()` gives SQL that reads such objects, which are gone by the next read, and breaks on a relation with parameters.
 The rendering is DuckDB's own, the one `DuckDBPyRelation.create_view` makes, but that method takes a single identifier and no nested path.
-So `register` calls the private `_render` and `_create_view` with the path `(name, kind, view)`, DuckDB is pinned to an exact version, and a test reads a view from another thread's cursor after its relation is collected.
+So `register` calls the private `_render` and `_create_view` with the path `(name, kind, view)`, DuckDB is capped at the newest release the suite passed on, and a test reads a view from another thread's cursor after its relation is collected.
 
 `register` builds every relation before it creates any view.
 Each view changes the catalog, and DuckDB re-binds a relation built before that change, node by node, the next time something derives from it.

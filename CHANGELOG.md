@@ -183,7 +183,7 @@ All notable changes to datarecord are documented here. The format follows
   materialise it again.
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
-- `duckdb` is pinned to 2.0.0.
+- `duckdb` is capped at 2.0.0, the newest release the suite passed on.
 
 - The PyPSA tool melts a time series one entity at a time, so a parquet row
   group holds few entity names and encodes them by dictionary. The
