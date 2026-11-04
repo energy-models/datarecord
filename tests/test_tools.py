@@ -28,6 +28,7 @@ from datarecord.tools.base import Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     CTYPE,
     PyPSA,
+    PyPSACollection,
     _colliding_names,
     _registry,
     _weightings,
@@ -95,17 +96,22 @@ def exported(single_revision, workspace, tmp_path) -> HandBuilt:
     return layer
 
 
-def _results_over(revision, n, collection_dim=None, **labels):
-    """`n`'s results, written as a thin layer over `revision`, over its selection at `labels` where given."""
+def _results_over(revision, n, **labels):
+    """`n`'s results, a network's or a collection's, written as a thin layer over `revision`, over its selection at `labels` where given."""
     record = revision.record
-    layer = PyPSA.to_datarecord(
+    tool = PyPSACollection if isinstance(n, pypsa.NetworkCollection) else PyPSA
+    layer = tool.to_datarecord(
         n,
         record.con,
         results_only=True,
         base=record.select(**labels) if labels else record,
-        collection_dim=collection_dim,
     )
     return revision.store.commit(layer, parent=revision)
+
+
+def _over(members, dim) -> pypsa.NetworkCollection:
+    """`members` as a collection whose index names `dim`, or the levels of `dim` where a list."""
+    return pypsa.NetworkCollection(pd.Series(members).rename_axis(dim))
 
 
 def _sub_networks(revision) -> list[str]:
@@ -471,10 +477,10 @@ def sweep(single_revision, solved) -> dict[str, pypsa.Network]:
 
 def _collection(sweep, store, exported, dim, results_only):
     """`sweep` over `dim`, as a full export or as results over `exported`."""
-    collection = pypsa.NetworkCollection(sweep)
+    collection = _over(sweep, dim)
     if results_only:
-        return _results_over(exported.commit(), collection, dim).record
-    layer = PyPSA.to_datarecord(collection, store.workspace.con, collection_dim=dim)
+        return _results_over(exported.commit(), collection).record
+    layer = PyPSACollection.to_datarecord(collection, store.workspace.con)
     return store.commit(layer, parent=None).record
 
 
@@ -517,20 +523,12 @@ def _costing(lo: float, hi: float):
 
 
 def _two_levels(members):
-    return pd.Series(
-        list(members.values()),
-        index=pd.MultiIndex.from_tuples([("a", 1), ("b", 2)], names=["case", "run"]),
-    )
+    return dict(zip([("a", 1), ("b", 2)], members.values(), strict=True))
 
 
 def _moved_bus(members):
     members["hi"].c.Bus.static.loc["London", "x"] += 1.0
     return members
-
-
-def _moved_bus_and_capacity(members):
-    members["hi"].c.Generator.static.loc["Norway Gas", "p_nom"] += 1.0
-    return _moved_bus(members)
 
 
 def _reordered_buses(members):
@@ -1431,16 +1429,14 @@ class TestPyPSA:
         """
         members = {2013: _shaped(), 2014: _shaped()}
         members[2014].c.Generator.static["p_nom"] = 2.0
-        layer = PyPSA.to_datarecord(
-            pypsa.NetworkCollection(members),
-            store.workspace.con,
-            collection_dim="weather_year",
+        layer = PyPSACollection.to_datarecord(
+            _over(members, "weather_year"), store.workspace.con
         )
         record = store.commit(layer, parent=None).record
-        assert not PyPSA.verify(record), "`country` is not a second dim of its own"
-        built = PyPSA.build(record)
-        assert isinstance(built, pypsa.NetworkCollection)
-        assert built.index.name == "weather_year"
+        assert not PyPSACollection.verify(record), (
+            "`country` is not a second dim of its own"
+        )
+        assert PyPSACollection.build(record).index.name == "weather_year"
 
     def test_a_stochastic_network_holds_its_shapes_per_scenario(self, store):
         """A stochastic network's shapes are indexed by `(scenario, name)`, as its other components are.
@@ -1828,9 +1824,7 @@ class TestPyPSA:
     @pytest.fixture
     def swept(self, exported, sweep):
         """`exported` with `sweep`'s results over the dim of its own `sensitivity`."""
-        return _results_over(
-            exported.commit(), pypsa.NetworkCollection(sweep), "sensitivity"
-        )
+        return _results_over(exported.commit(), _over(sweep, "sensitivity"))
 
     @pytest.mark.parametrize(
         ("base", "labels", "over", "match"),
@@ -1859,8 +1853,8 @@ class TestPyPSA:
             pytest.param(
                 "swept",
                 {"sensitivity": "lo"},
-                "selection",
-                "the collection `build` gives",
+                "record",
+                "rows would reach every label",
                 id="own",
             ),
         ],
@@ -1898,14 +1892,12 @@ class TestPyPSA:
         - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
         - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
         """
-        part = PyPSA.build(swept.record.select(snapshot=list(solved.snapshots[:2])))
-        before = PyPSA.build(swept.record)
-        assert isinstance(part, pypsa.NetworkCollection)
-        assert isinstance(before, pypsa.NetworkCollection)
+        view = swept.record.select(snapshot=list(solved.snapshots[:2]))
+        part = PyPSACollection.build(view)
+        before = PyPSACollection.build(swept.record)
         for step, n in enumerate(part.networks, start=1):
             n.c.Generator.dynamic["p"] += 100.0 * step
-        after = PyPSA.build(_results_over(swept, part, "sensitivity").record)
-        assert isinstance(after, pypsa.NetworkCollection)
+        after = PyPSACollection.build(_results_over(swept, part).record)
         for label, n in zip(part.index, part.networks, strict=True):
             expected = before.networks[label].c.Generator.dynamic["p"].copy()
             expected.loc[n.snapshots] = n.c.Generator.dynamic["p"]
@@ -1916,6 +1908,36 @@ class TestPyPSA:
                 check_freq=False,
                 obj=str(label),
             )
+
+    @pytest.mark.slow
+    @pytest.mark.parametrize("value", ["lo", ["lo"]], ids=["network", "collection"])
+    def test_a_re_solve_of_some_labels_leaves_the_others(self, exported, solved, value):
+        """A member's results land at its label alone, though `base` holds them once for every label.
+
+        One label builds a network written over its selection, a list a
+        collection written over its own.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        agreed = _results_over(
+            exported.commit(), _over({"lo": solved, "hi": solved.copy()}, "sensitivity")
+        )
+        assert "sensitivity" not in agreed.record.schema.attributes["p"].dims
+        view = agreed.record.select(sensitivity=value)
+        if isinstance(value, str):
+            n = PyPSA.build(view)
+            model: pypsa.Network | pypsa.NetworkCollection = n
+        else:
+            model = PyPSACollection.build(view)
+            (n,) = model.networks
+        n.c.Generator.static["p_nom_opt"] += 1.0
+        n.c.Generator.dynamic["p"] += 100.0
+        record = _results_over(agreed, model, sensitivity=value).record
+        built = PyPSACollection.build(record)
+        _assert_results_equal(built.networks["lo"], n)
+        _assert_results_equal(built.networks["hi"], solved)
 
     def test_results_only_takes_base(self, single_revision, solved):
         """A results layer is written over the record it was built from.
@@ -1931,11 +1953,8 @@ class TestPyPSA:
         """A full export of a collection takes no `base`."""
         record = single_revision.record
         with pytest.raises(ValueError, match="exported whole over nothing"):
-            PyPSA.to_datarecord(
-                pypsa.NetworkCollection(sweep),
-                record.con,
-                base=record,
-                collection_dim="sensitivity",
+            PyPSACollection.to_datarecord(
+                _over(sweep, "sensitivity"), record.con, base=record
             )
 
     @pytest.mark.slow
@@ -2296,7 +2315,7 @@ class TestPyPSA:
         )
 
     def test_schema_dims_stay_generic(self, exported):
-        """`Coords` carries a dim PyPSA knows nothing about; axis names live in the tool.
+        """`Coords` carries a dim PyPSA knows nothing about; axis names live in the tool, which reports it as a dim of the record's own.
 
         Declared but not `partial`, so the record's files need no column for it.
         Keying it would be a different matter, reported by the tool against the
@@ -2306,9 +2325,11 @@ class TestPyPSA:
         record = revision.record
         assert "vintage" in record.schema.dims
         assert record.dims["vintage"].fetchall() == [], "no axis rows anywhere"
-        # PyPSA's own required dims are still satisfied, and the extra dim is
-        # simply not something the tool looks at.
-        assert not PyPSA.verify(revision.record)
+        missing = PyPSA.verify(revision.record)
+        assert missing.unsupported_dims == {"vintage"}, (
+            "a collection's, not a network's"
+        )
+        assert not missing.dims, "PyPSA's own dims are satisfied"
         assert "vintage" in record.schema.long_columns
 
     def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not(self):
@@ -2417,8 +2438,8 @@ class TestPyPSA:
         - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
         """
         whole = _results_over(multiperiod_revision, multiperiod_solved)
-        members = pypsa.NetworkCollection(_myopic(multiperiod_solved))
-        myopic = _results_over(multiperiod_revision, members, "period")
+        members = _over(_myopic(multiperiod_solved), "period")
+        myopic = _results_over(multiperiod_revision, members)
         expected = _ordered(whole.record)
         actual = _ordered(myopic.record)
         assert {
@@ -2458,14 +2479,10 @@ class TestPyPSA:
         - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
         """
         record = multiperiod_revision.record
-        members = pypsa.NetworkCollection(edit(_myopic(multiperiod_solved)))
+        members = _over(edit(_myopic(multiperiod_solved)), "period")
         with pytest.raises(ValueError, match=match):
-            PyPSA.to_datarecord(
-                members,
-                record.con,
-                results_only=True,
-                base=record,
-                collection_dim="period",
+            PyPSACollection.to_datarecord(
+                members, record.con, results_only=True, base=record
             )
 
     @pytest.mark.slow
@@ -2478,10 +2495,9 @@ class TestPyPSA:
         -----
         - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
         """
-        members = pypsa.NetworkCollection(_myopic(multiperiod_solved))
+        members = _over(_myopic(multiperiod_solved), "period")
         myopic = store.commit(
-            PyPSA.to_datarecord(members, store.workspace.con, collection_dim="period"),
-            parent=None,
+            PyPSACollection.to_datarecord(members, store.workspace.con), parent=None
         )
         expected = _ordered(export_network(multiperiod_solved, store).record)
         actual = _ordered(myopic.record)
@@ -2520,10 +2536,9 @@ class TestPyPSA:
             multiperiod_revision
             if periods == "both"
             else store.commit(
-                PyPSA.to_datarecord(
-                    pypsa.NetworkCollection({period: _myopic(multiperiod)[period]}),
+                PyPSACollection.to_datarecord(
+                    _over({period: _myopic(multiperiod)[period]}, "period"),
                     store.workspace.con,
-                    collection_dim="period",
                 ),
                 parent=None,
             )
@@ -2675,19 +2690,17 @@ class TestPyPSA:
         """
         record = staggered_revision.record
         if source == "built":
-            members = {}
-            for p in (2030, 2040, 2050):
-                m = PyPSA.build(record.select(period=[p]))
+            collection = PyPSACollection.build(record)
+            members = dict(zip(collection.index, collection.networks, strict=True))
+            for m in members.values():
                 m.c.Generator.static["p_nom_extendable"] = False
                 m.c.Generator.static["p_nom"] = 100.0
-                members[p] = _solve(m)
+                _solve(m)
         else:
             members = _myopic(_solve(PyPSA.build(record)))
             for p in (2040, 2050):
                 members[p].c.Generator.static.loc["gen-2030", "p_nom_opt"] = 0.0
-        layer = _results_over(
-            staggered_revision, pypsa.NetworkCollection(members), "period"
-        )
+        layer = _results_over(staggered_revision, _over(members, "period"))
         built = PyPSA.build(layer.record)
 
         for p, m in members.items():
@@ -2736,10 +2749,8 @@ class TestPyPSA:
         """
         members = _myopic(_staggered("repeated"))
         members[2050].remove("Generator", "gen-2040")
-        layer = PyPSA.to_datarecord(
-            pypsa.NetworkCollection(members),
-            store.workspace.con,
-            collection_dim="period",
+        layer = PyPSACollection.to_datarecord(
+            _over(members, "period"), store.workspace.con
         )
         built = PyPSA.build(store.commit(layer, parent=None).record)
         active = {
@@ -2752,9 +2763,7 @@ class TestPyPSA:
         members = _myopic(_staggered("repeated"))
         members[2040].remove("Generator", "gen-2040")
         with pytest.raises(ValueError, match="'gen-2040' is held in periods"):
-            PyPSA.to_datarecord(
-                pypsa.NetworkCollection(members), workspace.con, collection_dim="period"
-            )
+            PyPSACollection.to_datarecord(_over(members, "period"), workspace.con)
 
     def test_a_child_whose_timesteps_repeat_otherwise_builds_back(
         self, staggered_revision, layout
@@ -2820,12 +2829,31 @@ class TestPyPSA:
         with pytest.raises(ValueError, match=match):
             PyPSA.to_datarecord(n, record.con, results_only=results_only, base=record)
 
-    @pytest.mark.parametrize("collection", [True, False], ids=["collection", "network"])
-    def test_collection_dim_is_given_exactly_for_a_collection(self, ac_dc, collection):
-        model = pypsa.NetworkCollection({2030: ac_dc}) if collection else ac_dc
-        dim = None if collection else "period"
-        with pytest.raises(ValueError, match="`collection_dim` exactly when"):
-            PyPSA.to_datarecord(model, duckdb.connect(), collection_dim=dim)
+    def test_a_multi_period_record_builds_a_myopic_collection(self, staggered_revision):
+        """Without a dim of its own, a multi-period record builds one multi-period network per period, of the generators active in it.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        built = PyPSACollection.build(staggered_revision.record)
+        assert built.index.name == "period"
+        held = {
+            p: (list(n.investment_periods), n.c.Generator.static.index.tolist())
+            for p, n in zip(built.index, built.networks, strict=True)
+        }
+        assert held == {
+            2030: ([2030], ["gen-2030"]),
+            2040: ([2040], ["gen-2040"]),
+            2050: ([2050], ["gen-2040", "gen-2050"]),
+        }
+
+    @pytest.mark.parametrize("method", ["build", "verify"])
+    def test_a_collection_is_built_over_a_dim_of_its_own_or_period(
+        self, single_revision, method
+    ):
+        with pytest.raises(ValueError, match="with a dim of its own, one network"):
+            getattr(PyPSACollection, method)(single_revision.record)
 
     @pytest.mark.slow
     @pytest.mark.parametrize("results_only", [False, True], ids=["export", "results"])
@@ -2848,50 +2876,12 @@ class TestPyPSA:
         )
         assert record.attributes["x_pu"].df()["entity"].is_unique, "written once"
         assert "sensitivity" in record.schema.partial
-        built = PyPSA.build(record)
-        assert isinstance(built, pypsa.NetworkCollection)
+        built = PyPSACollection.build(record)
         assert built.index.name == "sensitivity"
         assert list(built.index) == ["lo", "hi"], "collection order"
         for label, member in zip(built.index, built.networks, strict=True):
             inputs = () if results_only else (("Generator", "p_max_pu"),)
             _assert_results_equal(member, sweep[label], *inputs)
-
-    @pytest.mark.parametrize("results_only", [False, True], ids=["export", "results"])
-    def test_a_scenario_collection_differs_only_where_pypsa_varies_by_scenario(
-        self, store, exported, sweep, results_only
-    ):
-        """Members solved apart differ in `p_nom_opt`, which PyPSA holds once across scenarios, so they are refused at the call.
-
-        Notes
-        -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
-        """
-        with pytest.raises(
-            ValueError, match="does not vary over `scenario`: name a dim"
-        ):
-            _collection(sweep, store, exported, "scenario", results_only)
-
-    @pytest.mark.slow
-    def test_a_scenario_collection_builds_back_stochastic(self, store, ac_dc):
-        """Members differing where PyPSA varies by scenario are one stochastic network.
-
-        Notes
-        -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
-        """
-        members = _costing(10.0, 20.0)({"lo": ac_dc.copy(), "hi": ac_dc.copy()})
-        record = _collection(members, store, None, "scenario", results_only=False)
-        weights = record.attributes["scenario_weight"].df().set_index("scenario")
-        assert weights["value"].to_dict() == {"lo": 0.5, "hi": 0.5}, "equal weights"
-        built = PyPSA.build(record)
-        assert list(built.scenarios) == ["lo", "hi"]
-        for label, m in members.items():
-            pd.testing.assert_series_equal(
-                built.c.Generator.static["marginal_cost"].xs(label, level="scenario"),
-                m.c.Generator.static["marginal_cost"],
-                check_names=False,
-                obj=label,
-            )
 
     @pytest.mark.parametrize(
         ("edit", "attr", "varies"),
@@ -2914,12 +2904,10 @@ class TestPyPSA:
         -----
         - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
         """
-        collection = pypsa.NetworkCollection(
-            edit({"lo": ac_dc.copy(), "hi": ac_dc.copy()})
+        collection = _over(
+            edit({"lo": ac_dc.copy(), "hi": ac_dc.copy()}), "sensitivity"
         )
-        layer = PyPSA.to_datarecord(
-            collection, store.workspace.con, collection_dim="sensitivity"
-        )
+        layer = PyPSACollection.to_datarecord(collection, store.workspace.con)
         record = store.commit(layer, parent=None).record
         assert ("sensitivity" in record.schema.attributes[attr].dims) == varies
 
@@ -2931,8 +2919,8 @@ class TestPyPSA:
         -----
         - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
         """
-        model = pypsa.NetworkCollection({"lo": solved, "hi": solved.copy()})
-        record = _results_over(swept, model, "sensitivity").record
+        model = _over({"lo": solved, "hi": solved.copy()}, "sensitivity")
+        record = _results_over(swept, model).record
         assert "sensitivity" in record.schema.attributes["p_nom_opt"].dims
         rows = record.attributes["p_nom_opt"].df()
         assert rows["sensitivity"].isna().all(), "written once, at every label"
@@ -2946,19 +2934,13 @@ class TestPyPSA:
     @pytest.mark.parametrize(
         ("edit", "dim", "match"),
         [
-            pytest.param(_two_levels, "sensitivity", "one index level", id="levels"),
-            pytest.param(dict, "bus", "names a dim the PyPSA schema", id="pypsa-dim"),
-            pytest.param(_stochastic, "scenario", "is stochastic", id="stochastic"),
+            pytest.param(_two_levels, ["case", "run"], "one index level", id="levels"),
+            pytest.param(dict, "bus", "a dim the PyPSA schema", id="pypsa-dim"),
+            pytest.param(dict, "scenario", "holds its scenarios itself", id="scenario"),
             pytest.param(_moved_bus, "sensitivity", "'London' has `x`", id="property"),
-            pytest.param(
-                _moved_bus_and_capacity,
-                "scenario",
-                "'London' has `x`",
-                id="axes-before-attributes",
-            ),
             pytest.param(_reordered_buses, "sensitivity", "orders `bus`", id="order"),
             pytest.param(
-                _with_custom_column, "scenario", "declares other", id="schema"
+                _with_custom_column, "sensitivity", "declares other", id="schema"
             ),
             pytest.param(
                 _with_custom_column_on_other_types,
@@ -2969,7 +2951,7 @@ class TestPyPSA:
             pytest.param(
                 _with_region_shapes,
                 "region",
-                "names a dim the members' shapes make",
+                "a dim the members' shapes make",
                 id="shape-made-dim",
             ),
             pytest.param(
@@ -2978,14 +2960,11 @@ class TestPyPSA:
                 r"holds other Generator .*'Newcomer'",
                 id="entity",
             ),
-            *(
-                pytest.param(
-                    _without_a_snapshot,
-                    dim,
-                    "'hi' holds other snapshots",
-                    id=f"snapshots-{dim}",
-                )
-                for dim in ("sensitivity", "scenario")
+            pytest.param(
+                _without_a_snapshot,
+                "sensitivity",
+                "'hi' holds other snapshots",
+                id="snapshots",
             ),
         ],
     )
@@ -2996,48 +2975,22 @@ class TestPyPSA:
         -----
         - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
         """
-        collection = pypsa.NetworkCollection(
-            edit({"lo": ac_dc.copy(), "hi": ac_dc.copy()})
-        )
+        collection = _over(edit({"lo": ac_dc.copy(), "hi": ac_dc.copy()}), dim)
         with pytest.raises(ValueError, match=match):
-            PyPSA.to_datarecord(collection, store.workspace.con, collection_dim=dim)
+            PyPSACollection.to_datarecord(collection, store.workspace.con)
 
-    def test_a_scenario_collection_is_written_over_a_deterministic_base(
-        self, store, ac_dc
-    ):
-        stochastic = ac_dc.copy()
-        stochastic.set_scenarios(["x", "y"])
-        base = export_network(stochastic, store).record
-        collection = pypsa.NetworkCollection({"lo": ac_dc, "hi": ac_dc})
-        with pytest.raises(ValueError, match="over a `base` without scenarios"):
-            PyPSA.to_datarecord(
-                collection,
-                base.con,
-                results_only=True,
-                base=base,
-                collection_dim="scenario",
-            )
-
-    @pytest.mark.parametrize(
-        ("dim", "match"),
-        [
-            pytest.param("weather_year", "collections do not nest", id="another"),
-            pytest.param("period", "builds to a `NetworkCollection`", id="period"),
-        ],
-    )
-    def test_a_record_has_one_dim_of_its_own(self, exported, sweep, solved, dim, match):
-        """A collection over a `base` with a dim of its own is over that dim or `scenario`, refused at the call.
+    @pytest.mark.parametrize("dim", ["weather_year", "period"])
+    def test_a_record_has_one_dim_of_its_own(self, exported, sweep, solved, dim):
+        """A collection over a `base` with a dim of its own is over that dim, refused at the call.
 
         Notes
         -----
         - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
         """
-        swept = _results_over(
-            exported.commit(), pypsa.NetworkCollection(sweep), "sensitivity"
-        )
-        collection = pypsa.NetworkCollection({"lo": solved, "hi": solved.copy()})
-        with pytest.raises(ValueError, match=match):
-            _results_over(swept, collection, dim)
+        swept = _results_over(exported.commit(), _over(sweep, "sensitivity"))
+        collection = _over({"lo": solved, "hi": solved.copy()}, dim)
+        with pytest.raises(ValueError, match="collections do not nest"):
+            _results_over(swept, collection)
 
     def test_build_refuses_two_dims_of_its_own(self, exported):
         """A collection's index is one dim, so a record declaring two of its own is reported.
@@ -3055,10 +3008,10 @@ class TestPyPSA:
             exported,
             schema=was.model_copy(update={"dimensions": {**was.dimensions, **own}}),
         ).commit()
-        missing = PyPSA.verify(revision.record)
+        missing = PyPSACollection.verify(revision.record)
         assert missing.unsupported_dims == set(own)
         with pytest.raises(UnsupportedRecordError, match="unsupported dims"):
-            PyPSA.build(revision.record)
+            PyPSACollection.build(revision.record)
 
     @pytest.mark.parametrize(
         ("select", "expected"),
@@ -3214,9 +3167,10 @@ class TestPyPSA:
         sweep = {"lo": multiperiod.copy(), "hi": later}
         record = _collection(sweep, store, None, "sensitivity", results_only=False)
 
-        built = PyPSA.build(record.select(period=2030))
+        view = record.select(period=2030)
 
-        assert isinstance(built, pypsa.NetworkCollection)
+        assert not PyPSACollection.verify(view)
+        built = PyPSACollection.build(view)
         held = {
             label: "Manchester Gas" in n.c.Generator.static.index
             for label, n in zip(built.index, built.networks, strict=True)
@@ -3386,9 +3340,8 @@ class TestPyPSA:
             n.set_scenarios(stored[label])
         record = _collection(members, store, None, "sensitivity", results_only=False)
 
-        built = PyPSA.build(record.select(scenario=["lo", "mid"]))
+        built = PyPSACollection.build(record.select(scenario=["lo", "mid"]))
 
-        assert isinstance(built, pypsa.NetworkCollection)
         weights = {
             label: n.scenario_weightings["weight"].to_dict()
             for label, n in zip(built.index, built.networks, strict=True)
@@ -3425,12 +3378,13 @@ class TestPyPSA:
         """
         years = {2012: sweep["lo"], 2013: sweep["hi"]}
         record = _collection(years, store, None, "weather_year", results_only=False)
-        built = PyPSA.build(record.select(weather_year=value))
-        if not isinstance(value, int):
-            assert isinstance(built, pypsa.NetworkCollection)
-            assert list(built.index) == [2013]
-            (built,) = built.networks
-        assert isinstance(built, pypsa.Network)
+        view = record.select(weather_year=value)
+        if isinstance(value, int):
+            built = PyPSA.build(view)
+        else:
+            collection = PyPSACollection.build(view)
+            assert list(collection.index) == [2013]
+            (built,) = collection.networks
         _assert_results_equal(built, sweep["hi"], ("Generator", "p_max_pu"))
 
     def test_a_member_holds_the_entities_its_label_keeps(self, workspace, tmp_path):
@@ -3444,10 +3398,8 @@ class TestPyPSA:
         for n in members.values():
             n.add("Generator", "only2019", bus="north")
         swept = workspace.store(str(tmp_path / "swept")).commit(
-            PyPSA.to_datarecord(
-                pypsa.NetworkCollection(members),
-                workspace.con,
-                collection_dim="weather_year",
+            PyPSACollection.to_datarecord(
+                _over(members, "weather_year"), workspace.con
             ),
             parent=None,
         )
@@ -3470,8 +3422,7 @@ class TestPyPSA:
         frame.to_parquet(path, index=False)
         record = layer.commit().record
 
-        whole = PyPSA.build(record)
-        assert isinstance(whole, pypsa.NetworkCollection)
+        whole = PyPSACollection.build(record)
         held = {
             label: n.c.Generator.static.index.tolist()
             for label, n in zip(whole.index, whole.networks, strict=True)

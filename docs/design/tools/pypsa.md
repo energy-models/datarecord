@@ -249,17 +249,19 @@ A solve of several networks writes them as one [collection](#a-collection).
 
 ## A collection
 
-`to_datarecord` takes a `pypsa.NetworkCollection` with `collection_dim`, the dim whose labels its one index level holds.
-It is required with a collection and refused without one, since nothing in the collection says what its index means.
+`PyPSACollection` writes and builds a `pypsa.NetworkCollection`, each member through `PyPSA`, so each tool takes one type and gives it back: `PyPSA` a `Network`, `PyPSACollection` a `NetworkCollection`.
+The dim of a collection is the name of its one index level, as in `pypsa.NetworkCollection(pd.Series(members).rename_axis("weather_year"))`; PyPSA names the index of a collection made from a dict `network`.
+A collection is over one of:
+
+- `period`, a myopic solve, one network per investment period.
+- A dim of the record's own, such as `sensitivity` or `weather_year`, one network per label.
+
+A name the PyPSA schema declares otherwise, such as `bus` or `snapshot`, is refused, and so is `scenario`: a stochastic network holds its scenarios itself and is written by `PyPSA`, and deterministic networks solved apart are a sweep over a dim of their own.
+`build` takes the record's dim of its own where it has one and `period` otherwise, so the record's shape decides on the way back what the index name decides on the way in, and a single-period record without a dim of its own is refused.
+`verify` and `build` take each member as `PyPSA` takes a selection, narrowed on its own, so `verify` reports what any member lacks.
+`PyPSA` builds no record with a dim of its own: its `verify` reports the dim in `unsupported_dims`.
+
 A collection is written on either path: as a full export over nothing, or as results over `base`.
-A record the tool writes builds back, so what a member may hold is decided by the dim:
-
-- `period` is a myopic solve, one network per investment period.
-- `scenario` is a set of deterministic networks, written as one stochastic record.
-- Any other name, such as `sensitivity` or `weather_year`, is a dim of the record's own, and the record builds back as a `NetworkCollection` indexed by it.
-
-`period` and `scenario` are PyPSA's dims, and a record over them follows PyPSA's declarations, so `build` gives the network PyPSA would hold.
-A name the PyPSA schema declares otherwise, such as `bus` or `snapshot`, is refused.
 The record's network attributes, `meta` and CRS are the first member's.
 Every check runs when `to_datarecord` is called, on the members in memory, so a collection that does not fit is refused before anything is written.
 Two values agree where a float is within `numpy.isclose`'s default tolerance and any other value is equal, which decides both what must agree and what differs, and where the record holds one value it is the first member's.
@@ -267,29 +269,35 @@ Two values agree where a float is within `numpy.isclose`'s default tolerance and
 ### Over `period`
 
 A myopic solve is written as the one multi-period network holding every member's period, so a myopic and a perfect-foresight solve of one record are read the same way.
-A member holds its own period alone.
+A member is deterministic and holds its own period alone.
 A series is each member's at its snapshots, and a static value such as `p_nom_opt` or a global constraint's `mu` comes from the members that hold the entity.
-Two members holding different static values for one entity are refused, and an entity no member holds is at its default.
+Two members holding different static values for one entity active in both are refused, and an entity no member holds is at its default.
 The SubNetworks are numbered once for the whole network rather than per member.
 An asset with a `lifetime`, such as a generator, that a member lacks after an earlier one held it is retired there: its `lifetime` ends at the first period lacking it, as PyPSA-Eur's brownfield step removes a retired asset, and one held again after a gap is refused.
 A static value counts only from the members holding the entity active in their period, so an entity a member holds idle, such as a generator retired before it, agrees with no one; an entity active in no member takes the value the members holding it agree on.
 Over `base`, a member holds only snapshots, buses and entities that `base` holds, and `base`'s results stand at every period, snapshot and entity no member holds ([writing results](#writing-results)).
-A `base` with a dim of its own is refused, since it builds to a collection rather than the one network the members split.
+A `base` with a dim of its own is refused, since collections do not nest.
 A single network over a multi-period `base` may carry any of its investment periods, one built from the selection at one period ([selecting before a build](#selecting-before-a-build)) writing over it at that period, and one carrying fewer than all is written as results.
 
+`build` gives each period's member as `PyPSA.build(record.select(period=[p]))`: the multi-period network of that one period, holding the entities PyPSA holds active in it, as a member written back holds it.
+The same record built by `PyPSA` is the perfect-foresight network.
+A brownfield step that changes a carried-over asset's inputs, such as `p_nom` or `p_nom_extendable`, or a CO₂ limit per period, differs across the members and is refused.
+
 ```python
-members = pypsa.NetworkCollection({2030: n_2030, 2040: n_2040})
-results = PyPSA.to_datarecord(
-    members, ws.con, results_only=True, base=inputs.record, collection_dim="period"
+members = PyPSACollection.build(inputs.record)  # one network per period
+for n in members.networks:
+    n.optimize(multi_investment_periods=True)
+results = PyPSACollection.to_datarecord(
+    members, ws.con, results_only=True, base=inputs.record
 )
 solved = store.commit(results, parent=inputs)
 ```
 
-### Over `scenario` or a dim of its own
+### Over a dim of its own
 
 Each member is written as a network on its own would be.
 An attribute whose values agree across the members is written once, as declared, without the dim.
-One whose values differ, a member holding a value another lacks included, holds each member's values at its label.
+One whose values differ, a member holding a value another lacks included, holds each member's values at its label, whatever PyPSA declares it over.
 The members' axes and properties are checked before any attribute, so members that cannot be one union are refused before their attributes are compared.
 A member holds the snapshots and components the first one does, and one holding others is refused: the record holds a snapshot and a component at every label, so one a member lacked would read its defaults at that member's label.
 
@@ -299,27 +307,35 @@ A property describes a label whatever the member, so a label's properties agree 
 That holds for the `sub_network` axis too: each member numbers its own SubNetworks, so members whose topologies differ, as a sweep over lines may, number them differently and are refused.
 The members declare one schema, so a custom column one member carries and another lacks is refused.
 
-Over `scenario`, the deterministic members are one stochastic record, its scenarios the collection's labels in order, each weighing equally.
-That holds for a full export and for results over a `base` without scenarios.
-A member must be deterministic, and a `base` holding scenarios is refused.
-An attribute may differ across the members only where PyPSA declares it over `scenario`, as it does a series such as `p_max_pu` or `p` and a varying input such as `marginal_cost`.
-One it holds once for every scenario, such as `p_nom_opt` or a global constraint's `mu`, is a first-stage value, and members differing in it are refused naming the entity, the attribute and the values, so the record is a stochastic network PyPSA could have solved to.
-Members solved apart differ in exactly those, so they are a sweep over a dim of their own.
-
-Over a dim of its own, an attribute whose values differ gains the dim, whatever PyPSA declares it over.
 The tool cannot tell in advance which values a sweep varies, since every member is a whole network, so the schema depends on the data: the record is the smallest that holds every member, an attribute carrying the dim only where its values vary along it.
 Members solved apart differ in their capacities and duals, which gain the dim, while an input the sweep leaves alone stays as declared.
 The dim is added to the schema, typed from the labels, and joins `partial`, as `scenario` is in it, so a later layer patches one member's values without restating the others.
 A results layer starts from its `base`'s schema, so a later layer whose values differ where an earlier one's agreed widens an attribute's `dims`, which is [compatible](../model/schema.md#versioning): a row written without the dim broadcasts to every label.
-A later layer whose values agree keeps the `dims` it found and writes its rows once, NULL on the dim, so they reach every label.
-A single network's results over such a `base` are refused, since NULL on the dim they would stand over every member's.
+A later layer of every label whose values agree keeps the `dims` it found and writes its rows once, NULL on the dim, so they reach every label.
 
 `build` gives a record with a dim of its own a `NetworkCollection` indexed by that dim, its labels in axis order.
-Each member is the network of `record.select(dim=label)`, a row NULL on the dim reaching every label, a row at the label standing over it ([the broadcast rule](../model/attributes.md#the-broadcast-rule)), and a label whose property names another label of the dim dropped, as a [selection](../use/selecting.md#what-goes-with-a-dropped-label) drops it.
+Each member is `PyPSA.build(record.select(dim=label))`, a row NULL on the dim reaching every label, a row at the label standing over it ([the broadcast rule](../model/attributes.md#the-broadcast-rule)), and a label whose property names another label of the dim dropped, as a [selection](../use/selecting.md#what-goes-with-a-dropped-label) drops it.
 A collection's results over a `base` holding its dim restate each member's over `base` at its label, so each label's series stand at the snapshots its member did not solve.
+
+A re-solve of some labels, a collection built from a selection keeping fewer labels of the dim, writes every result at each member's label, those the members agree on included, so `base`'s results stand at the labels it did not solve.
+It leaves the dim's axis and the results naming a SubNetwork to `base`, since its members number their SubNetworks over themselves alone, and a label `base` lacks is refused.
+A network built from the selection at one label, `record.select(weather_year=2013)`, is that member, and `PyPSA` writes its results over that selection as `PyPSACollection` writes a collection of it alone.
+A network written over the record itself, keeping the dim, is refused, as a full export over it is, since NULL on the dim its rows would stand at every label.
+
+```python
+members = pd.Series({"low": n_low, "high": n_high}).rename_axis("weather_year")
+layer = PyPSACollection.to_datarecord(pypsa.NetworkCollection(members), ws.con)
+record = store.commit(layer, parent=None).record
+PyPSACollection.build(record)  # a NetworkCollection over weather_year
+view = record.select(weather_year="high")
+n = PyPSA.build(view)  # the member at "high"
+n.optimize()
+results = PyPSA.to_datarecord(n, ws.con, results_only=True, base=view)  # at "high"
+```
+
 A record has at most one dim of its own: a `NetworkCollection` has one index, and collections do not nest.
 A dim the network's shapes make, such as `country` ([geometry](#geometry)), is no dim of its own: it indexes no member, and a collection is never over it.
-A collection over a new dim is refused over a `base` that has another, and `verify` reports each dim of its own of a record declaring more than one as an unsupported dim, so `build` refuses it.
+A collection over a new dim is refused over a `base` that has another, and `PyPSACollection.verify` reports each dim of its own of a record declaring more than one as an unsupported dim, so `build` refuses it.
 A re-solve over the same dim keeps the record buildable.
 
 ## Selecting before a build
@@ -336,7 +352,7 @@ A selection holding no snapshot is refused.
 | ---------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
 | `period`                                 | a single-period network over the period's snapshots, of its active entities | a multi-period network over the periods' snapshots, of the entities active in one of them |
 | `scenario`                               | a deterministic network of the scenario's values                            | a stochastic network, its weights renormalised to 1                                       |
-| a dim of its own                         | a `Network`                                                                 | a `NetworkCollection` over the labels                                                     |
+| a dim of its own                         | a `Network`, the member at the label                                        | a `NetworkCollection` over the labels, built by `PyPSACollection`                         |
 | `snapshot`, `timestep`, `bus`, `carrier` | refused                                                                     | the dim at those labels                                                                   |
 
 What the tool selects on top, where the view needs it:
@@ -347,7 +363,7 @@ What the tool selects on top, where the view needs it:
 
 One period is a single-period network indexed by the period's timesteps ([snapshots and weightings](#snapshots-and-weightings)), without the period weightings and without `investment_period`, since a single-period network has no period to name.
 One scenario is a deterministic network without `scenario_weight`, and a list renormalises the kept scenarios' weights, a scenario no row reaches taking its equal share of the whole axis first, since PyPSA takes weights summing to 1; kept weights summing to 0 are refused.
-A selection keeping a dim of the record's own builds a collection, each member `view.select(dim=label)`, narrowed as above on its own, so the generators active in a period may differ by member.
+`PyPSACollection` builds a selection keeping a dim of the record's own, each member `view.select(dim=label)` narrowed as above on its own, so the generators active in a period may differ by member.
 A shape goes with the label it outlines, and a dim shapes made, such as `country`, keeps every label no keyword drops, though a property such as `bus.country` refers to it.
 
 A network built from a selection writes its results over that selection, `base=view` ([writing results](#writing-results)).
@@ -356,7 +372,7 @@ Results that would stand for labels the network did not solve are refused instea
 
 - A deterministic network's results over a record holding scenarios, NULL on `scenario`; over the view at one scenario they are at that scenario.
 - A result over no `scenario`, such as `p_nom_opt` or a global constraint's `mu`, of a network holding fewer scenarios than the record. It is the first-stage decision for the scenarios solved alone, which would stand beside the other scenarios' results solved jointly, so the record would be no solution of any one problem. A subset solved apart is a run of its own, written as a member of a collection over a dim of its own.
-- A single network's results over a record with a dim of its own: the whole collection `build` gives is written instead, each member over the record at its label.
+- A network's results over a record keeping its dim of its own, NULL on the dim; over the view at one label they are at that label ([a collection](#over-a-dim-of-its-own)).
 
 Several dims combine, so `record.select(period=2030, scenario="high", carrier=["AC", "wind"])` builds one deterministic, single-period network of the AC buses and the wind generators at them.
 
@@ -372,7 +388,7 @@ The `shape_` prefix is how the tool, and any reader, recognises a geometry.
 A geometry is text: its values are [WKT](https://en.wikipedia.org/wiki/Well-known_text_representation_of_geometry), declared `str`.
 
 `to_datarecord` refuses a shape without a `component`, an `idx` or a `type`, two shapes sharing `(component, idx, type)`, an `idx` that is not a label its PyPSA type writes (a standard type or a carrier `n.carriers` lacks is none), and a `component` that is no PyPSA type but names a dim the PyPSA schema declares.
-A dim that shapes make stays outside `partial`, is written by a full export alone, and is no [dim of the record's own](#over-scenario-or-a-dim-of-its-own).
+A dim that shapes make stays outside `partial`, is written by a full export alone, and is no [dim of the record's own](#over-a-dim-of-its-own).
 A results layer writes no shape.
 
 A network has one coordinate reference system, so the CRS is `crs` in the schema's [`meta`](../model/schema.md), as the CRS's authority string (`EPSG:3035`) where it has one.
