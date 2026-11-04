@@ -29,15 +29,16 @@ from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 import numpy as np
 import pandas as pd
-from duckdb import CoalesceOperator as coalesce
-from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
 from duckdb import (
+    CaseExpression,
     DuckDBPyConnection,
     DuckDBPyRelation,
     Expression,
     sqltypes,
 )
+from duckdb import CoalesceOperator as coalesce
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 from pandas.api.types import is_datetime64_any_dtype, is_numeric_dtype
 
@@ -72,8 +73,7 @@ if TYPE_CHECKING:
 
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 #: PyPSA's name for a multi-period snapshot's inner level: the dim of those
-#: timesteps, and the property of `snapshot` that refers to it, the labels
-#: being positions (`_snapshot_frame`).
+#: timesteps, a coordinate of the multi-dim `snapshot` beside `period`.
 TIMESTEP = "timestep"
 #: A scenario's weight, not PyPSA's `weight`: that name is a Generator attribute,
 #: and a name holds one spec record-wide.
@@ -224,7 +224,6 @@ class NetworkShape:
     """
 
     dims: Relations
-    properties: Relations
 
     def _axis(self, dim: str) -> pd.DataFrame:
         """`dim`'s axis as a DataFrame, empty where the record holds no rows of it."""
@@ -233,24 +232,21 @@ class NetworkShape:
 
     @cached_property
     def snapshots(self) -> pd.DataFrame:
-        """The `snapshot` axis in axis order, with its properties where it has any."""
-        axis = self._axis(SNAPSHOT)
-        frame = self.properties.get(SNAPSHOT)
-        if frame is None:
-            return axis
-        return axis.merge(frame.df(), on=SNAPSHOT, how="left")
+        """The `snapshot` axis in axis order, a multi-dim's tuples as a column per coordinate."""
+        rel = self.dims.get(SNAPSHOT)
+        if rel is None:
+            return pd.DataFrame(columns=[SNAPSHOT])
+        return _unpacked(rel, SNAPSHOT).df()
 
     @property
     def snapshot_levels(self) -> pd.DataFrame:
-        """`snapshots` as PyPSA's index levels: `(period, timestep)` where a snapshot has a period, else the timestep.
+        """`snapshots` as PyPSA's index levels: `(period, timestep)` where a snapshot has a period, else the one column as `snapshot`.
 
-        The timestep is `snapshot.timestep` where declared, else the label
-        (`_snapshot_frame`), so one period selected out of several is indexed by its timesteps.
+        So a multi-period record selected at one period is indexed by its timesteps.
         """
-        timestep = self.snapshots.get(TIMESTEP, self.snapshots[SNAPSHOT])
-        if PERIOD not in self.snapshots:
-            return pd.DataFrame({SNAPSHOT: timestep})
-        return pd.DataFrame({PERIOD: self.snapshots[PERIOD], TIMESTEP: timestep})
+        if PERIOD in self.snapshots:
+            return self.snapshots[[PERIOD, TIMESTEP]]
+        return self.snapshots.set_axis([SNAPSHOT], axis=1)
 
     @cached_property
     def periods(self) -> pd.DataFrame:
@@ -328,8 +324,9 @@ class _Selection:
     own (`_own_dims`) leaves the schema. A kept dim's axis, properties and
     attribute rows are those at a kept label, a row NULL on it kept, and
     `entity` and `bus` keep the `connection` tuples by their fields. A
-    squeezed `period` drops `investment_period`, a single-period network
-    holding no period to name.
+    multi-dim loses its coordinates over a squeezed dim, so a squeezed
+    `period` leaves `snapshot` over `timestep` alone, and drops
+    `investment_period`, a single-period network holding no period to name.
     `scenario_weight` over kept scenarios is renormalised to sum to 1, as
     PyPSA requires.
 
@@ -352,9 +349,17 @@ class _Selection:
     def schema(self) -> RecordSchema:
         schema = self.record.schema
         own = self.squeeze.keys() & set(_own_dims(schema))
+        shrunk = {
+            d: schema.dimensions[d].model_copy(update={"over": over})
+            for d, over in self._shrunk.items()
+        }
         return _rebuilt(
             schema,
-            dimensions={d: s for d, s in schema.dimensions.items() if d not in own},
+            dimensions={
+                d: shrunk.get(d, s)
+                for d, s in schema.dimensions.items()
+                if d not in own
+            },
             properties={
                 subject: {
                     n: s for n, s in specs.items() if s.one_of not in self.squeeze
@@ -369,6 +374,16 @@ class _Selection:
             },
             partial=(schema.partial or frozenset()) - own,
         )
+
+    @cached_property
+    def _shrunk(self) -> dict[str, dict[str, str]]:
+        """The coordinates each multi-dim keeps, of those with one over a squeezed dim."""
+        schema = self.record.schema
+        return {
+            d: {c: on for c, on in over.items() if on not in self.squeeze}
+            for d in schema.multi_dims
+            if (over := schema.over(d)).values() & self.squeeze.keys()
+        }
 
     @property
     def dims(self) -> LazyRelations:
@@ -412,6 +427,27 @@ class _Selection:
         return self._kept(rel)
 
     def _kept(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+        """`rel` at the kept labels (`_filtered`), each multi-dim's tuples reduced to `_shrunk` (`_reduced`)."""
+        return self._reduced(self._filtered(rel))
+
+    def _reduced(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+        """`rel` with each struct of a `_shrunk` multi-dim reduced to the coordinates kept, a NULL one staying NULL."""
+        shrunk = [c for c in rel.columns if c in self._shrunk]
+        if not shrunk:
+            return rel
+        schema = self.schema
+
+        def reduced(c: str) -> Expression:
+            fields = {f: fn.struct_extract(col(c), lit(f)) for f in self._shrunk[c]}
+            whole = CaseExpression(col(c).isnull(), lit(None))
+            struct = schema.duck_type(schema.dimensions[c])
+            return whole.otherwise(struct_of(fields)).cast(struct).alias(c)
+
+        return rel.project(
+            *(reduced(c) if c in shrunk else col(c) for c in rel.columns)
+        )
+
+    def _filtered(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
         """`rel`'s rows at a kept label, or NULL, of each dim in `keep` it carries, `connection`'s fields among them, in `rel`'s order.
 
         The rows are numbered before the filter and ordered by it after: the
@@ -449,9 +485,7 @@ class _Selection:
             self, keep={d: v for d, v in self.keep.items() if d != SCENARIO}
         )
         equal = _equal_weighting(_axis_labels(whole, SCENARIO))
-        kept = _weightings(whole, SCENARIO, equal, con)["weight"].loc[
-            self.keep[SCENARIO]
-        ]
+        kept = _weightings(whole, SCENARIO, equal)["weight"].loc[self.keep[SCENARIO]]
         if not kept.sum() > 0:
             msg = f"`select` keeps scenarios {list(kept.index)} weighing nothing in all"
             raise ValueError(msg)
@@ -475,18 +509,16 @@ def _is_scalar(value: Any) -> bool:
     return isinstance(value, str) or not isinstance(value, Iterable | slice)
 
 
-def _keyed_axis(record: RecordLike, dim: str) -> pd.Series:
-    """`dim`'s labels in axis order, indexed by what `select` matches: a snapshot's `timestep` where declared, else the label.
+def _keyed_axis(record: RecordLike, dim: str) -> tuple[list[Any], pd.Series]:
+    """`dim`'s labels in axis order, and their positions indexed by what `select` matches: a multi-period snapshot's `timestep`, else the label.
 
-    A multi-period record labels its snapshots by position
-    (`_snapshot_frame`), so a timestamp names one in each period holding it.
+    A timestamp so names a multi-period snapshot in each period holding it.
     """
     labels = _axis_labels(record, dim)
     keys: Any = labels
-    if dim == SNAPSHOT and TIMESTEP in record.schema.properties.get(SNAPSHOT, {}):
-        frame = record.properties[SNAPSHOT].project(col(SNAPSHOT), col(TIMESTEP)).df()
-        keys = frame.set_index(SNAPSHOT)[TIMESTEP].reindex(labels)
-    return pd.Series(labels, index=pd.Index(keys), dtype=object)
+    if dim == SNAPSHOT and _multiperiod(record):
+        keys = [label[TIMESTEP] for label in labels]
+    return labels, pd.Series(range(len(labels)), index=pd.Index(keys))
 
 
 def _labels(record: RecordLike, dim: str, value: Any) -> tuple[list[Any], bool]:
@@ -505,8 +537,12 @@ def _labels(record: RecordLike, dim: str, value: Any) -> tuple[list[Any], bool]:
         step, of a dim `_ORDERED` leaves out or of an axis neither numeric nor
         datetime, with an end the axis cannot compare, or matching nothing.
     """
-    keyed = _keyed_axis(record, dim)
+    labels, keyed = _keyed_axis(record, dim)
     ordered = keyed.sort_index(kind="stable")
+
+    def at(positions: Iterable[int]) -> list[Any]:
+        return [labels[i] for i in positions]
+
     if isinstance(value, slice):
         sortable = is_numeric_dtype(keyed.index) or is_datetime64_any_dtype(keyed.index)
         orderable = dim in _ORDERED or dim in _own_dims(record.schema)
@@ -523,7 +559,7 @@ def _labels(record: RecordLike, dim: str, value: Any) -> tuple[list[Any], bool]:
         if within.empty:
             msg = f"`select` slices no label of `{dim}`: {value}"
             raise ValueError(msg)
-        return keyed[keyed.isin(within)].tolist(), False
+        return at(keyed[keyed.isin(within)]), False
     if _is_scalar(value):
         try:
             found = ordered.loc[value]
@@ -531,8 +567,8 @@ def _labels(record: RecordLike, dim: str, value: Any) -> tuple[list[Any], bool]:
             msg = f"`select` names {value!r}, a label `{dim}`'s axis lacks"
             raise ValueError(msg) from err
         if isinstance(found, pd.Series):
-            return keyed[keyed.isin(found)].tolist(), False
-        return [found], True
+            return at(keyed[keyed.isin(found)]), False
+        return at([found]), True
     requested = list(value)
     if isinstance(keyed.index, pd.DatetimeIndex):
         requested = [pd.Timestamp(key) for key in requested]
@@ -541,7 +577,7 @@ def _labels(record: RecordLike, dim: str, value: Any) -> tuple[list[Any], bool]:
         held = f"labels {unknown} its axis lacks" if unknown else "no label"
         msg = f"`select` names {held} of `{dim}`"
         raise ValueError(msg)
-    return keyed[keyed.index.isin(requested)].tolist(), False
+    return at(keyed[keyed.index.isin(requested)]), False
 
 
 def _resolved(record: RecordLike, attr: str, fallback: float) -> pd.Series:
@@ -661,8 +697,9 @@ def _propagated(
     """`keep`, narrowed to the labels referring to no label the selection drops.
 
     A label whose property refers to a selected dim stays where the value is
-    selected or NULL, naming no label. A period holding no kept snapshot goes,
-    since PyPSA takes no period without one. An entity attached to a dropped
+    selected or NULL, naming no label, and a multi-period snapshot where its
+    period is selected. A period holding no kept snapshot goes, since PyPSA
+    takes no period without one. An entity attached to a dropped
     bus goes, and over selected periods, squeezed or kept, one PyPSA holds
     active in none of them (`_active`) or whose `investment_period` names
     another (`_applying`).
@@ -687,11 +724,15 @@ def _propagated(
             frame[n].isna() | frame[n].isin(chosen[str(specs[n].one_of)]) for n in refs
         ]
         narrow(subject, set(frame.loc[np.logical_and.reduce(selected), subject]))
-    timed = PERIOD in schema.properties.get(SNAPSHOT, {})
-    if SNAPSHOT in kept and PERIOD not in squeeze and timed:
-        periods = record.properties[SNAPSHOT].project(col(SNAPSHOT), col(PERIOD)).df()
-        held = periods.loc[periods[SNAPSHOT].isin(kept[SNAPSHOT]), PERIOD]
-        narrow(PERIOD, set(held))
+    if _multiperiod(record):
+        if PERIOD in chosen:
+            wanted = set(chosen[PERIOD])
+            held = (
+                kept[SNAPSHOT] if SNAPSHOT in kept else _axis_labels(record, SNAPSHOT)
+            )
+            kept[SNAPSHOT] = [s for s in held if s[PERIOD] in wanted]
+        if SNAPSHOT in kept and PERIOD not in squeeze:
+            narrow(PERIOD, {s[PERIOD] for s in kept[SNAPSHOT]})
     connections = _record_connections(record) if BUS in kept else None
     if connections is not None:
         detached = connections.loc[~connections[BUS].isin(kept[BUS]), ENTITY]
@@ -704,42 +745,10 @@ def _propagated(
     return kept
 
 
-def _snapshot_frame(snapshots: pd.Index) -> pd.DataFrame:
-    """`n.snapshots` as the `snapshot` axis with its properties, in PyPSA's order.
-
-    A multi-period snapshot's label is its position, its period and timestep
-    its `period` and `timestep` properties.
-
-    Notes
-    -----
-    - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
-    """
-    if not isinstance(snapshots, pd.MultiIndex):
-        return snapshots.to_frame(index=False)
-    return pd.DataFrame(
-        {
-            SNAPSHOT: np.arange(len(snapshots)),
-            PERIOD: snapshots.get_level_values(PERIOD),
-            TIMESTEP: snapshots.get_level_values(TIMESTEP),
-        }
-    )
-
-
-#: The properties of a multi-period network's `snapshot` (`_snapshot_frame`).
-_SNAPSHOT_PROPERTIES = {
-    PERIOD: PropertySpec(
-        one_of=PERIOD, description="The investment period a snapshot falls in."
-    ),
-    TIMESTEP: PropertySpec(
-        one_of=TIMESTEP,
-        description="PyPSA's timestep of a snapshot labelled by its position.",
-    ),
-}
-
-
 def _multiperiod(record: RecordLike) -> bool:
-    """Whether `record` is multi-period: its snapshots carry their period."""
-    return PERIOD in record.schema.properties.get(SNAPSHOT, {})
+    """Whether `record` is multi-period: its `snapshot` is a multi-dim over `period`."""
+    spec = record.schema.dimensions.get(SNAPSHOT)
+    return spec is not None and PERIOD in (spec.over or {})
 
 
 # -- long -> wide -----------------------------------------------------------
@@ -895,12 +904,13 @@ def _series_frame(
     Only the columns the rows pivot, in `static_index` order: PyPSA takes
     every column given as a series, so completing them would move a static
     component into `dynamic`. The pivot is on a column's position, so a name
-    never becomes an SQL identifier.
+    never becomes an SQL identifier. A multi-dim snapshot is matched by its
+    coordinates (`NetworkShape.snapshots`).
     """
-    group_by = [SNAPSHOT]
+    group_by = list(shape.snapshots.columns)
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
-    rows = rows.set_alias("r")
+    rows = _unpacked(rows, SNAPSHOT).set_alias("r")
     _dr_positioned = rows.join(
         columns, ex_all(col("r", k) == col("k", k) for k in keys)
     ).project(
@@ -1355,9 +1365,7 @@ def _apply_network_attributes(n: pypsa.Network, attrs: dict[str, Any]) -> None:
             setattr(n, attr, value)
 
 
-def _new_network(
-    record: RecordLike, shape: NetworkShape, con: DuckDBPyConnection
-) -> pypsa.Network:
+def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
     """An empty network with the record's axes already established."""
     import pypsa
 
@@ -1373,38 +1381,36 @@ def _new_network(
     if shape.multiperiod:
         n.periods = shape.periods[PERIOD]
         n.investment_period_weightings = _weightings(
-            record, PERIOD, n.investment_period_weightings, con
+            record, PERIOD, n.investment_period_weightings
         )
-    labels = pd.Index(shape.snapshots[SNAPSHOT], name=SNAPSHOT)
-    n.snapshot_weightings = _weightings(
-        record, SNAPSHOT, n.snapshot_weightings.set_axis(labels), con
-    ).set_axis(n.snapshots)
+    n.snapshot_weightings = _weightings(record, SNAPSHOT, n.snapshot_weightings)
     if shape.stochastic:
         equal = _equal_weighting(shape.scenarios[SCENARIO].astype(str))
         # Not `_scenarios_data`: `set_scenarios` gives the empty frames their `scenario` level.
-        n.set_scenarios(_weightings(record, SCENARIO, equal, con)["weight"])
+        n.set_scenarios(_weightings(record, SCENARIO, equal)["weight"])
     return n
 
 
-def _weightings(
-    record: RecordLike, dim: str, table: pd.DataFrame, con: DuckDBPyConnection
-) -> pd.DataFrame:
+def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFrame:
     """`table`, PyPSA's weightings of `dim` by label, with each one `record` stores in place.
+
+    A multi-dim's label is matched by its coordinates, as PyPSA's index levels.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     restored = table.copy()
-    labels = {dim: Index.of(table.index.rename(dim), con).rel}
+    labels = {dim: record.dims[dim]}
     overstated = Flags(frozenset({dim}), frozenset({dim}))
     for attribute, weighting in _WEIGHTINGS.items():
         frame = record.attributes.get(attribute)
         if weighting.dim != dim or frame is None:
             continue
         rows = settle(frame, labels, overstated, filter=False)
-        rows = rows.project(col(dim), col("value")).df()
-        values = rows.set_index(dim)["value"].reindex(table.index)
+        rows = _unpacked(rows.project(col(dim), col("value")), dim).df()
+        keys = [c for c in rows.columns if c != "value"]
+        values = rows.set_index(keys)["value"].reindex(table.index)
         restored[weighting.column] = values.fillna(table[weighting.column])
     return restored
 
@@ -1422,7 +1428,7 @@ def _add_component_type(
     static_df = _assign_static(static, attributes, shape, scenarios, con)
     n._import_components_from_df(static_df, ctype)
 
-    snapshots = Index.of(n.snapshots, con, shape.snapshots[[SNAPSHOT]])
+    snapshots = Index.of(n.snapshots, con, shape.snapshots)
     static_index = n.c[ctype].static.index
     for attr, (long, flags) in attributes.items():
         if SNAPSHOT not in flags.varies:
@@ -2098,7 +2104,7 @@ class PyPSATool(Tool):
         self, record: RecordLike
     ) -> tuple[Requirements, dict[str, _TypeMembers]]:
         """`verify`, with the members it read for each known type, for `build` to reuse; empty where a key check failed."""
-        dims = REQUIRED_DIMS - set(record.schema.dims)
+        dims = REQUIRED_DIMS - set(record.schema.dimensions)
         unsupported_keys = self._unsupported_keys(record)
         unsupported_dims = self._unsupported_dims(record)
         if unsupported_keys or unsupported_dims:
@@ -2240,8 +2246,8 @@ class PyPSATool(Tool):
 
         con = record.con
         schema = record.schema
-        shape = NetworkShape(record.dims, record.properties)
-        n = _new_network(record, shape, con)
+        shape = NetworkShape(record.dims)
+        n = _new_network(record, shape)
         flagged = record.flags()
 
         over_entity = [a for a in schema.attributes if schema.addresses(a, ENTITY)]
@@ -2267,10 +2273,11 @@ class PyPSATool(Tool):
             for attr, flags in flagged.items():
                 if attr not in carried:
                     continue
-                long = _unpack_connection(
+                long = _unpacked(
                     self.schema.resolve(
                         record, ctype, attr, labels, flagged, filter=False
-                    )
+                    ),
+                    CONNECTION,
                 )
                 if CONNECTION in schema.attributes[attr].dims:
                     for column, rows in _port_columns(
@@ -2831,9 +2838,9 @@ class _NetworkSource:
         dimensions = dict(base.dimensions)
         properties = dict(base.properties)
         if PERIOD in self._snapshots:
-            properties[SNAPSHOT] = _SNAPSHOT_PROPERTIES
-            dimensions[SNAPSHOT] = dimensions[SNAPSHOT].model_copy(
-                update={"dtype": "int"}
+            dimensions[SNAPSHOT] = Dimension(
+                over=[PERIOD, TIMESTEP],
+                description="A timestep of a multi-period network in its period.",
             )
         for dim, frame in self._shapes.items():
             if dim not in dimensions:
@@ -2870,13 +2877,20 @@ class _NetworkSource:
 
     @cached_property
     def _snapshots(self) -> pd.DataFrame:
-        """`n.snapshots` as the `snapshot` axis with its properties (`_snapshot_frame`)."""
-        return _snapshot_frame(self.n.snapshots)
+        """`n.snapshots` in PyPSA's order, a column per level: `snapshot`, or a multi-period network's `period` and `timestep`."""
+        return self.n.snapshots.to_frame(index=False)
 
     @cached_property
-    def _snapshot_labels(self) -> pd.Index:
-        """The labels of `_snapshots`, in PyPSA's order."""
-        return pd.Index(self._snapshots[SNAPSHOT], name=SNAPSHOT)
+    def _snapshot_rel(self) -> DuckDBPyRelation:
+        """`_snapshots` as the `snapshot` axis, typed as declared."""
+        rel = self._snapshot_packed(self.con.from_df(self._snapshots))
+        return cast_declared(self.schema, rel, SNAPSHOT)
+
+    def _snapshot_packed(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+        """`rel`, carrying the columns of `_snapshots`, with them as the one `snapshot` column the schema declares."""
+        if SNAPSHOT not in self.schema.multi_dims:
+            return rel
+        return _packed(self.schema, SNAPSHOT, rel)
 
     @cached_property
     def _sub_networks(self) -> pd.DataFrame:
@@ -2930,6 +2944,8 @@ class _NetworkSource:
         def axis(dim: str) -> DuckDBPyRelation:
             if dim == CONNECTION:
                 return self._connection_frame.project(col(CONNECTION))
+            if dim == SNAPSHOT:
+                return self._snapshot_rel
             frame = self._entity_frame if dim == ENTITY else self._axes[dim]
             return cast_declared(self.schema, self.con.from_df(frame[[dim]]), dim)
 
@@ -3036,8 +3052,8 @@ class _NetworkSource:
         each row group and leave them unencoded.
 
         The snapshots are melted by position and looked up in a typed list of
-        the labels, so a label never becomes an SQL identifier and keeps its
-        dtype.
+        each index level, so a label never becomes an SQL identifier and keeps
+        its dtype; a multi-period snapshot's levels are packed into its tuple.
         """
         con = self.con
         wide = c.dynamic[attr]
@@ -3065,12 +3081,15 @@ class _NetworkSource:
             scenario = "split_part(colname, chr(31), 1)"
         else:
             entity, scenario = "colname", "CAST(NULL AS VARCHAR)"
-        labels = lit(self._snapshot_labels.tolist())
+        levels = ", ".join(
+            f"({lit(values.tolist())})[pos + 1] AS {col(level)}"
+            for level, values in self._snapshots.items()
+        )
         melted = con.sql(
-            f"SELECT {entity} AS entity, ({labels})[pos + 1] AS {SNAPSHOT}, "
+            f"SELECT {entity} AS entity, {levels}, "
             f"{scenario} AS scenario, value FROM _dr_melted"
         )
-        return anchored(melted, _dr_melted)
+        return self._snapshot_packed(anchored(melted, _dr_melted))
 
     def _scalar_rel(
         self,
@@ -3080,7 +3099,7 @@ class _NetworkSource:
         *,
         unchanged: str | None = None,
     ) -> DuckDBPyRelation | None:
-        """Untyped-NULL-snapshot long rows from `attr`'s static scalars (`_scalar_rows`), `None` where none remain."""
+        """NULL-snapshot long rows from `attr`'s static scalars (`_scalar_rows`), `None` where none remain."""
         static = _shared_across_scenarios(_scalar_rows(c, attr, exclude))
         if unchanged is not None and attr in c.defaults.index:
             default = c.defaults.at[attr, "default"]
@@ -3088,8 +3107,10 @@ class _NetworkSource:
         if static.empty:
             return None
         _dr_static = static
+        snapshot = self.schema.duck_type(self.schema.dimensions[SNAPSHOT])
         return self.con.sql(
-            "SELECT entity, NULL AS snapshot, scenario, value FROM _dr_static"
+            f"SELECT entity, CAST(NULL AS {snapshot}) AS snapshot, scenario, value "
+            "FROM _dr_static"
         )
 
     def _changing(
@@ -3184,9 +3205,10 @@ class _NetworkSource:
         return names
 
     def _weighting_table(self, dim: str) -> pd.DataFrame:
-        """PyPSA's weighting frame of `dim` by label, empty where the network lacks the axis."""
+        """PyPSA's weighting frame of `dim` by label, a snapshot's by the levels of `_snapshots`, empty where the network lacks the axis."""
         if dim == SNAPSHOT:
-            return self.n.snapshot_weightings.set_axis(self._snapshot_labels)
+            levels = pd.MultiIndex.from_frame(self._snapshots)
+            return self.n.snapshot_weightings.set_axis(levels)
         if dim == PERIOD:
             return self.n.investment_period_weightings
         return self.n.scenario_weightings
@@ -3196,10 +3218,11 @@ class _NetworkSource:
         weighting = _WEIGHTINGS[attribute]
         table = self._weighting_table(weighting.dim)
         _dr_weights = table[weighting.column].rename("value").reset_index()
-        return self.con.sql(
+        rel = self.con.sql(
             f"SELECT * EXCLUDE (value), {lit(attribute)} AS attribute, "
             "NULL AS breakpoint, CAST(value AS DOUBLE) AS value FROM _dr_weights"
         )
+        return self._snapshot_packed(rel) if weighting.dim == SNAPSHOT else rel
 
     @cached_property
     def _output_names(self) -> dict[str, list[str]]:
@@ -3236,11 +3259,10 @@ class _NetworkSource:
 
     @property
     def properties(self) -> LazyRelations:
-        """The keys and property columns of the entities, labelled axes, connections and multi-period snapshots."""
+        """The keys and property columns of the entities, labelled axes and connections."""
         axes = [*_AXIS_TYPES.values(), *self._shape_dims]
         labelled = [d for d in axes if len(self._axes[d])]
-        timed = [SNAPSHOT] if PERIOD in self._snapshots else []
-        subjects = (ENTITY, *labelled, CONNECTION, *timed)
+        subjects = (ENTITY, *labelled, CONNECTION)
 
         def frame(subject: str) -> DuckDBPyRelation:
             if subject == CONNECTION:
@@ -3414,9 +3436,9 @@ class _NetworkSource:
         rel = _union_all([r for r in rels if r is not None])
         if rel is not None:
             return rel.select(*map(col, columns))
-        schema = _registry().schema
         return empty_relation(
-            self.con, **{c: schema.column_type(c) or sqltypes.VARCHAR for c in columns}
+            self.con,
+            **{c: self.schema.column_type(c) or sqltypes.VARCHAR for c in columns},
         )
 
     def _output_rel(self, attribute: str, ctypes: list[str]) -> DuckDBPyRelation | None:
@@ -3505,30 +3527,21 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _snapshots(self) -> pd.DataFrame:
-        """`n.snapshots` at `base`'s labels: over a multi-period `base`, the one of its period and timestep (`_snapshot_frame`), a single-period network's at its period (`_periods`).
+        """`n.snapshots` a column per level of `base`'s `snapshot`: over a multi-period `base`, a single-period network's timesteps at its period (`_periods`).
 
         Raises
         ------
         ValueError
-            If `n` holds a period and timestep `base` lacks, or `_periods` does.
+            If `n` is multi-period and `base` is not.
         """
-        if not _multiperiod(self.base):
-            return _snapshot_frame(self.n.snapshots)
-        keys = [PERIOD, TIMESTEP]
-        held = self.base.properties[SNAPSHOT].project(*map(col, [SNAPSHOT, *keys]))
         snapshots = self.n.snapshots
-        levels = (
-            snapshots.to_frame(index=False)
-            if isinstance(snapshots, pd.MultiIndex)
-            else pd.DataFrame({PERIOD: self._periods[0], TIMESTEP: snapshots})
-        )
-        labelled = levels.merge(held.df(), on=keys, how="left")
-        lacking = labelled[SNAPSHOT].isna()
-        if lacking.any():
-            unknown = levels[lacking].apply(tuple, axis=1).tolist()
-            msg = f"The network has snapshots `base` lacks: {unknown}"
+        levels = isinstance(snapshots, pd.MultiIndex)
+        if levels and not _multiperiod(self.base):
+            msg = "A multi-period network is written over a single-period `base`"
             raise ValueError(msg)
-        return labelled[[SNAPSHOT, *keys]]
+        if levels or not _multiperiod(self.base):
+            return snapshots.to_frame(index=False)
+        return pd.DataFrame({PERIOD: self._periods[0], TIMESTEP: snapshots})
 
     def check(self) -> None:
         """Refuse a network holding a snapshot, bus or entity `base` lacks, at the call rather than the write.
@@ -3538,26 +3551,25 @@ class _ResultsSource(_NetworkSource):
         ValueError
             If it holds one.
         """
-        held = {
-            SNAPSHOT: self._snapshots[SNAPSHOT],
-            BUS: self._labels("Bus")[BUS],
-            ENTITY: self._entity_frame[ENTITY],
+        snapshots = _lacking(self._snapshot_rel, self.base.dims[SNAPSHOT], SNAPSHOT)
+        held = {BUS: self._labels("Bus")[BUS], ENTITY: self._entity_frame[ENTITY]}
+        unknown = {
+            SNAPSHOT: [label for (label,) in snapshots.fetchall()],
+            **{
+                dim: labels[~labels.isin(_axis_labels(self.base, dim))].tolist()
+                for dim, labels in held.items()
+            },
         }
-        for dim, labels in held.items():
-            unknown = labels[~labels.isin(_axis_labels(self.base, dim))]
-            if len(unknown) > 0:
-                msg = f"The network has {dim} labels `base` lacks: {unknown.tolist()}"
+        for dim, labels in unknown.items():
+            if labels:
+                msg = f"The network has {dim} labels `base` lacks: {labels}"
                 raise ValueError(msg)
 
     @cached_property
     def _elsewhere(self) -> DuckDBPyRelation | None:
         """`base`'s snapshots the network lacks, at which `base`'s series stand; `None` where it holds them all."""
-        held = set(self._snapshots[SNAPSHOT])
-        rest = [s for s in _axis_labels(self.base, SNAPSHOT) if s not in held]
-        if not rest:
-            return None
-        frame = pd.DataFrame({SNAPSHOT: rest})
-        return cast_declared(self.schema, self.con.from_df(frame))
+        rest = _lacking(self.base.dims[SNAPSHOT], self._snapshot_rel, SNAPSHOT)
+        return rest if rest.limit(1).fetchall() else None
 
     @cached_property
     def _live_entities(self) -> DuckDBPyRelation | None:
@@ -3712,6 +3724,15 @@ class _ResultsSource(_NetworkSource):
         return rows.filter(f"{on} IS NULL OR {on} IN (SELECT {col(ENTITY)} FROM live)")
 
 
+def _lacking(
+    rel: DuckDBPyRelation, other: DuckDBPyRelation, dim: str
+) -> DuckDBPyRelation:
+    """The rows of `rel` whose label of `dim` `other` lacks."""
+    return rel.set_alias("a").join(
+        other.set_alias("b"), col("a", dim) == col("b", dim), how="anti"
+    )
+
+
 def _standing(
     rows: DuckDBPyRelation, columns: Sequence[str], elsewhere: DuckDBPyRelation
 ) -> DuckDBPyRelation:
@@ -3776,7 +3797,7 @@ def _difference(
 
 def _values(rel: DuckDBPyRelation) -> pd.Series:
     """One attribute's long rows as its values by their key columns."""
-    frame = _unpack_connection(rel).df()
+    frame = _unpacked(rel, CONNECTION, SNAPSHOT).df()
     return frame.set_index([c for c in frame.columns if c != "value"])["value"]
 
 
@@ -3812,9 +3833,9 @@ def _axis_union(
 
     Its labels are in one order (`_ordered_union`), each column's values agreed (`_agreed`).
     """
-    keys = [ENTITY, BUS] if subject == CONNECTION else [subject]
+    keys = list(schema.over(subject)) or [subject]
     keyed = {
-        label: _unpack_connection(rel).df().set_index(keys)
+        label: _unpacked(rel, subject).df().set_index(keys)
         for label, rel in held.items()
     }
     order = _ordered_union(subject, {label: f.index for label, f in keyed.items()}, by)
@@ -3825,10 +3846,8 @@ def _axis_union(
     }
     frame = pd.DataFrame(agreed, index=order, columns=columns)
     rel = con.from_df(frame.reset_index(names=keys))
-    if subject == CONNECTION:
-        rel = rel.project(
-            _connection_struct(col(ENTITY), col(BUS)), star(exclude=[ENTITY, BUS])
-        )
+    if subject in schema.multi_dims:
+        rel = _packed(schema, subject, rel)
     return cast_declared(schema, rel, subject)
 
 
@@ -3982,7 +4001,7 @@ def _record_connections(record: RecordLike) -> pd.DataFrame | None:
     frame = record.properties.get(CONNECTION)
     if frame is None:
         return None
-    return _unpack_connection(frame).df()
+    return _unpacked(frame, CONNECTION).df()
 
 
 def _tuples_of(tuples: DuckDBPyRelation, members: DuckDBPyRelation) -> DuckDBPyRelation:
@@ -4116,16 +4135,38 @@ def _connection_struct(entity: Expression, bus: Expression) -> Expression:
     return fn.struct_pack(**{ENTITY: entity, BUS: bus}).cast(struct).alias(CONNECTION)
 
 
-def _unpack_connection(long: DuckDBPyRelation) -> DuckDBPyRelation:
-    """`long` with its `connection` struct spread to `entity` and `bus`, if it has one."""
-    if CONNECTION not in long.columns:
-        return long
-    return long.project(
-        *(col(c) for c in long.columns if c != CONNECTION),
+def _unpacked(rel: DuckDBPyRelation, *columns: str) -> DuckDBPyRelation:
+    """`rel` with each struct of `columns` it carries spread to a column per field, after the others.
+
+    A multi-dim's struct spreads to its coordinates: `connection` to `entity`
+    and `bus`, a multi-period `snapshot` to `period` and `timestep`.
+    """
+    types = dict(zip(rel.columns, rel.types, strict=True))
+    structs = [c for c in columns if c in types and types[c].id == "struct"]
+    if not structs:
+        return rel
+    return rel.project(
+        *(col(c) for c in rel.columns if c not in structs),
         *(
-            fn.struct_extract(col(CONNECTION), lit(field)).alias(field)
-            for field in (ENTITY, BUS)
+            fn.struct_extract(col(c), lit(field)).alias(field)
+            for c in structs
+            for field, _ in types[c].children
         ),
+    )
+
+
+def _packed(schema: RecordSchema, dim: str, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+    """`rel` with the coordinate columns of the multi-dim `dim` packed into its struct, typed as declared, where the first of them stood."""
+    over = schema.over(dim)
+    struct = struct_of({c: col(c) for c in over})
+    packed = struct.cast(schema.duck_type(schema.dimensions[dim])).alias(dim)
+    first = next(c for c in rel.columns if c in over)
+    return rel.project(
+        *(
+            packed if c == first else col(c)
+            for c in rel.columns
+            if c == first or c not in over
+        )
     )
 
 

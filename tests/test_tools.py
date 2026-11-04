@@ -2287,34 +2287,35 @@ class TestPyPSA:
     def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not(self):
         rows = pd.DataFrame({"scenario": [None, "high"], "value": [0.25, 0.5]})
         con = duckdb.connect()
-        record = SimpleNamespace(attributes={"scenario_weight": con.from_df(rows)})
         index = pd.Index(["low", "mid", "high"], name="scenario")
+        record = SimpleNamespace(
+            dims={"scenario": con.from_df(index.to_frame(index=False))},
+            attributes={"scenario_weight": con.from_df(rows)},
+        )
         equal = pd.DataFrame({"weight": 1 / 3}, index=index)
-        weights = _weightings(record, "scenario", equal, con)  # type: ignore[arg-type]
+        weights = _weightings(record, "scenario", equal)  # type: ignore[arg-type]
         assert weights["weight"].to_dict() == {"low": 0.25, "mid": 0.25, "high": 0.5}, (
             "a NULL-scenario row broadcasts; a scenario's own row wins"
         )
 
-    def test_a_multi_period_snapshot_is_one_flat_axis(
+    def test_a_multi_period_snapshot_is_a_multi_dim(
         self, multiperiod, multiperiod_revision
     ):
-        """A multi-period snapshot is labelled by its position, its timesteps repeating or not.
+        """A multi-period snapshot is a `(period, timestep)` tuple, its timesteps repeating or not.
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
         """
         schema = multiperiod_revision.record.schema
         timesteps = multiperiod.snapshots.get_level_values("timestep")
         labels = multiperiod_revision.record.dims["snapshot"].df()["snapshot"]
-        assert labels.tolist() == list(range(len(timesteps)))
-        assert schema.dimensions["snapshot"].dtype == "int"
-        assert set(schema.properties["snapshot"]) == {"period", "timestep"}
-        assert schema.properties["snapshot"]["period"].one_of == "period"
-        assert schema.properties["snapshot"]["timestep"].one_of == "timestep", (
-            "a timestep is a label of the `timestep` dim"
-        )
+        assert [(s["period"], s["timestep"]) for s in labels] == list(
+            multiperiod.snapshots
+        ), "PyPSA's index, in its order"
+        assert schema.over("snapshot") == {"period": "period", "timestep": "timestep"}
+        assert "snapshot" not in schema.properties
         steps = multiperiod_revision.record.dims["timestep"].df()["timestep"]
         assert steps.tolist() == list(timesteps.unique()), "each timestep once"
         assert schema.attributes["p_max_pu"].dims == {
@@ -2346,7 +2347,7 @@ class TestPyPSA:
     def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
         self, multiperiod, multiperiod_revision
     ):
-        """`period=2040` selects that period's snapshots, a property of `snapshot`.
+        """A snapshot is set by its `period` and `timestep`, some of them by a frame of their tuples.
 
         Notes
         -----
@@ -2355,15 +2356,19 @@ class TestPyPSA:
         from datarecord.mutable import WorkingRecord
 
         record = multiperiod_revision.record
-        first = record.dims["snapshot"].limit(1).fetchall()[0][0]
+        snapshots = record.dims["snapshot"]
+        first = snapshots.limit(1).fetchall()[0][0]
+        in_2040 = snapshots.filter("snapshot.period = 2040").project(
+            "snapshot, 0.5 AS value"
+        )
         periods = multiperiod.snapshots.get_level_values("period")
         selected = {
-            "Manchester Wind": ({"period": 2040}, periods == 2040),
-            "Norway Wind": ({"snapshot": first}, np.arange(len(periods)) == 0),
+            "Manchester Wind": ((in_2040, {}), periods == 2040),
+            "Norway Wind": ((0.5, first), np.arange(len(periods)) == 0),
         }
         staged = WorkingRecord(record)
-        for entity, (selector, _) in selected.items():
-            staged.set("p_max_pu", 0.5, entity=entity, **selector)
+        for entity, ((value, selector), _) in selected.items():
+            staged.set("p_max_pu", value, entity=entity, **selector)
 
         built = PyPSA.build(multiperiod_revision.store.commit(staged).record)
         for entity, (_, changed) in selected.items():
@@ -2405,7 +2410,7 @@ class TestPyPSA:
         [
             pytest.param(_resized, "'Manchester Wind' has `p_nom_opt`", id="conflict"),
             pytest.param(
-                _with_new_snapshot, "has snapshots `base` lacks", id="snapshot"
+                _with_new_snapshot, "snapshot labels `base` lacks", id="snapshot"
             ),
             pytest.param(_relabelled, "has investment periods", id="period"),
             pytest.param(
@@ -2563,7 +2568,7 @@ class TestPyPSA:
         n.set_snapshots(
             pd.MultiIndex.from_arrays([periods, timesteps + pd.DateOffset(years=100)])
         )
-        with pytest.raises(ValueError, match="snapshots `base` lacks"):
+        with pytest.raises(ValueError, match="snapshot labels `base` lacks"):
             PyPSA.to_datarecord(n, base.record.con, results_only=True, base=base.record)
 
     @pytest.mark.slow
@@ -2731,7 +2736,7 @@ class TestPyPSA:
     def test_a_child_whose_timesteps_repeat_otherwise_builds_back(
         self, staggered_revision, layout
     ):
-        """Snapshots are positions whether timesteps repeat or not, so a child moving them restates `snapshot.timestep` alone.
+        """A child whose timesteps repeat otherwise than its parent's restates the `snapshot` tuples.
 
         Notes
         -----
@@ -2746,6 +2751,14 @@ class TestPyPSA:
         pd.testing.assert_index_equal(
             PyPSA.build(child.record).snapshots, other.snapshots, exact=False
         )
+
+    @pytest.mark.parametrize("multiperiod", ["repeated"], indirect=True)
+    def test_a_multi_period_network_over_a_single_period_base_is_refused(
+        self, single_revision, multiperiod
+    ):
+        record = single_revision.record
+        with pytest.raises(ValueError, match="over a single-period `base`"):
+            PyPSA.to_datarecord(multiperiod, record.con, results_only=True, base=record)
 
     @pytest.mark.parametrize(
         ("network", "results_only", "match"),

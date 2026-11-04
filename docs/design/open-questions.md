@@ -26,7 +26,7 @@ A [results layer](tools/pypsa.md#writing-results) replaces the SubNetworks of it
 
 ### Naming a label by a property's value as the dim's own keyword
 
-A multi-period record labels its snapshots by position, and [`select`](use/selecting.md#keywords-and-values) matches `snapshot=` against those labels. Taking a timestamp there, matched against `snapshot.timestep`, would need a rule for when a keyword reads a property rather than the label.
+A record may label a dim by position and carry what a label means as a property, such as a snapshot's timestamp as `snapshot.timestep`, and [`select`](use/selecting.md#keywords-and-values) matches `snapshot=` against the positions. Taking a timestamp there would need a rule for when a keyword reads a property rather than the label. PyPSA's multi-period snapshots need none: they are a [multi-dim](model/multi-dims.md) whose `timestep` is a coordinate keyword.
 
 ### Whether a multi-dim left with one coordinate reads as that dim
 

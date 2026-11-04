@@ -156,14 +156,11 @@ All notable changes to datarecord are documented here. The format follows
   `rate` over `connection`, static or per snapshot, and `build` puts each row
   back in its port's column. `rate` declares no default, so its ports default
   to `-1` and `1`.
-- The PyPSA tool round-trips multi-period networks. `snapshot` is one flat dim
-  next to `period`, and each snapshot has a property `snapshot.period` with
-  `one_of: period`, so `period=2030` selects the snapshots of one period. A
-  snapshot is labelled by its position, whether or not a timestep repeats
-  across periods, with the timestep in `snapshot.timestep`, so a child whose
-  timesteps repeat otherwise than its parent's keeps the parent's labels.
-  `build` restores snapshots, investment periods, time series and both
-  weightings.
+- The PyPSA tool round-trips multi-period networks. `snapshot` is a multi-dim
+  over `(period, timestep)`, PyPSA's own index, so a snapshot keeps its tuple
+  whether or not a timestep repeats across periods, and a single-period
+  network keeps a `snapshot` dim of timestamps. `build` restores snapshots,
+  investment periods, time series and both weightings.
 - The PyPSA tool round-trips snapshot and period weightings:
   `snapshot_weighting_objective`, `_stores` and `_generators` over `snapshot`,
   `period_weighting_objective` and `_years` over `period`, and
@@ -560,10 +557,8 @@ All notable changes to datarecord are documented here. The format follows
   values, so a column of bools, ints or floats holding a NaN, numpy scalars
   among them, is written as `bool`, `int` or `float` rather than failing as
   `str`, and one of mixed types is written as text.
-- A results layer of a network built from selected snapshots of a record
-  repeating its timesteps across periods lands on `base`'s snapshots, not on
-  the first ones, and one holding a snapshot `base` lacks is refused at the
-  call. A results layer restates as NULL only `base`'s results at
+- A results layer of a network holding a snapshot `base` lacks is refused at
+  the call. A results layer restates as NULL only `base`'s results at
   the scenarios, buses, entities and connections the network holds, so a
   re-solve of a selection keeps every other label's results. A result over
   no `scenario`, such as `p_nom_opt`, is one value across every scenario, so

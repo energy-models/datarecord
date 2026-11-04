@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 The PyPSA tool maps components to `entity` labels with `ctype` as a category, and buses, carriers, SubNetworks, line types and transformer types to dims of their own.
 A shape is a property of the label it outlines.
 Each port of a component is a `connection` tuple, and per-port inputs and results are attributes over that multi-dim.
-Multi-period snapshots are one flat axis with a `period` property.
+Multi-period snapshots are a multi-dim over `(period, timestep)`, as PyPSA indexes them.
 A solve writes its results as a thin child layer.
 
 ## Entities and their properties
@@ -177,20 +177,18 @@ A value meant for the types that take it is written per label, as in `set("p_max
 
 ## Snapshots and weightings
 
-PyPSA's multi-period `(period, timestep)` snapshots are one flat `snapshot` axis.
-Each snapshot carries its period as `snapshot.period`, a property that [refers to](../model/properties.md#properties) `period`, and `period` is an axis of its own beside it.
-A multi-period snapshot is labelled by its position, `0` to `n-1` across every period in the network's order, and its timestep becomes the property `snapshot.timestep`.
-That holds whether or not a timestep repeats across periods, as the `pd.MultiIndex.from_product` of `set_investment_periods` repeats every one, so a child whose timesteps repeat where its parent's did not keeps the parent's labels and restates `snapshot.timestep`.
-That property refers to the `datetime` dim `timestep`, PyPSA's own index level name, whose axis holds each timestep once.
-A single-period network's snapshot is labelled by its timestep.
+A single-period network's `snapshot` is a `datetime` dim, each snapshot labelled by its timestamp.
+PyPSA's multi-period `(period, timestep)` snapshots are its own `MultiIndex` as a [multi-dim](../model/multi-dims.md): `snapshot` over the coordinates `period` and `timestep`, each a dim of its own.
+`timestep` is the `datetime` dim named for PyPSA's index level, whose axis holds each timestep once, and `period` holds the investment periods.
+A snapshot's tuple stays the same whether a timestep repeats across periods, as the `pd.MultiIndex.from_product` of `set_investment_periods` repeats every one, or not, and adding or dropping one leaves every other tuple as it was.
 
-A multi-period network declares its attributes over `snapshot` as a single-period network does, and a single-period network's schema declares no property of `snapshot`.
-`build` rebuilds the `(period, timestep)` index from the axis order, `snapshot.period`, and the label or `snapshot.timestep`.
-A period is selected like any property of a dim that an attribute reaches: `set("p_max_pu", 0.5, entity="wind", period=2030)` stages the snapshots of 2030 alone ([`set`](../use/editing.md#set)).
+A multi-period network declares its attributes over `snapshot` as a single-period network does, its rows carrying the tuple as one struct column.
+`build` rebuilds the `(period, timestep)` index from the tuples in axis order.
+A snapshot is addressed by its coordinates: `set("p_max_pu", 0.5, entity="wind", period=2030, timestep=t0)` stages one, and a frame of tuples several ([`set`](../use/editing.md#set)).
 
 A weighting is an attribute over its axis.
 PyPSA's weighting frames become `scenario_weight` over `scenario`, `snapshot_weighting_objective`, `snapshot_weighting_stores` and `snapshot_weighting_generators` over `snapshot`, and `period_weighting_objective` and `period_weighting_years` over `period`.
-The tool writes them for each axis the network holds, and a multi-period network's snapshot weightings are over its flat `snapshot` like any other.
+The tool writes them for each axis the network holds, and a multi-period network's snapshot weightings are over its `snapshot` tuples like any other.
 `build` sets them back, and a label that no row reaches keeps PyPSA's own default, an equal share for a scenario.
 
 ## Writing results
@@ -329,13 +327,14 @@ The selection is the tool's view of the record, not a record of its own: nothing
 
 `period`, `scenario` and the record's dim of its own squeeze at one label: the dim leaves the network.
 Each attribute's rows are those at the label and those NULL on the dim, settled by [the broadcast rule](../model/attributes.md#the-broadcast-rule), as a member of a collection is built.
-An attribute over squeezed dims alone, such as a weighting of the dim, goes with it, and so does a property referring to it, such as `snapshot.period`.
+An attribute over squeezed dims alone, such as a weighting of the dim, goes with it, and so does a property referring to it.
+A multi-dim loses the coordinate over a squeezed dim, so one `period` leaves `snapshot` over `timestep` alone.
 A list of labels, one label in a list included, keeps the dim at those labels in axis order: an attribute row at another label is dropped, and one NULL on the dim kept.
 `snapshot`, `bus`, `entity` and `carrier` are never squeezed, so one label is a list of one.
 Any other dim, such as `role`, `ctype`, `sub_network`, `line_type`, `transformer_type`, `timestep` or a dim shapes made ([geometry](#geometry)), is refused, as is a dim the record does not declare, a label its axis lacks, an empty list and a selection leaving no snapshot.
 
-A snapshot is selected by its timestamp: `snapshot.timestep` where declared, the label otherwise ([snapshots and weightings](#snapshots-and-weightings)).
-Over several periods the label is a position, so a timestamp names its snapshot in every period holding it.
+A snapshot is selected by its timestamp: a multi-period snapshot's `timestep`, the label otherwise ([snapshots and weightings](#snapshots-and-weightings)).
+Over several periods a timestamp so names its snapshot in every period holding it.
 One key is matched as pandas' `.loc` matches it: a timestamp exactly, and a partial date string, such as `"2013-02"`, naming every label in its span and so keeping the dim, as xarray's `sel` does.
 A key in a list is matched exactly, read as `pd.Timestamp` reads it on a datetime axis.
 
@@ -351,14 +350,15 @@ A slice with a step, one along any other dim, such as `bus`, `entity`, `carrier`
 | a dim of its own                       | a `Network`                                                                 | a `NetworkCollection` over the labels                                                     |
 | `snapshot`, `bus`, `entity`, `carrier` | a list of one                                                               | the dim at those labels                                                                   |
 
-A label whose property refers to a selected dim stays only where its value is selected: a snapshot whose `snapshot.period` is a selected period, a bus, entity or SubNetwork whose `carrier`, its default applied, is a selected carrier.
+A label whose property refers to a selected dim stays only where its value is selected: a bus, entity or SubNetwork whose `carrier`, its default applied, is a selected carrier.
+A multi-period snapshot stays only where its `period` is selected.
 A NULL property names no label, so it refers to none the selection drops and stays: PyPSA's `""` carrier is NULL ([buses and carriers are dims](#buses-and-carriers-are-dims)).
 A period none of whose snapshots is selected goes, since PyPSA holds no period without one.
 An entity attached to a dropped bus goes, with its connections, so no component reaches the network with a dangling port.
 Selecting `entity` keeps those entities and their connections, every bus left in place.
 A shape goes with the label it outlines, and a dim shapes made keeps every label, since `select` takes none of its labels, though a property such as `bus.country` refers to it.
 
-One period is a single-period network indexed by the period's timesteps, `snapshot.timestep` where declared and the label otherwise ([snapshots and weightings](#snapshots-and-weightings)), without the period weightings.
+One period is a single-period network indexed by the period's timesteps ([snapshots and weightings](#snapshots-and-weightings)), without the period weightings.
 It holds the entities PyPSA holds active in the period, `build_year <= period < build_year + lifetime`, each value resolved with its declared default and PyPSA's, `0` and infinity, where none is declared.
 An entity whose value of either varies over a dim the selection keeps, such as a collection's dim of its own, is refused.
 A list or a slice of periods holds the entities active in at least one of them, so an entity idle in every kept period goes.
@@ -367,7 +367,7 @@ A `GlobalConstraint` whose `investment_period`, its declared default applied, na
 One period drops `investment_period` too, since a single-period network has no period to name, and its value varying over a dim the selection keeps is refused, as `build_year` is.
 One scenario drops `scenario_weight`, and a list renormalises the kept scenarios' weights, a scenario no row reaches taking its equal share of the whole axis first, since PyPSA takes weights summing to 1; kept weights summing to 0 are refused.
 
-A network built at selected labels writes its results back over the whole record at those labels ([writing results](#writing-results)), a snapshot at `base`'s label of its period and timestep, and one built at one label of `period` at that period.
+A network built at selected labels writes its results back over the whole record at those labels ([writing results](#writing-results)), a snapshot at `base`'s tuple of its period and timestep, and one built at one label of `period` at that period.
 One built at one label of `scenario` or of a dim of the record's own is refused there, since its results, NULL on the squeezed dim, would reach every label.
 A scenario is kept in a list of one instead, and a dim of the record's own is written back as the whole collection.
 
