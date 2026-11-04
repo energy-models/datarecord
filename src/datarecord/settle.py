@@ -13,11 +13,10 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-from duckdb import CaseExpression, DuckDBPyRelation, Expression, sqltypes
+from duckdb import CaseExpression, DuckDBPyRelation, Expression, count_all, sqltypes
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import fn, named_mask, null_safe
@@ -129,17 +128,15 @@ def most_specific(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    by = ", ".join(str(col(c)) for c in coordinates)
-    over = f"OVER (PARTITION BY {by})"
-    # A window stays SQL text: DuckDB's expression API has no window construct.
+    by = [col(c) for c in coordinates]
     windows = {
-        "_all": sql(f"bit_or(_named) {over}"),
-        "_most": sql(f"max(bit_count(_named)) {over}"),
+        "_all": col("_named").bit_or().over(partition_by=by),
+        "_most": fn.bit_count(col("_named")).max().over(partition_by=by),
     }
     keep = CaseExpression(fn.bit_count(col("_all")) != col("_most"), crossed)
     if twins is not None:
-        windows["_twins"] = sql(
-            f"count(*) OVER (PARTITION BY {by}, breakpoint, _named)"
+        windows["_twins"] = count_all().over(
+            partition_by=[*by, col("breakpoint"), col("_named")]
         )
         keep = keep.when(
             (col("_twins") > lit(1)) & (col("_named") == col("_all")), twins
