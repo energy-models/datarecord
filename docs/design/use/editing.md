@@ -349,6 +349,7 @@ CREATE TABLE _staged."<id>".axis_<dim digest>        (<the axis key>, <the dim's
 
 `<id>` is the staged layer's own id, so two `WorkingRecord`s on one connection share no table.
 The record and each registration of it hold the schema, and the workspace drops it whole once none does ([the database's schemas](../storage/store.md#the-databases-schemas)).
+Over a `Record` the record reads and edits through a copy of its own, so closing the caller's base breaks nothing; over a `WorkingRecord` it reads that one, and an edit after that one is closed raises `ValueError` naming it.
 An attribute or dim name is a caller's string, so the table name carries a digest of it.
 
 Every table is shaped like the file it becomes.

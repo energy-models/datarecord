@@ -23,6 +23,7 @@ import os
 import threading
 import time
 from collections.abc import Hashable, Iterable, Mapping
+from contextlib import nullcontext
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
@@ -108,15 +109,20 @@ class _Cursors(threading.local):
         self.con = db.cursor()
 
 
+#: The holder an abandoned record's schemas pass to, which never releases them.
+_ABANDONED = object()
+
+
 class _Holds:
     """Which holders keep each schema, a schema dropped with its tables once none does.
 
-    A holder is a `WorkingRecord`, by its layer id, or a registration, by its
-    name. A schema is named as SQL reads it, quoted. A finaliser releases on
-    whichever thread the collector runs, maybe inside that thread's open
-    transaction, so drops run on a cursor of their own under the lock. The
-    lock is re-entrant, and a release fired while one drops leaves its
-    schemas to the outer one, the cursor running one transaction at a time.
+    A holder is a record, by a key of its own, or a registration, by its
+    name. A schema is named as SQL reads it, quoted, and may never have been
+    created. A finaliser releases or abandons on whichever thread the
+    collector runs, maybe inside that thread's open transaction, so drops run
+    on a cursor of their own under the lock. The lock is re-entrant, and a
+    release fired while one drops leaves its schemas to the outer one, the
+    cursor running one transaction at a time.
 
     Notes
     -----
@@ -158,10 +164,7 @@ class _Holds:
             Where `holder` never held here.
         """
         with self._lock:
-            if holder not in self._held:
-                msg = f"`{holder}` holds no schemas on this workspace"
-                raise KeyError(msg)
-            for schema in self._held.pop(holder):
+            for schema in self._forget(holder):
                 holders = self._holders[schema]
                 holders.discard(holder)
                 if not holders:
@@ -175,6 +178,33 @@ class _Holds:
             finally:
                 self._dropping = False
 
+    def abandon(self, holder: Hashable) -> None:
+        """Keep what `holder` holds for the workspace's life, `holder` forgotten.
+
+        Raises
+        ------
+        KeyError
+            Where `holder` never held here.
+        """
+        with self._lock:
+            for schema in self._forget(holder):
+                holders = self._holders[schema]
+                holders.discard(holder)
+                holders.add(_ABANDONED)
+
+    def _forget(self, holder: Hashable) -> set[str]:
+        """The schemas `holder` held, `holder` no longer among the holders.
+
+        Raises
+        ------
+        KeyError
+            Where `holder` never held here.
+        """
+        if holder not in self._held:
+            msg = f"`{holder}` holds no schemas on this workspace"
+            raise KeyError(msg)
+        return self._held.pop(holder)
+
     def _drop(self) -> None:
         while self._unheld:
             schemas, self._unheld = self._unheld, []
@@ -186,7 +216,7 @@ class _Holds:
                 "https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas",
             ):
                 for schema in schemas:
-                    self._con.execute(f"DROP SCHEMA {schema} CASCADE")
+                    self._con.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
 
     def close(self) -> None:
         """Stop dropping: the schemas close with the database."""
@@ -1071,12 +1101,10 @@ class Claim(_OfStore):
                     f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/model/schema/#versioning)"
                 )
                 raise ValueError(msg)
-        files = write_layer(
-            data,
-            store.layer_dir(self.id),
-            store.workspace,
-            parent=None if parent is None else parent.record,
-        )
+        with nullcontext() if parent is None else parent.record as base:
+            files = write_layer(
+                data, store.layer_dir(self.id), store.workspace, parent=base
+            )
         manifest = Manifest(
             id=self.id, parent=self.parent, schema=schema, files=files, meta=meta
         )
@@ -1221,7 +1249,8 @@ class Revision(_OfStore):
         deep tree resolves from few entries. Cached rather than rebuilt per
         call: layers are write-once, so the only thing that can change
         the truncation point is `materialise`, which clears this itself. The
-        `Record` holds no cursor, so the cache serves every thread.
+        `Record` holds no cursor, so the cache serves every thread. Once it is
+        closed, the next call builds and caches another.
 
         Notes
         -----
@@ -1229,8 +1258,9 @@ class Revision(_OfStore):
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+        - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
         """
-        if self._record is None:
+        if self._record is None or not self._record._release.alive:
             manifests = lineage(self.store, self.id)
             sources = sources_to_read(manifests, self.store)
             self._record = Record(self.id, sources, self.store.workspace)

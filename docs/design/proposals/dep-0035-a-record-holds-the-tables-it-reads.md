@@ -16,7 +16,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Abstract
 
-The tables a workspace creates move out of `main` into three schemas: `_fold` for a revision's fold, `_staged` for a `WorkingRecord`'s staging tables, `_scratch` for a call's intermediates. A revision's fold and a record's staging tables each get a schema of their own inside, which is held by its holders: the records reading it and the registrations whose views read it. The workspace drops a schema when its last holder releases it. A record releases its holds on `close()`, or when it is garbage collected.
+The tables a workspace creates move out of `main` into three schemas: `_fold` for a revision's fold, `_staged` for a `WorkingRecord`'s staging tables, `_scratch` for a call's intermediates. A revision's fold and a record's staging tables each get a schema of their own inside, which is held by its holders: the records reading it and the registrations whose views read it. The workspace drops a schema when its last holder releases it. A record releases its holds on `close()`. A `WorkingRecord` collected unclosed releases them too, and a `Record` collected unclosed abandons its folds to the workspace, which keeps them.
 
 ## Motivation
 
@@ -49,11 +49,12 @@ DuckDB does not help. It drops a table a view reads without complaint, and the v
 
 | holder            | holds                                                  | releases on                      |
 | ----------------- | ------------------------------------------------------ | -------------------------------- |
-| a `Record`        | `_fold.<rid>` of the revision its relations read       | `close()`, or garbage collection |
+| a `Record`        | `_fold.<id>` of each layer it folds                    | `close()`                        |
 | a `WorkingRecord` | as a `Record` over its base, and its `_staged.<layer>` | `close()`, or garbage collection |
 | a registration    | every schema the registering record holds              | `Workspace.unregister(name)`     |
+| the workspace     | every schema of a `Record` collected unclosed          | never                            |
 
-A schema is held from when it is created or first found for a holder. When its last holder releases it, the workspace drops it with every table in it. A registration takes its hold inside the transaction that creates its views, so no `unregister` sees it unheld.
+A record holds its schemas from construction, created or not. A `Record` over revision `rid` folds `rid`'s layer and the ancestors down to the deepest materialised one, and reads `_fold.<rid>` and, where it holds them, an ancestor's `_fold.<id>`. When the last holder of a schema releases it, the workspace drops it with every table in it. A registration takes its hold inside the transaction that creates its views, so no `unregister` sees it unheld.
 
 A workspace opened on a file lists every registration in `registered` as a holder of nothing: unregistering one drops its views.
 
@@ -61,17 +62,22 @@ A workspace opened on a file lists every registration in `registered` as a holde
 
 - `Record.close() -> None` releases the record's holds. A second call does nothing.
 - `Record` is a context manager, closing on exit.
-- A record is closed when it is garbage collected, if it was not before.
+- A `WorkingRecord` is closed when it is garbage collected, if it was not before. A `Record` collected unclosed passes its holds to the workspace.
 - A closed record refuses every read and edit with an error naming it closed.
+- `Revision.record` builds a new record once the one it caches is closed.
 - `WorkingRecord(...)` is refused while its cursor holds an open transaction: the workspace's own cursor could not see the staging tables to drop them.
 
 ### Lifetime of a relation
 
-A relation taken from a record, `record.attributes["p_nom"]` among them, is valid while the record is open. Reading it after the record is closed or collected fails with DuckDB's missing-table error. A registered view stays valid until it is unregistered, whatever happens to the record.
+A relation taken from a record, `record.attributes["p_nom"]` among them, is valid while the record is open. Reading it after the record is closed fails with DuckDB's missing-table error once no other holder keeps its tables, as does reading one of a `WorkingRecord` after it is collected. A relation of a `Record` collected unclosed stays valid. A registered view stays valid until it is unregistered, whatever happens to the record.
 
 ## Rationale
 
-`close()` frees a workspace at a point the caller chooses, as a server answering a request needs. The finaliser covers the record a caller forgets, which is what leaks today. One `weakref.finalize` serves both: `close()` calls it, and it runs at most once.
+`close()` frees a workspace at a point the caller chooses, as a server answering a request needs. The finaliser covers the `WorkingRecord` a caller forgets, which is what leaks today. One `weakref.finalize` serves both: `close()` detaches it and releases, so the release runs at most once.
+
+A `Record`'s finaliser abandons rather than releases. `store.revision(rid).record.attributes["p_nom"].df()` keeps no name for the record, which is collected before `.df()` runs; a release there would drop the fold `.df()` reads, and the read would fail at random with the collector's timing. Its folds pass to the workspace instead, which keeps them as it kept every fold before. A forgotten `Record` costs what it did, and one closed costs nothing. A `WorkingRecord` is not read that way, and its about 310 staging tables are worth dropping.
+
+A `Record` holds the fold of each layer it folds rather than of its revision only. Its relations read an ancestor's fold where the workspace has one ([the nearest fold at hand](../layers/resolution.md#a-fold-starts-from-the-nearest-fold-at-hand)), and that fold would otherwise drop with the ancestor's last record.
 
 A schema per revision and per record makes it the unit of holding: a `WorkingRecord`'s about 310 staging tables are dropped by one `DROP SCHEMA … CASCADE`, and the holds name a handful of schemas, not hundreds of tables. Nesting them keeps the top level to `main`, the three schemas and the registrations, which is what a SQL client browsing the database sees.
 
@@ -81,7 +87,7 @@ The holds live in a Python mapping on the `Workspace`, behind one lock. A record
 
 A finaliser can run in any thread at any allocation, possibly while that thread's cursor holds a transaction. The workspace therefore drops schemas on a cursor of its own, under the lock. The same lock orders a drop against a lookup on another thread, which would otherwise find a schema between its last release and its drop.
 
-It costs a contract: a relation lives no longer than its record. `Record.at(uri).attributes["p_nom"]`, with no name kept for the record, can fail at the next garbage collection. The record must be kept, or the relation fetched while it is held.
+It costs a contract: a relation lives no longer than its closed record, or its collected `WorkingRecord`. The record must be kept open, or the relation fetched while it is held.
 
 ## Usage
 
@@ -102,13 +108,14 @@ ws.unregister("edit_3f2a")  # the staging tables are dropped
 1. The holder registry on `Workspace`: hold, release, and drop on the last release, on the workspace's own cursor under one lock.
 2. `WorkingRecord`: its staging tables, `close()`, the finaliser, the refusal after close, and the registration's holds.
 3. The layout: `_fold`, `_staged` and `_scratch`, every table moved into them, and the holds taken on schemas.
-4. `Record`: `_fold.<rid>` of its revision, taken where `_shared` and `_held` create or find it. A `WorkingRecord` takes its base's.
+4. `Record`: `_fold.<id>` of each layer it folds, held from construction; `close()`, the abandoning finaliser, the refusal after close, and `Revision.record` replacing a closed record. A `WorkingRecord` takes its base's, and reads a `Record` base through a copy open while it is, so closing the caller's base leaves its edits working.
 
-The checks: a workspace that opens and closes records, edits and registrations in a loop ends with only the tables of `main` and the three schemas, empty. A view registered on a closed `WorkingRecord` reads until it is unregistered. A read after `close()` raises the closed error.
+The checks: a workspace that opens and closes records, edits and registrations in a loop ends with only the tables of `main` and the three schemas, empty. A view registered on a closed record reads until it is unregistered. A read after `close()` raises the closed error. A relation of a `Record` collected unclosed reads after a collection.
 
 ## Rejected Ideas
 
 - Only a finaliser. The caller cannot free a workspace at a point it chooses, and a record caught in a reference cycle waits for the cycle collector.
+- A `Record`'s finaliser releasing, as a `WorkingRecord`'s does. A chained read would fail whenever the collector runs between taking the relation and fetching it.
 - Only `close()`. Every forgotten record leaks, as all of them do today.
 - Holds kept in a DuckDB table. The Python holders would not survive a reopen, and the one that does, a registration, is already a row of `registered`.
 - A top-level schema per revision and per record. The top level fills with ids as `main` does today.
