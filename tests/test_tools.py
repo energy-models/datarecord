@@ -1472,6 +1472,7 @@ class TestPyPSA:
         with pytest.raises(ValueError, match="takes labels of"):
             PyPSA.build(record, select={"country": "DE"})
 
+    @pytest.mark.slow
     def test_a_solved_network_exports(self, store, solved):
         """A solved network's SubNetworks are labels of a dim of their own; its derived `Line.v_nom` is recomputed.
 
@@ -1633,7 +1634,6 @@ class TestPyPSA:
             check_index_type=False,
         )
 
-    @pytest.mark.slow
     def test_a_child_reads_its_parents_results_and_the_latest_wins(
         self, results, results_built
     ):
@@ -1653,7 +1653,6 @@ class TestPyPSA:
             _prices(empty_child(resolved).commit()), expected * 2
         )
 
-    @pytest.mark.slow
     def test_a_re_solve_leaves_no_stale_sub_network(
         self, single_revision, results, results_built, solved
     ):
@@ -1681,7 +1680,7 @@ class TestPyPSA:
         "over_solved",
         [
             pytest.param(False, id="unsolved"),
-            pytest.param(True, id="solved", marks=pytest.mark.slow),
+            pytest.param(True, id="solved"),
         ],
     )
     def test_results_without_sub_networks_list_none(
@@ -1868,10 +1867,10 @@ class TestPyPSA:
                 {"sensitivity": "lo"},
                 "the collection `build` gives",
                 id="own",
-                marks=pytest.mark.slow,
             ),
         ],
     )
+    @pytest.mark.slow
     def test_a_network_of_one_label_is_refused_over_the_whole_dim(
         self, request, base, select, match
     ):
@@ -2769,6 +2768,7 @@ class TestPyPSA:
         ):
             _collection(sweep, store, exported, "scenario", results_only)
 
+    @pytest.mark.slow
     def test_a_scenario_collection_builds_back_stochastic(self, store, ac_dc):
         """Members differing where PyPSA varies by scenario are one stochastic network.
 
@@ -3076,6 +3076,7 @@ class TestPyPSA:
                 select={"period": period, "snapshot": "2015-01-01 00:00"},
             )
 
+    @pytest.mark.slow
     def test_dims_selected_together_combine(self, store, multiperiod):
         """One period, one scenario and two carriers: a deterministic single-period network of the AC buses and their wind generators.
 
@@ -3100,6 +3101,7 @@ class TestPyPSA:
             "Frankfurt Wind",
         ]
 
+    @pytest.mark.slow
     def test_one_period_refuses_an_activity_varying_over_a_kept_dim(
         self, store, multiperiod
     ):
@@ -3140,6 +3142,7 @@ class TestPyPSA:
         assert built.c.Load.static.index.tolist() == ["London"]
 
     @pytest.mark.parametrize("period", [2030, 2040])
+    @pytest.mark.slow
     def test_one_period_is_a_single_period_network_of_its_active_entities(
         self, store, ac_dc, layout, period
     ):
@@ -3176,6 +3179,7 @@ class TestPyPSA:
         ],
         ids=str,
     )
+    @pytest.mark.slow
     def test_selected_periods_keep_the_global_constraints_applying_in_them(
         self, store, ac_dc, value, expected
     ):
@@ -3314,11 +3318,12 @@ class TestPyPSA:
     @pytest.mark.parametrize(
         "value",
         [
-            pytest.param(2013, id="scalar", marks=pytest.mark.slow),
+            pytest.param(2013, id="scalar"),
             pytest.param([2013], id="list"),
             pytest.param(slice(2013, None), id="slice"),
         ],
     )
+    @pytest.mark.slow
     def test_a_dim_of_its_own_selected_is_a_network_or_a_collection(
         self, store, sweep, value
     ):
@@ -3338,6 +3343,7 @@ class TestPyPSA:
         assert isinstance(built, pypsa.Network)
         _assert_results_equal(built, sweep["hi"], ("Generator", "p_max_pu"))
 
+    @pytest.mark.slow
     def test_a_dim_of_its_own_of_text_labels_takes_no_slice(
         self, store, exported, sweep
     ):
