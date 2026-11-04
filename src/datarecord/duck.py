@@ -19,7 +19,9 @@ Notes
 """
 
 import sys
+import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import AbstractContextManager
 from functools import partial, reduce
 from pathlib import Path
 from typing import Any
@@ -249,3 +251,41 @@ def empty_relation(
     """
     nulls = [lit(None).cast(t) for t in columns.values()]
     return values_relation(con, list(columns), [nulls]).limit(0)
+
+
+def shared_table(
+    con: DuckDBPyConnection,
+    name: str,
+    build: Callable[[], AbstractContextManager[DuckDBPyRelation]],
+) -> DuckDBPyRelation:
+    """Table `name`, built by whichever cursor misses it first.
+
+    `build` enters the relation the table is made of, and exits once the
+    table holds it, releasing whatever the relation read. Two cursors missing
+    at once both build, and DuckDB fails the second `create` with a
+    write-write conflict rather than a name clash; what it would have created
+    is the winner's table, so that is read instead. The conflict can come
+    before the winner commits, when its table is not yet visible, so the
+    `create` is retried until it either lands or meets the committed table.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    """
+    try:
+        return con.table(name)
+    except duckdb.CatalogException:
+        pass
+    with build() as rel:
+        while True:
+            try:
+                rel.create(name)
+            except duckdb.TransactionException as e:
+                if "conflict" not in str(e).lower():
+                    raise
+                time.sleep(0.001)
+                continue
+            except duckdb.CatalogException:
+                pass
+            break
+    return con.table(name)
