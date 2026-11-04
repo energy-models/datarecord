@@ -147,6 +147,8 @@ On a type it is a property, as every column of a type is.
   A property is its subject's column, so it clashes with nothing.
 - Any other column is an attribute over its subject, such as pypsa-eur's `Bus.nom_max_onwind_2050`, which a scenario patches as it does `p_nom_max`.
 
+A property has no `scenario` dim, so `to_datarecord` refuses a stochastic network whose scenarios hold different values of one.
+
 A text property named like a dim the record declares [refers to](../model/properties.md#referring-to-a-dim) that dim.
 pypsa-eur's `bus.country` is `{one_of: country}` where its shapes make a `country` dim ([geometry](#geometry)), so a value is a country's label or NULL, and `to_datarecord` refuses one that names no label.
 A custom column named `shape_…` is refused, since that prefix names a shape's geometry, and so is a custom column on a Shape.
