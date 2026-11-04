@@ -474,7 +474,7 @@ def owned_rows(source: LayerSource, attribute: str) -> DuckDBPyRelation | None:
 
 
 def _field(flag: str, dim: str) -> Expression:
-    return fn.struct_extract(col(flag), lit(dim))
+    return col(flag)[dim]
 
 
 def _widened(
