@@ -423,7 +423,9 @@ class WorkingRecord(Record):
             base = _Base(base.revision_id, base.sources, base.workspace)
         object.__setattr__(self, "_base", base)
         object.__setattr__(
-            self, "_staging_schema", nested(base.workspace.name, STAGED, self._layer_id)
+            self,
+            "_staging_schema",
+            f"{col(base.workspace.name)}.{nested(STAGED, self._layer_id)}",
         )
         base.con.execute(f"CREATE SCHEMA {self._staging_schema}")
         super().__init__(
@@ -498,7 +500,7 @@ class WorkingRecord(Record):
 
     @property
     def _kept_schemas(self) -> frozenset[str]:
-        return self._base._kept_schemas | {self._staging_schema}
+        return self._base._kept_schemas | {nested(STAGED, self._layer_id)}
 
     def _kinds(self) -> list[tuple[str, str | None]]:
         """Every staging table's `(kind, attribute)`: an axis per dim but those with `one_of`, a table per attribute."""

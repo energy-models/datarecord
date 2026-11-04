@@ -68,9 +68,9 @@ STAGED = "_staged"
 SCRATCH = "_scratch"
 
 
-def nested(database: str, parent: str, id: UUID) -> str:
-    """The schema `id` names inside schema `parent` of `database`, quoted for SQL."""
-    return str(col(database, parent, id.hex))
+def nested(parent: str, id: UUID) -> str:
+    """The schema `id` names inside schema `parent`, quoted for SQL, as its database names it."""
+    return str(col(parent, id.hex))
 
 
 #: The options of every parquet file datarecord writes. Format v2 delta-encodes a
@@ -378,7 +378,7 @@ def shared_table(
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
-    schema = nested(database, parent, id)
+    schema = f"{col(database)}.{nested(parent, id)}"
     name = f"{schema}.{table}"
     if table in tables_in(con, database, parent, id):
         return con.table(name)

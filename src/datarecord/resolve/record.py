@@ -517,8 +517,14 @@ class Record:
                 for path, query in rendered.items():
                     con._create_view(path, query)
                 con.execute(
-                    f"INSERT INTO {ws.qualified('registered')} (name, revision, working) VALUES (?, ?, ?)",
-                    [name, self.revision_id, not self.frozen],
+                    f"INSERT INTO {ws.qualified('registered')} (name, revision, working, held)"
+                    " VALUES (?, ?, ?, ?)",
+                    [
+                        name,
+                        self.revision_id,
+                        not self.frozen,
+                        sorted(self._kept_schemas),
+                    ],
                 )
         except BaseException:
             if held:
@@ -533,9 +539,7 @@ class Record:
         fold by `revision_id`, the last frozen source's id, and `Coords.held`
         and `Fold.held` an ancestor's by that ancestor's.
         """
-        return frozenset(
-            nested(self.workspace.name, FOLD, s.layer_id) for s in self.sources
-        )
+        return frozenset(nested(FOLD, s.layer_id) for s in self.sources)
 
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 

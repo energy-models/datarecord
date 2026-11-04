@@ -88,7 +88,8 @@ A registration holds every schema its record holds, until `Workspace.unregister(
 The workspace drops a schema, with every table in it, once no holder keeps it.
 A `Record` collected unclosed gives its schemas to the workspace, which keeps them for its life: `store.revision(rid).record.attributes["p_nom"].df()` collects the record before `.df()` reads its fold.
 A closed record refuses every read with `ValueError`, and `Revision.record` builds a new one once its cached record is closed.
-A workspace reopened on a file lists every registration in `registered`, so `unregister` drops its views there too.
+A workspace reopened on a file holds again, for every registration in `registered`, the schemas its `held` column lists, so its views read on and `unregister` drops them there too.
+The column names each schema inside the database, `_fold.<rid>`, so the file reads alike attached under another name.
 The PyPSA exporter, which holds a record's connection but no workspace, keeps its joins in temporary tables of its cursor instead, dropped by the call too.
 
 ### The layers

@@ -44,7 +44,7 @@ def _fold_name(workspace: Workspace, revision_id: UUID, table: str) -> str:
     -----
     - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     """
-    return f"{nested(workspace.name, FOLD, revision_id)}.{table}"
+    return f"{col(workspace.name)}.{nested(FOLD, revision_id)}.{table}"
 
 
 def _fold_axis(

@@ -94,6 +94,7 @@ CREATE TABLE IF NOT EXISTS {registered} (
   name     VARCHAR PRIMARY KEY,
   revision UUID,
   working  BOOLEAN,
+  held     VARCHAR[],
   created  TIMESTAMPTZ DEFAULT now()
 )
 """
@@ -131,12 +132,14 @@ class _Holds:
     """Which holders keep each schema, a schema dropped with its tables once none does.
 
     A holder is a record, by a key of its own, or a registration, by its
-    name. A schema is named as SQL reads it, in full and quoted, and may
-    never have been created. A finaliser releases or abandons on whichever
-    thread the collector runs, maybe inside that thread's open transaction,
-    so drops run on a cursor of their own under the lock. The lock is
-    re-entrant, and a release fired while one drops leaves its schemas to the
-    outer one, the cursor running one transaction at a time.
+    name. A schema is named as SQL reads it inside the workspace's database,
+    `"_fold"."<hex>"`, which `registered.held` persists whatever the database
+    is attached as, and may never have been created. A finaliser releases or
+    abandons on whichever thread the collector runs, maybe inside that
+    thread's open transaction, so drops run on a cursor of their own under
+    the lock. The lock is re-entrant, and a release fired while one drops
+    leaves its schemas to the outer one, the cursor running one transaction
+    at a time.
 
     Notes
     -----
@@ -144,8 +147,9 @@ class _Holds:
     - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
     """
 
-    def __init__(self, db: DuckDBPyConnection) -> None:
+    def __init__(self, db: DuckDBPyConnection, database: str) -> None:
         self._con: DuckDBPyConnection | None = db.cursor()
+        self._database = database
         self._lock = threading.RLock()
         self._holders: dict[str, set[Hashable]] = {}
         self._held: dict[Hashable, set[str]] = {}
@@ -230,7 +234,9 @@ class _Holds:
                 "https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas",
             ):
                 for schema in schemas:
-                    self._con.execute(f"DROP SCHEMA IF EXISTS {schema} CASCADE")
+                    self._con.execute(
+                        f"DROP SCHEMA IF EXISTS {col(self._database)}.{schema} CASCADE"
+                    )
 
     def close(self) -> None:
         """Stop dropping and close the cursor: the schemas go with the database."""
@@ -287,14 +293,14 @@ class Workspace:
             for schema in (FOLD, STAGED, SCRATCH):
                 setup.execute(f"CREATE SCHEMA IF NOT EXISTS {col(name, schema)}")
             registered = setup.execute(
-                _in(self, "SELECT name FROM {registered}")
+                _in(self, "SELECT name, held FROM {registered}")
             ).fetchall()
         self._made: WeakSet[DuckDBPyConnection] = WeakSet()
         self._made_lock = threading.Lock()
         self._cursors = _Cursors(self)
-        self._holds = _Holds(self._db)
-        for (held,) in registered:
-            self._holds.hold(held, ())
+        self._holds = _Holds(self._db, name)
+        for held_by, held in registered:
+            self._holds.hold(held_by, held)
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
@@ -349,7 +355,7 @@ class Workspace:
         self._holds.release(name)
 
     def registered(self) -> DuckDBPyRelation:
-        """Every registered name, with the `revision` it reads, whether it is `working`, and when it was `created`.
+        """Every registered name, with the `revision` it reads, whether it is `working`, the schemas it `held`, and when it was `created`.
 
         Notes
         -----
@@ -1320,8 +1326,8 @@ class Revision(_OfStore):
 
         The ancestry is truncated at the deepest materialised ancestor, so a
         deep tree resolves from few entries. Cached rather than rebuilt per
-        call: layers are write-once, so the only thing that can change
-        the truncation point is `materialise`, which clears this itself. The
+        call: layers are write-once, and a record built before `materialise`
+        reads the same answers over the longer ancestry. The
         `Record` holds no cursor, so the cache serves every thread. Once it is
         closed, the next call builds and caches another.
 
@@ -1381,7 +1387,6 @@ class Revision(_OfStore):
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         materialise(self.id, self.record.sources, self.store)
-        self._record = None
 
     # -- read ---------------------------------------------------------------
 
