@@ -82,7 +82,12 @@ The tables a workspace creates sit in schemas of its database, so its `main` hol
 SQL names each in full, `datarecord._fold.<rid>.owner_map`.
 `_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as taken names.
 The id in a nested schema's name keys its tables, which do not carry it, and is its 32-digit hex, without dashes.
-A `WorkingRecord` holds its schema until it is closed or collected, and a registration of it holds the same schema until `Workspace.unregister(name)`; the workspace drops the schema, with every table in it, once neither does.
+A `Record` holds `_fold.<id>` of each layer it folds, its revision's among them, from construction until `close()`.
+A `WorkingRecord` holds its base's and its own `_staged.<layer>` until it is closed or collected.
+A registration holds every schema its record holds, until `Workspace.unregister(name)`.
+The workspace drops a schema, with every table in it, once no holder keeps it.
+A `Record` collected unclosed gives its schemas to the workspace, which keeps them for its life: `store.revision(rid).record.attributes["p_nom"].df()` collects the record before `.df()` reads its fold.
+A closed record refuses every read with `ValueError`, and `Revision.record` builds a new one once its cached record is closed.
 A workspace reopened on a file lists every registration in `registered`, so `unregister` drops its views there too.
 The PyPSA exporter, which holds a record's connection but no workspace, keeps its joins in temporary tables of its cursor instead, dropped by the call too.
 

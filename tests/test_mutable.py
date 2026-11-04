@@ -74,12 +74,12 @@ def _small(store, **declared):
     `Norway` is both an entity and a `bus` label, as a load and its bus are in `ac_dc`.
     """
     revision = empty_root(store, schema(**declared)).commit()
-    staged = WorkingRecord(revision.record)
-    staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
-    staged.add("entity", ["Norway"], ctype="Bus")
-    staged.add("bus", ["Norway"])
-    staged.set("p_nom", [80.0, 100.0], entity=["Manchester Wind", "Norway Wind"])
-    return revision.store.commit(staged)
+    with revision.record as base, WorkingRecord(base) as staged:
+        staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
+        staged.add("entity", ["Norway"], ctype="Bus")
+        staged.add("bus", ["Norway"])
+        staged.set("p_nom", [80.0, 100.0], entity=["Manchester Wind", "Norway Wind"])
+        return revision.store.commit(staged)
 
 
 def _layer_rows(revision, attribute):
@@ -104,7 +104,7 @@ def _layer_axis(revision, dim):
 
 
 def test_a_working_record_overrides_no_read_member():
-    """Every member it defines beyond `Record`'s is an edit, `edits`, `close`, or private.
+    """Every member it defines beyond `Record`'s is an edit, `edits`, or private.
 
     The property the whole design rests on: a staged edit is read by the same
     fold that reads a committed layer, so a *read* member `WorkingRecord`
@@ -118,7 +118,6 @@ def test_a_working_record_overrides_no_read_member():
         "remove",
         "rollback",
         "edits",
-        "close",
     }
     inherited = {n for n in vars(Record) if not n.startswith("_")}
     defined = {n for n in vars(WorkingRecord) if not n.startswith("_")}
@@ -1923,26 +1922,64 @@ def test_a_discarded_working_record_drops_its_staging_tables(small, discard):
     )
 
 
+READS = [
+    pytest.param(lambda r: r.dims["entity"], id="dims"),
+    pytest.param(lambda r: r.properties["entity"], id="properties"),
+    pytest.param(lambda r: r.attributes["p_nom"], id="attributes"),
+    pytest.param(lambda r: r.flags(), id="flags"),
+    pytest.param(lambda r: r.register("closed"), id="register"),
+]
+
+
 @pytest.mark.parametrize(
     "use",
     [
-        pytest.param(lambda w: w.dims["entity"], id="dims"),
-        pytest.param(lambda w: w.properties["entity"], id="properties"),
-        pytest.param(lambda w: w.attributes["p_nom"], id="attributes"),
-        pytest.param(lambda w: w.flags(), id="flags"),
+        *READS,
         pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
         pytest.param(lambda w: w.add("bus", ["Oslo"]), id="add"),
         pytest.param(lambda w: w.remove("bus", ["Norway"]), id="remove"),
         pytest.param(lambda w: w.rollback(), id="rollback"),
-        pytest.param(lambda w: w.register("closed"), id="register"),
         pytest.param(lambda w: w.edits, id="edits"),
     ],
 )
 def test_a_closed_working_record_refuses_reads_and_edits(small, use):
     w = WorkingRecord(small.record)
     w.close()
-    with pytest.raises(ValueError, match="is closed"):
+    with pytest.raises(ValueError, match="`WorkingRecord` is closed"):
         use(w)
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
+        pytest.param(lambda w: w.edits, id="edits"),
+    ],
+)
+def test_an_edit_over_a_closed_working_record_names_the_base(small, use):
+    base = WorkingRecord(small.record)
+    with WorkingRecord(base) as over:
+        base.close()
+        with pytest.raises(ValueError, match="staged over is closed"):
+            use(over)
+
+
+@pytest.mark.parametrize("use", READS)
+def test_a_closed_record_refuses_reads(small, use):
+    """`with` closes the record, and closing it again does nothing."""
+    with small.store.revision(small.id).record as record:
+        pass
+    record.close()
+    with pytest.raises(ValueError, match="`Record` is closed"):
+        use(record)
+
+
+def test_a_revision_reads_again_once_its_record_is_closed(small):
+    revision = small.store.revision(small.id)
+    revision.record.close()
+    assert len(revision.record.attributes["p_nom"].fetchall()) == 2, (
+        "a closed record is replaced, not handed out again"
+    )
 
 
 def test_closing_a_working_record_leaves_another_over_the_same_base(small):

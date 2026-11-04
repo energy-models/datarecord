@@ -18,7 +18,7 @@ import pytest
 
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
-from tests.fixtures import in_threads, scratch_tables
+from tests.fixtures import in_threads, nested_tables, scratch_tables
 from tests.test_mutable import _rows, _small, _staging
 
 KINDS = ("dims", "properties", "attributes")
@@ -381,8 +381,10 @@ def test_closing_and_unregistering_everything_leaves_no_staging_schema(
         pass
     for (name,) in workspace.registered().project("name").fetchall():
         workspace.unregister(name)
+    small.record.close()
     gc.collect()
     assert _staging(workspace.con) == set()
+    assert _folds(workspace.con) == set(), "every record over a fold is closed"
     assert workspace.con.sql(
         "SELECT table_name FROM duckdb_tables()"
         " WHERE database_name = 'datarecord' AND schema_name = 'main'"
@@ -419,6 +421,68 @@ def test_a_working_record_over_another_holds_its_base_staging(
         over.close()
     gc.collect()
     assert _staging(con) == set(), "both schemas go with their last holder"
+
+
+def _folds(con):
+    """The fold schemas in `con`'s catalog, by revision id."""
+    return set(nested_tables(con, "_fold"))
+
+
+def _opened(small):
+    """A fresh record over `small`, after a read that folds it."""
+    record = small.store.revision(small.id).record
+    record.attributes["p_nom"].fetchall()
+    return record
+
+
+@pytest.mark.parametrize("others", [0, 1])
+def test_closing_a_record_drops_its_fold_once_no_other_holds_it(
+    workspace, small, others
+):
+    kept = [_opened(small) for _ in range(others)]
+    _opened(small).close()
+    assert (small.id.hex in _folds(workspace.con)) == bool(kept), (
+        "the fold goes with the last open record over it"
+    )
+
+
+def test_a_record_collected_unclosed_leaves_its_fold_to_the_workspace(workspace, small):
+    """A chained read collects its record before fetching, so collection drops nothing."""
+    p_nom = small.store.revision(small.id).record.attributes["p_nom"]
+    gc.collect()
+    assert len(p_nom.fetchall()) == 2, "the relation outlives its collected record"
+    _opened(small).close()
+    assert small.id.hex in _folds(workspace.con), (
+        "closing a later record leaves the fold the collected one gave up"
+    )
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
+        pytest.param(lambda w: w.add("bus", ["Oslo"]), id="add"),
+        pytest.param(lambda w: w.edits.axes(), id="edits"),
+        pytest.param(_read_relations, id="read"),
+    ],
+)
+def test_a_working_record_works_on_past_its_closed_base(workspace, small, use):
+    with small.store.revision(small.id).record as base:
+        w = WorkingRecord(base)
+    assert small.id.hex in _folds(workspace.con), "the working record holds the fold"
+    use(w)
+    w.close()
+    assert small.id.hex not in _folds(workspace.con), "and drops it on close"
+
+
+def test_a_registration_holds_its_records_fold_past_close(workspace, small):
+    record = _opened(small)
+    declared, expected = _declared(record), _read_relations(record)
+    record.register("plain")
+    record.close()
+    assert _read_views(workspace.con, "plain", declared) == expected
+    workspace.unregister("plain")
+    assert small.id.hex not in _folds(workspace.con), "the fold goes on unregister"
 
 
 @pytest.mark.parametrize("name", ["_fold", "_staged", "_scratch"])

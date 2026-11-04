@@ -173,6 +173,12 @@ All notable changes to datarecord are documented here. The format follows
   a call's intermediate tables in `_scratch`, so `register` refuses these
   three names. A workspace reopened on a file can `unregister` the
   registrations it lists.
+- `Record.close()` releases the record's folds, and `with record:` closes it
+  on exit. The workspace drops a revision's fold once no open record or
+  registration holds it. A record collected unclosed keeps its folds for the
+  workspace's life, so a chained read stays valid. A closed record raises
+  `ValueError` on every read, and `Revision.record` builds a new one once its
+  cached record is closed.
 
 ### Changed
 

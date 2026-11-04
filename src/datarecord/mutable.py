@@ -17,12 +17,19 @@ from __future__ import annotations
 
 import operator
 import sys
-import weakref
-from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
+from collections.abc import (
+    Callable,
+    Collection,
+    Container,
+    Hashable,
+    Iterable,
+    Mapping,
+    Sequence,
+)
 from dataclasses import dataclass
 from functools import cached_property, reduce, wraps
 from hashlib import sha256
-from typing import TYPE_CHECKING, Any, Concatenate, Self, cast
+from typing import TYPE_CHECKING, Any, Concatenate, cast
 from uuid import UUID, uuid4
 
 from duckdb import CoalesceOperator as coalesce
@@ -52,7 +59,7 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import RecordLike
-from datarecord.resolve.coords import Coords, refuse_unheld
+from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import owner_keys
 from datarecord.resolve.owner_map import named_sets, names_exactly, unsettled
@@ -62,7 +69,7 @@ from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
-    from datarecord.store.store import Workspace
+    from datarecord.store.store import Workspace, _Holds
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/use/editing/#set) ----------------------------------------------
@@ -268,6 +275,22 @@ class StagedSource:
         return union_all_by_name(arms)
 
 
+class _Base(Record):
+    """A `WorkingRecord`'s own copy of a `Record` base, so closing the caller's leaves its edits working.
+
+    It holds nothing: the `WorkingRecord` holds the folds it reads, and hands
+    it its own `_release`, so the copy is open exactly while the
+    `WorkingRecord` is and leaves no finaliser of its own.
+
+    Notes
+    -----
+    - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
+    """
+
+    def __post_init__(self) -> None:
+        return None
+
+
 class _StagedPerCursor(_PerCursor):
     """What a `WorkingRecord` keeps per thread besides a `Record`'s."""
 
@@ -297,7 +320,7 @@ def _atomic[**P](
 
     @wraps(edit)
     def run(self: WorkingRecord, *args: P.args, **kwargs: P.kwargs) -> None:
-        self._require_open()
+        self._require_editable()
         with transaction(
             self.con,
             edit.__name__,
@@ -349,7 +372,7 @@ class WorkingRecord(Record):
     _staging_schema: str
     #: The record these edits are made over: its sources are this record's
     #: but the staged one, and its `revision_id` is what the edits are a delta
-    #: against.
+    #: against. A `WorkingRecord` base is the caller's, any other a `_Base`.
     _base: Record
     #: Keyed by `(kind, attribute)`, the attribute being None for an axis.
     #: Attributes stage one table per attribute because that is the
@@ -360,8 +383,6 @@ class WorkingRecord(Record):
     _touched: set[tuple[str, str | None]]
     #: The `_staged` keys the running edit wrote to.
     _dirty: set[tuple[str, str | None]]
-    #: Releases the staging schema, once: on `close()` or when collected.
-    _release: weakref.finalize[..., None]
 
     def __init__(self, base: RecordLike) -> None:
         """Stage edits over `base`, which must be a `Record`.
@@ -398,20 +419,20 @@ class WorkingRecord(Record):
         object.__setattr__(self, "_staged", {})
         object.__setattr__(self, "_touched", set())
         object.__setattr__(self, "_dirty", set())
+        if not isinstance(base, WorkingRecord):
+            base = _Base(base.revision_id, base.sources, base.workspace)
         object.__setattr__(self, "_base", base)
         object.__setattr__(
             self, "_staging_schema", nested(base.workspace.name, STAGED, self._layer_id)
         )
         base.con.execute(f"CREATE SCHEMA {self._staging_schema}")
-        holds = base.workspace._holds
-        holds.hold(self._layer_id, self._kept_schemas)
-        release = weakref.finalize(self, holds.release, self._layer_id)
-        object.__setattr__(self, "_release", release)
         super().__init__(
             base.revision_id,
             [*base.sources, StagedSource(self, self._layer_id)],
             base.workspace,
         )
+        if isinstance(base, _Base):
+            object.__setattr__(base, "_release", self._release)
         for kind, attribute in self._kinds():
             name = self._table(kind, attribute)
             create_table(self.con, name, self._shape(kind, attribute))
@@ -429,30 +450,23 @@ class WorkingRecord(Record):
         self.con.execute(f"DROP TABLE {shape}")
         self._frozen_owners  # noqa: B018 - built outside any edit's transaction
 
-    def close(self) -> None:
-        """Release the staging tables, dropped once no registration of this record reads them.
-
-        Closing again does nothing; collecting the record closes it too.
+    def _collected(self, holds: _Holds) -> Callable[[Hashable], None]:
+        """Release, unlike a `Record`: no chained read takes a relation off a `WorkingRecord`, and its staging tables are worth dropping.
 
         Notes
         -----
         - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
         """
-        self._release()
-
-    def __enter__(self) -> Self:
-        return self
-
-    def __exit__(self, *exc: object) -> None:
-        self.close()
+        return holds.release
 
     def _require_open(self) -> None:
         """Refuse a closed record before DuckDB finds its staging tables gone.
 
         Called where every use passes before it touches a staging table: a read
         through `_frozen_coords`, which the coords and the owner map both take,
-        an edit through `_atomic` or `rollback`, a write through `edits`. Not
-        `con`, a read member this class leaves to `Record`.
+        an edit through `_atomic`, a write through `edits`, the last two by
+        way of `_require_editable`. Not `con`, a read member this class leaves
+        to `Record`.
 
         Raises
         ------
@@ -466,10 +480,21 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
 
-    @property
-    def _frozen_coords(self) -> Coords:
+    def _require_editable(self) -> None:
+        """Refuse an edit or a write where this record or its base is closed: both read the base.
+
+        Raises
+        ------
+        ValueError
+            Once `close()` ran here or on a `WorkingRecord` base.
+        """
         self._require_open()
-        return super()._frozen_coords
+        if not self._base._release.alive:
+            msg = (
+                "the `WorkingRecord` this one is staged over is closed, and an "
+                "edit reads it; stage over an open one"
+            )
+            raise ValueError(msg)
 
     @property
     def _kept_schemas(self) -> frozenset[str]:
@@ -2081,7 +2106,6 @@ class WorkingRecord(Record):
         -----
         - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
         """
-        self._require_open()
         for kind, attribute in self._touched:
             self.con.execute(f"DELETE FROM {self._staged[kind, attribute]}")
             self._fill(kind, attribute)
@@ -2188,7 +2212,7 @@ class WorkingRecord(Record):
         - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
         """
-        self._require_open()
+        self._require_editable()
         return cast("StagedSource", self.sources[-1])
 
 

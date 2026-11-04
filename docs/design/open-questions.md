@@ -138,10 +138,6 @@ DuckDB 2.0 lets a reader on another cursor see part of a committed transaction o
 
 `register`, or the first read of a view, pays the [cold fold](layers/resolution.md#a-fold-starts-from-the-nearest-fold-at-hand) of a deep revision, once per lineage in a workspace. It stays linear in depth until a revision's map is [materialised](#when-a-deep-ancestry-materialises-its-map).
 
-### When a server drops the folds it opened
-
-The fold of every revision a server opens is kept in `_fold.<rid>` for the life of its connection. A `Record` holding the schema of its revision, as a `WorkingRecord` [holds its staging tables](storage/store.md#the-databases-schemas), would drop it with the last record reading it ([DEP 35](proposals/dep-0035-a-record-holds-the-tables-it-reads.md#implementation-notes)).
-
 ## Settled
 
 ### What a pointwise `set` leaving one of two dims outside `partial` NULL reaches
@@ -177,6 +173,10 @@ The alternative, "every connection of this entity", would broadcast over part of
 ### Whether a record's relations can be named views
 
 They can, in the workspace's own database, one schema per registration with a nested schema per kind ([registered views](storage/views.md)). Over a `WorkingRecord` the views are created once and follow every edit, since a relation's plan never reads a staged row.
+
+### When a server drops the folds it opened
+
+When the last open record reading one is closed, unless a registration still holds it. A record collected unclosed leaves its folds to the workspace for its life, so a server closes each record it opens ([the database's schemas](storage/store.md#the-databases-schemas)).
 
 ### When a `WorkingRecord`'s staging tables are dropped
 
