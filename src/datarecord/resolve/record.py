@@ -22,7 +22,7 @@ import weakref
 from collections.abc import Callable, Hashable, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property, wraps
-from typing import TYPE_CHECKING, Self, cast
+from typing import TYPE_CHECKING, ClassVar, Self, cast
 from uuid import UUID, uuid4
 
 import duckdb
@@ -327,6 +327,11 @@ class Record:
     workspace
         Where the calling thread's cursor comes from.
 
+    Raises
+    ------
+    ValueError
+        On a read once the record is `closed`.
+
     Notes
     -----
     - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
@@ -336,6 +341,13 @@ class Record:
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
     - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     """
+
+    #: What a read of a closed record raises.
+    _closed_message: ClassVar[str] = (
+        "this `Record` is closed and its folds released; read the revision's "
+        "`record` again "
+        "(https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)"
+    )
 
     revision_id: UUID
     sources: list[LayerSource]
@@ -363,6 +375,11 @@ class Record:
         if self._release.detach() is not None:
             self.workspace._holds.release(self._holder)
 
+    @property
+    def closed(self) -> bool:
+        """Whether `close()` ran, after which the record refuses every read."""
+        return not self._release.alive
+
     def __enter__(self) -> Self:
         return self
 
@@ -386,20 +403,15 @@ class Record:
         """Refuse a closed record before DuckDB finds its tables gone.
 
         Called in `_frozen_coords`, which every read takes: the coords and the
-        owner map both.
+        owner map both. A subclass says what it lost in `_closed_message`.
 
         Raises
         ------
         ValueError
             Once `close()` ran.
         """
-        if not self._release.alive:
-            msg = (
-                "this `Record` is closed and its folds released; read the "
-                "revision's `record` again "
-                "(https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)"
-            )
-            raise ValueError(msg)
+        if self.closed:
+            raise ValueError(self._closed_message)
 
     @property
     def schema(self) -> Schema:
