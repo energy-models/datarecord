@@ -419,7 +419,7 @@ rel.fetchall()  # holds 150.0
 ```
 
 The staged step is planned that way throughout.
-The staged layer owns every axis, so [`dim_owners`](../layers/resolution.md#one-fold-for-every-axis) names it for every dim.
+The staged layer owns every axis, so [`dim_owners`](../layers/resolution.md#materialised-node-caches) names it for every dim.
 It is a possible owner of every attribute, whether or not it holds rows, and the dead labels of its restatements are always an anti-join, empty or not.
 The [ranking of contested rows](../layers/resolution.md#resolving-a-relation) is planned for every attribute and restricted to the rows that need it as data.
 The staged layer folds onto the frozen map one attribute at a time, against the parent's rows of that attribute.

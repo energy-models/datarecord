@@ -56,7 +56,7 @@ The plan of a relation of a `WorkingRecord` never depends on the staged rows; it
 
 - Every `Record`, frozen or not, lists every dim and every attribute its schema declares. One with no rows reads an empty relation, where today it raises `KeyError`.
 - A `WorkingRecord` creates every staging table when it is created. An axis table holds a copy of the base's axis, an attribute table starts empty. A `one_of` dim has none.
-- The staged layer owns every axis from the start, so [`dim_owners`](../layers/resolution.md#one-fold-for-every-axis) names it for every dim.
+- The staged layer owns every axis from the start, so [`dim_owners`](../layers/resolution.md#materialised-node-caches) names it for every dim.
 - The staged layer is a possible owner of every attribute, whether or not it holds rows.
 - The dead labels of a staged restatement are always an anti-join, empty or not.
 - The staged layer folds onto the frozen map one attribute at a time, against the parent's rows of that attribute.
