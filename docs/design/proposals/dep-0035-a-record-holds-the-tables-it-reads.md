@@ -39,8 +39,8 @@ DuckDB does not help. It drops a table a view reads without complaint, and the v
 | ----------------- | --------------------------------------------------------------------------- | ------------------------------------- |
 | `main`            | `schemas`, `revisions`, `registered`                                        | the workspace                         |
 | `_fold.<rid>`     | `owner_map`, `dims_<dim>`, `dead_<name>` and `dim_owners` of revision `rid` | the first cursor to fold `rid`        |
-| `_staged.<layer>` | a `WorkingRecord`'s staging tables, and an edit's snapshot of one           | `WorkingRecord(...)`                  |
-| `_scratch`        | a fold's checkpoints, the PyPSA exporter's joins                            | the call using them, which drops them |
+| `_staged.<layer>` | a `WorkingRecord`'s staging tables                                          | `WorkingRecord(...)`                  |
+| `_scratch`        | a fold's checkpoints, an edit's snapshot, the PyPSA exporter's joins        | the call using them, which drops them |
 | `<name>`          | the views of a registration (DEP 34)                                        | `register(name)`                      |
 
 `_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as names it finds taken. The id in a nested schema's name keys its tables, which no longer carry it.

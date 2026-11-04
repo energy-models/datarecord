@@ -580,3 +580,29 @@ def in_threads(n: int, fn: Callable[[int], Any]) -> list[Any]:
 
     with ThreadPoolExecutor(n) as pool:
         return list(pool.map(run, range(n)))
+
+
+def scratch_tables(con: duckdb.DuckDBPyConnection) -> set[str]:
+    """The tables left in the workspace's `_scratch` schema."""
+    rows = con.execute(
+        "SELECT table_name FROM duckdb_tables() WHERE schema_name = '_scratch'"
+    ).fetchall()
+    return {table for (table,) in rows}
+
+
+def nested_tables(con: duckdb.DuckDBPyConnection, parent: str) -> dict[str, set[str]]:
+    """`schema -> its tables` for each schema nested in `parent`, an empty one included.
+
+    `duckdb_tables().schema_name` is only the innermost schema's name, so the
+    parent is read off `duckdb_schemas()`.
+    """
+    rows = con.execute(
+        "SELECT s.schema_name, t.table_name FROM duckdb_schemas() s"
+        " LEFT JOIN duckdb_tables() t ON t.schema_oid = s.oid"
+        " WHERE s.parent_schema = ?",
+        [parent],
+    ).fetchall()
+    found: dict[str, set[str]] = defaultdict(set)
+    for schema, table in rows:
+        found[schema].update({table} - {None})
+    return dict(found)
