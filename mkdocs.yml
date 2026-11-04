@@ -93,7 +93,7 @@ nav:
           - "DEP 33: The fold is a fixed plan": design/proposals/dep-0033-the-fold-is-a-fixed-plan.md
           - "DEP 34: A record registers its relations as views": design/proposals/dep-0034-a-record-registers-as-views.md
           - "DEP 35: A record holds the tables it reads": design/proposals/dep-0035-a-record-holds-the-tables-it-reads.md
-          - "DEP 30: A revision file lists its axes": design/proposals/dep-0030-a-revision-file-lists-its-axes.md
+          - "DEP 30: A manifest lists its revision's axes": design/proposals/dep-0030-a-manifest-lists-its-axes.md
   - Contributing: contributing.md
   - Changelog: changelog.md
   - API Reference:
