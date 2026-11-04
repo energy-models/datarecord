@@ -39,7 +39,7 @@ from datarecord.resolve.coords import (
 )
 from datarecord.resolve.owner_keys import cast_declared
 from datarecord.resolve.owner_map import unsettled
-from datarecord.resolve.record import PinnedRecord, Record
+from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
 from datarecord.schema.schema import DERIVED, Schema
 from datarecord.store.manifest import LayerFiles, Manifest
@@ -57,9 +57,7 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     """Return `source` as the `LayerData` the writer reads, planned on `con`.
 
     A `RecordLike` is wrapped in a thin adapter reading its `Relations`
-    through the same enumerate-and-read pairs. A `Record` that is not frozen
-    is read as a `PinnedRecord` over the same four fields, which folds its
-    staged edits once for the write, during which nothing stages.
+    through the same enumerate-and-read pairs.
 
     Notes
     -----
@@ -67,8 +65,6 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     """
     if isinstance(source, LayerData):
         return source
-    if isinstance(source, Record) and not source.frozen:
-        source = PinnedRecord(source.revision_id, source.sources, source.workspace)
     return _RecordLikeAsLayerData(source, con)
 
 
@@ -143,57 +139,53 @@ def write_layer(
         _validate_frame(rel, kind, key, schema)
         return con.read_parquet(_write_frame(rel, base, kind, key, schema, con))
 
-    try:
-        refuse_one_of_file(schema, data.axes(), "the layer")
-        for key in sorted(data.axes(), key=schema.multi_dims.__contains__):
-            frame = _written(data.axis, "dims", key)
-            if frame is None:
+    refuse_one_of_file(schema, data.axes(), "the layer")
+    for key in sorted(data.axes(), key=schema.multi_dims.__contains__):
+        frame = _written(data.axis, "dims", key)
+        if frame is None:
+            continue
+        written["dims"].append(key)
+        file = f"dims/{key}.parquet"
+        refuse_twice(frame, [key], file)
+        before = _parent_axis(parent, schema, key, con)
+        if before is not None:
+            _refuse_reordered(frame, before, key, file)
+    held: Callable[[str], DuckDBPyRelation | None]
+    held = partial(_parent_axis, parent, schema, con=con)
+    if data.axes():
+        dims = LayerFiles(dims=tuple(written["dims"]), attributes=())
+        manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
+        layer = DirectorySource(base, manifest, workspace, manifest.id)
+        parents = [] if parent is None else parent.sources
+        coords = resolve_coords([*parents, layer])
+        held = coords.axes.get
+        for key in written["dims"]:
+            if key not in schema.multi_dims:
                 continue
-            written["dims"].append(key)
             file = f"dims/{key}.parquet"
-            refuse_twice(frame, [key], file)
-            before = _parent_axis(parent, schema, key, con)
-            if before is not None:
-                _refuse_reordered(frame, before, key, file)
-        held: Callable[[str], DuckDBPyRelation | None]
-        held = partial(_parent_axis, parent, schema, con=con)
-        if data.axes():
-            dims = LayerFiles(dims=tuple(written["dims"]), attributes=())
-            manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
-            layer = DirectorySource(base, manifest, workspace, manifest.id)
-            parents = [] if parent is None else parent.sources
-            coords = resolve_coords([*parents, layer])
-            held = coords.axes.get
-            for key in written["dims"]:
-                if key not in schema.multi_dims:
-                    continue
-                file = f"dims/{key}.parquet"
-                refuse_unheld(
-                    coords.axes[key],
-                    schema,
-                    [key],
-                    held,
-                    file,
-                    staged=False,
-                    subject=key,
-                )
-        for key in data.attributes():
-            frame = _written(data.attribute, "attributes", key)
-            if frame is None:
-                continue
-            written["attributes"].append(key)
-            file = f"attributes/{key}.parquet"
-            _refuse_unordered(frame, key, schema)
-            coordinates = schema.coordinates_of(key)
-            refuse_unheld(frame, schema, coordinates, held, file, staged=False)
-        files = LayerFiles(
-            dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
-        )
-        if data.axes():
-            _require_living_references(parent, layer, coords)
-    finally:
-        if isinstance(data, _RecordLikeAsLayerData):
-            data.release()
+            refuse_unheld(
+                coords.axes[key],
+                schema,
+                [key],
+                held,
+                file,
+                staged=False,
+                subject=key,
+            )
+    for key in data.attributes():
+        frame = _written(data.attribute, "attributes", key)
+        if frame is None:
+            continue
+        written["attributes"].append(key)
+        file = f"attributes/{key}.parquet"
+        _refuse_unordered(frame, key, schema)
+        coordinates = schema.coordinates_of(key)
+        refuse_unheld(frame, schema, coordinates, held, file, staged=False)
+    files = LayerFiles(
+        dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
+    )
+    if data.axes():
+        _require_living_references(parent, layer, coords)
     return files
 
 
@@ -530,11 +522,6 @@ class _RecordLikeAsLayerData:
     @property
     def schema(self) -> Schema:
         return self._source.schema
-
-    def release(self) -> None:
-        """Drop what a pinned source holds for this write."""
-        if isinstance(self._source, PinnedRecord):
-            self._source.release()
 
     @cached_property
     def _dims(self) -> Relations:

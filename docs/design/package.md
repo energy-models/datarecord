@@ -27,7 +27,7 @@ datarecord/
 │   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
 │   ├── coords.py      # resolve_coords, Coords, mortal
 │   ├── owner_map.py   # fold_layer, the owner-map fold over keys as written, and its shared tables
-│   └── record.py      # Record, PinnedRecord
+│   └── record.py      # Record
 ├── mutable.py         # WorkingRecord, StagedSource
 ├── settle.py          # settle, the broadcast rule over long rows
 ├── store/

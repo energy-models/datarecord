@@ -118,4 +118,3 @@ A [`RecordLike`](reading.md) is no `LayerData`.
 This holds for a `Record`, a `WorkingRecord` among them, and for a framework object such as [`Tool.to_datarecord`](../tools/index.md) returns.
 The writer wraps a `RecordLike` in a thin adapter that reads its `Relations` mappings through the same enumerate-and-read pairs, so the writer has one code path.
 The adapter takes each value as [`set`](editing.md#set) does: a relation on the writer's connection, or a pandas, polars or arrow frame that DuckDB scans.
-A `WorkingRecord` is read through a pinned copy that folds its staged edits once for the write.

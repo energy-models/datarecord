@@ -377,6 +377,8 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Removed
 
+- Breaking: `PinnedRecord` is gone. A write reads a `WorkingRecord` through
+  its per-attribute plans directly.
 - `Group`, the schema's `groups` section, `Schema.groups`,
   `Schema.group_columns`, `Schema.group_type`, `Schema.groups_of`,
   `Schema.group_key`, `Schema.check_group_columns`, `Schema.field_over`,
