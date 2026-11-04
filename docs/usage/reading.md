@@ -141,6 +141,21 @@ else:
     ...  # constants for some generators, series for others
 ```
 
+## Closing
+
+A record holds the tables its fold is kept in until you `close()` it, and a `with` block closes it on exit.
+Then the workspace drops them, unless another open record, a [registration](../design/storage/views.md) or a record collected without closing holds them.
+The next record over the same revision folds its ancestry again, so a process reading one revision often keeps one record open rather than one per read.
+A closed record raises `ValueError` on any read, and a relation taken from it before fails with DuckDB's missing-table error, so fetch what you need first.
+`revision.record` hands out a new record once the one it cached is closed.
+
+```python
+with store.revision(rev_id).record as record:
+    p_nom = record.attributes["p_nom"].df()
+```
+
+A record you never close keeps its tables for the workspace's life, so a chained read stays safe ([design](../design/storage/store.md#the-databases-schemas)).
+
 ## Reading a directory
 
 A parquet directory is a record, and reading one involves no layers:
