@@ -558,6 +558,9 @@ All notable changes to datarecord are documented here. The format follows
   `(scenario, name)`, as PyPSA indexes every other component.
 - A collection whose members carry one custom column on different types is
   refused, as one whose members declare different schemas is.
+- A collection over `scenario` or a dim of its own whose members hold
+  different snapshots is refused at the call, rather than built over their
+  union with NaN series and weightings reset to 1.
 - The writer's check that no coordinate of a file is held twice groups 64-bit
   hashes in passes of at most 100 million rows, so a file of hundreds of
   millions of rows is checked in bounded memory and spill.
