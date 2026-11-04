@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -764,6 +764,8 @@
       
         
       
+        
+      
     
     
     
@@ -819,6 +821,8 @@
   
     
     
+      
+        
       
         
       
@@ -978,6 +982,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#the-databases-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The database's schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1050,6 +1065,34 @@
     
   
     Threads, processes and concurrent writers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../views/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registered views
   
 
     
@@ -1195,6 +1238,12 @@
   
     
     
+      
+        
+      
+        
+      
+        
       
         
       
@@ -1462,6 +1511,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#the-databases-schemas" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The database's schemas
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1563,6 +1623,53 @@ Deleting a workspace's <code>database</code> loses at most uncommitted edits.
 A file-backed database keeps staged edits across a crash and the <code>revisions</code> cache across runs, and it gives DuckDB room to spill.
 Every cache keyed by id assumes that an id always names the same content.
 A fresh UUID, claimed once, over write-once files guarantees this, and a location wiped and written again breaks it.</p>
+<h3 id="the-databases-schemas">The database's schemas<a class="headerlink" href="#the-databases-schemas" title="Permanent link">&para;</a></h3>
+<p>The tables a workspace creates sit in schemas of their own, so <code>main</code> holds only its bookkeeping:</p>
+<table>
+<thead>
+<tr>
+<th>schema</th>
+<th>holds</th>
+<th>created by</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>main</code></td>
+<td><code>schemas</code>, <code>revisions</code>, <code>registered</code></td>
+<td>the workspace</td>
+</tr>
+<tr>
+<td><code>_fold.&lt;rid&gt;</code></td>
+<td>the <a href="../concurrency/#a-cursor-per-thread">shared tables</a> of revision <code>rid</code>'s fold</td>
+<td>the first cursor to fold <code>rid</code></td>
+</tr>
+<tr>
+<td><code>_staged.&lt;layer&gt;</code></td>
+<td>a <code>WorkingRecord</code>'s <a href="../../use/editing/#staging">staging tables</a></td>
+<td><code>WorkingRecord(...)</code></td>
+</tr>
+<tr>
+<td><code>_scratch</code></td>
+<td>a call's intermediate tables, a fold's checkpoints and the PyPSA exporter's joins among them</td>
+<td>the call using them, which drops them</td>
+</tr>
+<tr>
+<td><code>&lt;name&gt;</code></td>
+<td>the <a href="../views/">views of a registration</a></td>
+<td><code>register(name)</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>_fold</code>, <code>_staged</code> and <code>_scratch</code> are created with the workspace, so <code>register</code> refuses them as taken names.
+The id in a nested schema's name keys its tables, which do not carry it, and is its 32-digit hex, without dashes.
+A <code>Record</code> holds <code>_fold.&lt;id&gt;</code> of each layer it folds, its revision's among them, from construction until <code>close()</code>.
+A <code>WorkingRecord</code> holds its base's and its own <code>_staged.&lt;layer&gt;</code> until it is closed or collected.
+A registration holds every schema its record holds, until <code>Workspace.unregister(name)</code>.
+The workspace drops a schema, with every table in it, once no holder keeps it.
+A <code>Record</code> collected unclosed gives its schemas to the workspace, which keeps them for its life: <code>store.revision(rid).record.attributes["p_nom"].df()</code> collects the record before <code>.df()</code> reads its fold.
+A closed record refuses every read with <code>ValueError</code>, and <code>Revision.record</code> builds a new one once its cached record is closed.
+A workspace reopened on a file holds again, for every registration in <code>registered</code>, the schemas its <code>held</code> column lists, so its views read on and <code>unregister</code> drops them there too.</p>
 <h3 id="the-layers">The layers<a class="headerlink" href="#the-layers" title="Permanent link">&para;</a></h3>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;location&gt;/
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>└── layers/&lt;id&gt;/

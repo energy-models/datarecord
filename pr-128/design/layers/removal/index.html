@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -949,6 +949,8 @@
       
         
       
+        
+      
     
     
     
@@ -1002,6 +1004,8 @@
   
     
     
+      
+        
       
         
       
@@ -1178,6 +1182,12 @@
   
     
     
+      
+        
+      
+        
+      
+        
       
         
       
@@ -1517,7 +1527,7 @@ An axis loses a label or tuple only where its own file omits it.</p>
 <h2 id="what-a-removal-reaches">What a removal reaches<a class="headerlink" href="#what-a-removal-reaches" title="Permanent link">&para;</a></h2>
 <p>Removing the entity <code>e1</code> removes its <code>p_nom</code>, its <code>p_max_pu</code> at every snapshot and scenario, and its value in every other attribute.</p>
 <p>The fold removes the values.
-<a href="../resolution/#owner-map"><code>fold_attributes</code></a> drops the parent's owner-map rows that name a label or tuple the layer removes.
+<a href="../resolution/#owner-map"><code>fold_layer</code></a> drops the parent's owner-map rows that name a label or tuple the layer removes.
 A key whose label or tuple was removed is then absent from the resolved map.
 A row that leaves the coordinate NULL names no label and stays.
 A dim outside <code>partial</code>, multi or not, is in no key, so its rows are <a href="../resolution/#a-label-outside-the-key">dropped at read</a> against that coordinate's dead labels.</p>

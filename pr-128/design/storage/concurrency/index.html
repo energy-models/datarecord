@@ -16,14 +16,14 @@
         <link rel="prev" href="../store/">
       
       
-        <link rel="next" href="../../tools/">
+        <link rel="next" href="../views/">
       
       
         
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -764,6 +764,8 @@
       
         
       
+        
+      
     
     
     
@@ -819,6 +821,8 @@
   
     
     
+      
+        
       
         
       
@@ -1063,6 +1067,34 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../views/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Registered views
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -1195,6 +1227,12 @@
   
     
     
+      
+        
+      
+        
+      
+        
       
         
       
@@ -1548,6 +1586,7 @@ A <code>threading.local</code> subclass makes it on first use in each thread.
 Its <code>__init__</code> reruns in each new thread, so the lookup needs no existence check and no lock, and a cursor goes away with its thread.
 A dict keyed by thread id would reuse ids, and a <code>ContextVar</code> would be copied into a task runner's workers, which would then share the parent's cursor.</p>
 <p>Tables are shared between cursors: the <code>revisions</code> cache, the staging tables and the folded caches.
+So are a record's <a href="../views/">registered views</a>, which every cursor reads and which show an edit once its transaction commits.
 A <code>DuckDBPyRelation</code> is bound to the cursor that built it.
 The line between thread-bound and shared objects runs around relations alone.</p>
 <p>A store, a revision, a <code>Record</code> and a layer source hold their workspace and look up <code>workspace.con</code> on each call.
@@ -1555,21 +1594,21 @@ Every relation they build lands on the calling thread's cursor, so one <code>Rec
 Anything else they cache is plain data that every thread computes the same way.
 A relation and a <code>WorkingRecord</code> belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as <a href="#a-relation-from-another-connection-is-rejected">a relation from another connection</a> is.</p>
-<p>A fold caches its results as shared tables.
-The frozen prefix's folded axes are the tables <code>dims_&lt;dim&gt;_&lt;id&gt;</code>, a <a href="../../model/multi-dims/">multi-dim</a>'s like any other.
-Its <a href="../../layers/resolution/#a-label-outside-the-key">dead labels</a> are the tables <code>dead_&lt;dim&gt;_&lt;id&gt;</code>, one per coordinate that has any.
-A last table, <code>dim_owners_&lt;id&gt;</code>, has the shape of a node cache's <a href="../../layers/resolution/#materialised-node-caches"><code>dim_owners.parquet</code></a>, a row <code>(dim, layer_uuid, has_dead)</code> per folded axis.
+<p>A fold caches its results as shared tables in the schema <code>_fold.&lt;id&gt;</code> (<a href="../store/#the-databases-schemas">the database's schemas</a>).
+The frozen layers' folded axes are the tables <code>dims_&lt;dim&gt;</code>, a <a href="../../model/multi-dims/">multi-dim</a>'s like any other.
+Its <a href="../../layers/resolution/#a-label-outside-the-key">dead labels</a> are the tables <code>dead_&lt;dim&gt;</code>, one per coordinate that has any.
+A last table, <code>dim_owners</code>, has the shape of a node cache's <a href="../../layers/resolution/#materialised-node-caches"><code>dim_owners.parquet</code></a>, a row <code>(dim, layer_uuid, has_dead)</code> per folded axis.
 It is created after them, so a reader that finds it finds them all.
-A reader opens <code>dead_&lt;dim&gt;_&lt;id&gt;</code> only where <code>has_dead</code> is true.
-The <a href="../../layers/resolution/#owner-map">owner map</a> is <code>owner_map_&lt;id&gt;</code> beside them.
+A reader opens <code>dead_&lt;dim&gt;</code> only where <code>has_dead</code> is true.
+The <a href="../../layers/resolution/#owner-map">owner map</a> is <code>owner_map</code> beside them.
 A dim's name is spelled as declared, since the schema <a href="../../model/schema/#names">holds every name to a plain identifier</a>.
 <code>&lt;id&gt;</code> is the node whose frozen layers were folded: a revision's id, the base's id for a <code>WorkingRecord</code>, or the <a href="../store/#the-layers">id in its manifest</a> for a standalone directory.</p>
 <p>The fold reads each layer under <a href="../../layers/resolution/#extending-the-map-to-a-wider-schema">its own schema</a>, so what it folds for a node depends on the node's ancestry alone, and one table per node serves every reader.
 A materialised owner map is cast to the declared types.
 These tables are left as the fold produced them, and each holds what the same fold returns uncached.</p>
 <p>A fold that one thread builds serves every thread.
-When two threads miss at once, both fold and both create the table.
-DuckDB fails the second with a write-write conflict, and the miss path catches it and reads the winner's table.
+When two threads miss at once, both fold and both create the schema and the table.
+DuckDB fails the second with a write-write conflict, and the miss path retries until it meets the winner's, and reads that.
 The duplicate fold wastes work and gives the same answer.</p>
 <h3 id="a-relation-from-another-connection-is-rejected">A relation from another connection is rejected<a class="headerlink" href="#a-relation-from-another-connection-is-rejected" title="Permanent link">&para;</a></h3>
 <p><code>as_relation</code> is the boundary that every frame crosses on its way to a write or an edit.
@@ -1658,13 +1697,13 @@ A record deleted and written again at one URI is therefore a new layer to every 
         
         
           
-          <a href="../../tools/" class="md-footer__link md-footer__link--next" aria-label="Next: Tools">
+          <a href="../views/" class="md-footer__link md-footer__link--next" aria-label="Next: Registered views">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Tools
+                Registered views
               </div>
             </div>
             <div class="md-footer__button md-icon">

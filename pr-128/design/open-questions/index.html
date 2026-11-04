@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -764,6 +764,8 @@
       
         
       
+        
+      
     
     
     
@@ -817,6 +819,8 @@
   
     
     
+      
+        
       
         
       
@@ -1069,10 +1073,43 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#filtering-a-record-before-build" class="md-nav__link">
+  <a href="#naming-a-label-by-a-propertys-value-as-the-dims-own-keyword" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Filtering a record before build
+        Naming a label by a property's value as the dim's own keyword
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-a-multi-dim-left-with-one-coordinate-reads-as-that-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a multi-dim left with one coordinate reads as that dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#editing-through-a-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing through a selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-selection-that-follows-a-workingrecords-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A selection that follows a WorkingRecord's edits
       
     </span>
   </a>
@@ -1084,17 +1121,6 @@
     <span class="md-ellipsis">
       
         Whether a WorkingRecord over an open record stages against a snapshot
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#registering-a-records-relations-as-named-views" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Registering a record's relations as named views
       
     </span>
   </a>
@@ -1266,6 +1292,116 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#whether-the-checks-at-set-and-at-write-can-take-the-folds-fixed-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether the checks at set and at write can take the fold's fixed plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-set-can-stage-a-scoped-or-crossing-broadcast-without-spreading-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether set can stage a scoped or crossing broadcast without spreading it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-deep-ancestry-materialises-its-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a deep ancestry materialises its map
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-an-edit-may-join-a-callers-open-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether an edit may join a caller's open transaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-a-schema-change-on-a-workingrecord-does-to-its-registered-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a schema change on a WorkingRecord does to its registered views
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-a-sql-client-settles-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a SQL client settles rows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-drops-an-abandoned-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who drops an abandoned registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-public-create_view-taking-a-qualified-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A public create_view taking a qualified name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-reader-seeing-part-of-a-large-committed-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A reader seeing part of a large committed transaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-pays-the-cold-fold-of-a-registered-revision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who pays the cold fold of a registered revision
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1282,6 +1418,17 @@
   
     <nav class="md-nav" aria-label="Settled">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filtering-a-record-before-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering a record before build
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#what-a-pointwise-set-leaving-one-of-two-dims-outside-partial-null-reaches" class="md-nav__link">
@@ -1360,6 +1507,39 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#whether-a-records-relations-can-be-named-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a record's relations can be named views
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-server-drops-the-folds-it-opened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a server drops the folds it opened
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-workingrecords-staging-tables-are-dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a WorkingRecord's staging tables are dropped
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1382,6 +1562,12 @@
   
     
     
+      
+        
+      
+        
+      
+        
       
         
       
@@ -1682,10 +1868,43 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#filtering-a-record-before-build" class="md-nav__link">
+  <a href="#naming-a-label-by-a-propertys-value-as-the-dims-own-keyword" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Filtering a record before build
+        Naming a label by a property's value as the dim's own keyword
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-a-multi-dim-left-with-one-coordinate-reads-as-that-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a multi-dim left with one coordinate reads as that dim
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#editing-through-a-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Editing through a selection
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-selection-that-follows-a-workingrecords-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A selection that follows a WorkingRecord's edits
       
     </span>
   </a>
@@ -1697,17 +1916,6 @@
     <span class="md-ellipsis">
       
         Whether a WorkingRecord over an open record stages against a snapshot
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#registering-a-records-relations-as-named-views" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Registering a record's relations as named views
       
     </span>
   </a>
@@ -1879,6 +2087,116 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#whether-the-checks-at-set-and-at-write-can-take-the-folds-fixed-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether the checks at set and at write can take the fold's fixed plan
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-set-can-stage-a-scoped-or-crossing-broadcast-without-spreading-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether set can stage a scoped or crossing broadcast without spreading it
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-deep-ancestry-materialises-its-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a deep ancestry materialises its map
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#whether-an-edit-may-join-a-callers-open-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether an edit may join a caller's open transaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-a-schema-change-on-a-workingrecord-does-to-its-registered-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a schema change on a WorkingRecord does to its registered views
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-a-sql-client-settles-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How a SQL client settles rows
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-drops-an-abandoned-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who drops an abandoned registration
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-public-create_view-taking-a-qualified-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A public create_view taking a qualified name
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-reader-seeing-part-of-a-large-committed-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A reader seeing part of a large committed transaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-pays-the-cold-fold-of-a-registered-revision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who pays the cold fold of a registered revision
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -1895,6 +2213,17 @@
   
     <nav class="md-nav" aria-label="Settled">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#filtering-a-record-before-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Filtering a record before build
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#what-a-pointwise-set-leaving-one-of-two-dims-outside-partial-null-reaches" class="md-nav__link">
@@ -1973,6 +2302,39 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#whether-a-records-relations-can-be-named-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Whether a record's relations can be named views
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-server-drops-the-folds-it-opened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a server drops the folds it opened
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-a-workingrecords-staging-tables-are-dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When a WorkingRecord's staging tables are dropped
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2016,15 +2378,18 @@ Coherence is the caller's business.
 If this bites in practice, a <code>pending</code>-level warning is the cheap next step.</p>
 <h3 id="detecting-intermediate-results-that-no-longer-fit-their-inputs">Detecting intermediate results that no longer fit their inputs<a class="headerlink" href="#detecting-intermediate-results-that-no-longer-fit-their-inputs" title="Permanent link">&para;</a></h3>
 <p>A <a href="../tools/pypsa/#writing-results">results layer</a> replaces the SubNetworks of its base, but a child editing the topology keeps its parent's until the next solve. Telling them stale needs provenance of which inputs each came from.</p>
-<h3 id="filtering-a-record-before-build">Filtering a record before <code>build</code><a class="headerlink" href="#filtering-a-record-before-build" title="Permanent link">&para;</a></h3>
-<p>Selecting one period or chosen outputs is a separate feature. <a href="../proposals/dep-0031-a-record-selects-a-view/">DEP 31</a> drafts it as a selected view of the record.</p>
+<h3 id="naming-a-label-by-a-propertys-value-as-the-dims-own-keyword">Naming a label by a property's value as the dim's own keyword<a class="headerlink" href="#naming-a-label-by-a-propertys-value-as-the-dims-own-keyword" title="Permanent link">&para;</a></h3>
+<p>A multi-period record labels its snapshots by position, and <a href="../use/selecting/#keywords-and-values"><code>select</code></a> matches <code>snapshot=</code> against those labels. Taking a timestamp there, matched against <code>snapshot.timestep</code>, would need a rule for when a keyword reads a property rather than the label.</p>
+<h3 id="whether-a-multi-dim-left-with-one-coordinate-reads-as-that-dim">Whether a multi-dim left with one coordinate reads as that dim<a class="headerlink" href="#whether-a-multi-dim-left-with-one-coordinate-reads-as-that-dim" title="Permanent link">&para;</a></h3>
+<p><a href="../use/selecting/#squeezing-a-dim">Squeezing</a> a coordinate's dim projects a multi-dim's tuples on the others. One left with a single coordinate stays a struct of one field rather than reading as the dim it draws on.</p>
+<h3 id="editing-through-a-selection">Editing through a selection<a class="headerlink" href="#editing-through-a-selection" title="Permanent link">&para;</a></h3>
+<p>A <code>WorkingRecord</code> over a <code>Selection</code> would stage at the base's coordinates through <a href="../use/selecting/#lifting-rows-back-to-the-base"><code>lift</code></a>. Today an edit goes to the base.</p>
+<h3 id="a-selection-that-follows-a-workingrecords-edits">A selection that follows a <code>WorkingRecord</code>'s edits<a class="headerlink" href="#a-selection-that-follows-a-workingrecords-edits" title="Permanent link">&para;</a></h3>
+<p>A selection resolves the axes it narrows at the call (<a href="../use/selecting/#laziness-and-layers">laziness</a>), so a label a <code>WorkingRecord</code> adds later is outside them. Following the edits, and registering a selection as DuckDB <a href="../storage/views/">views</a>, would need the narrowing as a plan rather than as labels.</p>
 <h3 id="whether-a-workingrecord-over-an-open-record-stages-against-a-snapshot">Whether a <code>WorkingRecord</code> over an open record stages against a snapshot<a class="headerlink" href="#whether-a-workingrecord-over-an-open-record-stages-against-a-snapshot" title="Permanent link">&para;</a></h3>
 <p>Writing into an open record invalidates its owner-map cache.
 A mutable record would need the same invalidation per edit, or to stage against a snapshot taken at construction.
 The second is simpler and arguably more correct, since an edit sequence should not see another writer's changes mid-flight. It means a record can go stale.</p>
-<h3 id="registering-a-records-relations-as-named-views">Registering a record's relations as named views<a class="headerlink" href="#registering-a-records-relations-as-named-views" title="Permanent link">&para;</a></h3>
-<p>A frontend issuing ad-hoc SQL needs names in a catalog, which <code>CREATE VIEW</code> against a file-backed catalog provides. Each view's definition is the resolved overlay and materialises nothing.
-Creating a view binds its schema, so registering N attributes costs N footer reads. Catalog reopen cost is linear in view count, which argues for one catalog per record.</p>
 <h3 id="what-else-a-record-should-answer-about-its-labels-without-handing-over-a-frame">What else a <code>Record</code> should answer about its labels without handing over a frame<a class="headerlink" href="#what-else-a-record-should-answer-about-its-labels-without-handing-over-a-frame" title="Permanent link">&para;</a></h3>
 <p><a href="../use/reading/#flags"><code>flags</code></a> sets the shape: cheap derived metadata a consumer plans against before opening a file. It answers only per attribute.
 <code>entity -&gt; ctype</code> is a column of the <a href="../storage/format/#axis-files">resolved axis</a>, so it is one frame across all categories. "Which categories have live labels" and "how many labels a category has" are still frames to collect.
@@ -2043,7 +2408,8 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 <h3 id="how-a-property-that-refers-to-a-dim-maps-onto-mathspec">How a property that refers to a dim maps onto mathspec<a class="headerlink" href="#how-a-property-that-refers-to-a-dim-maps-onto-mathspec" title="Permanent link">&para;</a></h3>
 <p>mathspec spells it as a mathspec relation, <code>carrier_of: { key: generator, values: carrier }</code>, a declaration of its own beside the dims. datarecord declares <code>one_of: carrier</code> on a property of <code>generator</code>. Unifying the two is left for later.</p>
 <h3 id="whether-a-default-must-name-a-live-label">Whether a default must name a live label<a class="headerlink" href="#whether-a-default-must-name-a-live-label" title="Permanent link">&para;</a></h3>
-<p><code>bus.carrier</code> defaults to <code>AC</code> in PyPSA's schema, and a default is <a href="../model/properties/#default_by-a-default-per-category">never stored</a>, so nothing checks that <code>AC</code> is a label of <code>carrier</code>.</p>
+<p><code>bus.carrier</code> defaults to <code>AC</code> in PyPSA's schema, and a default is <a href="../model/properties/#default_by-a-default-per-category">never stored</a>, so nothing checks that <code>AC</code> is a label of <code>carrier</code>.
+A <a href="../use/selecting/#what-goes-with-a-dropped-label">selection</a> applies the default when it propagates, so a bus defaulting to a carrier the selection drops goes, and one defaulting to a label no axis holds stays.</p>
 <h3 id="whether-bus-earns-its-place-in-the-fold-key">Whether <code>bus</code> earns its place in the fold key<a class="headerlink" href="#whether-bus-earns-its-place-in-the-fold-key" title="Permanent link">&para;</a></h3>
 <p>PyPSA's <code>partial</code> gains <code>bus</code> so a layer patches one bus's <code>v_nom</code>, and every <code>partial</code> coordinate is paid for by every read (<a href="../layers/tree/#partial-the-granularity-of-an-override">keep it small</a>). Measuring it on a pypsa-eur-sized record would settle it.</p>
 <h3 id="whether-a-custom-bus-column-can-be-a-property">Whether a custom bus column can be a property<a class="headerlink" href="#whether-a-custom-bus-column-can-be-a-property" title="Permanent link">&para;</a></h3>
@@ -2058,7 +2424,30 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 <p><a href="../model/schema/#versioning">Versioning</a> refuses it. Allowing it, the layer would restate, as resolved, every key of its own <code>partial</code> at which a parent map row names a label of the dim; the fold would then project the dim out of the parent's map, <a href="../layers/resolution/#crossing-rows">step 3 of the fold</a> dropping every row that named it, and refuse a layer leaving one uncovered. <code>compatible_with</code> would accept the smaller <code>partial</code>, and a helper would build such a layer from a revision.</p>
 <h3 id="what-pypsa1474-lands-as">What PyPSA#1474 lands as<a class="headerlink" href="#what-pypsa1474-lands-as" title="Permanent link">&para;</a></h3>
 <p>Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop <code>""</code> meaning none. The tool adds the one and stores the other as NULL today (<a href="../tools/pypsa/#buses-and-carriers-are-dims">PyPSA</a>).</p>
+<h3 id="whether-the-checks-at-set-and-at-write-can-take-the-folds-fixed-plan">Whether the checks at <code>set</code> and at write can take the fold's fixed plan<a class="headerlink" href="#whether-the-checks-at-set-and-at-write-can-take-the-folds-fixed-plan" title="Permanent link">&para;</a></h3>
+<p><a href="../layers/resolution/#one-plan-for-every-layer">The fold</a> carries a row's named set as data, so its joins do not depend on the rows. The refusal of two crossing rows in <a href="../use/editing/#set"><code>set</code></a> and in <a href="../use/writing/#shape">the writer</a> loops over the pairs of named sets the rows hold, fetching per pair.</p>
+<h3 id="whether-set-can-stage-a-scoped-or-crossing-broadcast-without-spreading-it">Whether <code>set</code> can stage a scoped or crossing broadcast without spreading it<a class="headerlink" href="#whether-set-can-stage-a-scoped-or-crossing-broadcast-without-spreading-it" title="Permanent link">&para;</a></h3>
+<p><a href="../use/editing/#set"><code>set</code></a> stages a scenario-scoped broadcast, or one that crosses another row, as one row per entity and snapshot it reaches. A large edit then stages rows in proportion to the labels it reaches, not to the rows it names.</p>
+<h3 id="when-a-deep-ancestry-materialises-its-map">When a deep ancestry materialises its map<a class="headerlink" href="#when-a-deep-ancestry-materialises-its-map" title="Permanent link">&para;</a></h3>
+<p>A cold fold in a fresh workspace stays linear in depth, about 0.1 s per layer (<a href="../layers/resolution/#a-fold-starts-from-the-nearest-fold-at-hand">the nearest fold at hand</a>). Materialising every N layers or at a branch point would bound it, and no policy is chosen.</p>
+<h3 id="whether-an-edit-may-join-a-callers-open-transaction">Whether an edit may join a caller's open transaction<a class="headerlink" href="#whether-an-edit-may-join-a-callers-open-transaction" title="Permanent link">&para;</a></h3>
+<p>An edit runs in <a href="../use/editing/#edits">its own transaction</a>, and DuckDB nests none, so an edit is refused while the caller holds one open on the same cursor. Joining the caller's would lose the edit's own rollback on refusal.</p>
+<h3 id="what-a-schema-change-on-a-workingrecord-does-to-its-registered-views">What a schema change on a <code>WorkingRecord</code> does to its registered views<a class="headerlink" href="#what-a-schema-change-on-a-workingrecord-does-to-its-registered-views" title="Permanent link">&para;</a></h3>
+<p>A <code>WorkingRecord</code> has no method that changes its schema; the schema changes only at commit.
+One that does would either refuse a change that alters a column or the fold of an existing <a href="../storage/views/">registered view</a> — widening an attribute's <code>dims</code>, adding a property, adding a dim to <code>partial</code> — or replace the views it reaches, which a client's query would then see change under it. Adding an attribute or a dim would add its view (<a href="../proposals/dep-0034-a-record-registers-as-views/#schema-changes">DEP 34</a>).</p>
+<h3 id="how-a-sql-client-settles-rows">How a SQL client settles rows<a class="headerlink" href="#how-a-sql-client-settles-rows" title="Permanent link">&para;</a></h3>
+<p><a href="../storage/views/">Registered views</a> are raw, so a client applies the broadcast rule itself. <a href="../use/reading/#settling-rows"><code>settle</code></a> ported to the frontend, and a page on the raw format for SQL clients, are both still to write (<a href="../proposals/dep-0034-a-record-registers-as-views/#open-issues">DEP 34</a>).</p>
+<h3 id="who-drops-an-abandoned-registration">Who drops an abandoned registration<a class="headerlink" href="#who-drops-an-abandoned-registration" title="Permanent link">&para;</a></h3>
+<p>A server that crashes or forgets leaves its views and the folds they read. The <code>registered</code> table lists every registration with when it was <code>created</code>, but no one unregisters by any rule yet (<a href="../proposals/dep-0034-a-record-registers-as-views/#open-issues">DEP 34</a>). Unregistering frees the staging tables the registration <a href="../storage/store/#the-databases-schemas">holds</a>, so the rule also decides how long they stay. A workspace reopened on a file keeps an earlier run's <code>_staged</code> and <code>_fold</code> schemas, which no record holds; those no registration's <code>held</code> column lists could be swept, and nothing does yet (<a href="../proposals/dep-0035-a-record-holds-the-tables-it-reads/#open-issues">DEP 35</a>).</p>
+<h3 id="a-public-create_view-taking-a-qualified-name">A public <code>create_view</code> taking a qualified name<a class="headerlink" href="#a-public-create_view-taking-a-qualified-name" title="Permanent link">&para;</a></h3>
+<p><code>register</code> calls DuckDB's private <code>_render</code> and <code>_create_view</code>, since <code>DuckDBPyRelation.create_view</code> takes one identifier and no nested path (<a href="../storage/views/#building-the-views">building the views</a>). That caps DuckDB at the newest release the suite passed on until a public method takes a qualified name, which is to be requested upstream.</p>
+<h3 id="a-reader-seeing-part-of-a-large-committed-transaction">A reader seeing part of a large committed transaction<a class="headerlink" href="#a-reader-seeing-part-of-a-large-committed-transaction" title="Permanent link">&para;</a></h3>
+<p>DuckDB 2.0 lets a reader on another cursor see part of a committed transaction once it writes about 300,000 rows or more, in 0.1–1% of reads. No edit can rule it out until DuckDB does, so the <a href="../storage/views/#consistent-states">consistent states</a> hold for smaller edits only. It is to be reported upstream (<a href="../proposals/dep-0034-a-record-registers-as-views/#open-issues">DEP 34</a>).</p>
+<h3 id="who-pays-the-cold-fold-of-a-registered-revision">Who pays the cold fold of a registered revision<a class="headerlink" href="#who-pays-the-cold-fold-of-a-registered-revision" title="Permanent link">&para;</a></h3>
+<p><code>register</code>, or the first read of a view, pays the <a href="../layers/resolution/#a-fold-starts-from-the-nearest-fold-at-hand">cold fold</a> of a deep revision, once per lineage in a workspace. It stays linear in depth until a revision's map is <a href="#when-a-deep-ancestry-materialises-its-map">materialised</a>.</p>
 <h2 id="settled">Settled<a class="headerlink" href="#settled" title="Permanent link">&para;</a></h2>
+<h3 id="filtering-a-record-before-build">Filtering a record before <code>build</code><a class="headerlink" href="#filtering-a-record-before-build" title="Permanent link">&para;</a></h3>
+<p>A record selects a view of its labels, <code>record.select(period=2030)</code>, which any consumer reads as a <code>RecordLike</code> (<a href="../use/selecting/">selecting</a>). One label squeezes its dim, and what refers to a dropped label goes with it.</p>
 <h3 id="what-a-pointwise-set-leaving-one-of-two-dims-outside-partial-null-reaches">What a pointwise <code>set</code> leaving one of two dims outside <code>partial</code> NULL reaches<a class="headerlink" href="#what-a-pointwise-set-leaving-one-of-two-dims-outside-partial-null-reaches" title="Permanent link">&para;</a></h3>
 <p>Every label of the dim it leaves NULL, at the label it names. The rest of the series keeps the parent's values, staged, committed or over a materialised parent (<a href="../layers/resolution/#a-dim-outside-partial">a dim outside <code>partial</code></a>).</p>
 <h3 id="whether-a-broadcast-survives-materialisation">Whether a broadcast survives materialisation<a class="headerlink" href="#whether-a-broadcast-survives-materialisation" title="Permanent link">&para;</a></h3>
@@ -2075,6 +2464,12 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 <p>Nothing. The call is <a href="../use/editing/#set">rejected</a>.
 <code>{entity: dc, bus: NULL}</code> is <a href="../model/attributes/#the-broadcast-rule">no multi-dim value</a>, a multi-dim value being a whole tuple or NULL, so it is refused wherever a row comes in.
 The alternative, "every connection of this entity", would broadcast over part of a tuple. A multi-dim's column broadcasts only whole, and a NULL struct means every tuple.</p>
+<h3 id="whether-a-records-relations-can-be-named-views">Whether a record's relations can be named views<a class="headerlink" href="#whether-a-records-relations-can-be-named-views" title="Permanent link">&para;</a></h3>
+<p>They can, in the workspace's own database, one schema per registration with a nested schema per kind (<a href="../storage/views/">registered views</a>). Over a <code>WorkingRecord</code> the views are created once and follow every edit, since a relation's plan never reads a staged row.</p>
+<h3 id="when-a-server-drops-the-folds-it-opened">When a server drops the folds it opened<a class="headerlink" href="#when-a-server-drops-the-folds-it-opened" title="Permanent link">&para;</a></h3>
+<p>When the last open record reading one is closed, unless a registration still holds it. A record collected unclosed leaves its folds to the workspace for its life, so a server closes each record it opens (<a href="../storage/store/#the-databases-schemas">the database's schemas</a>).</p>
+<h3 id="when-a-workingrecords-staging-tables-are-dropped">When a <code>WorkingRecord</code>'s staging tables are dropped<a class="headerlink" href="#when-a-workingrecords-staging-tables-are-dropped" title="Permanent link">&para;</a></h3>
+<p>When it is closed or collected, unless a registration of it still holds them; then on that registration's <code>unregister</code>. Its tables sit in a schema of their own, which the workspace drops whole (<a href="../storage/store/#the-databases-schemas">the database's schemas</a>).</p>
 
 
 

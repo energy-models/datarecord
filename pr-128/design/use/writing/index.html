@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -766,6 +766,8 @@
       
         
       
+        
+      
     
     
     
@@ -826,6 +828,34 @@
     
   
     Reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../selecting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Selecting
   
 
     
@@ -1020,6 +1050,8 @@
       
         
       
+        
+      
     
     
     
@@ -1189,6 +1221,12 @@
   
     
     
+      
+        
+      
+        
+      
+        
       
         
       
@@ -1611,8 +1649,7 @@ A staged layer's own rows, <code>w.edits</code>, are such a source, so a <a href
 <p>A <a href="../reading/"><code>RecordLike</code></a> is no <code>LayerData</code>.
 This holds for a <code>Record</code>, a <code>WorkingRecord</code> among them, and for a framework object such as <a href="../../tools/"><code>Tool.to_datarecord</code></a> returns.
 The writer wraps a <code>RecordLike</code> in a thin adapter that reads its <code>Relations</code> mappings through the same enumerate-and-read pairs, so the writer has one code path.
-The adapter takes each value as <a href="../editing/#set"><code>set</code></a> does: a relation on the writer's connection, or a pandas, polars or arrow frame that DuckDB scans.
-A <code>WorkingRecord</code> is read through a pinned copy that folds its staged edits once for the write.</p>
+The adapter takes each value as <a href="../editing/#set"><code>set</code></a> does: a relation on the writer's connection, or a pandas, polars or arrow frame that DuckDB scans.</p>
 
 
 

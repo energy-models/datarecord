@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -674,10 +674,43 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#selecting-a-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting a view
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#closing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reading-a-directory" class="md-nav__link">
     <span class="md-ellipsis">
       
         Reading a directory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-from-sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading from SQL
       
     </span>
   </a>
@@ -1114,10 +1147,43 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#selecting-a-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting a view
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#closing" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Closing
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#reading-a-directory" class="md-nav__link">
     <span class="md-ellipsis">
       
         Reading a directory
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-from-sql" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading from SQL
       
     </span>
   </a>
@@ -1162,7 +1228,8 @@ A plain directory, a hundred-layer tree, a record with pending edits and a frame
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>  <span class="c1"># which axes each attribute actually uses</span>
 </code></pre></div>
 <p>Every value is a <code>duckdb.DuckDBPyRelation</code> on <code>record.con</code>, which is a query plan.
-Nothing is read until you fetch it with <code>.df()</code>, <code>.pl()</code> or <code>.to_arrow_table()</code>, and listing the keys reads nothing (<a href="../../design/use/reading/#relations">design</a>).</p>
+Nothing is read until you fetch it with <code>.df()</code>, <code>.pl()</code> or <code>.to_arrow_table()</code>, and listing the keys reads nothing (<a href="../../design/use/reading/#relations">design</a>).
+The keys are every name the schema declares, and one that no layer holds reads an empty relation with its declared columns.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">entities</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">gens</span> <span class="o">=</span> <span class="n">entities</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">"ctype = 'Generator'"</span><span class="p">)</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 <a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">p_nom</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">"value &gt; 0"</span><span class="p">)</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
@@ -1266,19 +1333,92 @@ Flags of a wider scope overstate the rows and give the same answer, only more sl
 <a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="k">else</span><span class="p">:</span>
 <a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>    <span class="o">...</span>  <span class="c1"># constants for some generators, series for others</span>
 </code></pre></div>
+<h2 id="selecting-a-view">Selecting a view<a class="headerlink" href="#selecting-a-view" title="Permanent link">&para;</a></h2>
+<p><code>record.select(**labels)</code> reads the record at some of its labels, as xarray's <code>sel</code> does, and is itself a record (<a href="../../design/use/selecting/">design</a>).
+One label squeezes its dim out of the view, and a list, a slice or a partial date string keeps it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">select</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="mi">2030</span><span class="p">)</span>  <span class="c1"># period squeezed; properties referring to it gone</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="p">[</span><span class="mi">2030</span><span class="p">,</span> <span class="mi">2040</span><span class="p">])</span>  <span class="c1"># kept at two labels</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="mi">2030</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>  <span class="c1"># 2030 onwards, kept</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">snapshot</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="s2">"2013-02"</span><span class="p">,</span> <span class="s2">"2013-03"</span><span class="p">))</span>  <span class="c1"># February and March</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">snapshot</span><span class="o">=</span><span class="s2">"2013-02"</span><span class="p">)</span>  <span class="c1"># February, kept</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># squeezed</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">select</span><span class="p">(</span><span class="n">framework_record</span><span class="p">,</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># any RecordLike</span>
+</code></pre></div>
+<p>Every label that refers to a dropped one goes with it, through properties and multi-dim tuples, and nothing flows back:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">bus</span><span class="o">=</span><span class="p">[</span><span class="s2">"north"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">])</span>  <span class="c1"># connections to other buses go</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">carrier</span><span class="o">=</span><span class="p">[</span><span class="s2">"AC"</span><span class="p">,</span> <span class="s2">"wind"</span><span class="p">])</span>  <span class="c1"># AC buses, wind entities, NULL carriers stay</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>  <span class="c1"># its connections stay, every bus too</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">country</span><span class="o">=</span><span class="p">[</span><span class="s2">"DE"</span><span class="p">])</span>  <span class="c1"># buses in German states, through bus.state</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="o">**</span><span class="p">{</span><span class="s2">"from"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">})</span>  <span class="c1"># a coordinate narrows its multi-dim's tuples</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">sign</span><span class="o">=-</span><span class="mf">1.0</span><span class="p">)</span>  <span class="c1"># a property by its bare name narrows its subject</span>
+</code></pre></div>
+<p>The view reads like any record, and its attributes stay query plans on <code>record.con</code>.
+A squeezed dim's column is gone from every attribute, its rows NULL there settled to the label by the broadcast rule.
+Its <code>labels</code> are what you asked for, normalized, so you narrow a view by selecting again:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">view</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="mi">2030</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">carrier</span><span class="o">=</span><span class="p">[</span><span class="s2">"AC"</span><span class="p">])</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">view</span><span class="o">.</span><span class="n">labels</span>  <span class="c1"># {"period": 2030, "carrier": ["AC"]}</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">view</span><span class="o">.</span><span class="n">base</span>  <span class="c1"># record, never a selection</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">view</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+</code></pre></div>
+<p>A label the axis lacks, an empty list, a slice with a step, a slice of an axis of text and a slice covering no label are refused at the call, and the error names the keyword.
+So is a squeeze that would hand a label with no category the default <code>default_by</code> sets for the squeezed one, such as <code>ctype="Load"</code> while an entity has no <code>ctype</code>; <code>ctype=["Load"]</code> keeps the dim and every default as the record has it.</p>
+<p>Rows you compute over a view and write back over the record need the squeezed labels back, which <code>lift</code> adds:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">view</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">result</span> <span class="o">=</span> <span class="n">view</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"price"</span><span class="p">]</span>  <span class="c1"># bus | snapshot | attribute | breakpoint | value</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="n">view</span><span class="o">.</span><span class="n">lift</span><span class="p">(</span><span class="s2">"price"</span><span class="p">,</span> <span class="n">result</span><span class="p">)</span>  <span class="c1"># bus | snapshot | scenario = 'high' | ...</span>
+</code></pre></div>
+<h2 id="closing">Closing<a class="headerlink" href="#closing" title="Permanent link">&para;</a></h2>
+<p>A record holds the tables its fold is kept in until you <code>close()</code> it, and a <code>with</code> block closes it on exit.
+Then the workspace drops them, unless another open record, a <a href="../../design/storage/views/">registration</a> or a record collected without closing holds them.
+The next record over the same revision folds its ancestry again, so a process reading one revision often keeps one record open rather than one per read.
+A closed record raises <code>ValueError</code> on any read, and a relation taken from it before fails with DuckDB's missing-table error, so fetch what you need first.
+<code>revision.record</code> hands out a new record once the one it cached is closed.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">with</span> <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rev_id</span><span class="p">)</span><span class="o">.</span><span class="n">record</span> <span class="k">as</span> <span class="n">record</span><span class="p">:</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">p_nom</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+</code></pre></div>
+<p>A record you never close keeps its tables for the workspace's life, so a chained read stays safe (<a href="../../design/storage/store/#the-databases-schemas">design</a>).</p>
 <h2 id="reading-a-directory">Reading a directory<a class="headerlink" href="#reading-a-directory" title="Permanent link">&para;</a></h2>
 <p>A parquet directory is a record, and reading one involves no layers:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
-<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">)</span>
-<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">()</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/my-record/"</span><span class="p">)</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
 <p>The layout is the whole format (<a href="../../design/storage/format/">design</a>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>record/
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>├── manifest.json            # the record's id, its schema and the files it holds
-<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>├── dims/&lt;dim&gt;.parquet       # one axis per declared dim, multi-dims included: labels and their properties
-<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>└── attributes/&lt;attr&gt;.parquet  # one attribute per file, whatever its dims, results included
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>record/
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>├── manifest.json            # the record's id, its schema and the files it holds
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>├── dims/&lt;dim&gt;.parquet       # one axis per declared dim, multi-dims included: labels and their properties
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>└── attributes/&lt;attr&gt;.parquet  # one attribute per file, whatever its dims, results included
+</code></pre></div>
+<h2 id="reading-from-sql">Reading from SQL<a class="headerlink" href="#reading-from-sql" title="Permanent link">&para;</a></h2>
+<p><code>register</code> names a record's relations as views in the workspace's database, so a client that speaks only SQL reads it, over a DuckDB server too (<a href="../../design/storage/views/">design</a>).
+Over a <code>WorkingRecord</code> the views follow every edit:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkingRecord</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rev_id</span><span class="p">)</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="n">w</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"edit_3f2a"</span><span class="p">)</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">entity</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">edit_3f2a</span><span class="p">.</span><span class="n">attributes</span><span class="p">.</span><span class="n">p_nom</span><span class="p">;</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">edit_3f2a</span><span class="p">.</span><span class="n">properties</span><span class="p">.</span><span class="n">bus</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">carrier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'AC'</span><span class="p">;</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>  <span class="c1"># the next SELECT reads 150.0</span>
+</code></pre></div>
+<p>The views are raw, as <code>attributes</code> is: a NULL coordinate means every label, and a client <a href="#settling-rows">settles rows</a> itself.</p>
+<p>A commit leaves the views reading <code>w</code>.
+To go on editing the new revision, drop them and register a fresh <code>WorkingRecord</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">unregister</span><span class="p">(</span><span class="s2">"edit_3f2a"</span><span class="p">)</span>
+<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a><span class="n">WorkingRecord</span><span class="p">(</span><span class="n">child</span><span class="o">.</span><span class="n">record</span><span class="p">)</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"edit_8c01"</span><span class="p">)</span>
+<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">registered</span><span class="p">()</span>  <span class="c1"># name | revision | working | created</span>
+</code></pre></div>
+<p><code>registered()</code> reads the table <code>registered</code>, which a SQL client queries directly.
+One registration's views are listed by DuckDB's catalog, where <code>duckdb_views().schema_name</code> holds only the last part of a nested schema's path, so join the schemas for the rest:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">parent_schema</span><span class="p">,</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="k">schema_name</span><span class="p">,</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="n">view_name</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a><span class="k">FROM</span><span class="w"> </span><span class="n">duckdb_views</span><span class="p">()</span><span class="w"> </span><span class="n">v</span><span class="w"> </span><span class="k">JOIN</span><span class="w"> </span><span class="n">duckdb_schemas</span><span class="p">()</span><span class="w"> </span><span class="n">s</span><span class="w"> </span><span class="k">ON</span><span class="w"> </span><span class="n">v</span><span class="p">.</span><span class="n">schema_oid</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">oid</span>
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a><span class="k">WHERE</span><span class="w"> </span><span class="n">s</span><span class="p">.</span><span class="n">parent_schema</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'edit_8c01'</span><span class="p">;</span>
 </code></pre></div>
 
 

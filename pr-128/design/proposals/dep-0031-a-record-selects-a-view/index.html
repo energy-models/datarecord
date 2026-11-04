@@ -16,14 +16,14 @@
         <link rel="prev" href="../dep-0026-the-fold-reads-each-layer-under-its-own-schema/">
       
       
-        <link rel="next" href="../../../contributing/">
+        <link rel="next" href="../dep-0033-the-fold-is-a-fixed-plan/">
       
       
         
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -764,6 +764,8 @@
       
         
       
+        
+      
     
     
     
@@ -817,6 +819,8 @@
   
     
     
+      
+        
       
         
       
@@ -995,6 +999,12 @@
   
     
     
+      
+        
+      
+        
+      
+        
       
         
       
@@ -2088,6 +2098,90 @@
 
               
             
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0033-the-fold-is-a-fixed-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 33: The fold is a fixed plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0034-a-record-registers-as-views/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 34: A record registers its relations as views
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0035-a-record-holds-the-tables-it-reads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 35: A record holds the tables it reads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
           </ul>
         </nav>
       
@@ -2453,7 +2547,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td>Status</td>
-<td>Draft (2026-11-03)</td>
+<td>Implemented (2026-11-04)</td>
 </tr>
 <tr>
 <td>Requires</td>
@@ -2490,7 +2584,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <p><code>labels</code> holds what the caller asked for, normalized. One label stays a label, of the dim's dtype, and its dim is squeezed. A list stays a list, and a slice or a partial date string becomes the list of labels it matched; the dim is kept. <code>isinstance(value, list)</code> tells the two apart, since a dim's label is never a list. What propagation narrows is not in <code>labels</code>: it shows in the view's axes, <code>view.dims[d]</code>.</p>
 <p><code>view.base.select(**view.labels)</code> is the same view. <code>Selection.select</code> merges its keywords into <code>labels</code>, a later keyword replacing an earlier one of its dim, and selects <code>base</code> once.</p>
 <h3 id="keywords-and-values">Keywords and values<a class="headerlink" href="#keywords-and-values" title="Permanent link">&para;</a></h3>
-<p>A keyword names a dim, as a coordinate keyword of <a href="../../use/editing/#set"><code>set</code></a> does. One naming a multi-dim's coordinate that is no dim, such as <code>from=</code> of a corridor, narrows the multi-dim's tuples. One naming neither names a property by its bare name, as <code>set</code>'s property keyword does, and narrows its subject to the labels whose value, its default applied, is selected. These two never squeeze, so their values are stored as lists. A property name several subjects declare is refused, and so is a multi-dim's own name, since a tuple is selected through its coordinates.</p>
+<p>A keyword names a dim, as a coordinate keyword of <a href="../../use/editing/#set"><code>set</code></a> does. One naming a multi-dim's coordinate that is no dim, such as <code>from=</code> of a corridor, narrows the multi-dim's tuples. One naming neither names a property by its bare name, as <code>set</code>'s property keyword does, and narrows its subject to the labels whose value, its default applied, is selected; a label whose value is NULL is not. These two never squeeze, so their values are stored as lists. A property name several subjects declare is refused, and so is a coordinate several multi-dims declare. A multi-dim's own name is refused, since a tuple is selected through its coordinates.</p>
 <table>
 <thead>
 <tr>
@@ -2522,13 +2616,14 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 </tbody>
 </table>
-<p>A slice is pandas' label slice on the labels sorted, so a partial date string at an end covers its span. It takes a dim whose dtype is a number or a datetime. Labels kept are in axis order, and every relation keeps the base's row order.</p>
-<p><code>select</code> refuses, naming the keyword, a dim the schema does not declare, a label the axis lacks, an empty list, a slice with a step, a slice of an axis of text, an end the axis cannot compare and a slice covering no label.</p>
+<p>A date string is partial where it is coarser than the axis, as pandas reads it: <code>"2013-02"</code> on a daily axis names February, and <code>"2013-02-01"</code> names one label. In a list, a date string is one instant. A slice is pandas' label slice on the labels sorted, so a partial date string at an end covers its span. It takes a dim whose dtype is a number or a datetime. Labels kept are in axis order, and every relation keeps the base's row order.</p>
+<p><code>select</code> refuses, naming the keyword, a name the schema declares as no dim, coordinate or property, a label the axis lacks, an empty list, a slice with a step, a slice of an axis of text, an end the axis cannot compare and a slice covering no label. It refuses a squeezed label that another keyword's selection drops, since the dim would be squeezed at a label the view does not hold. It refuses squeezing every dim of a record that declares attributes, since attribute data over no axis is no record.</p>
 <h3 id="squeezing-a-dim">Squeezing a dim<a class="headerlink" href="#squeezing-a-dim" title="Permanent link">&para;</a></h3>
 <p>Squeezing <code>d</code> at the label <code>l</code> first keeps <code>l</code> alone, so everything referring to another label of <code>d</code> goes (<a href="#what-goes-with-a-dropped-label">below</a>). Then:</p>
 <ul>
 <li><code>d</code> leaves the schema, with its axis and its properties.</li>
-<li>A property referring to <code>d</code> goes, every value left being <code>l</code> or NULL. A <code>default_by</code> keyed on it applies its entry for <code>l</code> as the default.</li>
+<li>A property referring to <code>d</code> goes, every value left being <code>l</code> or NULL. A <code>default_by</code> keyed on it applies its entry for <code>l</code> as the default, the keys before it still overriding.</li>
+<li>A kept label NULL on such a property matches no <code>default_by</code> key, so it would take the entry for <code>l</code> in the view but not in the base. Where a <code>default_by</code> lists <code>l</code> and a kept label is NULL there, the squeeze is refused, naming the keyword; the caller writes <code>l</code> as a list of one. The label is not dropped instead, since a NULL names no label and one label would keep a different set of labels than a list of it.</li>
 <li>A multi-dim drawing on <code>d</code> loses that coordinate, its tuples projected on the others. One left with no coordinate is squeezed with it.</li>
 <li>An attribute over <code>d</code> keeps its rows at <code>l</code> and those NULL on <code>d</code>, settled by the broadcast rule along <code>d</code> alone, without the column. One over squeezed dims alone is one value over no dim.</li>
 <li><code>partial</code> and every <code>Flags</code> lose <code>d</code>.</li>
@@ -2545,7 +2640,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>Nothing flows the other way. A dim keeps a label no kept label refers to: a period no label refers to, a carrier no entity holds, an entity whose connections all went. The rule is a removal's, except that a property naming a dropped label drops its subject rather than blocking the removal.</p>
 <h3 id="laziness-and-layers">Laziness and layers<a class="headerlink" href="#laziness-and-layers" title="Permanent link">&para;</a></h3>
 <p><code>select</code> reads the axes and properties it matches labels on and propagates through, which are small, and raises its refusals at the call. Every attribute stays a plan on the base's connection: a semi-join against the kept labels and a <code>settle</code> along each squeezed dim. A selection reads the folded record and needs neither its layers nor <code>partial</code>.</p>
-<p>A selection is no layer and writes nothing. <code>WorkingRecord</code> refuses it as it refuses any other <code>RecordLike</code>, so an edit goes to the base. Its axes are resolved at the call, so over a <code>WorkingRecord</code> a label added later is outside it.</p>
+<p>A selection is no layer and writes nothing. <code>WorkingRecord</code> refuses it as it refuses any other <code>RecordLike</code>, so an edit goes to the base. The axes it narrows are resolved at the call, so over a <code>WorkingRecord</code> a label added later is outside them. An axis nothing narrows reads as the base's, and an attribute reads the base's later edits at the labels kept.</p>
 <h3 id="lifting-rows-back-to-the-base">Lifting rows back to the base<a class="headerlink" href="#lifting-rows-back-to-the-base" title="Permanent link">&para;</a></h3>
 <p>A consumer that computes rows over a selection and writes them over <code>base</code> needs the squeezed labels back. <code>view.lift(attribute, rel)</code> adds them, from <code>labels</code> and <code>base.schema</code> alone. It adds the column of each squeezed dim the base declares the attribute over, at its label, and a squeezed coordinate back into its struct. An attribute declared without a squeezed dim is returned as it came; whether to write it is the consumer's decision.</p>
 <p>With <code>view = record.select(scenario="high", period=2030)</code>:</p>
@@ -2627,7 +2722,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>Naming a label by a property's value as the dim's own keyword, such as <code>snapshot=</code> taking a timestamp over position labels.</li>
 <li>Whether a multi-dim left with one coordinate reads as that dim.</li>
 <li>Editing through a selection: a <code>WorkingRecord</code> over a <code>Selection</code>, staging at the base's coordinates through <code>lift</code>.</li>
-<li>A selection that follows a <code>WorkingRecord</code>'s edits, and registering a selection as DuckDB views.</li>
+<li>A selection whose narrowed axes follow a <code>WorkingRecord</code>'s edits, and registering a selection as DuckDB views.</li>
 <li>Whether propagation applies a default naming no live label (<a href="../../open-questions/#whether-a-default-must-name-a-live-label">open questions</a>).</li>
 </ul>
 
@@ -2682,13 +2777,13 @@ SPDX-License-Identifier: CC-BY-4.0
         
         
           
-          <a href="../../../contributing/" class="md-footer__link md-footer__link--next" aria-label="Next: Contributing">
+          <a href="../dep-0033-the-fold-is-a-fixed-plan/" class="md-footer__link md-footer__link--next" aria-label="Next: DEP 33: The fold is a fixed plan">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Contributing
+                DEP 33: The fold is a fixed plan
               </div>
             </div>
             <div class="md-footer__button md-icon">

@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -962,6 +962,16 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li><code>select(record, **labels)</code>, exported beside <code>settle</code>, and <code>Record.select</code>
+  return a <code>Selection</code>: a <code>RecordLike</code> holding any record at the labels named,
+  as xarray's <code>sel</code> takes them. One label squeezes its dim out of the schema,
+  its attributes' rows settled along it by the broadcast rule; a list, a slice
+  or a partial date string keeps it. A keyword naming a multi-dim's coordinate
+  narrows its tuples, and one naming a property narrows its subject. A label
+  whose property names a dropped label goes, and so does a tuple naming one,
+  until nothing more goes. <code>Selection.select</code> merges its labels and selects the
+  base again, and <code>Selection.lift</code> puts the squeezed labels back on rows
+  computed over the view. Attributes stay plans on the base's connection.</li>
 <li>Properties. The schema has a <code>properties</code> section (<code>PropertySpec</code>) that
   declares, per dim or multi-dim, the values that describe one label. A record
   stores them as columns of <code>dims/&lt;dim&gt;.parquet</code>.
@@ -1094,9 +1104,39 @@ SPDX-License-Identifier: CC-BY-4.0
   as a thin layer. The layer restates the SubNetworks of <code>base</code> and sets
   NULL on the results of <code>base</code> that it does not write again. A NULL series
   value on export leaves the component at its static value.</li>
+<li><code>PyPSA.build</code> takes any <code>RecordLike</code>, so <code>PyPSA.build(PyPSA.to_datarecord(n, con))</code>
+  builds the network its committed record does.</li>
+<li><code>Record.register(name)</code> creates DuckDB views of a record's dims, properties
+  and attributes in the schemas <code>name.dims</code>, <code>name.properties</code> and
+  <code>name.attributes</code>. Over a <code>WorkingRecord</code> they are live and show every edit.
+  <code>Workspace.unregister(name)</code> drops them, and <code>Workspace.registered()</code> lists
+  them.</li>
+<li><code>WorkingRecord.close()</code> drops the record's staging tables, as does
+  garbage collection, and <code>with WorkingRecord(base) as w:</code> closes it on exit.
+  A closed record raises <code>ValueError</code> on every read and edit. A registration
+  of the record keeps the tables until <code>Workspace.unregister(name)</code>. The
+  workspace keeps its tables out of <code>main</code>: a revision's fold in
+  <code>_fold."&lt;id&gt;"</code>, a <code>WorkingRecord</code>'s staging tables in <code>_staged."&lt;id&gt;"</code>, and
+  a call's intermediate tables in <code>_scratch</code>, so <code>register</code> refuses these
+  three names. A workspace reopened on a file can <code>unregister</code> the
+  registrations it lists.</li>
+<li><code>Record.close()</code> releases the record's folds, and <code>with record:</code> closes it
+  on exit. The workspace drops a revision's fold once no open record or
+  registration holds it. A record collected unclosed keeps its folds for the
+  workspace's life, so a chained read stays valid. A closed record raises
+  <code>ValueError</code> on every read, and <code>Revision.record</code> builds a new one once its
+  cached record is closed. <code>Workspace.registered()</code> lists the schemas each
+  registration <code>held</code>, which a reopened workspace holds for it again.</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Breaking: the schema models (<code>Schema</code>, <code>Dimension</code>, <code>AttributeSpec</code>,
+  <code>PropertySpec</code>) are frozen; derive a changed one with
+  <code>model_copy(update=...)</code>. <code>Schema.digest</code> is the sha256 of its manifest JSON.</li>
+<li>Breaking: <code>RecordLike</code> declares <code>con</code>, the connection its relations are
+  planned on; a hand-written <code>RecordLike</code> adds it.</li>
+<li><code>WorkingRecord</code> over a <code>RecordLike</code> that is no <code>Record</code> raises a <code>TypeError</code>
+  naming the fix, <code>WorkingRecord(ws.write(source, uri))</code>.</li>
 <li>
 <p>Breaking: the PyPSA dialect declares every component attribute over
   <code>scenario</code>, except those PyPSA keeps the same in every scenario
@@ -1119,9 +1159,10 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>Store.dim_owners_uri(id)</code> is where it lives. A node materialised
   before holds no such file and fails the read: delete its <code>resolved/</code> and
   materialise it again.</li>
+<li>datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
+  relation: it re-runs on every fetch and has no <code>fetchone()</code>.</li>
 <li>
-<p>datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
-  relation: it re-runs on every fetch and has no <code>fetchone()</code>.</p>
+<p><code>duckdb</code> is capped at 2.0.0, the newest release the suite passed on.</p>
 </li>
 <li>
 <p>The PyPSA tool melts a time series one entity at a time, so a parquet row
@@ -1272,8 +1313,8 @@ SPDX-License-Identifier: CC-BY-4.0
   read its labels.</li>
 <li>The writer accepts two rows that each name a dim the other leaves NULL
   where a row naming both is there, so <code>ws.write(w, uri)</code> writes a record of
-  several layers. The read of a <code>WorkingRecord</code> refuses two staged rows that
-  cross with no staged row naming both.</li>
+  several layers. A <code>set</code> staging two rows that cross with no row naming
+  both is refused.</li>
 <li>The fold reads each layer under the schema in its own manifest. Where a
   deeper layer's schema is wider, the map folded so far, materialised or not,
   is extended to it, so a materialised node keeps counting after a descendant
@@ -1281,6 +1322,41 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>owner_map_&lt;id&gt;</code>. A layer that restates a key along a dim outside <code>partial</code>
   and omits a label its parent held there deletes that value, and a later
   widening of <code>partial</code> no longer brings it back.</li>
+<li>The fold of a layer onto the map below it is one query whose joins its
+  schema fixes, whatever named sets its rows hold (<code>fold_layer</code>, replacing
+  <code>fold_attributes</code>). A frozen layer leaving a dim outside <code>partial</code> unfilled
+  is refused when a workspace first folds it, not on every read.</li>
+<li>Every <code>Record</code> lists every dim, property subject and attribute its schema
+  declares, a typed empty relation where no layer holds a row, rather than
+  raising <code>KeyError</code>.</li>
+<li>A relation of a <code>WorkingRecord</code> is planned without reading a staged row,
+  only the frozen layers' rows, so one built before an edit reads it. Every staging table exists
+  from the start, an axis holding a copy of the base's, and <code>rollback()</code>
+  empties them rather than dropping them. Each edit runs in one transaction,
+  which also refreshes the staged owner-map rows the fold, <code>flags()</code> and the
+  write read.</li>
+<li>A <code>set</code> whose row crosses a staged row, with no staged row naming both, also
+  stages the row naming both with its value: the later edit wins where the
+  two meet, rather than the read failing.</li>
+<li>The edits of a <code>WorkingRecord</code> restate an axis only where it differs from
+  the base's, and write no attribute without rows.</li>
+<li>A fold starts from the deepest proper ancestor whose fold is materialised
+  or already held by the workspace, so a record opened on a child after a
+  commit folds only the child's layer.</li>
+<li>A <code>Record</code> builds the coords of its frozen layers once per thread rather
+  than on every relation it reads, about halving a warm read of a deep
+  record. A write checks a new layer's axes against its parent's fold.</li>
+<li>The cold fold of a deep record's owner map takes about a third of the
+  time: each layer's owner rows, the parent rows they leave and the pairs
+  the check reads are each built once, the crossing pairs are taken from the
+  check's, unions bind once per arm, the parts of the plan a schema fixes are
+  built once per schema, and a layer's flags test only the attributes it
+  holds.
+  <code>Revision.materialise</code> writes the fold its workspace already holds rather
+  than folding again.</li>
+<li>An edit inside a transaction the caller holds open on the same cursor is
+  refused with a <code>TransactionException</code> that says so, since an edit runs in
+  its own transaction.</li>
 <li><code>Attr.resolve</code> and <code>Schema.resolve</code> take <code>labels</code> and <code>flags</code>, and settle
   each source by the broadcast rule over <code>labels</code> before a rename or a
   computation. <code>settle(rel, labels, flags)</code>, exported from <code>datarecord</code>, does
@@ -1290,6 +1366,8 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Breaking: <code>PinnedRecord</code> is gone. A write reads a <code>WorkingRecord</code> through
+  its per-attribute plans directly.</li>
 <li><code>Group</code>, the schema's <code>groups</code> section, <code>Schema.groups</code>,
   <code>Schema.group_columns</code>, <code>Schema.group_type</code>, <code>Schema.groups_of</code>,
   <code>Schema.group_key</code>, <code>Schema.check_group_columns</code>, <code>Schema.field_over</code>,
