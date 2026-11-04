@@ -41,7 +41,6 @@ from datarecord.duck import (
     named_mask,
     nested,
     null_safe,
-    struct_of,
     transaction,
     union_all_by_name,
 )
@@ -139,8 +138,8 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     dims = schema.partial_dims
     contested = "false"
     if dims:
-        named = struct_of({d: col("varies")[d] for d in dims})
-        ways = struct_of({"l": col(LAYER_COLUMN), "n": named})
+        named = fn.struct_pack(**{d: col("varies")[d] for d in dims})
+        ways = fn.struct_pack(**{"l": col(LAYER_COLUMN), "n": named})
         contested = f"count(DISTINCT {ways}) > count(DISTINCT {LAYER_COLUMN})"
     rows = om.aggregate(
         f"attribute, list(DISTINCT {LAYER_COLUMN}), {contested}", "attribute"

@@ -52,7 +52,6 @@ from datarecord.duck import (
     null_safe,
     refuse_open_transaction,
     scratch_table,
-    struct_of,
     transaction,
     union_all_by_name,
 )
@@ -2274,8 +2273,8 @@ def _packed(
             f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
         )
         raise ValueError(msg)
-    return struct_of(
-        {
+    return fn.struct_pack(
+        **{
             c: col(c) if c in present else lit(dims[c]).cast(_column_type(schema, d))
             for c, d in over.items()
         }

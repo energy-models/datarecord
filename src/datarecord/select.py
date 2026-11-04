@@ -28,7 +28,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 
-from datarecord.duck import numbered_relation, struct_of
+from datarecord.duck import fn, numbered_relation
 from datarecord.protocols import Flags, LazyRelations, RecordLike
 from datarecord.schema.categories import categorized_dim, with_defaults
 from datarecord.schema.schema import Schema
@@ -755,7 +755,7 @@ def _dtype(schema: Schema, dim: str) -> DuckDBPyType:
 def _literal(label: Any, dtype: DuckDBPyType) -> Expression:
     """`label` as a constant of `dtype`, a tuple as its struct."""
     if isinstance(label, dict):
-        return struct_of({f: lit(v) for f, v in label.items()}).cast(dtype)
+        return fn.struct_pack(**{f: lit(v) for f, v in label.items()}).cast(dtype)
     return lit(label).cast(dtype)
 
 
@@ -763,7 +763,9 @@ def _tuple(
     column: str, fields: Mapping[str, Expression], dtype: DuckDBPyType
 ) -> Expression:
     """The struct of `fields` as `column` of `dtype`, NULL where `column` is NULL."""
-    whole = CaseExpression(col(column).isnull(), lit(None)).otherwise(struct_of(fields))
+    whole = CaseExpression(col(column).isnull(), lit(None)).otherwise(
+        fn.struct_pack(**fields)
+    )
     return whole.cast(dtype).alias(column)
 
 

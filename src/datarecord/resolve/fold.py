@@ -36,7 +36,7 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
 
-from datarecord.duck import FOLD, fn, struct_of, tables_in, union_all_by_name
+from datarecord.duck import FOLD, fn, tables_in, union_all_by_name
 from datarecord.protocols import Flags
 from datarecord.resolve.coords import Coords, _fold_name
 from datarecord.resolve.owner_keys import _empty_relation, owner_keys
@@ -215,7 +215,7 @@ class Fold:
     ) -> list[tuple[Any, ...]]:
         """`rel`'s flag columns, aggregated per attribute."""
         flag = {
-            c: struct_of({d: fn.bool_or(col(c)[d]) for d in dims}).alias(c)
+            c: fn.struct_pack(**{d: fn.bool_or(col(c)[d]) for d in dims}).alias(c)
             for c in ("varies", "broadcast")
         }
         return rel.aggregate(
