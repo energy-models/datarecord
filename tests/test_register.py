@@ -308,19 +308,24 @@ def _folds(con):
     return set(nested_tables(con, "_fold"))
 
 
-def _opened(small):
-    """A fresh record over `small`, after a read that folds it."""
-    record = small.store.revision(small.id).record
+def _opened(revision):
+    """`revision`'s record, after a read that folds it."""
+    record = revision.record
     record.attributes["p_nom"].fetchall()
     return record
 
 
+@pytest.mark.parametrize("materialised", [False, True])
 @pytest.mark.parametrize("others", [0, 1])
 def test_closing_a_record_drops_its_fold_once_no_other_holds_it(
-    workspace, small, others
+    workspace, small, others, materialised
 ):
     kept = [_opened(small) for _ in range(others)]
-    _opened(small).close()
+    revision = small.store.revision(small.id)
+    _opened(revision)
+    if materialised:
+        revision.materialise()
+    revision.record.close()
     assert (small.id.hex in _folds(workspace.con)) == bool(kept), (
         "the fold goes with the last open record over it"
     )
@@ -371,16 +376,26 @@ def test_register_refuses_a_schema_of_the_workspace(small, name):
         small.record.register(name)
 
 
-def test_a_reopened_workspace_unregisters_an_earlier_registration(tmp_path):
-    """`registered` survives in a file database, and so does the means to unregister."""
-    database = str(tmp_path / "workspace.duckdb")
+def test_a_reopened_workspace_holds_and_unregisters_an_earlier_registration(
+    tmp_path,
+):
+    """`registered` survives in a file database, with the schemas it holds and the means to unregister."""
+    database, location = str(tmp_path / "workspace.duckdb"), str(tmp_path / "store")
     ws = Workspace(database)
-    _small(ws.store(str(tmp_path / "store"))).record.register("edit")
+    small = _small(ws.store(location))
+    with small.store.revision(small.id).record as record:
+        record.register("edit")
+        declared, expected = _declared(record), _read_relations(record)
     ws.close()
     reopened = Workspace(database)
     try:
+        _opened(reopened.store(location).revision(small.id)).close()
+        assert _read_views(reopened.con, "edit", declared) == expected, (
+            "the registration holds its fold past a later record's close"
+        )
         reopened.unregister("edit")
         assert reopened.registered().fetchall() == []
         assert _views(reopened.con, "edit") == dict.fromkeys(KINDS, [])
+        assert small.id.hex not in _folds(reopened.con), "the fold goes on unregister"
     finally:
         reopened.close()

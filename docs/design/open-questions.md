@@ -124,7 +124,7 @@ One that does would either refuse a change that alters a column or the fold of a
 
 ### Who drops an abandoned registration
 
-A server that crashes or forgets leaves its views and the folds they read. The `registered` table lists every registration with when it was `created`, but no one unregisters by any rule yet ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)). Unregistering frees the staging tables the registration [holds](storage/store.md#the-databases-schemas), so the rule also decides how long they stay. A workspace reopened on a file keeps an earlier run's `_staged` and `_fold` schemas, which no record holds; sweeping those no registration reads needs a registration to list its schemas ([DEP 35](proposals/dep-0035-a-record-holds-the-tables-it-reads.md#open-issues)).
+A server that crashes or forgets leaves its views and the folds they read. The `registered` table lists every registration with when it was `created`, but no one unregisters by any rule yet ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)). Unregistering frees the staging tables the registration [holds](storage/store.md#the-databases-schemas), so the rule also decides how long they stay. A workspace reopened on a file keeps an earlier run's `_staged` and `_fold` schemas, which no record holds; those no registration's `held` column lists could be swept, and nothing does yet ([DEP 35](proposals/dep-0035-a-record-holds-the-tables-it-reads.md#open-issues)).
 
 ### A public `create_view` taking a qualified name
 
