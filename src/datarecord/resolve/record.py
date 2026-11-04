@@ -30,7 +30,6 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
-from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 from duckdb._relation import _render
 
@@ -155,10 +154,10 @@ def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelat
     value row of such a layer can meet another at one coordinate, so only
     those rows need `_most_specific`: as data, so the plan stays fixed.
     """
-    named = str(named_mask(dims))
-    over = f"OVER (PARTITION BY {col(LAYER_COLUMN)})"
-    contested = f"min({named}) {over} <> max({named}) {over}"
-    return stored.project(star(), sql(contested).alias("_contested"))
+    named = named_mask(dims)
+    by = [col(LAYER_COLUMN)]
+    contested = named.min().over(partition_by=by) != named.max().over(partition_by=by)
+    return stored.project(star(), contested.alias("_contested"))
 
 
 def _empty_long(
