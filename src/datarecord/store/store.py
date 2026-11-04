@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS registered (
   name     VARCHAR PRIMARY KEY,
   revision UUID,
   working  BOOLEAN,
+  held     VARCHAR[],
   created  TIMESTAMPTZ DEFAULT now()
 )
 """
@@ -252,8 +253,10 @@ class Workspace:
             self._db.execute(f"CREATE SCHEMA IF NOT EXISTS {col(schema)}")
         self._cursors = _Cursors(self._db)
         self._holds = _Holds(self._db)
-        for (name,) in self._db.execute("SELECT name FROM registered").fetchall():
-            self._holds.hold(name, ())
+        for name, held in self._db.execute(
+            "SELECT name, held FROM registered"
+        ).fetchall():
+            self._holds.hold(name, held)
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
@@ -298,7 +301,7 @@ class Workspace:
         self._holds.release(name)
 
     def registered(self) -> DuckDBPyRelation:
-        """Every registered name, with the `revision` it reads, whether it is `working`, and when it was `created`.
+        """Every registered name, with the `revision` it reads, whether it is `working`, the schemas it `held`, and when it was `created`.
 
         Notes
         -----
@@ -1247,8 +1250,8 @@ class Revision(_OfStore):
 
         The ancestry is truncated at the deepest materialised ancestor, so a
         deep tree resolves from few entries. Cached rather than rebuilt per
-        call: layers are write-once, so the only thing that can change
-        the truncation point is `materialise`, which clears this itself. The
+        call: layers are write-once, and a record built before `materialise`
+        reads the same answers over the longer ancestry. The
         `Record` holds no cursor, so the cache serves every thread. Once it is
         closed, the next call builds and caches another.
 
@@ -1307,7 +1310,6 @@ class Revision(_OfStore):
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         materialise(self.id, self.record.sources, self.store)
-        self._record = None
 
     # -- read ---------------------------------------------------------------
 

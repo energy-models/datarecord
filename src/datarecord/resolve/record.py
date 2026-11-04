@@ -523,8 +523,14 @@ class Record:
                 for path, query in rendered.items():
                     con._create_view(path, query)
                 con.execute(
-                    "INSERT INTO registered (name, revision, working) VALUES (?, ?, ?)",
-                    [name, self.revision_id, not self.frozen],
+                    "INSERT INTO registered (name, revision, working, held)"
+                    " VALUES (?, ?, ?, ?)",
+                    [
+                        name,
+                        self.revision_id,
+                        not self.frozen,
+                        sorted(self._kept_schemas),
+                    ],
                 )
         except BaseException:
             if held:

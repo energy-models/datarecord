@@ -38,6 +38,7 @@ Every registration is a row of the workspace's `registered` table:
 | `name`     | the schema                                                                      |
 | `revision` | the node the record reads; for a `WorkingRecord`, the revision it was opened on |
 | `working`  | whether the record is a `WorkingRecord`                                         |
+| `held`     | the schemas it [holds](store.md#the-databases-schemas), held again on reopen    |
 | `created`  | when it was registered                                                          |
 
 `Workspace.registered()` reads it, and a SQL client reads the table itself.

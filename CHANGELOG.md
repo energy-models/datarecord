@@ -166,7 +166,8 @@ All notable changes to datarecord are documented here. The format follows
   registration holds it. A record collected unclosed keeps its folds for the
   workspace's life, so a chained read stays valid. A closed record raises
   `ValueError` on every read, and `Revision.record` builds a new one once its
-  cached record is closed.
+  cached record is closed. `Workspace.registered()` lists the schemas each
+  registration `held`, which a reopened workspace holds for it again.
 
 ### Changed
 

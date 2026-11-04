@@ -56,7 +56,7 @@ DuckDB does not help. It drops a table a view reads without complaint, and the v
 
 A record holds its schemas from construction, created or not. A `Record` over revision `rid` folds `rid`'s layer and the ancestors down to the deepest materialised one, and reads `_fold.<rid>` and, where it holds them, an ancestor's `_fold.<id>`. When the last holder of a schema releases it, the workspace drops it with every table in it. A registration takes its hold inside the transaction that creates its views, so no `unregister` sees it unheld.
 
-A workspace opened on a file lists every registration in `registered` as a holder of nothing: unregistering one drops its views.
+A registration's row in `registered` lists the schemas it holds in a `held` column, and a workspace opened on a file holds them again for it: its views read on, and unregistering one drops them.
 
 ### API
 
@@ -128,4 +128,4 @@ The checks: a workspace that opens and closes records, edits and registrations i
 
 - Who unregisters an abandoned registration, and by what rule. Unregistering now frees its tables, so the rule decides how long they stay.
 - Whether a record's planned relations form a reference cycle with it, which would delay its finaliser to the cycle collector.
-- A workspace reopened on a file keeps an earlier run's `_staged` and `_fold` schemas, which its registrations may read and no record holds. Sweeping those no registration reads needs a registration to list its schemas in `registered`.
+- A workspace reopened on a file keeps an earlier run's `_staged` and `_fold` schemas, which its registrations may read and no record holds. Those no `held` column lists could be swept, and nothing does yet.
