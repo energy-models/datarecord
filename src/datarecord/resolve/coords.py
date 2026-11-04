@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import reduce
-from typing import Literal, overload
+from typing import TYPE_CHECKING
 from uuid import UUID
 
 import duckdb
@@ -25,9 +25,10 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb.sqltypes import VARCHAR
 
 from datarecord.duck import fn, values_relation
-from datarecord.resolve.fold import Fold
-from datarecord.resolve.sources import LayerSource
 from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
+
+if TYPE_CHECKING:
+    from datarecord.resolve.sources import LayerSource
 
 
 def _table_name(revision_id: UUID) -> str:
@@ -351,33 +352,16 @@ def _dead_keys(
     return dead
 
 
-@overload
-def _base_and_above(
-    sources: Sequence[LayerSource],
-    *,
-    owner_map: Literal[True],
-) -> tuple[Fold | None, list[LayerSource]]: ...
-
-
-@overload
-def _base_and_above(
-    sources: Sequence[LayerSource],
-    *,
-    owner_map: Literal[False],
-) -> tuple[Fold | Coords | None, list[LayerSource]]: ...
-
-
-def _base_and_above(
-    sources: Sequence[LayerSource], *, owner_map: bool
-) -> tuple[Fold | Coords | None, list[LayerSource]]:
-    """Split `sources` at the deepest one whose fold is at hand: that fold, then the rest.
+def _base_and_above[B](
+    sources: Sequence[LayerSource], at_hand: Callable[[LayerSource], B | None]
+) -> tuple[B | None, list[LayerSource]]:
+    """Split `sources` at the deepest one whose fold is `at_hand`: that fold, then the rest.
 
     A fold is at hand where the source is materialised, or where the workspace
-    holds its node's fold as shared tables (`_held`). It is the fold's base -
-    already folded over everything at or below it - and only the sources above
-    it are folded on top. No fold at hand means no base and the whole list
-    folds from the root. Where `owner_map`, a held fold counts only with its
-    owner map, and the base is a `Fold`.
+    holds its node's fold as shared tables (`Coords.held`, `Fold.held`). It is the
+    fold's base - already folded over everything at or below it - and only the
+    sources above it are folded on top. No fold at hand means no base and the
+    whole list folds from the root.
 
     The last source is never the base: its own fold would return the cached
     answer and fold nothing on top, the reason `sources_to_read` truncates only
@@ -388,160 +372,16 @@ def _base_and_above(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     for i in range(len(sources) - 2, -1, -1):
-        base = sources[i].materialised() or _held(sources[i], owner_map)
+        base = at_hand(sources[i])
         if base is not None:
             return base, list(sources[i + 1 :])
     return None, list(sources)
 
 
-@overload
-def _held(source: LayerSource, owner_map: Literal[True]) -> Fold | None: ...
-
-
-@overload
-def _held(source: LayerSource, owner_map: Literal[False]) -> Coords | None: ...
-
-
-@overload
-def _held(source: LayerSource, owner_map: bool) -> Fold | Coords | None: ...
-
-
-def _held(source: LayerSource, owner_map: bool) -> Fold | Coords | None:
-    """`source`'s node's fold from the workspace's shared tables, `None` where they lack it.
-
-    The tables are keyed by the node a `Record` reads, and hold the fold over
-    its whole ancestry, so they stand for the source only as the last of its
-    own ancestry - as every proper ancestor in a source list is. The coords
-    and the owner map are tabled independently, so each is looked up; where
-    `owner_map`, the owner map is required beside the coords, which its fold
-    reads too.
-    """
-    rid, con = source.layer_id, source.con
-    try:
-        rows = con.table(_dim_owners_table(rid)).fetchall()
-        rel = con.table(_table_name(rid)) if owner_map else None
-    except duckdb.CatalogException:
-        return None
-    coords = tabled_coords(rid, source.schema, rows, con)
-    if rel is None:
-        return coords
-    return Fold(
-        schema=coords.schema,
-        axes=coords.axes,
-        dim_owners=coords.dim_owners,
-        owner_map=rel,
-        dead=coords.dead,
-    )
-
-
-def tabled_coords(
-    revision_id: UUID,
-    schema: Schema,
-    rows: Sequence[tuple[str, UUID, bool]],
-    con: DuckDBPyConnection,
-) -> Coords:
-    """The coords `revision_id`'s shared tables hold, given its `dim_owners` rows.
-
-    A `one_of` dim's axis is the schema's, so it is not among them.
-
-    Notes
-    -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    """
-    return Coords(
-        schema=schema,
-        axes={d: con.table(_coord_table("dims", d, revision_id)) for d, _, _ in rows},
-        dim_owners={d: layer for d, layer, _ in rows},
-        dead={
-            d: con.table(_coord_table("dead", d, revision_id))
-            for d, _, has_dead in rows
-            if has_dead
-        },
-    )
-
-
-def _one_of_seed(
-    base: Fold | Coords | None, schema: Schema, dim: str, con: DuckDBPyConnection
-) -> DuckDBPyRelation:
-    """`base`'s axis of the `one_of` dim `dim` where it carries one, else the schema's.
-
-    A record's frozen coords carry it (`Record._frozen_coords`), so a tail folded
-    onto them binds no `VALUES` list per read; a materialised or held fold
-    does not.
-    """
-    axis = None if base is None else base.axes.get(dim)
-    return one_of_axis(schema, dim, con) if axis is None else axis
-
-
-def resolve_coords(
-    sources: Sequence[LayerSource],
-    split: tuple[Fold | Coords | None, list[LayerSource]] | None = None,
-) -> Coords:
-    """Resolve every dim the last source's schema declares and the dead labels.
-
-    Parameters
-    ----------
-    sources : sequence of LayerSource
-        Root first, ending in the layer being resolved. A source that is not
-        frozen, a staging area, restates every axis but those with `one_of`.
-    split
-        A folded seed and the sources to fold onto it, where the caller
-        already holds them: `_base_and_above`, or the frozen
-        layers' coords and the sources above them.
-
-    Returns
-    -------
-    Coords
-
-    Raises
-    ------
-    ValueError
-        If the deepest file of an axis holds one label twice.
-
-    Notes
-    -----
-    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
-    """
-    schema, con = sources[-1].schema, sources[-1].con
-    base, above = split or _base_and_above(sources, owner_map=False)
-    restated = {d for d in schema.dimensions if d not in schema.one_of_dims}
-    held_files = [source.axes() if source.frozen else restated for source in above]
-    for source, names in zip(above, held_files, strict=True):
-        refuse_one_of_file(schema, names, f"layer {source.layer_id}")
-    keep = mortal(schema)
-    axes: dict[str, DuckDBPyRelation] = {}
-    dead: dict[str, DuckDBPyRelation] = {}
-    dim_owners: dict[str, UUID] = {}
-    for name in schema.dimensions:
-        if name in schema.one_of_dims:
-            axes[name] = _one_of_seed(base, schema, name, con)
-            continue
-        files = [
-            (s, rel)
-            for s, held in zip(above, held_files, strict=True)
-            if name in held and (rel := s.axis(name)) is not None
-        ]
-        seed = None if base is None else base.axes.get(name)
-        rel = _fold_axis(seed, files, name, f"dims/{name}.parquet")
-        if rel is None:
-            continue
-        axes[name] = rel
-        if files:
-            dim_owners[name] = files[-1][0].layer_id
-        elif base is not None:
-            dim_owners[name] = base.dim_owners[name]
-        if name not in keep:
-            continue
-        before = None if base is None else base.dead.get(name)
-        if files:
-            held = [r for r in (before, seed, *(r for _, r in files)) if r is not None]
-            fixed = not all(s.frozen for s, _ in files)
-            before = _dead_keys(held, rel, name, fixed=fixed)
-        if before is not None:
-            dead[name] = before
-    return Coords(schema=schema, axes=axes, dead=dead, dim_owners=dim_owners)
+def _coords_at_hand(source: LayerSource) -> Coords | None:
+    """`source`'s node's coords, materialised or held, `None` where neither."""
+    fold = source.materialised()
+    return Coords.held(source) if fold is None else fold.coords
 
 
 def mortal(schema: Schema) -> tuple[str, ...]:
@@ -600,6 +440,138 @@ class Coords:
     axes: dict[str, DuckDBPyRelation]
     dim_owners: dict[str, UUID]
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
+
+    @classmethod
+    def from_rows(
+        cls,
+        schema: Schema,
+        rows: Sequence[tuple[str, UUID, bool]],
+        axis: Callable[[str, UUID], DuckDBPyRelation],
+        dead: Callable[[str], DuckDBPyRelation],
+    ) -> Coords:
+        """The coords `(dim, layer_uuid, has_dead)` rows (`owners`) name.
+
+        Parameters
+        ----------
+        axis
+            Opens a dim's folded axis, given the dim and its owner.
+        dead
+            Opens a dim's dead labels, called only where its row has any.
+        """
+        return cls(
+            schema=schema,
+            axes={d: axis(d, layer) for d, layer, _ in rows},
+            dim_owners={d: layer for d, layer, _ in rows},
+            dead={d: dead(d) for d, _, has_dead in rows if has_dead},
+        )
+
+    @classmethod
+    def tabled(
+        cls,
+        revision_id: UUID,
+        schema: Schema,
+        rows: Sequence[tuple[str, UUID, bool]],
+        con: DuckDBPyConnection,
+    ) -> Coords:
+        """The coords `revision_id`'s shared tables hold, given its `dim_owners` rows.
+
+        A `one_of` dim's axis is the schema's, so it is not among them.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        """
+        return cls.from_rows(
+            schema,
+            rows,
+            lambda d, _: con.table(_coord_table("dims", d, revision_id)),
+            lambda d: con.table(_coord_table("dead", d, revision_id)),
+        )
+
+    @classmethod
+    def held(cls, source: LayerSource) -> Coords | None:
+        """`source`'s node's coords from the workspace's shared tables, `None` where they lack them.
+
+        The tables are keyed by the node a `Record` reads, and hold the fold over
+        its whole ancestry, so they stand for the source only as the last of its
+        own ancestry - as every proper ancestor in a source list is.
+        """
+        rid, con = source.layer_id, source.con
+        try:
+            rows = con.table(_dim_owners_table(rid)).fetchall()
+        except duckdb.CatalogException:
+            return None
+        return cls.tabled(rid, source.schema, rows, con)
+
+    @classmethod
+    def resolve(
+        cls,
+        sources: Sequence[LayerSource],
+        split: tuple[Coords | None, list[LayerSource]] | None = None,
+    ) -> Coords:
+        """Resolve every dim the last source's schema declares and the dead labels.
+
+        Parameters
+        ----------
+        sources : sequence of LayerSource
+            Root first, ending in the layer being resolved. A source that is not
+            frozen, a staging area, restates every axis but those with `one_of`.
+        split
+            A folded seed and the sources to fold onto it, where the caller
+            already holds them: `_base_and_above`, or the frozen
+            layers' coords and the sources above them.
+
+        Raises
+        ------
+        ValueError
+            If the deepest file of an axis holds one label twice.
+
+        Notes
+        -----
+        - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+        - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+        """
+        schema, con = sources[-1].schema, sources[-1].con
+        base, above = split or _base_and_above(sources, _coords_at_hand)
+        restated = {d for d in schema.dimensions if d not in schema.one_of_dims}
+        held_files = [source.axes() if source.frozen else restated for source in above]
+        for source, names in zip(above, held_files, strict=True):
+            refuse_one_of_file(schema, names, f"layer {source.layer_id}")
+        keep = mortal(schema)
+        axes: dict[str, DuckDBPyRelation] = {}
+        dead: dict[str, DuckDBPyRelation] = {}
+        dim_owners: dict[str, UUID] = {}
+        for name in schema.dimensions:
+            seed = None if base is None else base.axes.get(name)
+            if name in schema.one_of_dims:
+                axes[name] = one_of_axis(schema, name, con) if seed is None else seed
+                continue
+            files = [
+                (s, rel)
+                for s, held in zip(above, held_files, strict=True)
+                if name in held and (rel := s.axis(name)) is not None
+            ]
+            rel = _fold_axis(seed, files, name, f"dims/{name}.parquet")
+            if rel is None:
+                continue
+            axes[name] = rel
+            if files:
+                dim_owners[name] = files[-1][0].layer_id
+            elif base is not None:
+                dim_owners[name] = base.dim_owners[name]
+            if name not in keep:
+                continue
+            before = None if base is None else base.dead.get(name)
+            if files:
+                held = [
+                    r for r in (before, seed, *(r for _, r in files)) if r is not None
+                ]
+                fixed = not all(s.frozen for s, _ in files)
+                before = _dead_keys(held, rel, name, fixed=fixed)
+            if before is not None:
+                dead[name] = before
+        return cls(schema=schema, axes=axes, dead=dead, dim_owners=dim_owners)
 
     def owners(self, con: DuckDBPyConnection) -> DuckDBPyRelation:
         """Return `(dim, layer_uuid, has_dead)`, one row per `dim_owners` entry.

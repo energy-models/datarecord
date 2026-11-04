@@ -19,6 +19,7 @@ import pyarrow as pa
 import pytest
 
 from datarecord.mutable import WorkingRecord, normalise_value
+from datarecord.resolve.coords import Coords
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
@@ -1134,13 +1135,12 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    import datarecord.store.write as write
 
     def unwanted(*_):
         pytest.fail("resolved the ancestry for a layer with nothing to check")
 
-    monkeypatch.setattr(write, "resolve_coords", unwanted)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
+    monkeypatch.setattr(Coords, "resolve", classmethod(unwanted))
     root.store.commit(staged)
 
 

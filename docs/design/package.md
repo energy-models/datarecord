@@ -25,7 +25,7 @@ datarecord/
 │   ├── __init__.py    # re-exports Record
 │   ├── fold.py        # Fold
 │   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
-│   ├── coords.py      # resolve_coords, Coords, mortal
+│   ├── coords.py      # Coords, mortal
 │   ├── owner_map.py   # fold_layer, the owner-map fold over keys as written, and its shared tables
 │   └── record.py      # Record
 ├── mutable.py         # WorkingRecord, StagedSource
