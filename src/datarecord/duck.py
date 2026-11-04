@@ -21,7 +21,7 @@ Notes
 import operator
 import sys
 import time
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, suppress
 from functools import partial, reduce
 from pathlib import Path
@@ -292,18 +292,6 @@ def ensure_local_dir(uri: str, *, parent: bool = False) -> None:
         return
     path = Path(uri)
     (path.parent if parent else path).mkdir(parents=True, exist_ok=True)
-
-
-def struct_of(fields: Mapping[str, Expression]) -> Expression:
-    """A struct expression: field name to the expression for its value.
-
-    A struct rather than a column per field, because it comes back as a dict
-    keyed by name: the caller filters it by name instead of counting columns
-    into a positional slice.
-
-    Never empty, DuckDB having no empty struct.
-    """
-    return fn.struct_pack(**fields)
 
 
 def values_relation(

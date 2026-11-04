@@ -23,7 +23,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
 from duckdb import StarExpression as star
 
-from datarecord.duck import empty_relation, fn, struct_of
+from datarecord.duck import empty_relation, fn
 from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
 
 
@@ -168,12 +168,12 @@ def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...
     broadcast = schema.broadcast_dims
     over = {d: _over(schema, d, attributes) for d in broadcast}
     return (
-        struct_of(
-            {d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
+        fn.struct_pack(
+            **{d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
         ).alias("varies"),
-        struct_of({d: fn.bool_or(col(d).isnull() & over[d]) for d in broadcast}).alias(
-            "broadcast"
-        ),
+        fn.struct_pack(
+            **{d: fn.bool_or(col(d).isnull() & over[d]) for d in broadcast}
+        ).alias("broadcast"),
         fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
     )
 
