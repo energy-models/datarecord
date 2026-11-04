@@ -17,7 +17,6 @@ Notes
 
 from __future__ import annotations
 
-import dataclasses
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -41,11 +40,10 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
-from datarecord.resolve.coords import Coords, one_of_axis
+from datarecord.resolve.coords import Coords
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import with_columns
 from datarecord.resolve.owner_map import (
-    _frozen_dim_owners,
     _frozen_table,
     _mask,
     _table,
@@ -419,7 +417,7 @@ class Record:
     def _coords(self) -> Coords:
         """Return every declared dim's folded relation, and the dead labels.
 
-        The frozen layers' fold is a set of shared tables (`_frozen_dim_owners`),
+        The frozen layers' fold is a set of shared tables (`Coords.shared`),
         read on the calling thread's cursor. The sources after it are folded
         per call onto those tables, so a read with staged edits opens no file.
 
@@ -448,28 +446,13 @@ class Record:
         """
         cache = self._per_cursor
         if cache.frozen_coords is None:
-            con = self.con
-            held = Coords.tabled(self.revision_id, self.schema, self._dim_owners, con)
-            axes = held.axes | {
-                n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims
-            }
-            cache.frozen_coords = dataclasses.replace(
-                held, axes={n: axes[n] for n in self.schema.dimensions if n in axes}
-            )
+            frozen, _ = split_frozen(self.sources)
+            cache.frozen_coords = Coords.shared(self.revision_id, frozen)
         return cache.frozen_coords
 
     @cached_property
     def _per_cursor(self) -> _PerCursor:
         return _PerCursor()
-
-    @cached_property
-    def _dim_owners(self) -> list[tuple[str, UUID, bool]]:
-        """Return the frozen layers' `(dim, layer_uuid, has_dead)` rows.
-
-        Plain data, which any thread computes the same.
-        """
-        frozen, _ = split_frozen(self.sources)
-        return _frozen_dim_owners(self.revision_id, frozen)
 
     @property
     def _fold(self) -> Fold:

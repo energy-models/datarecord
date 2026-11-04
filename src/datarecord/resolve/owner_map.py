@@ -16,9 +16,8 @@ Notes
 from __future__ import annotations
 
 import operator
-import time
 from collections.abc import Callable, Iterator, Mapping, Sequence, Set
-from contextlib import AbstractContextManager, contextmanager, nullcontext
+from contextlib import contextmanager
 from functools import reduce
 from itertools import combinations
 from uuid import UUID, uuid4
@@ -36,15 +35,14 @@ from datarecord.duck import (
     fn,
     join_on,
     null_safe,
+    shared_table,
     struct_of,
     union_all_by_name,
 )
 from datarecord.resolve.coords import (
     Coords,
     _base_and_above,
-    _coord_table,
     _dead_keys,
-    _dim_owners_table,
     _table_name,
     removed_labels,
 )
@@ -64,44 +62,6 @@ from datarecord.schema.schema import (
     LAYER_COLUMN,
     Schema,
 )
-
-
-def _shared(
-    con: DuckDBPyConnection,
-    name: str,
-    build: Callable[[], AbstractContextManager[DuckDBPyRelation]],
-) -> DuckDBPyRelation:
-    """Table `name`, built by whichever cursor misses it first.
-
-    `build` enters the relation the table is made of, and exits once the
-    table holds it, releasing whatever the relation read. Two cursors missing
-    at once both build, and DuckDB fails the second `create` with a
-    write-write conflict rather than a name clash; what it would have created
-    is the winner's table, so that is read instead. The conflict can come
-    before the winner commits, when its table is not yet visible, so the
-    `create` is retried until it either lands or meets the committed table.
-
-    Notes
-    -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    """
-    try:
-        return con.table(name)
-    except duckdb.CatalogException:
-        pass
-    with build() as rel:
-        while True:
-            try:
-                rel.create(name)
-            except duckdb.TransactionException as e:
-                if "conflict" not in str(e).lower():
-                    raise
-                time.sleep(0.001)
-                continue
-            except duckdb.CatalogException:
-                pass
-            break
-    return con.table(name)
 
 
 def fold_layer(
@@ -942,39 +902,8 @@ def _frozen_table(
         rel = read_owner_map(revision_id, con, last.store)
         if rel is not None:
             return cast_declared(last.schema, rel)
-    return _shared(
+    return shared_table(
         con,
         _table_name(revision_id),
         lambda: _checkpointed(sources),
     )
-
-
-def _frozen_dim_owners(
-    revision_id: UUID, sources: Sequence[LayerSource]
-) -> list[tuple[str, UUID, bool]]:
-    """The `(dim, layer_uuid, has_dead)` rows of this frozen fold (`Coords.owners`).
-
-    Each folded axis and dead label set is a shared table (`_coord_table`);
-    the rows are one more, `dim_owners_<id>`, created after them, so a reader
-    finding it finds every table it names.
-
-    Notes
-    -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    """
-
-    con = sources[-1].con
-
-    def fold() -> DuckDBPyRelation:
-        coords = Coords.resolve(sources)
-        made = [
-            *(("dims", dim, coords.axes[dim]) for dim in coords.dim_owners),
-            *(("dead", name, rel) for name, rel in coords.dead.items()),
-        ]
-        for kind, name, rel in made:
-            table = _coord_table(kind, name, revision_id)
-            _shared(con, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
-        return coords.owners(con)
-
-    rel = _shared(con, _dim_owners_table(revision_id), lambda: nullcontext(fold()))
-    return [(dim, layer, has_dead) for dim, layer, has_dead in rel.fetchall()]

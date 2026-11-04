@@ -12,7 +12,9 @@ Notes
 
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable, Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from functools import reduce
 from typing import TYPE_CHECKING
@@ -24,7 +26,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
 from duckdb.sqltypes import VARCHAR
 
-from datarecord.duck import fn, values_relation
+from datarecord.duck import fn, shared_table, values_relation
 from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
 
 if TYPE_CHECKING:
@@ -502,6 +504,44 @@ class Coords:
         except duckdb.CatalogException:
             return None
         return cls.tabled(rid, source.schema, rows, con)
+
+    @classmethod
+    def shared(cls, revision_id: UUID, sources: Sequence[LayerSource]) -> Coords:
+        """The coords of the frozen `sources`, kept as shared tables and read on the calling thread's cursor.
+
+        Each axis and dead label set is a table (`_coord_table`), built by
+        whichever cursor misses it first; `dim_owners_<id>` is created after
+        them, so a reader finding it finds every table it names. A `one_of`
+        dim's axis is the schema's, carried so a fold onto these coords binds
+        no `VALUES` list per read.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        """
+        schema, con = sources[-1].schema, sources[-1].con
+
+        def build() -> DuckDBPyRelation:
+            coords = cls.resolve(sources)
+            made = [
+                *(("dims", dim, coords.axes[dim]) for dim in coords.dim_owners),
+                *(("dead", name, rel) for name, rel in coords.dead.items()),
+            ]
+            for kind, name, rel in made:
+                table = _coord_table(kind, name, revision_id)
+                shared_table(con, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
+            return coords.owners(con)
+
+        index = _dim_owners_table(revision_id)
+        rows = shared_table(con, index, lambda: nullcontext(build())).fetchall()
+        tabled = cls.tabled(revision_id, schema, rows, con)
+        axes = tabled.axes | {
+            n: one_of_axis(schema, n, con) for n in schema.one_of_dims
+        }
+        return dataclasses.replace(
+            tabled, axes={n: axes[n] for n in schema.dimensions if n in axes}
+        )
 
     @classmethod
     def resolve(
