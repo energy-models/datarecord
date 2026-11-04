@@ -39,6 +39,7 @@ from duckdb import (
     Expression,
     sqltypes,
 )
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
@@ -151,6 +152,8 @@ _SCENARIO_INVARIANT = frozenset(
 _CUSTOM = "custom_columns"
 #: How close two floats held by members of a collection agree, as `numpy.isclose`'s defaults.
 _RTOL, _ATOL = 1e-5, 1e-8
+#: The DuckDB types `_apart` compares within that tolerance.
+_FLOATS = (sqltypes.DOUBLE, sqltypes.FLOAT)
 
 
 @dataclass(frozen=True)
@@ -3513,36 +3516,43 @@ def _keys(relations: Mapping[Any, Relations]) -> tuple[str, ...]:
     return tuple(dict.fromkeys(k for rels in relations.values() for k in rels))
 
 
-def _differs(
-    schema: RecordSchema,
-    held: Mapping[Any, DuckDBPyRelation],
-    labels: Sequence[Any],
-    by: str,
-) -> bool:
-    """Whether an attribute's rows, `held` by each member holding it, differ across the members' `labels` of `by`.
+def _differs(held: Mapping[Any, DuckDBPyRelation], labels: Sequence[Any]) -> bool:
+    """Whether an attribute's rows, `held` by each member holding it, differ across the members' `labels`.
 
-    A row held by one of two members differs, one held by both as `_clashing`
-    says. Each member is compared with the first alone, to hold two in memory.
+    Each member is compared with the first in DuckDB, stopping at the first
+    that differs (`_apart`).
     """
     if any(label not in held for label in labels):
         return True
-    (first, rel), *rest = held.items()
-    reference = _values(schema, rel)
-    for label, other in rest:
-        long = pd.concat({first: reference, label: _values(schema, other)}, names=[by])
-        keys = list(range(1, long.index.nlevels))
-        grouped = long.groupby(level=keys, sort=False, dropna=False)
-        if ((grouped.transform("size") < 2) | _clashing(long, keys)).any():
-            return True
-    return False
+    first, *rest = held.values()
+    return any(_apart(first, other) for other in rest)
 
 
-def _values(schema: RecordSchema, rel: DuckDBPyRelation) -> pd.Series:
-    """One attribute's long rows as its values by their key columns."""
-    for multi in schema.multi_dims:
-        rel = unpacked(schema, multi, rel)
-    frame = rel.df()
-    return frame.set_index([c for c in frame.columns if c != "value"])["value"]
+def _apart(a: DuckDBPyRelation, b: DuckDBPyRelation) -> bool:
+    """Whether two members' long rows of one attribute differ.
+
+    A row held by one alone differs; one held by both where its values clash.
+    Floats, on both sides, agree as `_clashing` has them, any other type
+    where not distinct; missing clashes with held. A missing key is a label
+    like any other.
+    """
+    keys = [c for c in a.columns if c != "value"]
+    marked = [rel.project(star(), lit(True).alias("_held")) for rel in (a, b)]
+    joined = (
+        marked[0]
+        .set_alias("a")
+        .join(marked[1].set_alias("b"), null_safe("a", "b", keys), how="outer")
+    )
+    x, y = col("a", "value"), col("b", "value")
+    clash = f"{x} IS DISTINCT FROM {y}"
+    if all(r.types[r.columns.index("value")] in _FLOATS for r in (a, b)):
+        clash = (
+            f"({x} IS NULL) <> ({y} IS NULL) OR ({clash} AND (isinf({x}) "
+            f"OR isinf({y}) OR abs({x} - {y}) > {_ATOL} + {_RTOL} * "
+            f"greatest(abs({x}), abs({y}))))"
+        )
+    missing = col("a", "_held").isnull() | col("b", "_held").isnull()
+    return bool(joined.filter(missing | sql(clash)).limit(1).fetchall())
 
 
 def _widened(
@@ -3698,9 +3708,7 @@ class _StackedSource:
         if apart:
             differing = set(names)
         else:
-            differing = {
-                a for a in names if _differs(schema, _held(attributes, a), labels, dim)
-            }
+            differing = {a for a in names if _differs(_held(attributes, a), labels)}
         schema = _widened(schema, dim, labels, differing)
         if not apart:
             axis = con.from_df(pd.DataFrame({dim: labels}))
