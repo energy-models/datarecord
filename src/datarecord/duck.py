@@ -35,7 +35,6 @@ from duckdb import (
     DuckDBPyConnection,
     DuckDBPyRelation,
     Expression,
-    FunctionExpression,
     TransactionException,
     sqltypes,
 )
@@ -44,15 +43,16 @@ from duckdb.sqltypes import DuckDBPyType
 
 
 class _Functions:
-    """`fn.bool_or(x)` for `FunctionExpression("bool_or", x)`.
+    """`fn.round(x, precision=1)` for `round(x, precision := 1)`.
 
-    Attribute access reads closer to the SQL it builds than a name-as-string
-    call does, and keeps aggregates out of `SQLExpression` strings, where a
-    column name would have to be quoted by hand.
+    Positional arguments pass in order and keyword arguments as DuckDB named
+    arguments. Attribute access reads closer to the SQL it builds than a
+    name-as-string call does, and keeps calls out of `SQLExpression` strings,
+    where a column name would have to be quoted by hand.
     """
 
     def __getattr__(self, name: str) -> Callable[..., Expression]:
-        return partial(FunctionExpression, name)
+        return partial(duckdb.fn, name)
 
 
 fn = _Functions()
@@ -301,16 +301,9 @@ def struct_of(fields: Mapping[str, Expression]) -> Expression:
     keyed by name: the caller filters it by name instead of counting columns
     into a positional slice.
 
-    `struct_pack` is what says this in DuckDB, and the field names are its
-    *keyword* arguments - which `FunctionExpression` cannot pass, being
-    positional-only. So the call is assembled as text here and the values are
-    interpolated as the expressions they already are, keeping SQL text out of
-    every caller.
-
     Never empty, DuckDB having no empty struct.
     """
-    packed = ", ".join(f"{col(name)} := {value}" for name, value in fields.items())
-    return sql(f"struct_pack({packed})")
+    return fn.struct_pack(**fields)
 
 
 def values_relation(

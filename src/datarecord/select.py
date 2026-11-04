@@ -28,7 +28,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 
-from datarecord.duck import fn, numbered_relation, struct_of
+from datarecord.duck import numbered_relation, struct_of
 from datarecord.protocols import Flags, LazyRelations, RecordLike
 from datarecord.schema.categories import categorized_dim, with_defaults
 from datarecord.schema.schema import Schema
@@ -163,7 +163,7 @@ class Selection:
                 lifted.append(_literal(self._squeezed[c], self._type(c)).alias(c))
             elif c in changed:
                 fields = {
-                    f: fn.struct_extract(col(c), lit(f))
+                    f: col(c)[f]
                     if f in self.schema.over(c)
                     else _literal(self._squeezed[d], self._type(d))
                     for f, d in base.over(c).items()
@@ -208,7 +208,7 @@ class Selection:
         """Column `c`, a multi-dim's struct reduced to the view's coordinates."""
         if not self._shrunk(c):
             return col(c)
-        fields = {f: fn.struct_extract(col(c), lit(f)) for f in self.schema.over(c)}
+        fields = {f: col(c)[f] for f in self.schema.over(c)}
         return _tuple(c, fields, self.schema.duck_type(self.schema.dimensions[c]))
 
     def _axis(self, dim: str) -> DuckDBPyRelation:
