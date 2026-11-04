@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-127/contributing/">
       
       
-        <link rel="prev" href="../design/proposals/dep-0030-a-revision-file-lists-its-axes/">
+        <link rel="prev" href="../design/proposals/dep-0030-a-manifest-lists-its-axes/">
       
       
         <link rel="next" href="../changelog/">
@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -707,6 +707,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Project conventions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#figures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Figures
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -910,6 +927,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Project conventions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#figures" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Figures
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -1040,6 +1074,32 @@ original work and that you agree to license it under the project's MIT license.<
   everything framework-specific lives under <code>datarecord/tools/</code> behind an
   optional extra.</li>
 </ul>
+<h3 id="figures">Figures<a class="headerlink" href="#figures" title="Permanent link">&para;</a></h3>
+<p>A design-page section that says what the fold or a read does to rows carries a
+figure: tables, one row per key, using the section's own example and words; a
+figure about structure or flow may use labelled boxes and arrows instead.</p>
+<ul>
+<li>The file is <code>docs/static/&lt;page&gt;-&lt;topic&gt;.svg</code>: the SPDX header as an XML
+  comment, then <code>&lt;svg&gt;</code> with <code>width</code>, <code>height</code>,
+  <code>style="max-width: 100%; height: auto"</code>, <code>role="img"</code> and a <code>&lt;title&gt;</code> and
+  <code>&lt;desc&gt;</code> named by <code>aria-labelledby</code>. Every <code>id</code> takes the figure's own
+  prefix. Colours are attributes, never a <code>&lt;style&gt;</code>, and the file has no blank
+  line, which would end the HTML block.</li>
+<li>Embed it inline, so <code>currentColor</code> follows the theme: a
+  <code>&lt;figure class="diagram"&gt;</code> holding the line <code>--8&lt;-- "&lt;the file&gt;"</code>.</li>
+<li>Text, outlines and arrows are <code>currentColor</code>. A tint fills a header at
+  <code>fill-opacity="0.2"</code> and a body at <code>0.08</code>. Blue <code>#0072B2</code> is the root (or
+  lower) layer, orange <code>#E69F00</code> the child (deeper) one, and a stronger tint of
+  the owning layer's colour (<code>0.35</code>) or a bracket an overlap row. A vermilion <code>#D55E00</code>
+  hatch is a row the fold drops; a dashed outline with no fill is absent: no row.</li>
+<li>Every coloured table carries a text label ("root layer", "child layer",
+  "owner map"), and the legend lists only the marks the figure uses. An arrow
+  meets its target at a right angle and carries a short label.</li>
+<li>Look at it in both themes; text over the strongest tint keeps 4.5:1 in both:</li>
+</ul>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>docs<span class="w"> </span>rsvg-convert<span class="w"> </span>-w<span class="w"> </span><span class="m">1520</span><span class="w"> </span>-b<span class="w"> </span>white<span class="w"> </span>x.svg<span class="w"> </span>-o<span class="w"> </span>light.png
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>sed<span class="w"> </span><span class="s1">'s/currentColor/#ddd/g'</span><span class="w"> </span>x.svg<span class="w"> </span><span class="p">|</span><span class="w"> </span>pixi<span class="w"> </span>run<span class="w"> </span>-e<span class="w"> </span>docs<span class="w"> </span>rsvg-convert<span class="w"> </span>-w<span class="w"> </span><span class="m">1520</span><span class="w"> </span>-b<span class="w"> </span><span class="s1">'#1e2129'</span><span class="w"> </span>-o<span class="w"> </span>dark.png
+</code></pre></div>
 <h2 id="design-enhancement-proposals">Design enhancement proposals<a class="headerlink" href="#design-enhancement-proposals" title="Permanent link">&para;</a></h2>
 <p>A change to the design starts as a design enhancement proposal (DEP): the
 argument for it, the design it lands, and usage examples.</p>
@@ -1133,7 +1193,7 @@ by hand.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../design/proposals/dep-0030-a-revision-file-lists-its-axes/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 30: A revision file lists its axes">
+          <a href="../design/proposals/dep-0030-a-manifest-lists-its-axes/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 30: A manifest lists its revision&#39;s axes">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1143,7 +1203,7 @@ by hand.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                DEP 30: A revision file lists its axes
+                DEP 30: A manifest lists its revision's axes
               </div>
             </div>
           </a>

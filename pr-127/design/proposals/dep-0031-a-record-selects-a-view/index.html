@@ -10,24 +10,24 @@
       
       
       
-        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-127/design/proposals/dep-0030-a-revision-file-lists-its-axes/">
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-127/design/proposals/dep-0031-a-record-selects-a-view/">
       
       
-        <link rel="prev" href="../dep-0024-categories-are-enum-dimensions/">
+        <link rel="prev" href="../dep-0026-the-fold-reads-each-layer-under-its-own-schema/">
       
       
-        <link rel="next" href="../../../contributing/">
+        <link rel="next" href="../dep-0033-the-fold-is-a-fixed-plan/">
       
       
         
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
-        <title>DEP 30: A revision file lists its axes - datarecord</title>
+        <title>DEP 31: A record selects a view of its labels - datarecord</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#dep-30-a-revision-file-lists-its-axes" class="md-skip">
+        <a href="#dep-31-a-record-selects-a-view-of-its-labels" class="md-skip">
           Skip to content
         </a>
       
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              DEP 30: A revision file lists its axes
+              DEP 31: A record selects a view of its labels
             
           </span>
         </div>
@@ -764,6 +764,8 @@
       
         
       
+        
+      
     
     
     
@@ -817,6 +819,8 @@
   
     
     
+      
+        
       
         
       
@@ -995,6 +999,18 @@
   
     
     
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
       
         
       
@@ -1797,6 +1813,62 @@
                 
   
   
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0025-a-layer-carries-its-manifest/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 25: A layer carries its manifest
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0026-the-fold-reads-each-layer-under-its-own-schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 26: The fold reads each layer under its own schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
     
   
   
@@ -1816,7 +1888,7 @@
   <span class="md-ellipsis">
     
   
-    DEP 30: A revision file lists its axes
+    DEP 31: A record selects a view of its labels
   
 
     
@@ -1834,7 +1906,7 @@
   <span class="md-ellipsis">
     
   
-    DEP 30: A revision file lists its axes
+    DEP 31: A record selects a view of its labels
   
 
     
@@ -1894,10 +1966,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-axes-entry" class="md-nav__link">
+  <a href="#the-call" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The axes entry
+        The call
       
     </span>
   </a>
@@ -1905,10 +1977,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#writing-it" class="md-nav__link">
+  <a href="#keywords-and-values" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Writing it
+        Keywords and values
       
     </span>
   </a>
@@ -1916,10 +1988,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#reading-it" class="md-nav__link">
+  <a href="#squeezing-a-dim" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reading it
+        Squeezing a dim
       
     </span>
   </a>
@@ -1927,10 +1999,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#a-revision-written-before-this-dep" class="md-nav__link">
+  <a href="#what-goes-with-a-dropped-label" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A revision written before this DEP
+        What goes with a dropped label
       
     </span>
   </a>
@@ -1938,10 +2010,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#dep-25-and-dep-26" class="md-nav__link">
+  <a href="#laziness-and-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DEP 25 and DEP 26
+        Laziness and layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lifting-rows-back-to-the-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifting rows back to the base
       
     </span>
   </a>
@@ -2012,6 +2095,118 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0033-the-fold-is-a-fixed-plan/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 33: The fold is a fixed plan
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0034-a-record-registers-as-views/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 34: A record registers its relations as views
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0035-a-record-holds-the-tables-it-reads/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 35: A record holds the tables it reads
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../dep-0030-a-manifest-lists-its-axes/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    DEP 30: A manifest lists its revision's axes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2212,10 +2407,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#the-axes-entry" class="md-nav__link">
+  <a href="#the-call" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The axes entry
+        The call
       
     </span>
   </a>
@@ -2223,10 +2418,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#writing-it" class="md-nav__link">
+  <a href="#keywords-and-values" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Writing it
+        Keywords and values
       
     </span>
   </a>
@@ -2234,10 +2429,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#reading-it" class="md-nav__link">
+  <a href="#squeezing-a-dim" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Reading it
+        Squeezing a dim
       
     </span>
   </a>
@@ -2245,10 +2440,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#a-revision-written-before-this-dep" class="md-nav__link">
+  <a href="#what-goes-with-a-dropped-label" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A revision written before this DEP
+        What goes with a dropped label
       
     </span>
   </a>
@@ -2256,10 +2451,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#dep-25-and-dep-26" class="md-nav__link">
+  <a href="#laziness-and-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        DEP 25 and DEP 26
+        Laziness and layers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#lifting-rows-back-to-the-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Lifting rows back to the base
       
     </span>
   </a>
@@ -2352,165 +2558,202 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-<h1 id="dep-30-a-revision-file-lists-its-axes">DEP 30: a revision file lists its axes<a class="headerlink" href="#dep-30-a-revision-file-lists-its-axes" title="Permanent link">&para;</a></h1>
+<h1 id="dep-31-a-record-selects-a-view-of-its-labels">DEP 31: a record selects a view of its labels<a class="headerlink" href="#dep-31-a-record-selects-a-view-of-its-labels" title="Permanent link">&para;</a></h1>
 <table>
 <thead>
 <tr>
 <th>DEP</th>
-<th>30</th>
+<th>31</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td>Title</td>
-<td>a revision file lists its axes</td>
+<td>a record selects a view of its labels</td>
 </tr>
 <tr>
 <td>Author</td>
-<td>Bryn Pickering</td>
+<td>Jonas Hörsch</td>
 </tr>
 <tr>
 <td>Status</td>
-<td>Draft (2026-11-02)</td>
+<td>Implemented (2026-11-04)</td>
 </tr>
 <tr>
 <td>Requires</td>
-<td><a href="../dep-0009-store/">DEP 9</a>, <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a>, <a href="../dep-0024-categories-are-enum-dimensions/">DEP 24</a></td>
+<td><a href="../dep-0012-properties/">DEP 12</a>, <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a>, <a href="../dep-0023-multi-dims/">DEP 23</a>, <a href="../dep-0024-categories-are-enum-dimensions/">DEP 24</a></td>
 </tr>
 <tr>
 <td>Created</td>
 <td>2026-11-02</td>
 </tr>
+<tr>
+<td>Version</td>
+<td>Unreleased</td>
+</tr>
 </tbody>
 </table>
 <h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
-<p>When it commits a revision, datarecord writes the revision's resolved axes into the revision file. For each dim with an axis, the entry lists the number of labels and, per property, the number of labels with a stored value. A reader then learns which dims and properties a revision has from one small JSON file, with no DuckDB and no fold. <code>Revision.axes</code> returns the same entry in Python.</p>
+<p><code>record.select(**labels)</code> returns a <code>Selection</code>, a <code>RecordLike</code> holding the record at the labels named, as xarray's <code>sel</code> takes them. One label squeezes its dim out of the schema, and a list, a slice or a partial date string keeps it. Every label referring to a dropped one goes with it, through properties and multi-dim tuples, as a removal cascades. The selection keeps the labels it was asked for, so a consumer narrows it by selecting again, and <code>lift</code> puts the squeezed labels back on rows written over the unselected record.</p>
 <h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">&para;</a></h2>
-<p>A service that runs work on a revision needs to check, before the work starts, that the revision has what the work needs. Manta, a web platform that runs modelling playbooks over a store, validates each playbook this way. A step names the dims it needs, such as <code>period</code>. It also names the properties it needs, such as a <code>snapshot.&lt;name&gt;</code> time aggregation that an earlier step wrote. Manta's backend has no DuckDB and cannot import datarecord. It can read small JSON files from the store's bucket.</p>
-<p>No file in a store answers the question:</p>
-<ul>
-<li>A revision file is <code>{"id": ..., "parent": ...}</code> and nothing more (<code>store/store.py:371</code>).</li>
-<li><code>manifest.json</code> is one schema for the whole store (<code>store/manifest.py:26-39</code>). It declares every dim a tool may write, whether or not a revision has labels for it. For a single-country PyPSA-Eur build it declares <code>scenario</code>, <code>line_type</code> and <code>transformer_type</code>, and no layer has an axis file for any of them.</li>
-<li>A revision's axis is the deepest <code>dims/&lt;dim&gt;.parquet</code> on its path from the root (<code>resolve/coords.py:30-53</code>). A <a href="../../model/dims/#a-dim-with-one_of">dim with <code>one_of</code></a> takes its axis from the schema instead (<code>resolve/coords.py:379-381</code>). In a store holding that build and its solved results, each result layer writes <code>dims/sub_network.parquet</code> alone, so every other axis of a result revision comes from the root layer.</li>
-</ul>
-<p>A reader without datarecord would walk the parent chain, probe a parquet file per dim per layer, apply these rules and count the property columns. The rules are datarecord's, and they change. <a href="https://github.com/energy-models/datarecord/blob/dep/full-write-keeps-base-properties/docs/design/proposals/dep-0029-a-layer-keeps-what-it-omits.md">DEP 29</a> proposes that a layer which omits a property column keeps its parent's values, which changes which properties a revision has. A copy of the rules in another service goes stale without notice.</p>
-<p>The <a href="../../open-questions/#what-else-a-record-should-answer-about-its-labels-without-handing-over-a-frame">open question</a> on what a <code>Record</code> should answer about its labels asks for the same kind of metadata. This DEP settles the part of it that is per dim.</p>
+<p><a href="https://github.com/energy-models/datarecord/pull/112">PR 112</a> gives the PyPSA tool a <code>select=</code> argument on <code>build</code> and <code>verify</code>. Most of what it does is not PyPSA's: matching labels as pandas does, squeezing a dim by the <a href="../../model/attributes/#the-broadcast-rule">broadcast rule</a>, dropping a label whose property names a dropped label, dropping a tuple naming a dropped label. Those follow from the schema alone. A frontend showing one scenario, a plot of one period and a second tool need the same view, and would each write it again.</p>
+<p>The <a href="../../open-questions/#filtering-a-record-before-build">open question</a> on filtering a record before <code>build</code> has no design yet.</p>
 <h2 id="specification">Specification<a class="headerlink" href="#specification" title="Permanent link">&para;</a></h2>
-<h3 id="the-axes-entry">The <code>axes</code> entry<a class="headerlink" href="#the-axes-entry" title="Permanent link">&para;</a></h3>
-<p>A revision file gains one key, <code>axes</code>. It maps each dim that has an axis at the revision to two entries:</p>
+<h3 id="the-call">The call<a class="headerlink" href="#the-call" title="Permanent link">&para;</a></h3>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">select</span><span class="p">(</span><span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">,</span> <span class="o">/</span><span class="p">,</span> <span class="o">**</span><span class="n">labels</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Selection</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="k">class</span><span class="w"> </span><span class="nc">Selection</span><span class="p">:</span>  <span class="c1"># a RecordLike: schema, dims, properties, attributes, flags</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">base</span><span class="p">:</span> <span class="n">RecordLike</span>  <span class="c1"># the record selected from, never a Selection</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">labels</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span> <span class="o">|</span> <span class="nb">list</span><span class="p">[</span><span class="n">Any</span><span class="p">]]</span>  <span class="c1"># as asked, normalized</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">select</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">labels</span><span class="p">:</span> <span class="n">Any</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Selection</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">lift</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">attribute</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">rel</span><span class="p">:</span> <span class="n">DuckDBPyRelation</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p><code>select</code> is a function of any <code>RecordLike</code>, exported beside <a href="../../use/reading/#settling-rows"><code>settle</code></a>, and <code>Record.select</code> calls it. The protocol does not grow, so a framework's own <code>RecordLike</code> is selected without implementing anything.</p>
+<p><code>labels</code> holds what the caller asked for, normalized. One label stays a label, of the dim's dtype, and its dim is squeezed. A list stays a list, and a slice or a partial date string becomes the list of labels it matched; the dim is kept. <code>isinstance(value, list)</code> tells the two apart, since a dim's label is never a list. What propagation narrows is not in <code>labels</code>: it shows in the view's axes, <code>view.dims[d]</code>.</p>
+<p><code>view.base.select(**view.labels)</code> is the same view. <code>Selection.select</code> merges its keywords into <code>labels</code>, a later keyword replacing an earlier one of its dim, and selects <code>base</code> once.</p>
+<h3 id="keywords-and-values">Keywords and values<a class="headerlink" href="#keywords-and-values" title="Permanent link">&para;</a></h3>
+<p>A keyword names a dim, as a coordinate keyword of <a href="../../use/editing/#set"><code>set</code></a> does. One naming a multi-dim's coordinate that is no dim, such as <code>from=</code> of a corridor, narrows the multi-dim's tuples. One naming neither names a property by its bare name, as <code>set</code>'s property keyword does, and narrows its subject to the labels whose value, its default applied, is selected; a label whose value is NULL is not. These two never squeeze, so their values are stored as lists. A property name several subjects declare is refused, and so is a coordinate several multi-dims declare. A multi-dim's own name is refused, since a tuple is selected through its coordinates.</p>
 <table>
 <thead>
 <tr>
-<th>key</th>
 <th>value</th>
+<th>names</th>
+<th>the dim</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td><code>labels</code></td>
-<td>the number of labels in the axis, or of tuples for a <a href="../../model/multi-dims/">multi-dim</a></td>
+<td>one label</td>
+<td>the label, as pandas' <code>.loc</code> matches it</td>
+<td>squeezed</td>
 </tr>
 <tr>
-<td><code>properties</code></td>
-<td>each property of the dim with at least one stored value, mapped to the number of labels that have one</td>
+<td>a partial date string, on a datetime axis</td>
+<td>every label in its span</td>
+<td>kept, even at one</td>
+</tr>
+<tr>
+<td>a list</td>
+<td>each label exactly, read as the dim's dtype</td>
+<td>kept, even at one</td>
+</tr>
+<tr>
+<td><code>slice(start, stop)</code></td>
+<td>the labels between, both ends inclusive, <code>None</code> open</td>
+<td>kept, even at one</td>
 </tr>
 </tbody>
 </table>
-<p>The root revision of a single-country PyPSA-Eur build, with three investment periods, would be written as:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="p">{</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;root id&gt;"</span><span class="p">,</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">"parent"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span><span class="p">,</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">  </span><span class="nt">"axes"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">    </span><span class="nt">"snapshot"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">2190</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"period"</span><span class="p">:</span><span class="w"> </span><span class="mi">2190</span><span class="p">,</span><span class="w"> </span><span class="nt">"timestep"</span><span class="p">:</span><span class="w"> </span><span class="mi">2190</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">"timestep"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">730</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="w">    </span><span class="nt">"period"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="w">    </span><span class="nt">"entity"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">132</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"ctype"</span><span class="p">:</span><span class="w"> </span><span class="mi">132</span><span class="p">,</span><span class="w"> </span><span class="nt">"carrier"</span><span class="p">:</span><span class="w"> </span><span class="mi">129</span><span class="p">,</span><span class="w"> </span><span class="nt">"sign"</span><span class="p">:</span><span class="w"> </span><span class="mi">93</span><span class="p">,</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="mi">132</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="w">    </span><span class="nt">"ctype"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a><span class="w">    </span><span class="nt">"bus"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"carrier"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"x"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"y"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"unit"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"location"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="p">,</span><span class="w"> </span><span class="nt">"shape_onshore"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span><span class="w"> </span><span class="nt">"shape_offshore"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"country"</span><span class="p">:</span><span class="w"> </span><span class="mi">10</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="w">    </span><span class="nt">"carrier"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"color"</span><span class="p">:</span><span class="w"> </span><span class="mi">18</span><span class="p">,</span><span class="w"> </span><span class="nt">"nice_name"</span><span class="p">:</span><span class="w"> </span><span class="mi">18</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a><span class="w">    </span><span class="nt">"sub_network"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"carrier"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a><span class="w">    </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">3</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a><span class="w">    </span><span class="nt">"connection"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">165</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"role"</span><span class="p">:</span><span class="w"> </span><span class="mi">165</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">},</span>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a><span class="w">    </span><span class="nt">"country"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"labels"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"properties"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"shape_onshore"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span><span class="w"> </span><span class="nt">"shape_offshore"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a><span class="w">  </span><span class="p">}</span>
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a><span class="p">}</span>
-</code></pre></div>
-<p>The revision has three periods, and every one of its 2,190 snapshots maps to a period. <code>scenario</code>, <code>line_type</code> and <code>transformer_type</code> are missing, so the revision has no labels for them although the schema declares them. A child revision holding only solved results resolves to the same axes.</p>
-<p>The entry follows four rules:</p>
+<p>A date string is partial where it is coarser than the axis, as pandas reads it: <code>"2013-02"</code> on a daily axis names February, and <code>"2013-02-01"</code> names one label. In a list, a date string is one instant. A slice is pandas' label slice on the labels sorted, so a partial date string at an end covers its span. It takes a dim whose dtype is a number or a datetime. Labels kept are in axis order, and every relation keeps the base's row order.</p>
+<p><code>select</code> refuses, naming the keyword, a name the schema declares as no dim, coordinate or property, a label the axis lacks, an empty list, a slice with a step, a slice of an axis of text, an end the axis cannot compare and a slice covering no label. It refuses a squeezed label that another keyword's selection drops, since the dim would be squeezed at a label the view does not hold. It refuses squeezing every dim of a record that declares attributes, since attribute data over no axis is no record.</p>
+<h3 id="squeezing-a-dim">Squeezing a dim<a class="headerlink" href="#squeezing-a-dim" title="Permanent link">&para;</a></h3>
+<p>Squeezing <code>d</code> at the label <code>l</code> first keeps <code>l</code> alone, so everything referring to another label of <code>d</code> goes (<a href="#what-goes-with-a-dropped-label">below</a>). Then:</p>
 <ul>
-<li>A dim is listed exactly when <code>revision.record.dims</code> has it (<code>resolve/record.py:350-352</code>, <code>resolve/coords.py:378-391</code>). That is every dim with <code>one_of</code>, and any other dim for which a layer on the path wrote an axis file. A dim whose deepest file is empty is listed with <code>labels: 0</code>.</li>
-<li>A property counts the values stored for it, as <code>record.properties</code> returns them, so a <code>default</code> is not counted (<code>protocols.py:161-168</code>). A property that is declared and never written reads as a typed NULL column (<code>schema/categories.py:113-126</code>), and is missing from the map. A missing property and a count of 0 mean the same, so the map never lists 0.</li>
-<li>The value is a count, not a flag, so a reader can tell full coverage from partial. <code>entity.sign</code> has a value for 93 of 132 entities.</li>
-<li>The entry describes the revision under the schema it was committed under, and is never rewritten.</li>
+<li><code>d</code> leaves the schema, with its axis and its properties.</li>
+<li>A property referring to <code>d</code> goes, every value left being <code>l</code> or NULL. A <code>default_by</code> keyed on it applies its entry for <code>l</code> as the default, the keys before it still overriding.</li>
+<li>A kept label NULL on such a property matches no <code>default_by</code> key, so it would take the entry for <code>l</code> in the view but not in the base. Where a <code>default_by</code> lists <code>l</code> and a kept label is NULL there, the squeeze is refused, naming the keyword; the caller writes <code>l</code> as a list of one. The label is not dropped instead, since a NULL names no label and one label would keep a different set of labels than a list of it.</li>
+<li>A multi-dim drawing on <code>d</code> loses that coordinate, its tuples projected on the others. One left with no coordinate is squeezed with it.</li>
+<li>An attribute over <code>d</code> keeps its rows at <code>l</code> and those NULL on <code>d</code>, settled by the broadcast rule along <code>d</code> alone, without the column. One over squeezed dims alone is one value over no dim.</li>
+<li><code>partial</code> and every <code>Flags</code> lose <code>d</code>.</li>
 </ul>
-<h3 id="writing-it">Writing it<a class="headerlink" href="#writing-it" title="Permanent link">&para;</a></h3>
-<p><code>Store._write</code> writes the layer, then reconciles the manifest, then writes the revision file create-only (<code>store/store.py:355-374</code>). Between the second and the third step, datarecord resolves the new revision's axes under the reconciled schema. It folds the parents' sources and the new layer, as <code>resolve_coords</code> does. It runs one aggregate per axis, <code>count(*)</code> beside <code>count(&lt;property&gt;)</code> for each declared property, and writes the result with the id and the parent.</p>
-<p>No attribute file is opened and no owner map is folded. Each axis is one file, a materialised copy, or the schema's list. <code>write_layer</code> already resolves the axes it checks a layer against (<code>store/write.py:161-166</code>), so the count adds the axes that the layer does not touch. The revision file is still written last. A failed count therefore leaves the layer unreachable, as a failed layer write does.</p>
-<h3 id="reading-it">Reading it<a class="headerlink" href="#reading-it" title="Permanent link">&para;</a></h3>
-<p><code>Revision.axes</code> returns the entry as <code>dict[str, Axis]</code>, where <code>Axis</code> is a frozen dataclass of <code>labels: int</code> and <code>properties: dict[str, int]</code>. It is a property, not a pydantic field, so a serialised <code>Revision</code> is still its location and id (<code>store/store.py:539-556</code>).</p>
-<p><code>Store.revision</code> and <code>Store.revisions</code> read the entry with the id and the parent. The workspace's <code>revisions</code> table (<code>store/store.py:50-57</code>) gains an <code>axes JSON</code> column. A revision file is write-once, so the cached row can still be incomplete but never stale.</p>
-<h3 id="a-revision-written-before-this-dep">A revision written before this DEP<a class="headerlink" href="#a-revision-written-before-this-dep" title="Permanent link">&para;</a></h3>
-<p><code>Revision.axes</code> raises for a revision file without <code>axes</code>, naming the revision and asking for the store to be exported again. datarecord does not compute the entry on read. The file is create-only, so no later call can add the entry to it.</p>
-<p>Everything else reads as before. <code>_read_revision</code> reads only <code>id</code> and <code>parent</code> (<code>store/store.py:402-408</code>), so a datarecord release from before this DEP reads a new revision file too. The file gains no <code>version</code> key: the presence of <code>axes</code> is the signal.</p>
-<h3 id="dep-25-and-dep-26">DEP 25 and DEP 26<a class="headerlink" href="#dep-25-and-dep-26" title="Permanent link">&para;</a></h3>
-<p><a href="https://github.com/energy-models/datarecord/blob/dep-25-layer-manifests/docs/design/proposals/dep-0025-a-layer-carries-its-manifest.md">DEP 25</a> replaces <code>revisions/&lt;id&gt;.json</code> with <code>layers/&lt;id&gt;/manifest.json</code>, which lists the layer's id, parent, full schema and files. That manifest does not list which dims have labels at a revision. <code>files</code> lists the files of one layer, not of its ancestry, and the schema declares dims whether or not they have labels. Under DEP 25, <code>axes</code> becomes a field of <code>Manifest</code>, written by the commit and cached in the <code>revisions</code> table with the rest. One GET then returns both the schema and the axes of a revision. Whichever of the two DEPs lands second moves the entry, which keeps its shape.</p>
-<p><a href="https://github.com/energy-models/datarecord/blob/dep-26-per-layer-fold/docs/design/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema.md">DEP 26</a> reads each layer under its own schema, and a node's read resolves under the node's schema. With both DEPs, the revision's manifest fixes the schema at commit. <code>axes</code> and a later read of the revision then agree by construction.</p>
-<p><a href="https://github.com/energy-models/datarecord/blob/dep/declare-a-property/docs/design/proposals/dep-0028-a-working-record-declares-a-property.md">DEP 28</a> declares a property on a <code>WorkingRecord</code>. A property declared and set that way is listed in the child's <code>axes</code>. Whether a later full export keeps it is DEP 29's rule, and <code>axes</code> reports the outcome under whichever rule applies.</p>
+<p>Any dim squeezes. A consumer that needs one refuses a view in which it is squeezed, and the caller writes it as a list of one.</p>
+<h3 id="what-goes-with-a-dropped-label">What goes with a dropped label<a class="headerlink" href="#what-goes-with-a-dropped-label" title="Permanent link">&para;</a></h3>
+<p>A selection keeps every axis closed under reference, as the writer keeps a layer's (<a href="../../layers/removal/#what-a-removal-reaches">removing labels</a>):</p>
+<ul>
+<li>A label whose property, its default applied, names a dropped label goes. A NULL names no label and stays.</li>
+<li>A tuple naming a dropped label goes, the labels it names staying.</li>
+<li>This repeats until nothing goes, so selecting <code>country</code> reaches a bus through <code>bus.state</code> and <code>state.country</code>.</li>
+<li>An attribute row naming a dropped label, in its column or in a field of a struct, goes. A row NULL there stays and reaches the kept labels alone.</li>
+</ul>
+<p>Nothing flows the other way. A dim keeps a label no kept label refers to: a period no label refers to, a carrier no entity holds, an entity whose connections all went. The rule is a removal's, except that a property naming a dropped label drops its subject rather than blocking the removal.</p>
+<h3 id="laziness-and-layers">Laziness and layers<a class="headerlink" href="#laziness-and-layers" title="Permanent link">&para;</a></h3>
+<p><code>select</code> reads the axes and properties it matches labels on and propagates through, which are small, and raises its refusals at the call. Every attribute stays a plan on the base's connection: a semi-join against the kept labels and a <code>settle</code> along each squeezed dim. A selection reads the folded record and needs neither its layers nor <code>partial</code>.</p>
+<p>A selection is no layer and writes nothing. <code>WorkingRecord</code> refuses it as it refuses any other <code>RecordLike</code>, so an edit goes to the base. The axes it narrows are resolved at the call, so over a <code>WorkingRecord</code> a label added later is outside them. An axis nothing narrows reads as the base's, and an attribute reads the base's later edits at the labels kept.</p>
+<h3 id="lifting-rows-back-to-the-base">Lifting rows back to the base<a class="headerlink" href="#lifting-rows-back-to-the-base" title="Permanent link">&para;</a></h3>
+<p>A consumer that computes rows over a selection and writes them over <code>base</code> needs the squeezed labels back. <code>view.lift(attribute, rel)</code> adds them, from <code>labels</code> and <code>base.schema</code> alone. It adds the column of each squeezed dim the base declares the attribute over, at its label, and a squeezed coordinate back into its struct. An attribute declared without a squeezed dim is returned as it came; whether to write it is the consumer's decision.</p>
+<p>With <code>view = record.select(scenario="high", period=2030)</code>:</p>
+<table>
+<thead>
+<tr>
+<th>attribute</th>
+<th>base declares over</th>
+<th>rows over the view</th>
+<th><code>view.lift</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>price</code></td>
+<td><code>bus</code>, <code>snapshot</code>, <code>scenario</code></td>
+<td><code>bus, snapshot, value</code></td>
+<td><code>bus, snapshot, scenario = high, value</code></td>
+</tr>
+<tr>
+<td><code>capacity</code></td>
+<td><code>entity</code></td>
+<td><code>entity, value</code></td>
+<td>unchanged</td>
+</tr>
+<tr>
+<td><code>p</code>, <code>snapshot</code> a multi-dim over <code>(period, timestep)</code></td>
+<td><code>entity</code>, <code>snapshot</code></td>
+<td><code>snapshot = {timestep: t0}</code></td>
+<td><code>snapshot = {period: 2030, timestep: t0}</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>lift</code> inverts a squeeze but one way: a row the base held NULL on the squeezed dim was settled to the label, and comes back at the label. That is what a write-back wants, a value at the label it was computed at.</p>
 <h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
-<p><strong>At commit, not at read.</strong> datarecord has the parents' sources open at commit, and resolves part of the axes already. A revision is committed once and read many times, by readers that cannot fold.</p>
-<p><strong>In the revision file, not the store manifest.</strong> The axes belong to one revision. The store manifest is one mutable file behind a <a href="../../storage/concurrency/#the-manifests-compare-and-swap">compare-and-swap</a>. A map per revision in it would make every commit race on it, not only a commit that widens the schema.</p>
-<p><strong>Stored values, counted.</strong> One number per property answers both "does the revision have it" and "do all labels have it". Leaving out properties with no value keeps the answer independent of what the schema declares.</p>
-<p>It costs:</p>
-<ul>
-<li>Every commit reads each axis of the new revision once more. An axis is small next to the attributes, and no attribute file is read.</li>
-<li>The root revision file of the build above grows from 62 bytes to 868 bytes, compact. A schema with more dims or properties grows it in step.</li>
-<li><code>Revision.axes</code> raises on every store written before this DEP, until the store is exported again.</li>
-</ul>
+<p>Selection belongs to the record because its rules are the schema's: what refers to what, which tuples name a label, how a NULL broadcasts. They are the rules a removal follows, and a tool restating them restates the format.</p>
+<p>One label squeezes, as in xarray, whatever the consumer. Whether a dim may go is the consumer's to judge, and a consumer that cannot lose one says so as it says a dim is missing. A rule that squeezed for one reader and not another would make one call two views.</p>
+<p><code>labels</code> records the request and the axes record the result. The request alone rebuilds the view, so it is what a consumer reads, merges and passes on, and propagation stays derived.</p>
+<p>Propagation runs from a selected label to what refers to it and never back. Dropping a carrier nobody holds would drop labels nobody selected, and a consumer that needs that says so in one more <code>select</code>.</p>
+<p><code>lift</code> is mechanical. It knows the labels asked for and the base's schema, not what a value means, so a consumer's rule on which results a subset may write stays the consumer's.</p>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">rev</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="s2">"period"</span><span class="p">]</span><span class="o">.</span><span class="n">labels</span>  <span class="c1"># 3</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">rev</span><span class="o">.</span><span class="n">axes</span><span class="p">[</span><span class="s2">"snapshot"</span><span class="p">]</span><span class="o">.</span><span class="n">properties</span>  <span class="c1"># {"period": 2190, "timestep": 2190}</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="s2">"scenario"</span> <span class="ow">in</span> <span class="n">rev</span><span class="o">.</span><span class="n">axes</span>  <span class="c1"># False: declared, no labels</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="mi">2030</span><span class="p">)</span>  <span class="c1"># period squeezed; properties referring to it gone</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="p">[</span><span class="mi">2030</span><span class="p">,</span> <span class="mi">2040</span><span class="p">])</span>  <span class="c1"># kept at two labels</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="mi">2030</span><span class="p">,</span> <span class="kc">None</span><span class="p">))</span>  <span class="c1"># 2030 onwards, kept</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">snapshot</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="s2">"2013-02"</span><span class="p">,</span> <span class="s2">"2013-03"</span><span class="p">))</span>  <span class="c1"># February and March</span>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># squeezed</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">bus</span><span class="o">=</span><span class="p">[</span><span class="s2">"north"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">])</span>  <span class="c1"># connections to other buses go</span>
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">carrier</span><span class="o">=</span><span class="p">[</span><span class="s2">"AC"</span><span class="p">,</span> <span class="s2">"wind"</span><span class="p">])</span>  <span class="c1"># AC buses, wind entities, NULL carriers stay</span>
+<a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"wind1"</span><span class="p">])</span>  <span class="c1"># its connections stay, every bus too</span>
+<a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">period</span><span class="o">=</span><span class="mi">2030</span><span class="p">)</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">carrier</span><span class="o">=</span><span class="p">[</span><span class="s2">"AC"</span><span class="p">])</span><span class="o">.</span><span class="n">labels</span>
+<a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="c1"># {"period": 2030, "carrier": ["AC"]}</span>
+<a id="__codelineno-1-11" name="__codelineno-1-11" href="#__codelineno-1-11"></a>
+<a id="__codelineno-1-12" name="__codelineno-1-12" href="#__codelineno-1-12"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">bus</span><span class="o">=</span><span class="s2">"Atlantis"</span><span class="p">)</span>  <span class="c1"># refused: a label `bus`'s axis lacks</span>
+<a id="__codelineno-1-13" name="__codelineno-1-13" href="#__codelineno-1-13"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">carrier</span><span class="o">=</span><span class="p">[])</span>  <span class="c1"># refused: no label</span>
+<a id="__codelineno-1-14" name="__codelineno-1-14" href="#__codelineno-1-14"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">bus</span><span class="o">=</span><span class="nb">slice</span><span class="p">(</span><span class="s2">"A"</span><span class="p">,</span> <span class="s2">"Z"</span><span class="p">))</span>  <span class="c1"># refused: an axis of text</span>
 </code></pre></div>
-<p>A reader without datarecord reads the same entry over HTTP:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">urllib.request</span><span class="w"> </span><span class="kn">import</span> <span class="n">urlopen</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">axes</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">load</span><span class="p">(</span><span class="n">urlopen</span><span class="p">(</span><span class="sa">f</span><span class="s2">"</span><span class="si">{</span><span class="n">base</span><span class="si">}</span><span class="s2">/revisions/</span><span class="si">{</span><span class="n">rid</span><span class="si">}</span><span class="s2">.json"</span><span class="p">))[</span><span class="s2">"axes"</span><span class="p">]</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">snapshot</span> <span class="o">=</span> <span class="n">axes</span><span class="p">[</span><span class="s2">"snapshot"</span><span class="p">]</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">snapshot</span><span class="p">[</span><span class="s2">"properties"</span><span class="p">]</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">"agg_3h"</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span> <span class="o">==</span> <span class="n">snapshot</span><span class="p">[</span><span class="s2">"labels"</span><span class="p">]</span>  <span class="c1"># every snapshot mapped</span>
-</code></pre></div>
-<p>For the build above, the last line is <code>False</code>: no revision of it has <code>snapshot.agg_3h</code>.</p>
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
-<li>A function that counts the labels and the stored property values of each axis in a <code>Coords</code>, one aggregate per axis.</li>
-<li><code>Store._write</code> resolves the new revision's axes after <code>reconcile_schema</code> and passes the counts to <code>_create</code>, which writes them beside <code>id</code> and <code>parent</code>.</li>
-<li><code>_read_revision</code>, the <code>revisions</code> table and <code>Revision</code> gain <code>axes</code>, and <code>Revision.axes</code> raises where the file has none.</li>
-<li>Pages: <a href="../../storage/store/#the-tree-beside-the-layers">store</a> for the file, <a href="../../use/reading/">reading</a> for <code>Revision.axes</code>, and the <a href="../../open-questions/#what-else-a-record-should-answer-about-its-labels-without-handing-over-a-frame">open question</a> on labels narrows to categories.</li>
+<li><code>datarecord.select</code> and <code>Selection</code> in core: label matching, squeezing, propagation and <code>lift</code>, exported; <code>Record.select</code> calls it.</li>
+<li>Pages: a design page on selecting beside <a href="../../use/reading/">reading</a>, the usage pages, and the open question moved to settled.</li>
 </ol>
+<p>PR 112's <code>_Selection</code>, <code>_select</code>, <code>_labels</code>, <code>_keyed_axis</code>, <code>_is_scalar</code>, <code>_axis_labels</code>, <code>_rebuilt</code> and the propagation through properties and tuples in <code>_propagated</code> carry most of the core code. How a tool adopts <code>Selection</code> is that tool's change.</p>
 <p>Checks that hold once built:</p>
 <ul>
-<li>On every revision of the test trees, materialised or not, <code>rev.axes</code> equals the counts taken from <code>rev.record.dims</code> and <code>rev.record.properties</code>.</li>
-<li>A dim declared and never written is missing from <code>axes</code>, and so is a property declared and never set.</li>
-<li><code>rev.axes</code> on a warm workspace opens no file, and on a cold one reads only the revision file.</li>
-<li>A revision file without <code>axes</code> still reads, and <code>rev.axes</code> on it raises.</li>
+<li><code>view.base.select(**view.labels)</code> equals <code>view</code>, relation by relation.</li>
+<li><code>view.lift</code> of every attribute read from <code>view</code> is a subset of the base's rows at the selected labels.</li>
 </ul>
 <h2 id="rejected-ideas">Rejected Ideas<a class="headerlink" href="#rejected-ideas" title="Permanent link">&para;</a></h2>
 <ul>
-<li>The reader walks the parquet files with pyarrow: a second codebase copies the fold rules and probes a file per dim per layer. The copy goes stale when a rule changes, as DEP 29 would change one.</li>
-<li>The service that runs playbooks writes the entry beside the store: its file is not part of the commit. A revision committed any other way has none.</li>
-<li>The axes of every revision in the store manifest: every commit would then race on one mutable file, which DEP 25 removes.</li>
-<li>Reading <code>resolved/dims/</code> of a materialised revision: it exists only where someone materialised, it is still parquet, and coverage of a property needs a scan.</li>
-<li>Computing the entry on read where the file has none: the Python reader would answer where an HTTP reader cannot. One store would pass one check and fail the other.</li>
-<li>Property names without counts: coverage would need a second read.</li>
-<li>A property listed with 0 where it is declared and never set: the entry would depend on the schema of the moment. DEP 25 fixes the schema per revision, and <code>main</code> does not.</li>
-<li>A <code>version</code> key in the revision file: it would repeat what the presence of <code>axes</code> already states.</li>
+<li><code>select=</code> on each tool's <code>build</code> and <code>verify</code>. Each tool repeats the schema's rules.</li>
+<li>A narrowing hook passed to <code>select</code>. It couples the view to a tool, where a further <code>select</code> does the same.</li>
+<li>A dim a scalar does not squeeze, declared in the schema or asked for by a consumer. One call would give two views.</li>
+<li>Recording propagated labels in the selection. They follow from the request, and two records of one view could disagree.</li>
+<li>Dropping a label nobody refers to any more. It drops labels nobody selected.</li>
+<li>A selection as a child layer restating the axes without the dropped labels. It writes, and a squeeze is no restatement.</li>
 </ul>
 <h2 id="open-issues">Open Issues<a class="headerlink" href="#open-issues" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Attributes: whether the entry lists the attributes with rows, and their <a href="../../use/reading/#flags"><code>flags</code></a>. Every commit would then fold the owner map, which a commit does not do today.</li>
-<li>A standalone record: whether <code>ws.write</code> puts <code>axes</code> into its <code>manifest.json</code>. Under DEP 25 it is a layer manifest and gets the entry with no further rule.</li>
-<li>Categories: whether the entry lists the labels per category of a categorized dim, such as entities per <code>ctype</code>. The open question on labels asks the same.</li>
+<li>Naming a label by a property's value as the dim's own keyword, such as <code>snapshot=</code> taking a timestamp over position labels.</li>
+<li>Whether a multi-dim left with one coordinate reads as that dim.</li>
+<li>Editing through a selection: a <code>WorkingRecord</code> over a <code>Selection</code>, staging at the base's coordinates through <code>lift</code>.</li>
+<li>A selection whose narrowed axes follow a <code>WorkingRecord</code>'s edits, and registering a selection as DuckDB views.</li>
+<li>Whether propagation applies a default naming no live label (<a href="../../open-questions/#whether-a-default-must-name-a-live-label">open questions</a>).</li>
 </ul>
 
 
@@ -2547,7 +2790,7 @@ SPDX-License-Identifier: CC-BY-4.0
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../dep-0024-categories-are-enum-dimensions/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 24: Categories are enum dimensions">
+          <a href="../dep-0026-the-fold-reads-each-layer-under-its-own-schema/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 26: The fold reads each layer under its own schema">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2557,20 +2800,20 @@ SPDX-License-Identifier: CC-BY-4.0
                 Previous
               </span>
               <div class="md-ellipsis">
-                DEP 24: Categories are enum dimensions
+                DEP 26: The fold reads each layer under its own schema
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../../contributing/" class="md-footer__link md-footer__link--next" aria-label="Next: Contributing">
+          <a href="../dep-0033-the-fold-is-a-fixed-plan/" class="md-footer__link md-footer__link--next" aria-label="Next: DEP 33: The fold is a fixed plan">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Contributing
+                DEP 33: The fold is a fixed plan
               </div>
             </div>
             <div class="md-footer__button md-icon">

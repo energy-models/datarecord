@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -1109,7 +1109,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="storage">Storage<a class="headerlink" href="#storage" title="Permanent link">&para;</a></h1>
 <h2 id="workspaces-and-stores">Workspaces and stores<a class="headerlink" href="#workspaces-and-stores" title="Permanent link">&para;</a></h2>
 <p>A <code>Workspace</code> holds the DuckDB database and reaches files.
-A <code>Store</code> is one location with its <a href="../../design/model/schema/#one-schema-per-record">schema</a>, its revisions and its layers.
+A <code>Store</code> is one location with its layers, each carrying the <a href="../../design/storage/store/#the-layers">manifest</a> that makes it a revision.
 Several stores share one workspace, so their records join (<a href="../../design/storage/store/#the-store">design</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
@@ -1117,7 +1117,7 @@ Several stores share one workspace, so their records join (<a href="../../design
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">store</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"/data/my-record"</span><span class="p">)</span>  <span class="c1"># absolute; never empty</span>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone directory</span>
 </code></pre></div>
-<p>A revision's file is written after its layer and the manifest, so a write that fails leaves no revision behind (<a href="../../design/storage/store/#a-revision-exists-only-by-its-file">design</a>).</p>
+<p>A layer's manifest is written after its data, so a write that fails leaves a pending layer, which no read reaches, and no revision (<a href="../../design/storage/store/#the-store">design</a>).</p>
 <h2 id="a-standalone-directory">A standalone directory<a class="headerlink" href="#a-standalone-directory" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a new directory, read back</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># read it again later</span>
@@ -1135,7 +1135,7 @@ The server has to honour conditional writes, as AWS S3 does and SeaweedFS does f
 <h2 id="threads-and-processes">Threads and processes<a class="headerlink" href="#threads-and-processes" title="Permanent link">&para;</a></h2>
 <p><code>ws.con</code> is the calling thread's DuckDB cursor, so one workspace serves every thread.
 A relation belongs to the thread that built it (<a href="../../design/storage/concurrency/#a-cursor-per-thread">design</a>).</p>
-<p>A <code>Revision</code> serialises as its id, its parent and its store's location, and pickles the same way.
+<p>A <code>Revision</code> or a <code>Claim</code> serialises as its id and its store's location, and pickles the same way.
 In a fresh process it loads back onto <code>Workspace.process()</code> (<a href="../../design/storage/concurrency/#crossing-a-process-boundary">design</a>):</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">()</span>  <span class="c1"># in one process</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">Revision</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>  <span class="c1"># in another</span>

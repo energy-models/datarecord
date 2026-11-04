@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-127/design/use/editing/">
       
       
-        <link rel="prev" href="../reading/">
+        <link rel="prev" href="../selecting/">
       
       
         <link rel="next" href="../writing/">
@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -766,6 +766,8 @@
       
         
       
+        
+      
     
     
     
@@ -826,6 +828,34 @@
     
   
     Reading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../selecting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Selecting
   
 
     
@@ -1042,6 +1072,8 @@
       
         
       
+        
+      
     
     
     
@@ -1211,6 +1243,18 @@
   
     
     
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
       
         
       
@@ -1592,7 +1636,8 @@ The caller writes <code>edits</code> as a child layer to keep them.</p>
 </code></pre></div>
 <p><code>WorkingRecord(revision.record)</code> stages on the base's connection, <code>record.con</code>.
 The base must be a <code>Record</code>.
-Any other <code>RecordLike</code> is refused, since a framework object has no layer layout to fold the edits over.</p>
+Any other <code>RecordLike</code> is written first, <code>WorkingRecord(ws.write(source, uri))</code>, so its rows are checked once and folded as a layer like any other.
+A base so written has no parent in a store, and <code>ws.write(w, uri)</code> writes it with the edits.</p>
 <p><code>WorkingRecord</code> is a subclass of <code>Record</code>.
 Its sources are the base's sources plus one <a href="#staging">staged source</a>, so it reads as a record one layer deeper than its base.
 Every read member is inherited unchanged, so an edit reads back through the same code path a written layer would.
@@ -1602,7 +1647,7 @@ A caller can read an edit back, or hand the record to something that only reads,
 <ul>
 <li>An edit costs a row in a staging table.
   A hundred edits to one attribute are a hundred rows, collapsed once when written.
-  The first edit of an axis copies the base's resolved one into its table.</li>
+  Every staging table exists from the start, an axis holding a copy of the base's resolved one.</li>
 <li>Nothing touches the record until <a href="#edits"><code>edits</code></a> is written as a child.
   A caller that fails halfway leaves no layer, and a caller that changes its mind calls <code>rollback()</code>.</li>
 </ul>
@@ -1674,6 +1719,15 @@ A new row covers an old one when, at every coordinate, it names the same label o
 So <code>set("p_nom", 0.9, entity=["a"])</code> followed by <code>set("p_nom", 0.95)</code> stages one row, and <code>a</code> reads 0.95.
 The other order keeps both rows, and <code>a</code> reads 0.9, since within one layer <a href="../../model/attributes/#the-broadcast-rule">the more specific row wins</a>.
 A default set first keeps the exceptions set after it.</p>
+<p>Where two edits cross, the later one wins.
+A <code>set</code> whose row crosses a staged row of the same attribute, each naming a dim the other leaves NULL and no staged row naming both, also stages the row naming both, with its own value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># wind1 under high reads 0.7</span>
+</code></pre></div>
+<p>A staged row that already names both keeps its value, being the more specific.
+So the staged rows never hold a crossing that <a href="../../layers/resolution/#resolving-a-relation">the read</a> could not settle, and the order of two edits decides a value, never whether an edit succeeds.
+Last writer wins is what <code>set</code> does where two rows name the same key, and what the user of an editor expects.
+A <code>set</code> whose own rows cross each other with no row naming both is refused, and the edit rolls back; a frame that stages them stages a row naming both beside them.</p>
 <p><code>set</code> packs a multi-dim's coordinates into its <a href="../../model/multi-dims/#one-struct-column">struct column</a>, so <code>entity="dc", bus="north"</code> stages <code>connection = {entity: dc, bus: north}</code>.
 A multi-dim's value is <a href="../../model/attributes/#the-broadcast-rule">a whole tuple or NULL</a>, so every coordinate must be given or none.
 Omitting <code>bus</code> alone is refused, since <code>{entity: dc, bus: NULL}</code> names no tuple.
@@ -1760,16 +1814,16 @@ A sequence whose length differs from its keyword's is an error at the call.</p>
 <p>Every form is checked against <a href="#validation">the labels the record resolves</a>, the frame included.
 A frame decides where the labels come from, and those labels must still exist.</p>
 <h2 id="add-remove"><code>add</code> / <code>remove</code><a class="headerlink" href="#add-remove" title="Permanent link">&para;</a></h2>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind"</span><span class="p">,</span> <span class="s2">"H2"</span><span class="p">])</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">])</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north H2"</span><span class="p">],</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"H2"</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="mf">10.1</span><span class="p">)</span>  <span class="c1"># bare: the dim's own</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"g2"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"old_coal"</span><span class="p">])</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"gas"</span><span class="p">])</span>  <span class="c1"># refused while entity.carrier holds it</span>
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}],</span> <span class="n">role</span><span class="o">=</span><span class="s2">"output"</span><span class="p">)</span>
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">])</span>  <span class="c1"># the struct column `connection`</span>
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># an `entity` and a `bus` column, `role` beside them</span>
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}])</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"wind"</span><span class="p">,</span> <span class="s2">"H2"</span><span class="p">])</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north"</span><span class="p">,</span> <span class="s2">"south"</span><span class="p">])</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"bus"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"north H2"</span><span class="p">],</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"H2"</span><span class="p">,</span> <span class="n">x</span><span class="o">=</span><span class="mf">10.1</span><span class="p">)</span>  <span class="c1"># bare: the dim's own</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"g2"</span><span class="p">],</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"old_coal"</span><span class="p">])</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"carrier"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"gas"</span><span class="p">])</span>  <span class="c1"># refused while entity.carrier holds it</span>
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}],</span> <span class="n">role</span><span class="o">=</span><span class="s2">"output"</span><span class="p">)</span>
+<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">other</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">])</span>  <span class="c1"># the struct column `connection`</span>
+<a id="__codelineno-3-9" name="__codelineno-3-9" href="#__codelineno-3-9"></a><span class="n">w</span><span class="o">.</span><span class="n">add</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="n">frame</span><span class="p">)</span>  <span class="c1"># an `entity` and a `bus` column, `role` beside them</span>
+<a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"g1"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"north"</span><span class="p">}])</span>
 </code></pre></div>
 <p><code>add(dim, labels, **columns)</code> stages whole axis rows.
 <code>columns</code> are the other columns of <code>dims/&lt;dim&gt;.parquet</code>: the dim's properties, bare since the subject is <code>dim</code>.
@@ -1810,34 +1864,36 @@ The caller <code>set</code>s such a property to another label or None first.</p>
 <h2 id="edits">Edits<a class="headerlink" href="#edits" title="Permanent link">&para;</a></h2>
 <p>A <code>WorkingRecord</code> does not write.
 It holds two things that the <a href="../writing/">writers</a> take:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"gen1"</span><span class="p">])</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># the delta, as a child layer</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># base plus edits, flattened</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">rev</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">100.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="p">[</span><span class="s2">"gen1"</span><span class="p">])</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">edited</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>  <span class="c1"># the edits, as a child of rev</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># base plus edits, flattened</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
 </code></pre></div>
 <ul>
 <li><code>w.edits</code> is the staged layer alone, the <a href="../writing/#layerdata"><code>LayerData</code></a> it already is.
-  Written as a child of the revision <code>w</code> was built over, it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
+  <code>store.commit(w)</code> writes it as a child of the revision <code>w</code> was built over, so it holds only the edits: the attribute rows it set, and each axis it changed, a multi-dim's included, restated whole.
   The fold resolves the rest from the parent.
-  The layer lands in the child, so the revision that <code>child</code> returns reads the edits back.</li>
+  The layer lands in the child, so the revision that <code>commit</code> returns reads the edits back.</li>
 <li><code>w</code> itself is what is staged plus what the record already reads: the whole resolved record.
-  It is written as a standalone directory, where there is no parent to resolve against.</li>
+  <code>ws.write(w, uri)</code> writes it as a standalone directory, where there is no parent to resolve against.</li>
 </ul>
 <p>The writer has one contract for both: enumerate what the source holds and hand each part over.
-The caller chooses the rows to write, <code>w.edits</code> or <code>w</code>.
-The caller names the parent, which is the revision <code>w</code> was built from.
+The destination chooses the rows: a store takes <code>w.edits</code>, and a standalone directory takes <code>w</code>.
+<code>w</code> brings its parent, the revision it was built over, so the caller names none.
 <code>rollback()</code> clears the staging area.
 A write clears nothing, so a <code>WorkingRecord</code> that still holds its edits reads exactly what it did before.</p>
-<p><code>other.child(w.edits)</code>, with <code>w</code> built over a different revision, would write a delta computed against the wrong parent, since an axis edit restates its base's whole axis.
-<code>child</code> therefore compares the edits' base revision with its own id and raises on a mismatch.
-Edits over a directory have no revision as their base, so they are a child of none.
-<code>rev.child(w)</code> writes the whole resolved record as a child layer.
-That layer reads back correctly and is larger than the delta, so <code>edits</code> is the name to use.</p>
+<p>Each edit runs in one transaction on the record's cursor.
+A refused edit rolls back whole, so the staging tables read as they did before it, and a reader on another cursor sees an edit whole or not at all.
+The transaction also refreshes the <a href="#staging">staged owner-map rows</a> of each attribute the edit touched.
+DuckDB nests no transaction and has no savepoint, so an edit is refused while the caller holds a transaction open on the same cursor.</p>
+<p>Edits written as a child of any other revision would be a delta computed against the wrong parent, since an axis edit restates its base's whole axis, so a commit <a href="../../storage/store/#a-revision-exists-only-by-its-file">refuses them</a>.</p>
 <p>An edited axis, a multi-dim's included, is restated whole, whatever <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a> says.
 The layer holds every label the axis has with the edits applied, with its properties, in <a href="../../model/dims/#axis-order">axis order</a>.
 A layer's axis file then says what the axis is there, and reads without its parent (<a href="../../layers/removal/">removing labels</a>).
-A standalone write of <code>w</code> writes the resolved axis whole as well, and an axis nothing touched is written by neither.</p>
+A standalone write of <code>w</code> writes the resolved axis whole as well.
+<code>edits</code> holds a staged axis only where it differs from the base's, as rows in position order, and an attribute only where its table holds rows.
+So an <code>add</code> undone by a <code>remove</code> writes nothing, and nothing tracks which axes an edit touched.</p>
 <p>An edit replaces the rows it names.
 It deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and reads without a fold.
 The coordinate it replaces on is the one a read would have collapsed, so the delete removes at least what a last-writer-wins fold would have discarded.
@@ -1861,9 +1917,9 @@ The same distinction governs <a href="#reading-with-pending-edits">the read over
   Its tuples stay removed.</li>
 <li><code>set</code> on a label this record also added: the attribute rows live in <code>attributes/</code>, and a property patches the staged row.</li>
 </ul>
-<p>Along an axis outside <code>partial</code>, a layer must carry a label's whole extent.
-So a <code>set</code> of one value along such an axis reads the resolved series for that key and stages the untouched coordinates beside the edit.
-That is the one read of parent data an edit makes.
+<p>Along an axis outside <code>partial</code>, a layer that restates a key and omits a label its parent held there deletes that value, and a later widening of <code>partial</code> does not bring it back.
+So an edit carries a label's whole extent: a <code>set</code> of one value along such an axis reads the resolved series for that key and stages the untouched coordinates beside the edit.
+That is the fill's contract rather than a rule every layer must meet, and the one read of parent data an edit makes.
 It happens when the rows are staged, so the staging table already holds what the layer will hold, and a write of <code>edits</code> has no completion step.</p>
 <p>The fill covers the key the edit named.
 A label no edit mentioned keeps its rows in the parent, since a layer that carried them would claim an extent it was never given.
@@ -1890,26 +1946,38 @@ Editing adds checks at the edit, caught when the edit is staged, so a caller lea
 </ul>
 <p>Each label and tuple check is one DuckDB query that anti-joins the staged rows against the axis as staged, for every checked column at once.</p>
 <h2 id="staging">Staging<a class="headerlink" href="#staging" title="Permanent link">&para;</a></h2>
-<p>Staged rows live in DuckDB tables on the record's own connection:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">staged_attributes_</span><span class="o">&lt;</span><span class="n">attr</span><span class="w"> </span><span class="n">digest</span><span class="o">&gt;</span><span class="n">_</span><span class="o">&lt;</span><span class="n">id</span><span class="o">&gt;</span><span class="w"> </span><span class="p">(</span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="n">attribute</span><span class="s1">'s long columns&gt;);</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="s1">CREATE TABLE staged_axis_&lt;dim digest&gt;_&lt;id&gt;        (&lt;the axis key&gt;, &lt;the dim'</span><span class="n">s</span><span class="w"> </span><span class="n">properties</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="k">position</span><span class="o">&gt;</span><span class="p">);</span>
+<p>Staged rows live in DuckDB tables on the record's own connection, in a schema of the record's own, named by the layer id's 32-digit hex:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">SCHEMA</span><span class="w"> </span><span class="n">_staged</span><span class="p">.</span><span class="ss">"&lt;id&gt;"</span><span class="p">;</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="n">_staged</span><span class="p">.</span><span class="ss">"&lt;id&gt;"</span><span class="p">.</span><span class="n">attributes_</span><span class="o">&lt;</span><span class="n">attr</span><span class="w"> </span><span class="n">digest</span><span class="o">&gt;</span><span class="w"> </span><span class="p">(</span><span class="o">&lt;</span><span class="n">that</span><span class="w"> </span><span class="n">attribute</span><span class="s1">'s long columns&gt;);</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="s1">CREATE TABLE _staged."&lt;id&gt;".axis_&lt;dim digest&gt;        (&lt;the axis key&gt;, &lt;the dim'</span><span class="n">s</span><span class="w"> </span><span class="n">properties</span><span class="o">&gt;</span><span class="p">,</span><span class="w"> </span><span class="o">&lt;</span><span class="k">position</span><span class="o">&gt;</span><span class="p">);</span>
 </code></pre></div>
 <p><code>&lt;id&gt;</code> is the staged layer's own id, so two <code>WorkingRecord</code>s on one connection share no table.
+The record and each registration of it hold the schema, and the workspace drops it whole once none does (<a href="../../storage/store/#the-databases-schemas">the database's schemas</a>).
+Over a <code>Record</code> the record reads and edits through a copy of its own, so closing the caller's base breaks nothing; over a <code>WorkingRecord</code> it reads that one, and an edit after that one is closed raises <code>ValueError</code> naming it.
 An attribute or dim name is a caller's string, so the table name carries a digest of it.</p>
 <p>Every table is shaped like the file it becomes.
 An axis table adds only a position column, since a DuckDB table keeps no row order.
 No table unions columns that the format keeps apart, so a column the schema does not declare has no table to go in, and <a href="#add-remove"><code>add</code></a> refuses it.</p>
-<p>There is one table per staged attribute, since that is the file it becomes.
+<p>There is one table per declared attribute, since that is the file it becomes.
 Its columns are <a href="../../storage/format/#the-long-schema">the attribute's own coordinates</a>, and <code>value</code> has the attribute's declared type.
 A shared table would have to widen <code>value</code> to text and carry every declared dim.
 The value would then need casting back on the way out.
 A NULL in a dim column would also be ambiguous between an attribute without that axis and <a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>'s every value.
 Per attribute, the table's shape answers both questions.</p>
-<p>There is one table per staged axis, a <a href="../../model/multi-dims/">multi-dim</a>'s keyed by its struct column, holding it whole as a layer restates it: its key, its properties and a position column.
-The first edit copies the base's resolved axis into it in base order.
+<p>There is one table per axis, a <a href="../../model/multi-dims/">multi-dim</a>'s keyed by its struct column, holding it whole as a layer restates it: its key, its properties and a position column.
+A <a href="../../model/dims/#a-dim-with-one_of">dim with <code>one_of</code></a> has none, its axis being the schema's list.
+The table starts as a copy of the base's resolved axis in base order.
 <code>add</code> appends a new label at the next position and puts a label of the base back at its base position.
 <code>remove</code> deletes the label's row, and a property <code>set</code> patches one column in place.
 The writer and the reads take each table in position order.</p>
+<p>A <code>WorkingRecord</code> creates every table when it is created, and an attribute's starts empty.
+Creation then takes about half a second for a schema of 150 attributes, and every axis is held twice.
+In exchange the staged layer owns every axis from the start, and which tables exist never depends on what was staged.
+<code>rollback()</code> empties the attribute tables and refills each axis from the base, and drops no table.</p>
+<p>Beside each attribute's table, a second table holds the staged layer's owner-map rows of that attribute.
+Every edit refreshes it, inside its transaction, for each attribute it touched, an attribute over an axis the edit changed included.
+The fold, <code>flags()</code> and the write read these rows rather than aggregating the staged rows on every use.
+A large <code>set</code> costs a few percent more for it.</p>
 <p>These tables are the only place a staged row exists, and <a href="#reading-with-pending-edits">the reads</a> fold them directly.</p>
 <p>DuckDB holds the staged rows for three reasons.
 The reads are already a fold, and staging elsewhere would marshal every edit into a relation on every read.
@@ -1923,17 +1991,30 @@ An attribute's table has no ordering column, and edit order is which edit ran la
 <p>The read members reflect the edits, so a <code>set</code> followed by a read returns the new value.</p>
 <p>A set of pending edits is a layer that is not yet written.
 The reads compose it the same way: the staged rows are the last layer, resolved over whatever the record read before.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>resolved = fold(parent layers..., staged rows)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>resolved = fold(parent layers..., staged rows)
 </code></pre></div>
 <p>This is one more fold step over the same <a href="../../layers/resolution/#owner-map">owner-map machinery</a>, with the staging tables in place of a layer directory.
 A broadcast of the base reaches a label staged here, since the fold keeps it NULL (<a href="../../layers/resolution/#what-a-row-reaches">what a row reaches</a>).
-A staged layer has met no writer, so the read refuses two staged rows that cross with no staged row naming both, as the write of <code>edits</code> would.
+A staged layer has met no writer, but <a href="#set"><code>set</code></a> leaves no two staged rows that cross with no staged row naming both, so the read settles the staged layer as it settles a written one.
 It works over a layered base and a plain directory alike, since a directory is a layer laid out like any other.
 It costs what one more layer costs, on every read.
 A written layer is folded once and cached, and the staged layer cannot be, since it is the only one that can still change.
 So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top stays a relation.
 An edit then needs no invalidation, since nothing that depends on it is cached.</p>
-<p><code>flags</code> come from the map rows the staged layer folds to, as for any layer.
+<p>The plan of a relation of a <code>WorkingRecord</code> never depends on the staged rows; it may depend on the rows of the frozen layers, which do not change while the <code>WorkingRecord</code> lives. So a relation built before an edit reads it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">rel</span> <span class="o">=</span> <span class="n">w</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">rel</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>  <span class="c1"># holds 150.0</span>
+</code></pre></div>
+<p>The staged step is planned that way throughout.
+The staged layer owns every axis, so <a href="../../layers/resolution/#materialised-node-caches"><code>dim_owners</code></a> names it for every dim.
+It is a possible owner of every attribute, whether or not it holds rows, and the dead labels of its restatements are always an anti-join, empty or not.
+The <a href="../../layers/resolution/#resolving-a-relation">ranking of contested rows</a> is planned for every attribute and restricted to the rows that need it as data.
+The staged layer folds onto the frozen map one attribute at a time, against the parent's rows of that attribute.
+A fold of every attribute at once would bind every staging table into every relation, which for a schema of 150 attributes costs seconds per relation.</p>
+<p>A relation that stays valid across edits still pays for each of them.
+DuckDB re-binds every Python relation on a connection after any committed write, to any table, so a consumer holds few relations across an edit.</p>
+<p><code>flags</code> come from the map rows the staged layer folds to, as for any layer, read from its owner-map tables.
 A staged row that sets a dim adds it to <code>varies</code>, one that leaves it NULL adds it to <code>broadcast</code>, and a staged curve sets <code>breakpoints</code>.
 Properties are read from <code>properties</code>, staged edits included.</p>
 <p>A staged axis is read as its table stands, in position order.
@@ -1974,7 +2055,7 @@ Two <code>set</code> calls for two properties of one label compose, each patchin
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../reading/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Reading">
+          <a href="../selecting/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Selecting">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -1984,7 +2065,7 @@ Two <code>set</code> calls for two properties of one label compose, each patchin
                 Previous
               </span>
               <div class="md-ellipsis">
-                Reading
+                Selecting
               </div>
             </div>
           </a>

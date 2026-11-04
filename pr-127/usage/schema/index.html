@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -1195,7 +1195,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="declaring-a-schema">Declaring a schema<a class="headerlink" href="#declaring-a-schema" title="Permanent link">&para;</a></h1>
-<p>A record has one schema, written as <code>manifest.json</code> (<a href="../../design/model/schema/">design</a>). The schema declares the dims, the properties of their labels and the attributes. This example declares a small network:</p>
+<p>Each layer's <code>manifest.json</code> carries the full schema it was written under (<a href="../../design/model/schema/">design</a>). The schema declares the dims, the properties of their labels and the attributes. This example declares a small network:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Schema</span><span class="p">,</span> <span class="n">Dimension</span><span class="p">,</span> <span class="n">AttributeSpec</span><span class="p">,</span> <span class="n">PropertySpec</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">Schema</span><span class="p">(</span>

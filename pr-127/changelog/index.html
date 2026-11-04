@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -962,6 +962,16 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
+<li><code>select(record, **labels)</code>, exported beside <code>settle</code>, and <code>Record.select</code>
+  return a <code>Selection</code>: a <code>RecordLike</code> holding any record at the labels named,
+  as xarray's <code>sel</code> takes them. One label squeezes its dim out of the schema,
+  its attributes' rows settled along it by the broadcast rule; a list, a slice
+  or a partial date string keeps it. A keyword naming a multi-dim's coordinate
+  narrows its tuples, and one naming a property narrows its subject. A label
+  whose property names a dropped label goes, and so does a tuple naming one,
+  until nothing more goes. <code>Selection.select</code> merges its labels and selects the
+  base again, and <code>Selection.lift</code> puts the squeezed labels back on rows
+  computed over the view. Attributes stay plans on the base's connection.</li>
 <li>Properties. The schema has a <code>properties</code> section (<code>PropertySpec</code>) that
   declares, per dim or multi-dim, the values that describe one label. A record
   stores them as columns of <code>dims/&lt;dim&gt;.parquet</code>.
@@ -987,20 +997,42 @@ SPDX-License-Identifier: CC-BY-4.0
   is called.</li>
 <li>A multi-dim is a broadcast coordinate like any dim. A NULL multi-dim value
   means every tuple of the multi-dim, and <code>partial</code> may name a multi-dim.</li>
-<li><code>Workspace</code> holds the DuckDB database and <code>Store</code> holds one location. A
-  store keeps a revision file per revision as <code>revisions/&lt;id&gt;.json</code>, so a
-  <code>Revision</code> serialises as its location and id and reads its ancestry in a new
-  process. <code>ws.con</code> is the cursor of the calling thread. The write and edit
-  boundary rejects a relation from another connection or thread.</li>
-<li>Writing is <code>store.root(source)</code>, <code>rev.child(source)</code> and
-  <code>ws.write(source, uri)</code>. <code>rev.child(w.edits)</code> writes the edits of a
-  <code>WorkingRecord</code> as a child layer, and <code>ws.write(w, uri)</code> writes the
-  flattened record. A tree write puts the revision file last, so a failed
-  write leaves no revision and does not widen the manifest.</li>
+<li><code>Workspace</code> holds the DuckDB database and <code>Store</code> holds one location. Each
+  layer under <code>layers/&lt;id&gt;/</code> carries its own <code>manifest.json</code>, a <code>Manifest</code>
+  holding its id, its parent, the full schema it was written under, the files
+  it wrote and a flat <code>meta</code> of strings, integers, finite floats and booleans.
+  A read opens exactly the files the manifest lists and globs nothing. A
+  <code>Revision</code> is its location and id: it compares, hashes and serialises as
+  them, and reads its ancestry in a new process. <code>rev.manifest</code> and
+  <code>rev.meta</code> answer from the workspace's <code>revisions</code> and <code>schemas</code> tables,
+  which cache each manifest whole. <code>ws.con</code> is the cursor of the calling
+  thread. The write and edit boundary rejects a relation from another
+  connection or thread.</li>
+<li>Writing is <code>store.commit(source, parent=..., meta=...)</code>, with <code>parent=None</code>
+  for a new root, and <code>ws.write(source, uri, meta=...)</code>.
+  <code>store.claim(parent=, meta=)</code> hands out a layer id by a create-only
+  <code>claim.json</code> before any data is written, and <code>claim.commit(source, meta=...)</code>
+  writes the data into <code>layers/&lt;id&gt;/</code> and then the manifest, create-only.
+  Until then the layer is pending and no read reaches it. A commit may add
+  <code>meta</code> keys but not change a claimed one. A child whose schema is not
+  <code>compatible_with</code> its parent's, or a parent from another store, is refused.
+  <code>store.commit(w)</code> writes the edits of a <code>WorkingRecord</code> as a child of the
+  revision it was built over, and refuses one built over anything else,
+  naming <code>ws.write(w, uri)</code>, which writes the flattened record. Each claim and
+  manifest is written once, create-only.</li>
+<li>A <code>Claim</code> serialises and pickles as its store's location and id, and reads
+  its parent, <code>meta</code> and claim time back from its <code>claim.json</code>, so a job in
+  another process commits it. <code>store.claims()</code> lists the pending layers,
+  oldest first, with their <code>meta</code>, and <code>store.revisions(meta={...})</code> returns
+  the revisions whose <code>meta</code> holds every pair given.</li>
+<li><code>store.cleanup(ids=[...])</code> and <code>store.cleanup(older_than=timedelta(...))</code>
+  delete pending layers, and refuse an id that is not pending. Nothing else
+  deletes.</li>
 <li>A store or standalone directory on <code>s3://</code>, through boto3 behind the
-  <code>datarecord[remote]</code> extra and configured by the AWS environment. Revision
-  files are written create-only and the manifest by compare-and-swap, so two
-  writers that widen one schema both keep their widening.</li>
+  <code>datarecord[remote]</code> extra and configured by the AWS environment. Claims and
+  manifests are written create-only, and each writer checks its schema
+  against its parent's manifest, which never changes, so two writers never
+  race.</li>
 <li><code>Tool.to_datarecord(model, con)</code> takes the connection that its frames are
   planned on.</li>
 <li>Removing an entity removes the group tuples that name it, and the values of
@@ -1011,8 +1043,8 @@ SPDX-License-Identifier: CC-BY-4.0
   is removed where a restatement omits a label that the previous one held,
   and its order is the file's row order. The deepest file for an axis or group
   is the answer for a node. A <code>WorkingRecord</code> stages an edited axis or group
-  whole, copied from the base at its first edit. A materialised node holds
-  copies of the deepest files in <code>resolved/dims/</code> and <code>resolved/groups/</code>.</li>
+  whole, copied from the base at its first edit. A materialised node names
+  the layer holding each axis's deepest file in <code>resolved/dim_owners.parquet</code>.</li>
 <li><code>WorkingRecord.set</code> checks that an attribute value names a label that its
   dim's axis, as staged, holds, for every dim, and a tuple that its group, as
   staged, holds. <code>add</code> checks that each label of a tuple is on its axis
@@ -1021,7 +1053,8 @@ SPDX-License-Identifier: CC-BY-4.0
   axes and groups of the layer, and every group tuple against the final axes.
   Each check is one DuckDB anti-join.</li>
 <li>A schema is checked at load. A dim, group, group coordinate or attribute
-  name that holds <code>"</code> or <code>.</code>, starts with <code>_</code>, is a column that datarecord
+  name that is not a plain identifier (mathspec's rule: ASCII letters, digits
+  and <code>_</code>, not starting with a digit), starts with <code>_</code>, is a column that datarecord
   writes itself (<code>value</code>, <code>layer_uuid</code> and others, ignoring case), or differs
   from another name only in case fails with an error that names each offender.
   Based on #26 by @FBumann.</li>
@@ -1071,9 +1104,39 @@ SPDX-License-Identifier: CC-BY-4.0
   as a thin layer. The layer restates the SubNetworks of <code>base</code> and sets
   NULL on the results of <code>base</code> that it does not write again. A NULL series
   value on export leaves the component at its static value.</li>
+<li><code>PyPSA.build</code> takes any <code>RecordLike</code>, so <code>PyPSA.build(PyPSA.to_datarecord(n, con))</code>
+  builds the network its committed record does.</li>
+<li><code>Record.register(name)</code> creates DuckDB views of a record's dims, properties
+  and attributes in the schemas <code>name.dims</code>, <code>name.properties</code> and
+  <code>name.attributes</code>. Over a <code>WorkingRecord</code> they are live and show every edit.
+  <code>Workspace.unregister(name)</code> drops them, and <code>Workspace.registered()</code> lists
+  them.</li>
+<li><code>WorkingRecord.close()</code> drops the record's staging tables, as does
+  garbage collection, and <code>with WorkingRecord(base) as w:</code> closes it on exit.
+  A closed record raises <code>ValueError</code> on every read and edit. A registration
+  of the record keeps the tables until <code>Workspace.unregister(name)</code>. The
+  workspace keeps its tables out of <code>main</code>: a revision's fold in
+  <code>_fold."&lt;id&gt;"</code>, a <code>WorkingRecord</code>'s staging tables in <code>_staged."&lt;id&gt;"</code>, and
+  a call's intermediate tables in <code>_scratch</code>, so <code>register</code> refuses these
+  three names. A workspace reopened on a file can <code>unregister</code> the
+  registrations it lists.</li>
+<li><code>Record.close()</code> releases the record's folds, and <code>with record:</code> closes it
+  on exit. The workspace drops a revision's fold once no open record or
+  registration holds it. A record collected unclosed keeps its folds for the
+  workspace's life, so a chained read stays valid. A closed record raises
+  <code>ValueError</code> on every read, and <code>Revision.record</code> builds a new one once its
+  cached record is closed. <code>Workspace.registered()</code> lists the schemas each
+  registration <code>held</code>, which a reopened workspace holds for it again.</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Breaking: the schema models (<code>Schema</code>, <code>Dimension</code>, <code>AttributeSpec</code>,
+  <code>PropertySpec</code>) are frozen; derive a changed one with
+  <code>model_copy(update=...)</code>. <code>Schema.digest</code> is the sha256 of its manifest JSON.</li>
+<li>Breaking: <code>RecordLike</code> declares <code>con</code>, the connection its relations are
+  planned on; a hand-written <code>RecordLike</code> adds it.</li>
+<li><code>WorkingRecord</code> over a <code>RecordLike</code> that is no <code>Record</code> raises a <code>TypeError</code>
+  naming the fix, <code>WorkingRecord(ws.write(source, uri))</code>.</li>
 <li>
 <p>Breaking: the PyPSA dialect declares every component attribute over
   <code>scenario</code>, except those PyPSA keeps the same in every scenario
@@ -1083,8 +1146,23 @@ SPDX-License-Identifier: CC-BY-4.0
   labels as <code>entity=[...]</code> or as a series indexed by <code>entity</code>.</p>
 </li>
 <li>
-<p>datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
-  relation: it re-runs on every fetch and has no <code>fetchone()</code>.</p>
+<p>A workspace validates each distinct schema once. Revisions sharing a schema
+  hand out one <code>Schema</code> object, so reading a long lineage no longer re-runs the
+  schema's checks per layer. A <code>Schema</code> obtained from a revision is shared:
+  copy it before changing it.</p>
+</li>
+<li>A materialised node no longer copies its axes into <code>resolved/dims/</code>.
+  <code>resolved/dim_owners.parquet</code> names, per dim, the layer whose
+  <code>dims/&lt;dim&gt;.parquet</code> is the deepest at or below the node, and a read opens
+  that file. Its <code>has_dead</code> column says which dims have dead labels in
+  <code>resolved/dead/</code>, so a read opens those by name and lists no directory.
+  <code>Store.dim_owners_uri(id)</code> is where it lives. A node materialised
+  before holds no such file and fails the read: delete its <code>resolved/</code> and
+  materialise it again.</li>
+<li>datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
+  relation: it re-runs on every fetch and has no <code>fetchone()</code>.</li>
+<li>
+<p><code>duckdb</code> is capped at 2.0.0, the newest release the suite passed on.</p>
 </li>
 <li>
 <p>The PyPSA tool melts a time series one entity at a time, so a parquet row
@@ -1118,11 +1196,12 @@ SPDX-License-Identifier: CC-BY-4.0
   the multi-dims. The PyPSA tool declares <code>connection</code> under <code>dimensions</code>.</p>
 </li>
 <li>A dim with <code>one_of</code> has its axis derived from the list: <code>record.dims["ctype"]</code>
-  is the list, and no <code>dims/&lt;dim&gt;.parquet</code> or <code>resolved/dims/&lt;dim&gt;.parquet</code> is
-  written or read for it. The writer refuses a <code>LayerData</code> handing one over, a
-  read refuses a layer holding one, and a <code>RecordLike</code>'s axis of it is dropped
-  where it is the list, same labels in the same order, and refused otherwise,
-  naming a NULL, a repeated, missing or extra label, or else the order.
+  is the list, and no <code>dims/&lt;dim&gt;.parquet</code> is written or read for it, nor is
+  it named in <code>resolved/dim_owners.parquet</code>. The writer refuses a <code>LayerData</code>
+  handing one over, a read refuses a layer holding one, and a <code>RecordLike</code>'s
+  axis of it is dropped where it is the list, same labels in the same order,
+  and refused otherwise, naming a NULL, a repeated, missing or extra label, or
+  else the order.
   <code>add</code> and <code>remove</code> on it are refused, and a property declared on it is
   refused at load. A record carrying such a file is written again. New on
   <code>Schema</code>: <code>one_of_dims</code>; <code>Schema.require_listed</code> is <code>require_one_of</code>. The
@@ -1176,13 +1255,14 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>Schema.input_key</code> is <code>Schema.owner_map_key</code>, <code>Schema.input_columns</code> is
   <code>Schema.owner_map_columns</code>, and <code>Requirements.unsupported_keys</code> reports
   <code>"owner_map_key"</code>.</li>
-<li>A <code>Record</code> is constructed from <code>revision_id</code>, <code>sources</code>, <code>workspace</code> and
-  <code>schema</code>. A caller reads it through its mappings: <code>rev.record.sources</code>,
-  <code>dims[dim]</code>, <code>properties[dim]</code> and <code>attributes[name]</code>.
-  <code>attributes[name]</code> raises <code>KeyError</code> for an undeclared attribute.</li>
+<li>A <code>Record</code> is constructed from <code>revision_id</code>, <code>sources</code> and <code>workspace</code>, and
+  reads under its last source's schema. A caller reads it through its
+  mappings: <code>rev.record.sources</code>, <code>dims[dim]</code>, <code>properties[dim]</code> and
+  <code>attributes[name]</code>. <code>attributes[name]</code> raises <code>KeyError</code> for an undeclared
+  attribute.</li>
 <li><code>PyPSA.build</code> raises <code>TypeError</code> for a <code>RecordLike</code> that is not a <code>Record</code>.
-  <code>Schema.long_columns_for</code> raises <code>KeyError</code> for an attribute that the schema
-  does not declare.</li>
+  <code>Schema.long_columns_for</code> and <code>Schema.coordinates_of</code> raise <code>KeyError</code> for an
+  attribute that the schema does not declare.</li>
 <li><code>LayerData</code> declares no <code>frozen</code>, and its <code>axes()</code>, <code>groups()</code> and
   <code>attributes()</code> return <code>set[str]</code>. A whole <code>Record</code> reaches the writer
   through the adapter for a <code>RecordLike</code>.</li>
@@ -1205,8 +1285,9 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>A reference to a removed label in a group tuple or a property is checked in
   every subject that a layer restates, whole. A reference that an ancestor
   left dangling fails the next layer that restates its subject.</li>
-<li>A standalone record's id is <code>Schema.id</code>, an optional field that its
-  <code>manifest.json</code> carries. A tree's manifest carries none.</li>
+<li>A layer's id is its manifest's. A standalone directory is one layer with
+  no parent, and <code>ws.at</code> refuses a manifest naming one, a layer of a tree
+  being read alone through <code>store.layer(id)</code>.</li>
 <li>A value over a dim or group outside <code>partial</code> that names a removed label is
   dropped at read, including the per-bus values of a removed <code>bus</code> label. A
   materialised node keeps the removed labels in <code>resolved/dead/</code>.</li>
@@ -1227,19 +1308,66 @@ SPDX-License-Identifier: CC-BY-4.0
   out along the labels a parent row names there. The fold refuses a layer
   written otherwise that leaves such a crossing, naming the layer, the
   attribute, the dim and the key.</li>
+<li>The writer refuses a <code>dims/</code> file of a dim that the schema does not declare,
+  as it refuses an undeclared attribute. A descendant declaring the dim would
+  read its labels.</li>
 <li>The writer accepts two rows that each name a dim the other leaves NULL
   where a row naming both is there, so <code>ws.write(w, uri)</code> writes a record of
-  several layers. The read of a <code>WorkingRecord</code> refuses two staged rows that
-  cross with no staged row naming both.</li>
-<li>A materialised owner map keyed on another <code>partial</code> set than the schema's
-  is ignored, and the read folds that node from its layers.</li>
+  several layers. A <code>set</code> staging two rows that cross with no row naming
+  both is refused.</li>
+<li>The fold reads each layer under the schema in its own manifest. Where a
+  deeper layer's schema is wider, the map folded so far, materialised or not,
+  is extended to it, so a materialised node keeps counting after a descendant
+  adds a dim to <code>partial</code>, and a workspace holds one fold table per node,
+  <code>owner_map_&lt;id&gt;</code>. A layer that restates a key along a dim outside <code>partial</code>
+  and omits a label its parent held there deletes that value, and a later
+  widening of <code>partial</code> no longer brings it back.</li>
+<li>The fold of a layer onto the map below it is one query whose joins its
+  schema fixes, whatever named sets its rows hold (<code>fold_layer</code>, replacing
+  <code>fold_attributes</code>). A frozen layer leaving a dim outside <code>partial</code> unfilled
+  is refused when a workspace first folds it, not on every read.</li>
+<li>Every <code>Record</code> lists every dim, property subject and attribute its schema
+  declares, a typed empty relation where no layer holds a row, rather than
+  raising <code>KeyError</code>.</li>
+<li>A relation of a <code>WorkingRecord</code> is planned without reading a staged row,
+  only the frozen layers' rows, so one built before an edit reads it. Every staging table exists
+  from the start, an axis holding a copy of the base's, and <code>rollback()</code>
+  empties them rather than dropping them. Each edit runs in one transaction,
+  which also refreshes the staged owner-map rows the fold, <code>flags()</code> and the
+  write read.</li>
+<li>A <code>set</code> whose row crosses a staged row, with no staged row naming both, also
+  stages the row naming both with its value: the later edit wins where the
+  two meet, rather than the read failing.</li>
+<li>The edits of a <code>WorkingRecord</code> restate an axis only where it differs from
+  the base's, and write no attribute without rows.</li>
+<li>A fold starts from the deepest proper ancestor whose fold is materialised
+  or already held by the workspace, so a record opened on a child after a
+  commit folds only the child's layer.</li>
+<li>A <code>Record</code> builds the coords of its frozen layers once per thread rather
+  than on every relation it reads, about halving a warm read of a deep
+  record. A write checks a new layer's axes against its parent's fold.</li>
+<li>The cold fold of a deep record's owner map takes about a third of the
+  time: each layer's owner rows, the parent rows they leave and the pairs
+  the check reads are each built once, the crossing pairs are taken from the
+  check's, unions bind once per arm, the parts of the plan a schema fixes are
+  built once per schema, and a layer's flags test only the attributes it
+  holds.
+  <code>Revision.materialise</code> writes the fold its workspace already holds rather
+  than folding again.</li>
+<li>An edit inside a transaction the caller holds open on the same cursor is
+  refused with a <code>TransactionException</code> that says so, since an edit runs in
+  its own transaction.</li>
 <li><code>Attr.resolve</code> and <code>Schema.resolve</code> take <code>labels</code> and <code>flags</code>, and settle
   each source by the broadcast rule over <code>labels</code> before a rename or a
   computation. <code>settle(rel, labels, flags)</code>, exported from <code>datarecord</code>, does
   the same for one relation, dropping rows that name a label outside <code>labels</code>.</li>
+<li>A failed write, local or remote, leaves its files in the pending layer
+  rather than staging them locally and renaming the directory into place.</li>
 </ul>
 <h3 id="removed">Removed<a class="headerlink" href="#removed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Breaking: <code>PinnedRecord</code> is gone. A write reads a <code>WorkingRecord</code> through
+  its per-attribute plans directly.</li>
 <li><code>Group</code>, the schema's <code>groups</code> section, <code>Schema.groups</code>,
   <code>Schema.group_columns</code>, <code>Schema.group_type</code>, <code>Schema.groups_of</code>,
   <code>Schema.group_key</code>, <code>Schema.check_group_columns</code>, <code>Schema.field_over</code>,
@@ -1266,6 +1394,10 @@ SPDX-License-Identifier: CC-BY-4.0
 <li><code>Schema.membership_keys</code>, <code>Schema.group_coordinates</code>,
   <code>Group.coordinates</code>, <code>WorkingRecord.set</code>'s <code>indexed_by</code>, <code>entity_types</code> and
   the <code>entity_type</code> dim with its member files are gone.</li>
+<li><code>store.root</code>, <code>rev.child</code>, <code>Schema.id</code>, the store's one <code>manifest.json</code>
+  with its compare-and-swap, and the <code>revisions/</code> tree are gone, as is the
+  local staging directory of a write. A store written before has no layer
+  manifests, so it is unreadable and is written again.</li>
 </ul>
 <h3 id="fixed">Fixed<a class="headerlink" href="#fixed" title="Permanent link">&para;</a></h3>
 <ul>
@@ -1311,13 +1443,14 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>Removing an entity drops the values of every group row that names it, in any
   field. A <code>contract</code> over <code>(from, to)</code> loses its values when either party is
   removed, and <code>flags(ctype)</code> counts such a row for the type of each party.</li>
-<li>Writing a layer whose <code>manifest.json</code> write keeps losing, as it does with a
-  credential that can write the manifest but not read it, stops after ten
-  attempts with an error that names <code>s3:GetObject</code>.</li>
 <li><code>materialise()</code> writes <code>owner_map/inputs.parquet</code> last and each file through
   a temporary name, so a node reads as materialised only when its cache is
   complete.</li>
-<li>A fold cached before the manifest widened reads under the wider schema.</li>
+<li>A map materialised under a parent's schema reads under a child's wider one.</li>
+<li>An attribute whose <code>dims</code> gained a dim reads its earlier rows, NULL along
+  it, where that dim is in <code>partial</code> too. <code>flags()</code> reports such rows as
+  broadcast along the gained dim, whether it is in <code>partial</code> or not, and
+  whether or not the schema declared it before.</li>
 <li>Reading an attribute over a <code>partial</code> dim scales linearly with the length of
   that dim. Folding the owner map no longer compares every row with every
   label of the dim's axis, so the first read of a record with long series is
