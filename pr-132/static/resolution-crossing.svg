@@ -1,0 +1,109 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 326" width="760" height="326" style="max-width: 100%; height: auto" role="img" aria-labelledby="rc-t rc-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rc-t">The fold adds an overlap row where rows of two layers cross</title>
+  <desc id="rc-d">With partial dims entity and scenario, the root layer writes p_nom for gas and wind with scenario NULL, and the child layer writes p_nom for scenario high with entity NULL. The fold yields an owner map that keeps these three rows as written, owned by the layer that wrote them, and adds two overlap rows owned by the child, gas high and wind high. Read at wind high, three rows cover the key: the root's wind NULL 100 and the child's NULL high 999, neither more specific than the other, and the overlap row wind high, which names both, so the broadcast rule gives 999.</desc>
+  <defs>
+    <marker id="rc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 H226 V93 A3,3 0 0 1 223,96 H19 A3,3 0 0 1 16,93 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H223 A3,3 0 0 1 226,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,160 H226 V181 A3,3 0 0 1 223,184 H19 A3,3 0 0 1 16,181 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M16,160 V141 A3,3 0 0 1 19,138 H223 A3,3 0 0 1 226,141 V160 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M370,54 V35 A3,3 0 0 1 373,32 H617 A3,3 0 0 1 620,35 V54 Z" fill="currentColor" fill-opacity="0.1"/>
+    <rect x="370" y="55" width="250" height="36" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="370" y="91" width="250" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="370" y="109" width="250" height="36" fill="#E69F00" fill-opacity="0.35"/>
+    <path d="M370,222 V203 A3,3 0 0 1 373,200 H617 A3,3 0 0 1 620,203 V222 Z" fill="currentColor" fill-opacity="0.1"/>
+    <rect x="370" y="223" width="250" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="370" y="241" width="250" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="370" y="259" width="250" height="18" fill="#E69F00" fill-opacity="0.35"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="90" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="16" y="128" font-weight="bold">child layer</text>
+    <text x="94" y="128" fill-opacity="0.7">p_nom</text>
+    <text x="370" y="22" font-weight="bold">owner map</text>
+    <text x="452" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="370" y="190" font-weight="bold">read at (wind, high)</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+      <text x="24" y="46" font-weight="bold">entity</text>
+      <text x="90" y="46" font-weight="bold">scenario</text>
+      <text x="170" y="46" font-weight="bold">value</text>
+      <text x="24" y="68">gas</text><text x="90" y="68">NULL</text><text x="170" y="68">50</text>
+      <text x="24" y="86">wind</text><text x="90" y="86">NULL</text><text x="170" y="86">100</text>
+      <text x="24" y="152" font-weight="bold">entity</text>
+      <text x="90" y="152" font-weight="bold">scenario</text>
+      <text x="170" y="152" font-weight="bold">value</text>
+      <text x="24" y="174">NULL</text><text x="90" y="174">high</text><text x="170" y="174">999</text>
+      <text x="378" y="46" font-weight="bold">entity</text>
+      <text x="444" y="46" font-weight="bold">scenario</text>
+      <text x="530" y="46" font-weight="bold">layer</text>
+      <text x="378" y="68">gas</text><text x="444" y="68">NULL</text><text x="530" y="68">root</text>
+      <text x="378" y="86">wind</text><text x="444" y="86">NULL</text><text x="530" y="86">root</text>
+      <text x="378" y="104">NULL</text><text x="444" y="104">high</text><text x="530" y="104">child</text>
+      <text x="378" y="122">gas</text><text x="444" y="122">high</text><text x="530" y="122">child</text>
+      <text x="378" y="140">wind</text><text x="444" y="140">high</text><text x="530" y="140">child</text>
+      <text x="378" y="214" font-weight="bold">entity</text>
+      <text x="444" y="214" font-weight="bold">scenario</text>
+      <text x="530" y="214" font-weight="bold">layer</text>
+      <text x="578" y="214" font-weight="bold">value</text>
+      <text x="378" y="236">wind</text><text x="444" y="236">NULL</text><text x="530" y="236">root</text><text x="578" y="236">100</text>
+      <text x="378" y="254">NULL</text><text x="444" y="254">high</text><text x="530" y="254">child</text><text x="578" y="254">999</text>
+      <text x="378" y="272">wind</text><text x="444" y="272">high</text><text x="530" y="272">child</text><text x="578" y="272">999</text>
+    </g>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="210" height="64" rx="3"/>
+    <line x1="16" y1="54" x2="226" y2="54"/>
+    <rect x="16" y="138" width="210" height="46" rx="3"/>
+    <line x1="16" y1="160" x2="226" y2="160"/>
+    <rect x="370" y="32" width="250" height="118" rx="3"/>
+    <line x1="370" y1="54" x2="620" y2="54"/>
+    <path d="M626,111 H632 V143 H626"/>
+    <rect x="370" y="200" width="250" height="82" rx="3"/>
+    <line x1="370" y1="222" x2="620" y2="222"/>
+    <path d="M626,225 H632 V257 H626"/>
+    <path d="M626,261 H632 V275 H626"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rc-arrow)">
+    <path d="M238,108 L358,108"/>
+    <path d="M600,152 V196"/>
+  </g>
+  <g fill="currentColor" font-size="12">
+    <text x="246" y="98" font-weight="bold">fold</text>
+    <text x="246" y="126" fill-opacity="0.7">adds an overlap row</text>
+    <text x="246" y="141" fill-opacity="0.7">where two rows cross</text>
+    <text x="610" y="170" font-weight="bold">read</text>
+    <text x="610" y="185" fill-opacity="0.7">the rows covering it</text>
+    <text x="640" y="124">overlap</text>
+    <text x="640" y="139">rows</text>
+    <text x="640" y="238" fill-opacity="0.7">cross: neither</text>
+    <text x="640" y="252" fill-opacity="0.7">is more specific</text>
+    <text x="640" y="272" fill-opacity="0.7">overlap row:</text>
+    <text x="640" y="286" fill-opacity="0.7">names both</text>
+    <text x="370" y="304" fill-opacity="0.7" font-style="italic">the overlap row names every dim the other two name,</text>
+    <text x="370" y="320" fill-opacity="0.7" font-style="italic">so the broadcast rule gives 999</text>
+  </g>
+  <g stroke="none">
+    <rect x="660" y="36" width="14" height="14" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="660" y="60" width="14" height="14" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="660" y="84" width="14" height="14" fill="#E69F00" fill-opacity="0.35"/>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="660" y="36" width="14" height="14"/>
+    <rect x="660" y="60" width="14" height="14"/>
+    <rect x="660" y="84" width="14" height="14"/>
+  </g>
+  <g fill="currentColor" font-size="12">
+    <text x="680" y="47">root layer</text>
+    <text x="680" y="71">child layer</text>
+    <text x="680" y="95">overlap row</text>
+  </g>
+</svg>
