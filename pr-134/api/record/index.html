@@ -2475,13 +2475,7 @@ would read as the catalog of the nested schemas.</p>
 <span class="normal"><a href="#__codelineno-0-541">541</a></span>
 <span class="normal"><a href="#__codelineno-0-542">542</a></span>
 <span class="normal"><a href="#__codelineno-0-543">543</a></span>
-<span class="normal"><a href="#__codelineno-0-544">544</a></span>
-<span class="normal"><a href="#__codelineno-0-545">545</a></span>
-<span class="normal"><a href="#__codelineno-0-546">546</a></span>
-<span class="normal"><a href="#__codelineno-0-547">547</a></span>
-<span class="normal"><a href="#__codelineno-0-548">548</a></span>
-<span class="normal"><a href="#__codelineno-0-549">549</a></span>
-<span class="normal"><a href="#__codelineno-0-550">550</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-481" name="__codelineno-0-481"></a><span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<span class="normal"><a href="#__codelineno-0-544">544</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-481" name="__codelineno-0-481"></a><span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
 <a id="__codelineno-0-482" name="__codelineno-0-482"></a><span class="w">    </span><span class="sd">"""Create the DuckDB schema `name` with a view per dim, property subject and attribute.</span>
 <a id="__codelineno-0-483" name="__codelineno-0-483"></a>
 <a id="__codelineno-0-484" name="__codelineno-0-484"></a><span class="sd">    The views sit in `name.dims`, `name.properties` and `name.attributes`,</span>
@@ -2523,34 +2517,28 @@ would read as the catalog of the nested schemas.</p>
 <a id="__codelineno-0-520" name="__codelineno-0-520"></a>        <span class="k">for</span> <span class="n">view</span><span class="p">,</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">relations</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
 <a id="__codelineno-0-521" name="__codelineno-0-521"></a>    <span class="p">}</span>
 <a id="__codelineno-0-522" name="__codelineno-0-522"></a>    <span class="n">holds</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">workspace</span><span class="o">.</span><span class="n">_holds</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>    <span class="n">held</span> <span class="o">=</span> <span class="kc">False</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a>    <span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="k">with</span> <span class="n">transaction</span><span class="p">(</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a>            <span class="n">con</span><span class="p">,</span>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a>            <span class="s2">"register"</span><span class="p">,</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a>            <span class="s2">"https://energy-models.github.io/datarecord/design/storage/views/"</span><span class="p">,</span>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="p">):</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>            <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>            <span class="n">holds</span><span class="o">.</span><span class="n">hold</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">)</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>            <span class="n">held</span> <span class="o">=</span> <span class="kc">True</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>            <span class="k">for</span> <span class="n">kind</span> <span class="ow">in</span> <span class="n">kinds</span><span class="p">:</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">kind</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>            <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">query</span> <span class="ow">in</span> <span class="n">rendered</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>                <span class="n">con</span><span class="o">.</span><span class="n">_create_view</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>                <span class="s2">"INSERT INTO registered (name, revision, working, held)"</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>                <span class="s2">" VALUES (?, ?, ?, ?)"</span><span class="p">,</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>                <span class="p">[</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>                    <span class="n">name</span><span class="p">,</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>                    <span class="bp">self</span><span class="o">.</span><span class="n">revision_id</span><span class="p">,</span>
-<a id="__codelineno-0-543" name="__codelineno-0-543"></a>                    <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">frozen</span><span class="p">,</span>
-<a id="__codelineno-0-544" name="__codelineno-0-544"></a>                    <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">),</span>
-<a id="__codelineno-0-545" name="__codelineno-0-545"></a>                <span class="p">],</span>
-<a id="__codelineno-0-546" name="__codelineno-0-546"></a>            <span class="p">)</span>
-<a id="__codelineno-0-547" name="__codelineno-0-547"></a>    <span class="k">except</span> <span class="ne">BaseException</span><span class="p">:</span>
-<a id="__codelineno-0-548" name="__codelineno-0-548"></a>        <span class="k">if</span> <span class="n">held</span><span class="p">:</span>
-<a id="__codelineno-0-549" name="__codelineno-0-549"></a>            <span class="n">holds</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
-<a id="__codelineno-0-550" name="__codelineno-0-550"></a>        <span class="k">raise</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>    <span class="k">with</span> <span class="n">transaction</span><span class="p">(</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="n">con</span><span class="p">,</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="s2">"register"</span><span class="p">,</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="s2">"https://energy-models.github.io/datarecord/design/storage/views/"</span><span class="p">,</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">on_rollback</span><span class="p">:</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a>        <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="n">holds</span><span class="o">.</span><span class="n">hold</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">)</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>        <span class="n">on_rollback</span><span class="p">(</span><span class="n">partial</span><span class="p">(</span><span class="n">holds</span><span class="o">.</span><span class="n">release</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>        <span class="k">for</span> <span class="n">kind</span> <span class="ow">in</span> <span class="n">kinds</span><span class="p">:</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>            <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">kind</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>        <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">query</span> <span class="ow">in</span> <span class="n">rendered</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>            <span class="n">con</span><span class="o">.</span><span class="n">_create_view</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>        <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="s2">"INSERT INTO registered (name, revision, working, held)"</span>
+<a id="__codelineno-0-537" name="__codelineno-0-537"></a>            <span class="s2">" VALUES (?, ?, ?, ?)"</span><span class="p">,</span>
+<a id="__codelineno-0-538" name="__codelineno-0-538"></a>            <span class="p">[</span>
+<a id="__codelineno-0-539" name="__codelineno-0-539"></a>                <span class="n">name</span><span class="p">,</span>
+<a id="__codelineno-0-540" name="__codelineno-0-540"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">revision_id</span><span class="p">,</span>
+<a id="__codelineno-0-541" name="__codelineno-0-541"></a>                <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">frozen</span><span class="p">,</span>
+<a id="__codelineno-0-542" name="__codelineno-0-542"></a>                <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">),</span>
+<a id="__codelineno-0-543" name="__codelineno-0-543"></a>            <span class="p">],</span>
+<a id="__codelineno-0-544" name="__codelineno-0-544"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>
