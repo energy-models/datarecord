@@ -561,6 +561,9 @@ All notable changes to datarecord are documented here. The format follows
 - A collection over `scenario` or a dim of its own whose members hold
   different snapshots is refused at the call, rather than built over their
   union with NaN series and weightings reset to 1.
+- A `period` collection retires an asset a later member lacks: its
+  `lifetime` ends at the first period lacking it, rather than leaving it
+  active there with NaN series. One held again after a gap is refused.
 - The writer's check that no coordinate of a file is held twice groups 64-bit
   hashes in passes of at most 100 million rows, so a file of hundreds of
   millions of rows is checked in bounded memory and spill.

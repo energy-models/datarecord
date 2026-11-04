@@ -1817,7 +1817,44 @@ def _over_periods(
             }
         ),
     )
+    for ctype, statics in held.items():
+        _retire(merged.c[ctype], statics, list(members))
     return merged
+
+
+def _retire(
+    c: pypsa.Components, statics: Mapping[Any, pd.DataFrame], periods: list[Any]
+) -> None:
+    """End the `lifetime` of each asset of `c` at the first of `periods` whose member, of `statics`, lacks it after one held it.
+
+    Raises
+    ------
+    ValueError
+        If an asset is held again in a period after one lacking it.
+    """
+    static = c.static
+    if not {*_ACTIVE_FALLBACK} <= set(static.columns):
+        return
+    present = pd.DataFrame(
+        {
+            p: static.index.isin(statics[p].index) if p in statics else False
+            for p in periods
+        },
+        index=static.index,
+    )
+    gone = (present.cummax(axis=1) & ~present).cummax(axis=1)
+    returned = (gone & present).any(axis=1)
+    if returned.any():
+        name = returned.index[returned][0]
+        msg = (
+            f"{c.name} {name!r} is held in periods "
+            f"{present.columns[present.loc[name]].tolist()}, not in each between: "
+            "a retired asset is not held again"
+        )
+        raise ValueError(msg)
+    retired = gone.any(axis=1)
+    end = gone[retired].idxmax(axis=1) - static.loc[retired, "build_year"]
+    static.loc[retired, "lifetime"] = np.minimum(static.loc[retired, "lifetime"], end)
 
 
 # -- network -> layer ---------------------------------------------------------

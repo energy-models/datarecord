@@ -2666,6 +2666,35 @@ class TestPyPSA:
         built = PyPSA.build(staggered_revision.record, select={"period": period})
         assert built.c.Generator.static.index.tolist() == held
 
+    def test_an_asset_a_later_period_lacks_retires_there(self, store):
+        """A generator the 2050 member lacks is active until 2050, not in it.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        """
+        members = _myopic(_staggered("repeated"))
+        members[2050].remove("Generator", "gen-2040")
+        layer = PyPSA.to_datarecord(
+            pypsa.NetworkCollection(members),
+            store.workspace.con,
+            collection_dim="period",
+        )
+        built = PyPSA.build(store.commit(layer, parent=None).record)
+        active = {
+            p: built.c.Generator.get_active_assets(p)["gen-2040"]
+            for p in built.investment_periods
+        }
+        assert active == {2030: False, 2040: True, 2050: False}, "retired in 2050"
+
+    def test_an_asset_held_again_after_a_gap_is_refused(self, workspace):
+        members = _myopic(_staggered("repeated"))
+        members[2040].remove("Generator", "gen-2040")
+        with pytest.raises(ValueError, match="'gen-2040' is held in periods"):
+            PyPSA.to_datarecord(
+                pypsa.NetworkCollection(members), workspace.con, collection_dim="period"
+            )
+
     def test_a_child_whose_timesteps_repeat_otherwise_builds_back(
         self, staggered_revision, layout
     ):
