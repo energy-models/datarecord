@@ -36,6 +36,7 @@ from datarecord.duck import (
     ex_all,
     fn,
     join_on,
+    named_mask,
     null_safe,
     shared_table,
     struct_of,
@@ -141,23 +142,8 @@ def _prune(
     return parent
 
 
-def _mask(dims: Sequence[str], alias: str | None = None) -> Expression:
-    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
-    return reduce(
-        operator.add,
-        (
-            (col(d) if alias is None else col(alias, d))
-            .isnotnull()
-            .cast(sqltypes.INTEGER)
-            * lit(1 << i)
-            for i, d in enumerate(dims)
-        ),
-        lit(0),
-    )
-
-
 def _domain(schema: Schema, attribute: str) -> int:
-    """The `partial` dims `attribute` is over, as a `_mask` bitmask; every one for an undeclared attribute."""
+    """The `partial` dims `attribute` is over, as a `named_mask` bitmask; every one for an undeclared attribute."""
     if attribute not in schema.attributes:
         return (1 << len(schema.partial_dims)) - 1
     over = schema.coordinates_of(attribute)
@@ -221,7 +207,7 @@ def _expanded(
     prefixed `prefix`.
     """
     dims = schema.partial_dims
-    rel = rel.project(star(), _mask(dims).alias("_m"))
+    rel = rel.project(star(), named_mask(dims).alias("_m"))
     rel = rel.project(star(), fn.unnest(choices).alias("_x"))
     keys = [
         duckdb.CaseExpression(sql(f"(_x & {1 << i}) <> 0"), col(d)).alias(f"_k_{d}")
@@ -249,7 +235,7 @@ def _uncovered_by(
     )
     keys = own.project(
         col("attribute").alias("_o_attribute"),
-        _mask(dims).alias("_o__m"),
+        named_mask(dims).alias("_o__m"),
         *(col(d).alias(f"_o__k_{d}") for d in dims),
     )
     on = ex_all(
