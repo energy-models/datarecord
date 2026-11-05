@@ -1879,6 +1879,33 @@ class TestPyPSA:
             check_index_type=False,
         )
 
+    @pytest.mark.parametrize(
+        ("first", "second"),
+        [
+            pytest.param([10.0, 20.0], [5.0, 5.0], id="to-shared"),
+            pytest.param([5.0, 5.0], [10.0, 20.0], id="to-each"),
+        ],
+    )
+    def test_a_re_solve_writes_a_result_shared_across_scenarios_over_each(
+        self, store, first, second
+    ):
+        """A re-solve's result equal at every scenario, written once over `base`'s per-scenario rows, reaches each scenario, and the reverse.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        n = _north()
+        n.add("GlobalConstraint", "co2", sense="<=", constant=100.0)
+        n.set_scenarios(["a", "b"])
+        revision = export_network(n, store)
+        for mu in (first, second):
+            n = PyPSA.build(revision.record)
+            n.c.GlobalConstraint.static["mu"] = mu
+            revision = _results_over(revision, n)
+        built = PyPSA.build(revision.record)
+        assert built.c.GlobalConstraint.static["mu"].tolist() == second
+
     @pytest.mark.slow
     @pytest.mark.parametrize(
         "select",
@@ -2189,6 +2216,34 @@ class TestPyPSA:
         pd.testing.assert_frame_equal(
             child.c.Generator.dynamic["p_max_pu"][wide.columns], wide, check_freq=False
         )
+
+    @pytest.mark.parametrize(
+        ("held", "edited", "written"),
+        [
+            pytest.param([5.0, 0.0], [5.0, 5.0], True, id="held-at-one"),
+            pytest.param([5.0, 5.0], [5.0, 5.0], False, id="held-at-none"),
+            pytest.param([5.0, 0.0], [0.0, 0.0], True, id="to-the-default"),
+        ],
+    )
+    def test_a_full_export_over_base_writes_a_value_shared_across_scenarios(
+        self, store, held, edited, written
+    ):
+        """A value equal at every scenario repeats `base` only where `base` resolves it at each, not where it holds it at one and the default at another.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        n = _north()
+        n.set_scenarios(["a", "b"])
+        n.c.Generator.static["p_nom"] = held
+        revision = export_network(n, store)
+        n = PyPSA.build(revision.record)
+        n.c.Generator.static["p_nom"] = edited
+        layer = PyPSA.to_datarecord(n, revision.record.con, base=revision.record)
+        assert layer.attributes["p_nom"].df().empty != written
+        child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
+        assert child.c.Generator.static["p_nom"].tolist() == edited
 
     def test_link_internal_power_is_p_internal(self, single_revision, solved):
         """`Link.p` is power at no bus: an entity-level `p_internal`, no `bus`.
