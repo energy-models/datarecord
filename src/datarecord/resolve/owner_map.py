@@ -306,6 +306,28 @@ def names_exactly(columns: Sequence[str], named: Set[str]) -> Expression:
     )
 
 
+def uncovered(
+    rel: DuckDBPyRelation, staged: DuckDBPyRelation, columns: Sequence[str]
+) -> DuckDBPyRelation:
+    """`rel` without the rows a row of `staged` reaches, equal or NULL on each of `columns`.
+
+    Split by which `columns` `staged` leaves NULL, each part an equi-join over
+    the columns it names: a match on "NULL or equal" cannot hash.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    for mask in named_sets(staged, columns):
+        part = staged.filter(names_exactly(columns, mask))
+        rel = rel.set_alias("r").join(
+            part.set_alias("s"),
+            null_safe("r", "s", [c for c in columns if c in mask]),
+            how="anti",
+        )
+    return rel
+
+
 def unsettled(
     rel: DuckDBPyRelation, coordinates: Sequence[str]
 ) -> Iterator[tuple[frozenset[str], frozenset[str], DuckDBPyRelation]]:

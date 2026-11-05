@@ -202,6 +202,7 @@ A full export leaves out a static value still at its default, so an unsolved net
 
 A full export may take `base`, the record it is written over as a child.
 It then leaves out a static value only where it repeats what `base` resolves there: `base`'s value for that entity or connection and scenario, else the default.
+A value written once for every scenario repeats `base` only where `base` resolves it at each.
 An input at a port, or a value of a custom column, is compared with `base`'s alone, and written where `base` has none.
 A value back at its default over a `base` holding another is written, so `base`'s value does not show through.
 A series, a weighting among them, is left out where it repeats `base`'s at every snapshot, and written whole where it differs at any, since `snapshot` is outside `partial`.
@@ -228,6 +229,7 @@ A result at its default is written too, so a re-solve's value stands over its pa
 `base`'s inputs are never written.
 
 A result row that `base` holds and the solve does not write again, such as the `mu_*` duals under `assign_all_duals=False`, is restated as NULL, so no stale value is inherited.
+A row the solve writes with a NULL `scenario` writes again `base`'s rows at every scenario.
 Only a row at the scenarios, buses, entities and connections the network holds is restated, so a re-solve of a [selection](#selecting-before-a-build) leaves every other label's results to `base`.
 A result over no `scenario`, such as `p_nom_opt`, is one value across every scenario, so a re-solve of some scenarios is refused ([selecting before a build](#selecting-before-a-build)).
 A series is written at the network's snapshots, and `base`'s values stand at the others.

@@ -54,6 +54,7 @@ from datarecord.duck import (
 from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import cast_declared
+from datarecord.resolve.owner_map import uncovered
 from datarecord.schema.categories import matching, with_defaults
 from datarecord.schema.schema import Schema as RecordSchema
 from datarecord.schema.schema import packed, unpacked
@@ -3070,9 +3071,11 @@ class _NetworkSource:
         A label of `dim`, or an entity's connection to its bus in `buses`,
         that `base` holds rows of `attribute` for is compared with each of
         them at the row's scenario or none, at any for a row at none, and left
-        out only where each is static and equal, NULL equal to NULL. Any
-        other row is kept where its index is in `undeclared`, those not at
-        their declared default (`_drop_default_rows`).
+        out only where each is static and equal, NULL equal to NULL; a row at
+        none also only where those reach every scenario (`_held_everywhere`)
+        or it is at its default. Any other row is kept where its index is in
+        `undeclared`, those not at their declared default
+        (`_drop_default_rows`).
 
         Notes
         -----
@@ -3096,8 +3099,22 @@ class _NetworkSource:
         value, value_base = pairs["value"], pairs["value_base"]
         equal = (value == value_base) | (value.isna() & value_base.isna())
         repeats = (pairs["static"] & equal).groupby(pairs["index"]).all()
-        keep[repeats.index] = ~repeats
+        shared = rows.loc[repeats.index, SCENARIO].isna()
+        at_default = ~repeats.index.isin(undeclared)
+        everywhere = self._held_everywhere(pairs[f"{SCENARIO}_base"], pairs["index"])
+        keep[repeats.index] = ~(repeats & (~shared | at_default | everywhere))
         return rows[keep]
+
+    def _held_everywhere(self, scenario: pd.Series, by: pd.Series) -> pd.Series:
+        """Whether, for each group of `by`, `base`'s rows at `scenario` reach every scenario of the network: one at none, or one at each.
+
+        A row `_shared_across_scenarios` folds repeats `base` only there; at
+        a scenario `base` holds no row it resolves to the default instead.
+        """
+        labels = self.n.scenarios.astype(str) if self.n.has_scenarios else []
+        held = scenario[scenario.isin(labels)].groupby(by).nunique()
+        each = held.reindex(by.unique(), fill_value=0).eq(len(labels))
+        return scenario.isna().groupby(by).any() | each
 
     @cached_property
     def _base_attributes(self) -> dict[str, DuckDBPyRelation | None]:
@@ -3773,30 +3790,28 @@ def _stale(
 ) -> DuckDBPyRelation:
     """The distinct `keys` of `rows` that `written` does not write again.
 
-    A row over no snapshot is stale where `written` has no row at its keys.
-    A row at a snapshot is stale where `written` has none at its keys but
-    `snapshot`: a melted series writes every snapshot of each key it holds,
-    so the keys are matched once per series, not once per snapshot.
+    A row is written again where a row of `written` covers it (`uncovered`),
+    as a row NULL on `scenario` covers `base`'s at every scenario. A row
+    over no snapshot is stale where no row over no snapshot covers it. A row
+    at a snapshot is stale where none covers it but on `snapshot`: a melted
+    series writes every snapshot of each key it holds, so the keys are
+    matched once per series, not once per snapshot.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     if written is None:
         return rows.select(*map(col, keys)).distinct()
     if SNAPSHOT not in keys:
-        held = rows.select(*map(col, keys)).distinct().set_alias("b")
-        return held.join(written.set_alias("w"), null_safe("b", "w", keys), how="anti")
+        return uncovered(rows.select(*map(col, keys)).distinct(), written, keys)
     whole = [k for k in keys if k != SNAPSHOT]
     over_none = col(SNAPSHOT).isnull()
     held = rows.select(*map(col, whole), over_none.alias("_over_none")).distinct()
-    series = written.aggregate(
-        [*map(col, whole), fn.bool_or(over_none).alias("_over_none")]
-    )
-    unwritten = col("w", "_over_none").isnull() | (
-        col("b", "_over_none") & ~col("w", "_over_none")
-    )
-    stale = (
-        held.set_alias("b")
-        .join(series.set_alias("w"), null_safe("b", "w", whole), how="left")
-        .filter(unwritten)
-        .project(*(col("b", k).alias(k) for k in [*whole, "_over_none"]))
+    statics = written.filter(over_none).select(*map(col, whole)).distinct()
+    series = written.select(*map(col, whole)).distinct()
+    stale = uncovered(held.filter(col("_over_none")), statics, whole).union(
+        uncovered(held.filter(~col("_over_none")), series, whole)
     )
     on = null_safe("r", "s", whole) & (
         col("r", SNAPSHOT).isnull() == col("s", "_over_none")

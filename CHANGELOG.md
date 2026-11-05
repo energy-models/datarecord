@@ -571,6 +571,9 @@ All notable changes to datarecord are documented here. The format follows
   every label's at each member.
 - `PyPSA.build` of a stochastic record indexes `n.shapes` by
   `(scenario, name)`, as PyPSA indexes every other component.
+- A results layer writing a result equal in every scenario once, with a NULL
+  `scenario`, no longer restates `base`'s rows of it at each scenario as
+  NULL, which hid the new value at every scenario.
 - A collection whose members carry one custom column on different types is
   refused, as one whose members declare different schemas is.
 - A collection over a dim of its own whose members hold

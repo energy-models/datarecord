@@ -58,7 +58,7 @@ from datarecord.protocols import RecordLike
 from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import owner_keys
-from datarecord.resolve.owner_map import named_sets, names_exactly, unsettled
+from datarecord.resolve.owner_map import named_sets, names_exactly, uncovered, unsettled
 from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
@@ -1627,7 +1627,7 @@ class WorkingRecord(Record):
         coordinate the base holds labels of carries nothing.
 
         A carried row is expanded along the whole-owned dims it leaves NULL, and
-        every coordinate a staged row reaches is dropped (`_uncovered`), so no
+        every coordinate a staged row reaches is dropped (`uncovered`), so no
         fill sits beside a staged row neither of which is the more specific.
         A staged row leaving a whole-owned dim NULL is itself written out along
         the labels the base rows it crosses name there (`_spread`).
@@ -1675,7 +1675,7 @@ class WorkingRecord(Record):
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
         base = self._base.attributes[attribute]
-        carried = _uncovered(_reaching(base, keys, scope, axes), staged, coordinate)
+        carried = uncovered(_reaching(base, keys, scope, axes), staged, coordinate)
         self._insert(carried, table, {})
         spread = _spread(self.con.table(table), base, scope, present, coordinate)
         if spread is not None:
@@ -2364,28 +2364,6 @@ def _reaching(
             )
         )
     return _most_named(rel, (*scope, *axes), base.columns)
-
-
-def _uncovered(
-    rel: DuckDBPyRelation, staged: DuckDBPyRelation, columns: Sequence[str]
-) -> DuckDBPyRelation:
-    """`rel` without the rows a row of `staged` reaches, equal or NULL on each of `columns`.
-
-    Split by which `columns` `staged` leaves NULL, each part an equi-join over
-    the columns it names, as `_delete_covered` does.
-
-    Notes
-    -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    """
-    for mask in named_sets(staged, columns):
-        part = staged.filter(names_exactly(columns, mask))
-        rel = rel.set_alias("r").join(
-            part.set_alias("s"),
-            null_safe("r", "s", [c for c in columns if c in mask]),
-            how="anti",
-        )
-    return rel
 
 
 def _spread(
