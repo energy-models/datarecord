@@ -12,7 +12,7 @@ Notes
 from dataclasses import dataclass
 
 import pytest
-from duckdb import DuckDBPyRelation
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord.mutable import WorkingRecord
 from datarecord.protocols import Flags, RecordLike, Relations
@@ -88,6 +88,7 @@ def both(written):
 @dataclass(frozen=True)
 class DictRecord:
     schema: Schema
+    con: DuckDBPyConnection
     dims: Relations
     properties: Relations
     attributes: Relations
@@ -112,6 +113,7 @@ def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
     )
     return DictRecord(
         schema(),
+        store.workspace.con,
         {"entity": entity_axis.project("entity")},
         {"entity": entity_axis},
         {"p_nom": long},
@@ -136,6 +138,18 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
     # it iterates and looks up, both of which a `dict` answers.
     revision = store.commit(record, parent=None)
     assert "p_nom" in store.layer(revision.id).attributes
+
+
+def test_the_writer_refuses_timestamps_with_a_time_zone(store):
+    """Written as `set` takes them: a zone is refused, not converted to naive time.
+
+    Notes
+    -----
+    - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    """
+    record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
+    with pytest.raises(ValueError, match="carry timestamps with a time zone"):
+        store.commit(record, parent=None)
 
 
 def test_constructions_agree(both):
@@ -271,7 +285,7 @@ def test_node_record_orders_members(store):
 
 
 def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
-    """A record with no `dims/connection.parquet` has no such key, not an error.
+    """A record with no `dims/connection.parquet` reads an empty axis, not an error.
 
     Notes
     -----
@@ -280,7 +294,7 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])
 
-    assert "connection" not in store.layer(layer.commit().id).dims
+    assert store.layer(layer.commit().id).dims["connection"].fetchall() == []
 
 
 def test_missing_key_raises(both):

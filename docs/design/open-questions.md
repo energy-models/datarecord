@@ -102,6 +102,26 @@ A layer that restates a key along such a dim and omits a label its parent held t
 
 Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none. The tool adds the one and stores the other as NULL today ([PyPSA](tools/pypsa.md#buses-and-carriers-are-dims)).
 
+### Whether the checks at `set` and at write can take the fold's fixed plan
+
+[The fold](layers/resolution.md#one-plan-for-every-layer) carries a row's named set as data, so its joins do not depend on the rows. The refusal of two crossing rows in [`set`](use/editing.md#set) and in [the writer](use/writing.md#shape) loops over the pairs of named sets the rows hold, fetching per pair.
+
+### Whether `set` can stage a scoped or crossing broadcast without spreading it
+
+[`set`](use/editing.md#set) stages a scenario-scoped broadcast, or one that crosses another row, as one row per entity and snapshot it reaches. A large edit then stages rows in proportion to the labels it reaches, not to the rows it names.
+
+### When a deep ancestry materialises its map
+
+A cold fold in a fresh workspace stays linear in depth, about 0.1 s per layer ([the nearest fold at hand](layers/resolution.md#a-fold-starts-from-the-nearest-fold-at-hand)). Materialising every N layers or at a branch point would bound it, and no policy is chosen.
+
+### Whether an edit may join a caller's open transaction
+
+An edit runs in [its own transaction](use/editing.md#edits), and DuckDB nests none, so an edit is refused while the caller holds one open on the same cursor. Joining the caller's would lose the edit's own rollback on refusal.
+
+### When a `WorkingRecord`'s staging tables are dropped
+
+A `WorkingRecord` creates every [staging table](use/editing.md#staging) when it is created, one per axis holding a copy of the base's and two per attribute, and `rollback()` empties them rather than dropping them. Nothing drops them when the record is discarded, so a long-lived workspace that opens many records keeps their tables for the life of its connection: about 310 for a PyPSA record. A finaliser or an explicit `close()` would drop them; which one, and whether a view registered on them outlives it, is open.
+
 ## Settled
 
 ### What a pointwise `set` leaving one of two dims outside `partial` NULL reaches

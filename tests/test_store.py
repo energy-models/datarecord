@@ -570,7 +570,7 @@ def test_a_revision_crosses_a_process_boundary(workspace, tree):
 
 
 def test_threads_share_one_folded_owner_map(workspace, tree):
-    """Each thread reads on its own cursor, and the fold is done once.
+    """Each thread reads on its own cursor, and the fold is done once, keeping no step's table.
 
     Notes
     -----
@@ -591,6 +591,25 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
         "SELECT table_name FROM duckdb_tables() WHERE table_name LIKE 'owner_map_%'"
     ).fetchall()
     assert [t for (t,) in tables if child.id.hex in t], "the map is a shared table"
+    child.materialise()
+    steps = workspace.con.sql(
+        "SELECT table_name FROM duckdb_tables() WHERE starts_with(table_name, '_fold_')"
+    ).fetchall()
+    assert steps == [], "the fold keeps no table of its steps"
+
+
+@pytest.mark.parametrize("working", [False, True], ids=["frozen", "working"])
+def test_a_record_read_first_here_reads_alike_in_other_threads(tree, working):
+    """What one thread keeps of a record's fold plans no relation on another's cursor.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    """
+    _, child = tree
+    record = WorkingRecord(child.record) if working else child.record
+    here = _read_all(record)
+    assert _in_threads(4, lambda _: _read_all(record)) == [here] * 4
 
 
 def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
@@ -813,3 +832,69 @@ def test_a_relation_from_another_connection_is_rejected(tree):
             w.set("p_nom", frame)
     finally:
         foreign.close()
+
+
+def _read_all(record):
+    """Every dim, attribute and flag of `record`, rows sorted so two folds compare."""
+    return (
+        {d: sorted(r.fetchall(), key=str) for d, r in record.dims.items()},
+        {a: sorted(r.fetchall(), key=str) for a, r in record.attributes.items()},
+        record.flags(),
+    )
+
+
+@pytest.mark.parametrize("held", [("dims",), ("dims", "attributes")])
+def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
+    """A record on a commit's child folds onto the fold its workspace holds of the parent.
+
+    The edits read before the commit leave the parent's coords, and with an
+    attribute its owner map, as the workspace's tables.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    """
+    _, child = tree
+    w = WorkingRecord(child.record)
+    w.add("entity", ["solar"], ctype="Generator")
+    w.add("scenario", ["high", "low"])
+    w.set("p_max_pu", 0.7, entity="solar")
+    w.set("p_max_pu", 0.9, scenario="high")
+    w.remove("entity", ["wind"])
+    relations = {"dims": w.dims, "attributes": w.attributes}
+    for kind in held:
+        for rel in relations[kind].values():
+            rel.fetchall()
+    grandchild = store.commit(w)
+    fresh = Workspace()
+    try:
+        afresh = _read_all(fresh.store(store.uri).revision(grandchild.id).record)
+        assert _read_all(grandchild.record) == afresh
+    finally:
+        fresh.close()
+
+
+@pytest.mark.parametrize("read", [False, True], ids=["cold", "held"])
+def test_a_materialised_node_reads_as_folded_afresh(store, tree, read):
+    """A node materialises the fold its workspace holds, or folds afresh, to the same caches.
+
+    Notes
+    -----
+    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    """
+    _, child = tree
+    w = WorkingRecord(child.record)
+    w.add("scenario", ["high", "low"])
+    w.set("p_max_pu", 0.9, scenario="high")
+    node = store.commit(w)
+    leaf = empty_child(node).commit()
+    if read:
+        _read_all(node.record)
+    expected = _read_all(leaf.record)
+    node.materialise()
+    fresh = Workspace()
+    try:
+        again = fresh.store(store.uri).revision(leaf.id).record
+        assert _read_all(again) == expected
+    finally:
+        fresh.close()

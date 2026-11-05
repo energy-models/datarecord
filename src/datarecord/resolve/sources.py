@@ -76,6 +76,16 @@ class LayerSource(Protocol):
     def frozen(self) -> bool: ...
 
     @property
+    def con(self) -> DuckDBPyConnection:
+        """The calling thread's cursor, which this layer's relations are planned on.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        """
+        ...
+
+    @property
     def schema(self) -> Schema:
         """The schema this layer was written under: its own manifest's.
 
@@ -89,7 +99,7 @@ class LayerSource(Protocol):
         """
         ...
 
-    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+    def materialised(self) -> Fold | None:
         """This layer's resolved `Fold` if it is materialised, else `None`.
 
         A filesystem fact, distinct from `frozen`: `frozen` says the rows cannot
@@ -104,7 +114,7 @@ class LayerSource(Protocol):
         """Which dims this layer has an axis file for.
 
         Asked once per source rather than probed per declared dim:
-        `resolve_coords` folds only the dims some source holds.
+        `Coords.resolve` folds only the dims some source holds.
         """
         ...
 
@@ -137,6 +147,14 @@ class LayerSource(Protocol):
         """
         ...
 
+    def owners(self, name: str) -> DuckDBPyRelation | None:
+        """One attribute's owner-map rows, where this layer keeps them; `None` where the fold aggregates `attribute(name)`.
+
+        A staging area keeps them in a table each edit refreshes, so that a
+        fold reading them does not aggregate every staged row once per use.
+        """
+        ...
+
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every `attributes/*.parquet` unioned by name, unprojected.
 
@@ -158,7 +176,7 @@ class _FileLayer:
     unchanged - which is what keeps "a directory read as a layer" from being a
     second reading of the format.
 
-    No cursor is held: each read takes the calling thread's (`_con`), so a
+    No cursor is held: each read takes the calling thread's (`con`), so a
     source serves every thread.
 
     Notes
@@ -186,13 +204,13 @@ class _FileLayer:
         raise NotImplementedError
 
     @property
-    def _con(self) -> DuckDBPyConnection:
+    def con(self) -> DuckDBPyConnection:
         """The calling thread's cursor on the workspace this layer is read through."""
         raise NotImplementedError
 
     def _read(self, kind: str, names: list[str]) -> DuckDBPyRelation:
         uris = [self.uri(f"{kind}/{name}.parquet") for name in names]
-        return self._con.read_parquet(uris, union_by_name=True)
+        return self.con.read_parquet(uris, union_by_name=True)
 
     def axes(self) -> set[str]:
         return set(self.files.dims)
@@ -213,12 +231,15 @@ class _FileLayer:
             return None
         return self._read("attributes", [name])
 
+    def owners(self, name: str) -> DuckDBPyRelation | None:
+        return None
+
     def all_attributes(self) -> DuckDBPyRelation | None:
         if not self.files.attributes:
             return None
         return self._read("attributes", list(self.files.attributes))
 
-    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+    def materialised(self) -> Fold | None:
         """No cache by default: only a `ParquetLayer` has a revision to key one by."""
         return None
 
@@ -281,15 +302,15 @@ class ParquetLayer(_FileLayer):
         return self.manifest.id
 
     @property
-    def _con(self) -> DuckDBPyConnection:
+    def con(self) -> DuckDBPyConnection:
         return self.store.workspace.con
 
     def uri(self, path: str = "") -> str:
         return self.store.layer_dir(self.layer_id) + path
 
-    def materialised(self, con: DuckDBPyConnection) -> Fold | None:
+    def materialised(self) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self, con)
+        return Fold.read(self)
 
     def sibling(self, layer_id: UUID) -> ParquetLayer:
         """Layer `layer_id` of this layer's store."""
@@ -335,7 +356,7 @@ class DirectorySource(_FileLayer):
         return self.id
 
     @property
-    def _con(self) -> DuckDBPyConnection:
+    def con(self) -> DuckDBPyConnection:
         return self.workspace.con
 
     def uri(self, path: str = "") -> str:

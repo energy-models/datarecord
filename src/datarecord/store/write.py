@@ -16,7 +16,7 @@ Notes
 
 from __future__ import annotations
 
-from functools import cached_property
+from functools import cached_property, partial
 from pathlib import Path
 from typing import TYPE_CHECKING
 from uuid import uuid4
@@ -29,20 +29,22 @@ from duckdb import StarExpression as star
 from datarecord.duck import as_relation, fn, null_safe, write_parquet
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
+    Coords,
+    one_of_axis,
     refuse_one_of_file,
     refuse_twice,
     refuse_unheld,
-    resolve_coords,
-    resolve_one,
+    removed_labels,
 )
-from datarecord.resolve.owner_map import cast_declared, unsettled
-from datarecord.resolve.record import PinnedRecord, Record
+from datarecord.resolve.owner_keys import cast_declared
+from datarecord.resolve.owner_map import unsettled
+from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
 from datarecord.schema.schema import DERIVED, Schema
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -54,9 +56,7 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     """Return `source` as the `LayerData` the writer reads, planned on `con`.
 
     A `RecordLike` is wrapped in a thin adapter reading its `Relations`
-    through the same enumerate-and-read pairs. A `Record` that is not frozen
-    is read as a `PinnedRecord` over the same four fields, which folds its
-    staged edits once for the write, during which nothing stages.
+    through the same enumerate-and-read pairs.
 
     Notes
     -----
@@ -64,8 +64,6 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     """
     if isinstance(source, LayerData):
         return source
-    if isinstance(source, Record) and not source.frozen:
-        source = PinnedRecord(source.revision_id, source.sources, source.workspace)
     return _RecordLikeAsLayerData(source, con)
 
 
@@ -74,7 +72,7 @@ def write_layer(
     base: str,
     workspace: Workspace,
     *,
-    parents: Sequence[LayerSource] = (),
+    parent: Record | None = None,
 ) -> LayerFiles:
     """Write `data`'s files into the layer directory `base`, and return what it wrote.
 
@@ -89,8 +87,8 @@ def write_layer(
     data
         The layer's contents, validated against its own schema as each frame is
         built.
-    parents
-        The sources the layer folds over, root first; none for a root or a
+    parent
+        The revision's record the layer folds over; none for a root or a
         standalone record.
 
     Raises
@@ -127,60 +125,66 @@ def write_layer(
     - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
     """
     schema = data.schema
+    con = workspace.con
     written: dict[str, list[str]] = {"dims": [], "attributes": []}
-    try:
-        refuse_one_of_file(schema, data.axes(), "the layer")
-        kinds = [
-            (
-                "dims",
-                sorted(data.axes(), key=schema.multi_dims.__contains__),
-                data.axis,
-            ),
-            ("attributes", data.attributes(), data.attribute),
-        ]
-        resolved: dict[str, DuckDBPyRelation | None] = {}
 
-        def final(name: str) -> DuckDBPyRelation | None:
-            if name not in resolved:
-                resolved[name] = resolve_one(schema, parents, workspace.con, name)
-            return resolved[name]
+    def _written(
+        read: Callable[[str], DuckDBPyRelation | None], kind: str, key: str
+    ) -> DuckDBPyRelation | None:
+        """`read(key)`, called once, validated, written and read back; `None` where it is."""
+        rel = read(key)
+        if rel is None:
+            return None
+        _validate_frame(rel, kind, key, schema)
+        return con.read_parquet(_write_frame(rel, base, kind, key, schema, con))
 
-        for kind, keys, read in kinds:
-            for key in keys:
-                rel = read(
-                    key
-                )  # looked up exactly once (https://energy-models.github.io/datarecord/design/use/writing/)
-                if rel is None:
-                    continue
-                _validate_frame(rel, kind, key, schema)
-                uri = _write_frame(rel, base, kind, key, schema, workspace.con)
-                written[kind].append(key)
-                frame = workspace.con.read_parquet(uri)
-                file = f"{kind}/{key}.parquet"
-                if kind == "attributes":
-                    _refuse_unordered(frame, key, schema)
-                    coordinates = schema.coordinates_of(key)
-                    refuse_unheld(frame, schema, coordinates, final, file, staged=False)
-                    continue
-                if key in schema.multi_dims:
-                    refuse_unheld(
-                        frame, schema, [key], final, file, staged=False, subject=key
-                    )
-                resolved[key] = frame
-                refuse_twice(frame, [key], file)
-                before = resolve_one(schema, parents, workspace.con, key)
-                if before is not None:
-                    _refuse_reordered(frame, before, key, file)
-        files = LayerFiles(
-            dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
-        )
-        if data.axes():
-            manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=files)
-            layer = DirectorySource(base, manifest, workspace, manifest.id)
-            _require_living_references(parents, layer, workspace.con, schema)
-    finally:
-        if isinstance(data, _RecordLikeAsLayerData):
-            data.release()
+    refuse_one_of_file(schema, data.axes(), "the layer")
+    for key in sorted(data.axes(), key=schema.multi_dims.__contains__):
+        frame = _written(data.axis, "dims", key)
+        if frame is None:
+            continue
+        written["dims"].append(key)
+        file = f"dims/{key}.parquet"
+        refuse_twice(frame, [key], file)
+        before = _parent_axis(parent, schema, key, con)
+        if before is not None:
+            _refuse_reordered(frame, before, key, file)
+    held: Callable[[str], DuckDBPyRelation | None]
+    held = partial(_parent_axis, parent, schema, con=con)
+    if data.axes():
+        dims = LayerFiles(dims=tuple(written["dims"]), attributes=())
+        manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
+        layer = DirectorySource(base, manifest, workspace, manifest.id)
+        parents = [] if parent is None else parent.sources
+        coords = Coords.resolve([*parents, layer])
+        held = coords.axes.get
+        for key in written["dims"]:
+            if key not in schema.multi_dims:
+                continue
+            file = f"dims/{key}.parquet"
+            refuse_unheld(
+                coords.axes[key],
+                schema,
+                [key],
+                held,
+                file,
+                staged=False,
+                subject=key,
+            )
+    for key in data.attributes():
+        frame = _written(data.attribute, "attributes", key)
+        if frame is None:
+            continue
+        written["attributes"].append(key)
+        file = f"attributes/{key}.parquet"
+        _refuse_unordered(frame, key, schema)
+        coordinates = schema.coordinates_of(key)
+        refuse_unheld(frame, schema, coordinates, held, file, staged=False)
+    files = LayerFiles(
+        dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
+    )
+    if data.axes():
+        _require_living_references(parent, layer, coords)
     return files
 
 
@@ -325,11 +329,23 @@ def _refuse_reordered(
         raise ValueError(msg)
 
 
+def _parent_axis(
+    parent: Record | None, schema: Schema, name: str, con: DuckDBPyConnection
+) -> DuckDBPyRelation | None:
+    """`parent`'s axis `name`, `None` where there is none; a `one_of` dim's is `schema`'s list.
+
+    The axis every read of `parent` takes, its labels alone; a declared dim
+    without rows is an empty one, which holds nothing as `None` does.
+    """
+    if name in schema.one_of_dims:
+        return one_of_axis(schema, name, con)
+    if parent is None or name not in parent.dims:
+        return None
+    return parent.dims[name]
+
+
 def _require_living_references(
-    parents: Sequence[LayerSource],
-    layer: LayerSource,
-    con: DuckDBPyConnection,
-    schema: Schema,
+    parent: Record | None, layer: LayerSource, coords: Coords
 ) -> None:
     """Reject a layer leaving a reference to a dead label in a subject it touches.
 
@@ -353,6 +369,7 @@ def _require_living_references(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
+    schema = coords.schema
     touched = layer.axes()
     references = [
         *(
@@ -369,24 +386,15 @@ def _require_living_references(
     whole = any(r[4] for r in references)
     killed = {}
     for dim in layer.axes() & referenced:
-        before = resolve_one(schema, parents, con, dim)
+        before = _parent_axis(parent, schema, dim, layer.con)
         now = layer.axis(dim)
         if before is None or now is None:
             continue
-        gone = (
-            before.project(col(dim))
-            .set_alias("b")
-            .join(
-                now.project(col(dim)).set_alias("n"),
-                col("b", dim) == col("n", dim),
-                how="anti",
-            )
-        )
+        gone = removed_labels(before, now, dim)
         if gone.limit(1).fetchall():
             killed[dim] = gone
     if not whole and not killed:
         return
-    coords = resolve_coords([*parents, layer], con)
     problems = []
     for subject, column, label, dim, restated in references:
         dead = coords.dead.get(dim)
@@ -513,11 +521,6 @@ class _RecordLikeAsLayerData:
     @property
     def schema(self) -> Schema:
         return self._source.schema
-
-    def release(self) -> None:
-        """Drop what a pinned source holds for this write."""
-        if isinstance(self._source, PinnedRecord):
-            self._source.release()
 
     @cached_property
     def _dims(self) -> Relations:

@@ -15,7 +15,7 @@ A `Fold` is held as a base, never one of the `sources` folded on top of it.
 The folding that builds
 a live `Fold` stays in `coords.py` and `owner_map.py`, where the DuckDB
 expression machinery lives; `Fold.read` reads a materialised one back, and the
-map reads gated by the fold (`owners`, `attributes`, `flags`) are here, on the
+map reads gated by the fold (`owners`, `flags`) are here, on the
 object that holds the map.
 
 Notes
@@ -30,18 +30,17 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from functools import reduce
 from typing import TYPE_CHECKING, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
+import duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, Expression
 
-from datarecord.duck import (
-    distinct_values,
-    fn,
-    struct_of,
-)
+from datarecord.duck import fn, struct_of, union_all_by_name
 from datarecord.protocols import Flags
+from datarecord.resolve.coords import Coords, _table_name
+from datarecord.resolve.owner_keys import _empty_relation, owner_keys
 from datarecord.schema.categories import (
     categorized_dim,
     matching,
@@ -54,7 +53,8 @@ if TYPE_CHECKING:
 
     from duckdb import DuckDBPyConnection
 
-    from datarecord.resolve.sources import ParquetLayer
+    from datarecord.protocols import RecordLike
+    from datarecord.resolve.sources import LayerSource, ParquetLayer
     from datarecord.schema.schema import Schema
     from datarecord.store.store import Store
 
@@ -111,37 +111,17 @@ class Fold:
 
     Attributes
     ----------
-    schema
-        The schema the record is read under, which says which broadcast dims the flags carry.
-    axes
-        Each resolved dim's axis relation, keyed by dim.
-    dim_owners
-        Each axis's owner: the layer whose `dims/<dim>.parquet` it resolved
-        to, a dim with `one_of` having none.
+    coords
+        The folded axes, their owners and dead labels, under the schema the
+        record is read under, which says which broadcast dims the flags carry.
     owner_map
         The resolved owner map: `(owner_map_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per key as its layer wrote it,
         expanded along a dim only where a deeper layer crossed it there.
-    dead
-        Each `coords.mortal` coordinate's dead labels, where it has any.
     """
 
-    schema: Schema
-    axes: dict[str, DuckDBPyRelation]
-    dim_owners: dict[str, UUID]
+    coords: Coords
     owner_map: DuckDBPyRelation
-    dead: dict[str, DuckDBPyRelation]
-
-    def attributes(self) -> list[str]:
-        """Return every attribute the owner map holds a row for.
-
-        Ordered, so a `Record` over this has a stable key order.
-
-        Notes
-        -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-        """
-        return list(distinct_values(self.owner_map, "attribute"))
 
     def owners(self, attribute: str) -> DuckDBPyRelation:
         """The owner-map rows for one attribute - which layer owns each of its keys.
@@ -175,20 +155,19 @@ class Fold:
         - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
         - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
         """
-        dims = self.schema.broadcast_dims
+        schema = self.coords.schema
+        dims = schema.broadcast_dims
         if not categories:
             # The structs come back as dicts keyed by dim, so each set is a filter
             # by name rather than a positional slice.
-            return flags_from_rows(
-                self.schema, dims, self._flag_rows(self.owner_map, dims)
-            )
-        dim = categorized_dim(self.schema, categories)
-        chosen = selected(self.schema, dim, categories)
-        axis = self.axes.get(dim)
+            return flags_from_rows(schema, dims, self._flag_rows(self.owner_map, dims))
+        dim = categorized_dim(schema, categories)
+        chosen = selected(schema, dim, categories)
+        axis = self.coords.axes.get(dim)
         if axis is None:
             return {}
         rows = self._owned_reaching(dim, matching(axis, chosen).project(col(dim)))
-        return flags_from_rows(self.schema, dims, self._flag_rows(rows, dims))
+        return flags_from_rows(schema, dims, self._flag_rows(rows, dims))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
         """The owner-map rows reaching one of `labels`, on `dim` or a multi-dim's coordinate over it.
@@ -200,13 +179,12 @@ class Fold:
         OR-ed into one condition, which would be a nested loop; a row matched
         twice changes no flag.
         """
+        schema = self.coords.schema
         om = self.owner_map.set_alias("o")
         named = labels.set_alias("l")
         paths: list[tuple[str, str | None]] = [(dim, None)]
         paths += [
-            (m, f)
-            for m in self.schema.multi_dims
-            if (f := self.schema.coordinate_over(m, dim))
+            (m, f) for m in schema.multi_dims if (f := schema.coordinate_over(m, dim))
         ]
         reached = []
         for column, field in paths:
@@ -216,16 +194,12 @@ class Fold:
             reached.append(om.join(named, on, how="semi"))
             if field is None:
                 hit = labels
-            elif (held := self.axes.get(column)) is not None:
+            elif (held := self.coords.axes.get(column)) is not None:
                 on = _path("g", column, field) == col("l", dim)
                 hit = held.set_alias("g").join(named, on, how="semi")
             else:
                 continue
-            over = [
-                a
-                for a in self.schema.attributes
-                if column in self.schema.coordinates_of(a)
-            ]
+            over = [a for a in schema.attributes if column in schema.coordinates_of(a)]
             if over and hit.limit(1).fetchall():
                 reached.append(
                     om.filter(
@@ -257,7 +231,33 @@ class Fold:
         ).fetchall()
 
     @classmethod
-    def read(cls, layer: ParquetLayer, con: DuckDBPyConnection) -> Fold | None:
+    def as_one_layer(cls, record: RecordLike) -> Fold:
+        """A record that no layer holds, folded as one layer.
+
+        Its `flags` answer as a record written from it would, so a `RecordLike`
+        that is no `Record`, a tool presenting a framework object among them,
+        can answer them. The owner map is collected once, so each `flags` call
+        aggregates it alone. A layered `Record` passed here is flattened: the
+        keys each of its layers wrote are lost.
+
+        Notes
+        -----
+        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        """
+        schema, attributes, con = record.schema, record.attributes, record.con
+        layer = uuid4()
+        owned = [owner_keys(attributes[a], schema, layer, (a,)) for a in attributes]
+        owner_map = (
+            union_all_by_name(owned)
+            if owned
+            else _empty_relation(schema, con, *schema.owner_map_columns)
+        )
+        coords = Coords(schema, dict(record.properties), {})
+        return cls(coords, owner_map.materialize())
+
+    @classmethod
+    def read(cls, layer: ParquetLayer) -> Fold | None:
         """`layer`'s node's `Fold` under its own schema, `None` if it is not materialised.
 
         The owner map is the presence marker: the map is written last
@@ -270,26 +270,32 @@ class Fold:
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
-        revision_id, store = layer.layer_id, layer.store
+        revision_id, store, con = layer.layer_id, layer.store, layer.con
         owner_map = read_owner_map(revision_id, con, store)
         if owner_map is None:
             return None
-        rows = read_dim_owners(revision_id, con, store)
         dead = f"{store.resolved_dir(revision_id)}dead/"
-        return cls(
-            schema=layer.schema,
-            axes={
-                dim: con.read_parquet(store.axis_uri(layer, dim))
-                for dim, layer, _ in rows
-            },
-            dim_owners={dim: layer for dim, layer, _ in rows},
-            owner_map=owner_map,
-            dead={
-                dim: con.read_parquet(f"{dead}{dim}.parquet")
-                for dim, _, has_dead in rows
-                if has_dead
-            },
+        coords = Coords.from_rows(
+            layer.schema,
+            read_dim_owners(revision_id, con, store),
+            lambda dim, owner: con.read_parquet(store.axis_uri(owner, dim)),
+            lambda dim: con.read_parquet(f"{dead}{dim}.parquet"),
         )
+        return cls(coords, owner_map)
+
+    @classmethod
+    def held(cls, source: LayerSource) -> Fold | None:
+        """`source`'s node's `Fold` from the workspace's shared tables, `None` where they lack it.
+
+        The coords and the owner map are tabled independently, so each is
+        looked up (`Coords.held`).
+        """
+        try:
+            owner_map = source.con.table(_table_name(source.layer_id))
+        except duckdb.CatalogException:
+            return None
+        coords = Coords.held(source)
+        return None if coords is None else cls(coords, owner_map)
 
 
 def _path(alias: str, column: str, field: str | None) -> Expression:

@@ -14,13 +14,15 @@ from __future__ import annotations
 
 import os
 from collections.abc import Sequence
+from contextlib import nullcontext
 from typing import TYPE_CHECKING
 from uuid import UUID, uuid4
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord.duck import ensure_local_dir, write_parquet
-from datarecord.resolve.coords import resolve_coords
+from datarecord.resolve.coords import Coords
+from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 
@@ -52,7 +54,7 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
 
     A materialised owner map is already folded over everything above it, so
     nothing further up need be read. The node stopped at stays a plain
-    `ParquetLayer`; its `materialised(con)` yields the base `Fold` the live fold
+    `ParquetLayer`; its `materialised()` yields the base `Fold` the live fold
     starts from, so the fold folds only the layers below it.
 
     Only proper ancestors count: the node being resolved is always read from its
@@ -95,7 +97,9 @@ def materialise(
 
     Safe to call more than once, and safe to call on any node - layers are
     write-once, so what is folded here cannot later become stale. Two writers
-    write the same content, so racing is harmless.
+    write the same content, so racing is harmless. Where the workspace holds
+    the node's fold as tables (`Coords.held`), they are written rather than folded
+    again.
 
     `owner_map.parquet` is what `materialised` reads as the whole
     cache's presence, so it is written last: a reader that sees it finds the
@@ -106,9 +110,13 @@ def materialise(
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
+    if materialised(revision_id, store):
+        return
     con = store.workspace.con
     _materialise_dims(revision_id, sources, store)
-    with _checkpointed(sources, con) as owner_map:
+    held = Fold.held(sources[-1])
+    fold = _checkpointed(sources) if held is None else nullcontext(held.owner_map)
+    with fold as owner_map:
         _to_parquet(owner_map, store.owner_map_uri(revision_id), con)
 
 
@@ -137,7 +145,7 @@ def _materialise_dims(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
-    coords = resolve_coords(sources, con)
+    coords = Coords.held(sources[-1]) or Coords.resolve(sources)
     dead = f"{store.resolved_dir(revision_id)}dead/"
     ensure_local_dir(dead if coords.dead else store.resolved_dir(revision_id))
     for name, rel in coords.dead.items():

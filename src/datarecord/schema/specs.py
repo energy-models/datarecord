@@ -33,9 +33,9 @@ Names = Annotated[
 
 
 class _Declared(BaseModel):
-    """Base of the models `manifest.json` is parsed into, which refuse undeclared keys."""
+    """Base of the models `manifest.json` is parsed into: frozen, refusing undeclared keys."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class Dimension(_Declared):
@@ -130,11 +130,16 @@ class Dimension(_Declared):
                 raise ValueError(msg)
         return value
 
-    @model_validator(mode="after")
-    def _default_dtype(self) -> Dimension:
-        if self.over is None and self.dtype is None:
-            self.dtype = "str"
-        return self
+    @model_validator(mode="before")
+    @classmethod
+    def _default_dtype(cls, data: Any) -> Any:
+        if (
+            isinstance(data, dict)
+            and data.get("over") is None
+            and data.get("dtype") is None
+        ):
+            return {**data, "dtype": "str"}
+        return data
 
 
 class _ValueSpec(_Declared):

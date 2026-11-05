@@ -145,9 +145,18 @@ All notable changes to datarecord are documented here. The format follows
   as a thin layer. The layer restates the SubNetworks of `base` and sets
   NULL on the results of `base` that it does not write again. A NULL series
   value on export leaves the component at its static value.
+- `PyPSA.build` takes any `RecordLike`, so `PyPSA.build(PyPSA.to_datarecord(n, con))`
+  builds the network its committed record does.
 
 ### Changed
 
+- Breaking: the schema models (`Schema`, `Dimension`, `AttributeSpec`,
+  `PropertySpec`) are frozen; derive a changed one with
+  `model_copy(update=...)`. `Schema.digest` is the sha256 of its manifest JSON.
+- Breaking: `RecordLike` declares `con`, the connection its relations are
+  planned on; a hand-written `RecordLike` adds it.
+- `WorkingRecord` over a `RecordLike` that is no `Record` raises a `TypeError`
+  naming the fix, `WorkingRecord(ws.write(source, uri))`.
 - Breaking: the PyPSA dialect declares every component attribute over
   `scenario`, except those PyPSA keeps the same in every scenario
   (`*_nom_extendable`, `*_nom_opt`, `committable`, `lifetime`, ...), so a
@@ -315,8 +324,8 @@ All notable changes to datarecord are documented here. The format follows
   read its labels.
 - The writer accepts two rows that each name a dim the other leaves NULL
   where a row naming both is there, so `ws.write(w, uri)` writes a record of
-  several layers. The read of a `WorkingRecord` refuses two staged rows that
-  cross with no staged row naming both.
+  several layers. A `set` staging two rows that cross with no row naming
+  both is refused.
 - The fold reads each layer under the schema in its own manifest. Where a
   deeper layer's schema is wider, the map folded so far, materialised or not,
   is extended to it, so a materialised node keeps counting after a descendant
@@ -324,6 +333,41 @@ All notable changes to datarecord are documented here. The format follows
   `owner_map_<id>`. A layer that restates a key along a dim outside `partial`
   and omits a label its parent held there deletes that value, and a later
   widening of `partial` no longer brings it back.
+- The fold of a layer onto the map below it is one query whose joins its
+  schema fixes, whatever named sets its rows hold (`fold_layer`, replacing
+  `fold_attributes`). A frozen layer leaving a dim outside `partial` unfilled
+  is refused when a workspace first folds it, not on every read.
+- Every `Record` lists every dim, property subject and attribute its schema
+  declares, a typed empty relation where no layer holds a row, rather than
+  raising `KeyError`.
+- A relation of a `WorkingRecord` is planned without reading a staged row,
+  only the frozen layers' rows, so one built before an edit reads it. Every staging table exists
+  from the start, an axis holding a copy of the base's, and `rollback()`
+  empties them rather than dropping them. Each edit runs in one transaction,
+  which also refreshes the staged owner-map rows the fold, `flags()` and the
+  write read.
+- A `set` whose row crosses a staged row, with no staged row naming both, also
+  stages the row naming both with its value: the later edit wins where the
+  two meet, rather than the read failing.
+- The edits of a `WorkingRecord` restate an axis only where it differs from
+  the base's, and write no attribute without rows.
+- A fold starts from the deepest proper ancestor whose fold is materialised
+  or already held by the workspace, so a record opened on a child after a
+  commit folds only the child's layer.
+- A `Record` builds the coords of its frozen layers once per thread rather
+  than on every relation it reads, about halving a warm read of a deep
+  record. A write checks a new layer's axes against its parent's fold.
+- The cold fold of a deep record's owner map takes about a third of the
+  time: each layer's owner rows, the parent rows they leave and the pairs
+  the check reads are each built once, the crossing pairs are taken from the
+  check's, unions bind once per arm, the parts of the plan a schema fixes are
+  built once per schema, and a layer's flags test only the attributes it
+  holds.
+  `Revision.materialise` writes the fold its workspace already holds rather
+  than folding again.
+- An edit inside a transaction the caller holds open on the same cursor is
+  refused with a `TransactionException` that says so, since an edit runs in
+  its own transaction.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
@@ -333,6 +377,8 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Removed
 
+- Breaking: `PinnedRecord` is gone. A write reads a `WorkingRecord` through
+  its per-attribute plans directly.
 - `Group`, the schema's `groups` section, `Schema.groups`,
   `Schema.group_columns`, `Schema.group_type`, `Schema.groups_of`,
   `Schema.group_key`, `Schema.check_group_columns`, `Schema.field_over`,

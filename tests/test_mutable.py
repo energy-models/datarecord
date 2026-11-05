@@ -12,12 +12,14 @@ Notes
 import re
 from pathlib import Path
 
+import duckdb
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 
 from datarecord.mutable import WorkingRecord, normalise_value
+from datarecord.resolve.coords import Coords
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
@@ -123,6 +125,22 @@ def test_a_working_record_overrides_no_read_member():
     assert defined - inherited == edits, (
         "a public member that is neither an edit nor an inherited read"
     )
+
+
+def test_a_base_that_is_no_record_is_refused(root, ac_dc):
+    """A `RecordLike` has no layers to fold edits over; the error names the write that gives some.
+
+    Notes
+    -----
+    - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
+    """
+    from datarecord.tools.pypsa import PyPSA
+
+    source = PyPSA.to_datarecord(ac_dc, root.store.workspace.con)
+    with pytest.raises(
+        TypeError, match=re.escape("WorkingRecord(ws.write(source, uri))")
+    ):
+        WorkingRecord(source)
 
 
 # -- value forms (https://energy-models.github.io/datarecord/design/use/editing/#set) -----------------------------------------------------
@@ -436,7 +454,7 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
     """Set, read, set again, read again: the second read must see the second edit.
 
     That is the whole content of "the staged step is not cached", and it fails
-    loudly if anyone later materialises past the frozen prefix - a
+    loudly if anyone later materialises above the frozen layers - a
     `cached_property` over the tail, or a `.create()` that does not stop where
     `frozen` does. The first read is what arms it: it builds the fold, so a
     cache introduced anywhere in it would be populated before the second `set`.
@@ -464,6 +482,61 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
 
     committed = _entity_values(root.store.commit(staged).record, "p_nom")
     assert committed["Manchester Wind"] == 22.0, "the later edit to a key commits"
+
+
+def _rows(rel):
+    return sorted(map(repr, rel.fetchall()))
+
+
+@pytest.mark.parametrize(
+    ("member", "name", "edit"),
+    [
+        (
+            "attributes",
+            "p_nom_max",
+            lambda w: w.set("p_nom_max", 10.0, entity="Norway Gas"),
+        ),
+        ("attributes", "p_nom", lambda w: w.remove("entity", ["Norway Gas"])),
+        (
+            "properties",
+            "entity",
+            lambda w: w.set("entity.carrier", {"Norway Gas": "wind"}),
+        ),
+        ("dims", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
+        ("dims", "scenario", lambda w: w.add("scenario", ["high"])),
+        (
+            "dims",
+            "connection",
+            lambda w: w.add(
+                "connection", [{"entity": "Norway Gas", "bus": "Manchester"}]
+            ),
+        ),
+    ],
+    ids=[
+        "set-without-rows",
+        "remove-entity",
+        "set-property",
+        "add-label",
+        "add-to-an-empty-dim",
+        "add-tuple",
+    ],
+)
+def test_a_relation_built_before_an_edit_reads_it(staged, member, name, edit):
+    """A relation of a `WorkingRecord` is planned from the schema and table names alone.
+
+    So one built before an edit, as a view of it is, reads what one built
+    after does.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    """
+    rel = getattr(staged, member)[name]
+    before = _rows(rel)
+    edit(staged)
+    after = _rows(getattr(staged, member)[name])
+    assert after != before, "the edit changes the relation"
+    assert _rows(rel) == after, "the relation built before the edit reads it"
 
 
 @pytest.mark.parametrize(
@@ -861,6 +934,30 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
+@pytest.mark.parametrize(
+    "set_value",
+    [False, True],
+    ids=["add-remove", "add-set-remove"],
+)
+def test_an_add_undone_by_a_remove_writes_nothing(staged, root, set_value):
+    """A label added and removed in one staging area leaves no axis and no attribute.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    staged.add("entity", ["Solar"], ctype=GEN)
+    if set_value:
+        staged.set("p_nom", 5.0, entity="Solar")
+    staged.remove("entity", ["Solar"])
+    assert staged.edits.axes() == set(), "no axis is staged"
+    assert staged.edits.attributes() == set(), "no attribute is staged"
+
+    layer = ParquetLayer(root.store.commit(staged).manifest, root.store)
+    assert layer.axis("entity") is None, "the commit writes no axis"
+    assert layer.attribute("p_nom") is None, "the commit writes no attribute"
+
+
 # -- connect and disconnect (https://energy-models.github.io/datarecord/design/use/editing/#add-remove, https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim) --------------------------------------
 
 
@@ -1038,13 +1135,12 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    import datarecord.store.write as write
 
     def unwanted(*_):
         pytest.fail("resolved the ancestry for a layer with nothing to check")
 
-    monkeypatch.setattr(write, "resolve_coords", unwanted)
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
+    monkeypatch.setattr(Coords, "resolve", classmethod(unwanted))
     root.store.commit(staged)
 
 
@@ -1459,7 +1555,7 @@ def _set_p_nom(w):
             "connected",
             lambda w: (
                 w.add("entity", ["Solar"], ctype=GEN),
-                w.set("p_nom", 5.0, entity="Solar"),
+                w.set("p_nom", 5.0, entity=["Solar", "Norway Wind"]),
                 w.remove("entity", ["Solar"]),
             ),
         ),
@@ -1511,9 +1607,10 @@ def _set_p_nom(w):
 def test_rollback_reads_as_a_fresh_working_record(request, fresh_reads, fixture, edit):
     """Every read is the fresh staging area's, so one staging area serves a module.
 
-    Read through relations built before the edit, which name no staging table
-    and so still read once `rollback()` drops them. An edit refused after
-    another wrote is rolled back with it.
+    Read through relations built before the edit, which `rollback()` leaves
+    reading since it empties the staging tables rather than dropping them; one
+    built after plans the same SQL. An edit refused after another wrote is
+    rolled back with it.
 
     Notes
     -----
@@ -1526,21 +1623,6 @@ def test_rollback_reads_as_a_fresh_working_record(request, fresh_reads, fixture,
 
     staged.rollback()
     assert _reads(staged, built) == fresh_reads(staged), "it reads as a fresh one"
-
-
-def test_a_key_set_read_before_rollback_raises_after_it(store):
-    """An attribute only the staged layer owned is owned by no layer after `rollback()`.
-
-    Notes
-    -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
-    """
-    staged = WorkingRecord(_small(store).record)
-    staged.set("p_max_pu", 0.5, entity=["Norway Wind"])
-    attributes = staged.attributes
-    staged.rollback()
-    with pytest.raises(KeyError, match="p_max_pu"):
-        attributes["p_max_pu"]
 
 
 def test_writing_the_edits_clears_nothing(staged, root):
@@ -1694,9 +1776,6 @@ def test_a_standalone_write_of_the_record_is_flattened(small, tmp_path):
         "Manchester Wind": 150.0,
         "Norway Wind": 100.0,
     }, "flattened: the parent's values are written, not left to a parent"
-    assert not workspace.con.sql(
-        "FROM duckdb_tables() WHERE table_name LIKE '_pinned_%'"
-    ).fetchall(), "the write drops the owner map it held for its fold"
 
     written = sorted(Path(out).rglob("*.parquet"))
     assert {"dims/entity.parquet", "dims/connection.parquet"} <= {
@@ -1749,3 +1828,35 @@ def test_one_call_spans_component_types(staged):
     staged.set("p_nom", 150.0, entity=["Manchester Wind", "DC link"])
     got = _entity_values(staged, "p_nom")
     assert got["Manchester Wind"] == got["DC link"] == 150.0, "a scalar at every label"
+
+
+def test_a_set_refused_after_it_staged_leaves_the_staging_tables_as_they_were(staged):
+    """`set` stages its rows before it refuses two of them that cross.
+
+    The refusal rolls back the edit's transaction, rows and owner tables
+    alike, so the record reads as it did before the call.
+    """
+    staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
+    before = _rows(staged.attributes["p_max_pu"])
+    crossing = pd.DataFrame(
+        {
+            "entity": ["Manchester Gas", None],
+            "snapshot": [None, pd.Timestamp("2015-01-01")],
+            "value": [0.1, 0.2],
+        }
+    )
+    with pytest.raises(ValueError, match="neither is the more specific"):
+        staged.set("p_max_pu", crossing)
+    assert _rows(staged.attributes["p_max_pu"]) == before, (
+        "the refused edit staged nothing"
+    )
+
+
+def test_an_edit_inside_an_open_transaction_is_refused(staged):
+    """An edit opens its own transaction, which DuckDB cannot nest."""
+    staged.con.begin()
+    try:
+        with pytest.raises(duckdb.TransactionException, match="already holds one open"):
+            staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
+    finally:
+        staged.con.rollback()

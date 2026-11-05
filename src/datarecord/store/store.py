@@ -56,7 +56,6 @@ from datarecord.store.manifest import (
     Meta,
     merge_meta,
     validate_meta,
-    written_digest,
 )
 from datarecord.store.write import layer_data, write_layer
 
@@ -507,13 +506,17 @@ class Store:
         it to, and each schema is shared from the workspace by its digest.
         """
         for manifest in manifests:
-            text, digest = written_digest(manifest.schema)
-            self.workspace._schemas.setdefault(digest, manifest.schema)
+            schema = manifest.schema
+            digest = schema.digest
+            self.workspace._schemas.setdefault(digest, schema)
             files = {
                 "dims": list(manifest.files.dims),
                 "attributes": list(manifest.files.attributes),
             }
-            self._insert("INSERT OR IGNORE INTO schemas VALUES (?, ?)", [digest, text])
+            self._insert(
+                "INSERT OR IGNORE INTO schemas VALUES (?, ?)",
+                [digest, schema.model_dump_json()],
+            )
             self._insert(
                 "INSERT OR IGNORE INTO revisions VALUES (?, ?, ?, ?, ?, ?)",
                 [
@@ -922,9 +925,11 @@ class Claim(_OfStore):
                     f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/model/schema/#versioning)"
                 )
                 raise ValueError(msg)
-        sources = [] if parent is None else parent.record.sources
         files = write_layer(
-            data, store.layer_dir(self.id), store.workspace, parents=sources
+            data,
+            store.layer_dir(self.id),
+            store.workspace,
+            parent=None if parent is None else parent.record,
         )
         manifest = Manifest(
             id=self.id, parent=self.parent, schema=schema, files=files, meta=meta

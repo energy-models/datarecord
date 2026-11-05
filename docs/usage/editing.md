@@ -135,6 +135,15 @@ w.rollback()  # discard everything staged
 ```
 
 You read what you staged from the record itself, which answers with the edits applied ([design](../design/use/editing.md#reading-with-pending-edits)).
+A relation you took before an edit reads it too:
+
+```python
+rel = w.attributes["p_nom"]
+w.set("p_nom", 150.0, entity="wind1")
+rel.df()  # holds 150.0
+```
+
+Each edit runs in its own transaction, so a refused edit leaves nothing staged, and an edit is refused while you hold a transaction open on the same cursor.
 Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/use/editing.md#staging)).
 
 ## Writing the edits
@@ -164,6 +173,13 @@ new.record.attributes["p_nom"].df()
 Writing clears nothing: a `WorkingRecord` that still holds its edits reads exactly what it did before, until `rollback()`.
 
 An edit replaces the rows it names, so restating a coordinate overwrites it and the last write stands.
+Two edits that cross also leave the later one standing where they meet ([design](../design/use/editing.md#set)):
+
+```python
+w.set("p_max_pu", 0.5, entity="wind1")
+w.set("p_max_pu", 0.7, scenario="high")  # wind1 under high reads 0.7
+```
+
 A `remove` after a `set` wins regardless of order, since a removed label has no values.
 An `add` after a `remove` brings the label back with its parent's values and without the multi-dim tuples that named it.
 
