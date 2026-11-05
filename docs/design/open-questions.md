@@ -86,6 +86,10 @@ A [selection](use/selecting.md#what-goes-with-a-dropped-label) applies the defau
 
 PyPSA's `partial` gains `bus` so a layer patches one bus's `v_nom`, and every `partial` coordinate is paid for by every read ([keep it small](layers/tree.md#partial-the-granularity-of-an-override)). Measuring it on a pypsa-eur-sized record would settle it.
 
+### Whether `partial` may name a coordinate of a multi-dim
+
+`partial` may name [a multi-dim](model/multi-dims.md#attributes-over-a-multi-dim) whole, and a layer owns an attribute along `attribute.dims ∩ partial` ([partial](layers/tree.md#partial-the-granularity-of-an-override)). So `period` in `partial` does not reach a series over `snapshot`, the multi-dim over `(period, timestep)`, and a per-period, myopic re-solve [restates the whole series](tools/pypsa.md#writing-results), every other period's values included. Allowing a coordinate would key `p` by `(attribute, connection, period)`, so the re-solve restates its own period's series only. The cost is a wider fold key on every read of every attribute over `snapshot`.
+
 ### Whether selector keywords need a qualified form
 
 A bare [selector](use/editing.md#set) naming a property of two dims one attribute reaches is refused. The only way to say which is meant is setting per dim.
