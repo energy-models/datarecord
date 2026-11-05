@@ -30,6 +30,7 @@ from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
@@ -73,6 +74,8 @@ if TYPE_CHECKING:
     import pypsa
 
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
+#: The values in one batch of a melted series, about a parquet row group.
+_MELT_BATCH = 122_880
 #: PyPSA's name for a multi-period snapshot's inner level: the dim of those
 #: timesteps, a coordinate of the multi-dim `snapshot` beside `period`.
 TIMESTEP = "timestep"
@@ -2688,8 +2691,23 @@ class _NetworkSource:
     @cached_property
     def _snapshot_rel(self) -> DuckDBPyRelation:
         """`_snapshots` as the `snapshot` axis, typed as declared."""
-        rel = self.con.from_df(self._snapshots).project(self._snapshot_key)
-        return cast_declared(self.schema, rel, SNAPSHOT)
+        return self._snapshot_positions.project(col(SNAPSHOT))
+
+    @cached_property
+    def _snapshot_positions(self) -> DuckDBPyRelation:
+        """`_snapshot_rel` with each label's 1-based position in `n.snapshots` as `_pos`."""
+        positions = np.arange(1, len(self._snapshots) + 1)
+        rel = self.con.from_df(self._snapshots.assign(_pos=positions))
+        return cast_declared(
+            self.schema, rel.project(self._snapshot_key, col("_pos")), SNAPSHOT
+        )
+
+    @cached_property
+    def _snapshot_labels(self) -> DuckDBPyRelation:
+        """One row holding the labels of `_snapshot_rel` in PyPSA's order as the list `_labels`."""
+        return self._snapshot_positions.aggregate(
+            f"list({SNAPSHOT} ORDER BY _pos) AS _labels"
+        )
 
     @cached_property
     def _snapshot_key(self) -> Expression:
@@ -2699,11 +2717,6 @@ class _NetworkSource:
         return packed(self.schema, SNAPSHOT, self._snapshots.columns, {}).alias(
             SNAPSHOT
         )
-
-    @cached_property
-    def _snapshot_labels(self) -> list[Any]:
-        """The labels of `_snapshot_rel` in its order, a multi-dim's tuples as dicts."""
-        return [label for (label,) in self._snapshot_rel.fetchall()]
 
     @cached_property
     def _sub_networks(self) -> pd.DataFrame:
@@ -2861,45 +2874,45 @@ class _NetworkSource:
     def _melt_dynamic(self, c: pypsa.Components, attr: str) -> DuckDBPyRelation | None:
         """Melt one varying attribute's wide dynamic frame to long rows, `None` where it has no columns.
 
-        The rows come out entity by entity: a parquet row group then holds a
-        handful of entity names, which its dictionary encodes, where
-        snapshot-major rows put every name in each row group and leave them
-        unencoded.
+        Each column becomes one arrow row holding its series as a list, a
+        view of the frame where its layout allows, which DuckDB unnests entity
+        by entity: a parquet row group then holds a handful of entity names,
+        which its dictionary encodes, where snapshot-major rows put every name
+        in each row group and leave them unencoded. The rows are batched by
+        about a row group's values, so DuckDB converts and unnests the batches
+        in parallel, each a slice of the frame.
 
-        The snapshots are melted by position and looked up in the list of
-        `_snapshot_labels`, so a label never becomes an SQL identifier and is
-        typed as declared. A NaN cell is a row. The labels are
-        dictionary-encoded and the values a view of the frame where its
-        layout allows, so the melt copies neither a name nor a value per row.
+        A value's position in its list indexes `_snapshot_labels`, so a label
+        never becomes an SQL identifier or literal and is typed as declared.
+        A NaN cell is a NULL row.
         """
         wide = c.dynamic[attr]
         if wide.empty:
             return None
-        steps = len(wide.index)
         columns = wide.columns
         stochastic = isinstance(columns, pd.MultiIndex)
         labels = {ENTITY: columns.get_level_values(-1)}
         if stochastic:
             labels[SCENARIO] = columns.get_level_values(0).astype(str)
-        melted = self.con.from_df(
-            pd.DataFrame(
-                {
-                    **{k: pd.Categorical(v).repeat(steps) for k, v in labels.items()},
-                    "pos": np.tile(
-                        np.arange(1, steps + 1, dtype=np.int32), len(columns)
-                    ),
-                    "value": wide.to_numpy().T.ravel(),
-                },
-                copy=False,
-            )
+        steps = len(wide.index)
+        values = pa.array(wide.to_numpy().T.reshape(-1), from_pandas=True)
+        offsets = pa.array(np.arange(0, len(values) + 1, steps))
+        table = pa.table(
+            {
+                **{k: pa.array(v) for k, v in labels.items()},
+                "values": pa.LargeListArray.from_arrays(offsets, values),
+            }
         )
-        snapshot = fn.list_extract(lit(self._snapshot_labels), col("pos")).cast(
-            self.schema.duck_type(self.schema.dimensions[SNAPSHOT])
+        batches = table.to_batches(max_chunksize=max(1, _MELT_BATCH // steps))
+        melted = self.con.from_arrow(pa.Table.from_batches(batches)).project(
+            *map(col, labels),
+            fn.unnest(col("values")).alias("value"),
+            fn.generate_subscripts(col("values"), lit(1)).alias("_pos"),
         )
         scenario = col(SCENARIO) if stochastic else lit(None)
-        return melted.project(
+        return melted.cross(self._snapshot_labels).project(
             col(ENTITY).cast(sqltypes.VARCHAR).alias(ENTITY),
-            snapshot.alias(SNAPSHOT),
+            fn.list_extract(col("_labels"), col("_pos")).alias(SNAPSHOT),
             scenario.cast(sqltypes.VARCHAR).alias(SCENARIO),
             col("value"),
         )
