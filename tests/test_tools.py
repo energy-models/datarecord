@@ -1838,6 +1838,34 @@ class TestPyPSA:
             )
         pd.testing.assert_frame_equal(read(resolved, "p_nom"), read(base, "p_nom"))
 
+    def test_a_series_a_re_solve_leaves_out_reads_as_null(self, results, results_built):
+        """A bus's series `base` holds and a re-solve writing the others leaves out is NULL at every snapshot; one `base` holds over no snapshot takes the re-solve's series.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        from datarecord.mutable import WorkingRecord
+
+        n = results_built.copy()
+        prices = n.c.Bus.dynamic["marginal_price"] + 1.0
+        dropped, static = prices.columns[:2]
+        w = WorkingRecord(results.record)
+        w.set("marginal_price", 3.0, bus=static)
+        base = results.store.commit(w)
+        kept = prices.drop(columns=dropped)
+        n.c.Bus.dynamic["marginal_price"] = kept
+        got = _prices(_results_over(base, n))
+        assert got[dropped].isna().all(), "the stale series is gone"
+        assert got[got.index.isna()].isna().all().all(), "the static row is NULL"
+        pd.testing.assert_frame_equal(
+            got.reindex(index=kept.index, columns=kept.columns),
+            kept,
+            check_names=False,
+            check_freq=False,
+            check_index_type=False,
+        )
+
     @pytest.mark.slow
     @pytest.mark.parametrize(
         "select",

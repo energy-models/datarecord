@@ -3550,11 +3550,7 @@ class _ResultsSource(_NetworkSource):
                     col("r", SNAPSHOT) == col("e", SNAPSHOT),
                     how="anti",
                 )
-            stale = rows.select(*map(col, keys)).distinct().set_alias("b")
-            if attr in written:
-                stale = stale.join(
-                    written[attr].set_alias("w"), null_safe("b", "w", keys), how="anti"
-                )
+            stale = _stale(rows, written.get(attr), keys)
             if dead is not None and SUB_NETWORK in keys:
                 stale = stale.set_alias("s").join(
                     dead, col("s", SUB_NETWORK) == col("d", SUB_NETWORK), how="anti"
@@ -3611,6 +3607,47 @@ def _null_or_in(
     joined = rows.join(listed, on == col("_among"), how="left")
     return joined.filter(on.isnull() | col("_among").isnotnull()).project(
         star(exclude=["_among"])
+    )
+
+
+def _stale(
+    rows: DuckDBPyRelation, written: DuckDBPyRelation | None, keys: Sequence[str]
+) -> DuckDBPyRelation:
+    """The distinct `keys` of `rows` that `written` does not write again.
+
+    A row over no snapshot is stale where `written` has no row at its keys.
+    A row at a snapshot is stale where `written` has none at its keys but
+    `snapshot`: a melted series writes every snapshot of each key it holds,
+    so the keys are matched once per series, not once per snapshot.
+    """
+    if written is None:
+        return rows.select(*map(col, keys)).distinct()
+    if SNAPSHOT not in keys:
+        held = rows.select(*map(col, keys)).distinct().set_alias("b")
+        return held.join(written.set_alias("w"), null_safe("b", "w", keys), how="anti")
+    whole = [k for k in keys if k != SNAPSHOT]
+    over_none = col(SNAPSHOT).isnull()
+    held = rows.select(*map(col, whole), over_none.alias("_over_none")).distinct()
+    series = written.aggregate(
+        [*map(col, whole), fn.bool_or(over_none).alias("_over_none")]
+    )
+    unwritten = col("w", "_over_none").isnull() | (
+        col("b", "_over_none") & ~col("w", "_over_none")
+    )
+    stale = (
+        held.set_alias("b")
+        .join(series.set_alias("w"), null_safe("b", "w", whole), how="left")
+        .filter(unwritten)
+        .project(*(col("b", k).alias(k) for k in [*whole, "_over_none"]))
+    )
+    on = null_safe("r", "s", whole) & (
+        col("r", SNAPSHOT).isnull() == col("s", "_over_none")
+    )
+    return (
+        rows.set_alias("r")
+        .join(stale.set_alias("s"), on, how="semi")
+        .select(*map(col, keys))
+        .distinct()
     )
 
 
