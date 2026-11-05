@@ -483,6 +483,19 @@ def _with_new_snapshot(members):
     return members
 
 
+def _unedited(n) -> None:
+    pass
+
+
+def _nudged(n) -> None:
+    n.c.Generator.dynamic["p_max_pu"].iloc[3, 1] += 0.1
+
+
+def _one_snapshot_later(n) -> None:
+    later = pd.DatetimeIndex([n.snapshots[-1] + pd.Timedelta("1h")])
+    n.set_snapshots(n.snapshots.append(later))
+
+
 @pytest.fixture(scope="module")
 def sweep(single_revision, solved) -> dict[str, pypsa.Network]:
     """`solved`, and the network it solves again with its generators' `p_max_pu` halved: two members solved apart."""
@@ -2137,6 +2150,44 @@ class TestPyPSA:
         child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
         pd.testing.assert_frame_equal(
             child.c.Generator.dynamic["p_max_pu"][wide.columns], wide
+        )
+
+    @pytest.mark.parametrize(
+        ("scenarios", "edit", "written"),
+        [
+            pytest.param(None, _unedited, slice(0), id="nan-repeats-null"),
+            pytest.param(None, _one_snapshot_later, slice(None), id="snapshot-new"),
+            pytest.param(None, _nudged, slice(1, 2), id="nudged"),
+            pytest.param(["lo", "hi"], _nudged, slice(1, 2), id="nudged-scenario"),
+        ],
+    )
+    def test_a_full_export_over_base_compares_a_series_at_each_snapshot(
+        self, store, ac_dc, scenarios, edit, written
+    ):
+        """Over `base`, a series NaN where `base`'s is NULL repeats it, and one differing at a snapshot, or at one `base` lacks, is written whole for its entity and scenario.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        n = ac_dc.copy()
+        if scenarios is not None:
+            n.set_scenarios(scenarios)
+        n.c.Generator.dynamic["p_max_pu"].iloc[0, 0] = np.nan
+        revision = export_network(n, store)
+        n = PyPSA.build(revision.record)
+        edit(n)
+        wide = n.c.Generator.dynamic["p_max_pu"]
+        layer = PyPSA.to_datarecord(n, revision.record.con, base=revision.record)
+        rows = layer.attributes["p_max_pu"].df()
+        keys = ["scenario", "entity"] if scenarios is not None else ["entity"]
+        assert set(rows.set_index(keys).index) == set(wide.columns[written])
+        assert len(rows) == len(wide.columns[written]) * len(n.snapshots), (
+            "a differing series is written whole"
+        )
+        child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
+        pd.testing.assert_frame_equal(
+            child.c.Generator.dynamic["p_max_pu"][wide.columns], wide, check_freq=False
         )
 
     def test_link_internal_power_is_p_internal(self, single_revision, solved):
