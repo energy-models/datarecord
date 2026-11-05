@@ -2350,7 +2350,7 @@ class TestPyPSA:
         assert_networks_equal(built, n)
 
     def test_a_nan_in_a_series_survives_the_melt(self, workspace):
-        """`UNPIVOT` drops nulls unless told otherwise; a NaN cell is still a row."""
+        """A NaN cell is still a row."""
         import numpy as np
 
         n = _three_port_link()

@@ -2835,50 +2835,46 @@ class _NetworkSource:
     def _melt_dynamic(self, c: pypsa.Components, attr: str) -> DuckDBPyRelation | None:
         """Melt one varying attribute's wide dynamic frame to long rows, `None` where it has no columns.
 
-        The frame is transposed before the melt, so the rows come out entity by
-        entity: a parquet row group then holds a handful of entity names, which
-        its dictionary encodes, where snapshot-major rows put every name in
-        each row group and leave them unencoded.
+        The rows come out entity by entity: a parquet row group then holds a
+        handful of entity names, which its dictionary encodes, where
+        snapshot-major rows put every name in each row group and leave them
+        unencoded.
 
         The snapshots are melted by position and looked up in the list of
         `_snapshot_labels`, so a label never becomes an SQL identifier and is
-        typed as declared.
+        typed as declared. A NaN cell is a row. The labels are
+        dictionary-encoded and the values a view of the frame where its
+        layout allows, so the melt copies neither a name nor a value per row.
         """
-        con = self.con
         wide = c.dynamic[attr]
-        stochastic = isinstance(wide.columns, pd.MultiIndex)
-        valcols = (
-            [f"{s}\x1f{e}" for s, e in wide.columns]
-            if stochastic
-            else list(wide.columns)
-        )
-        if not valcols or wide.empty:
+        if wide.empty:
             return None
-        positional = [str(i) for i in range(len(wide.index))]
-        w = (
-            wide.T.set_axis(positional, axis=1)
-            .set_axis(pd.Index(valcols, name="colname"))
-            .reset_index()
-        )
-        inlist = ", ".join(str(col(p)) for p in positional)
-        melted = con.from_df(w).query(
-            "_dr_wide",
-            f"FROM _dr_wide UNPIVOT INCLUDE NULLS (value FOR pos IN ({inlist}))",
-        )
-        colname = col("colname")
+        steps = len(wide.index)
+        columns = wide.columns
+        stochastic = isinstance(columns, pd.MultiIndex)
+        labels = {ENTITY: columns.get_level_values(-1)}
         if stochastic:
-            entity = fn.split_part(colname, fn.chr(lit(31)), lit(2))
-            scenario = fn.split_part(colname, fn.chr(lit(31)), lit(1))
-        else:
-            entity, scenario = colname, lit(None).cast(sqltypes.VARCHAR)
-        pos = col("pos").cast(sqltypes.INTEGER) + lit(1)
-        snapshot = fn.list_extract(lit(self._snapshot_labels), pos).cast(
+            labels[SCENARIO] = columns.get_level_values(0).astype(str)
+        melted = self.con.from_df(
+            pd.DataFrame(
+                {
+                    **{k: pd.Categorical(v).repeat(steps) for k, v in labels.items()},
+                    "pos": np.tile(
+                        np.arange(1, steps + 1, dtype=np.int32), len(columns)
+                    ),
+                    "value": wide.to_numpy().T.ravel(),
+                },
+                copy=False,
+            )
+        )
+        snapshot = fn.list_extract(lit(self._snapshot_labels), col("pos")).cast(
             self.schema.duck_type(self.schema.dimensions[SNAPSHOT])
         )
-        return melted.project(  # type: ignore[union-attr]  # a SELECT, so `query` returns a relation
-            entity.alias(ENTITY),
+        scenario = col(SCENARIO) if stochastic else lit(None)
+        return melted.project(
+            col(ENTITY).cast(sqltypes.VARCHAR).alias(ENTITY),
             snapshot.alias(SNAPSHOT),
-            scenario.alias(SCENARIO),
+            scenario.cast(sqltypes.VARCHAR).alias(SCENARIO),
             col("value"),
         )
 
