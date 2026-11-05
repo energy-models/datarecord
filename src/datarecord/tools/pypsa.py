@@ -37,12 +37,12 @@ from duckdb import (
     DuckDBPyConnection,
     DuckDBPyRelation,
     Expression,
+    row_number,
     sqltypes,
 )
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
-    anchored,
     empty_relation,
     ex_all,
     fn,
@@ -153,6 +153,8 @@ _CUSTOM = "custom_columns"
 _RTOL, _ATOL = 1e-5, 1e-8
 #: The DuckDB types `_clash` compares within that tolerance.
 _FLOATS = (sqltypes.DOUBLE, sqltypes.FLOAT)
+#: A row's position in its relation, from 1, as `Index` orders by.
+_POS = row_number().over().alias("_pos")
 
 
 @dataclass(frozen=True)
@@ -528,10 +530,8 @@ class Index:
         keys: pd.DataFrame | None = None,
     ) -> Index:
         """`index` keyed by its own levels, or by `keys`, one row per entry in its order."""
-        _dr_keys = index.to_frame(index=False) if keys is None else keys
-        return cls(
-            index, con.sql("SELECT *, row_number() OVER () AS _pos FROM _dr_keys")
-        )
+        df = index.to_frame(index=False) if keys is None else keys
+        return cls(index, con.from_df(df).project(star(), _POS))
 
     def left_join(self, other: DuckDBPyRelation, on: Sequence[str]) -> DuckDBPyRelation:
         """LEFT JOIN `other` onto this index, restored to `index`'s row order."""
@@ -539,7 +539,7 @@ class Index:
             other,
             ex_all(col(self.rel.alias, f) == col(other.alias, f) for f in on),
             how="left",
-        ).order(f"{self.rel.alias}._pos")
+        ).order(col(self.rel.alias, "_pos"))
 
 
 def _assign_static(
@@ -636,7 +636,7 @@ def _left_join_values(
                 *(col("s", c) for c in static.columns if c not in exprs),
                 *exprs.values(),
             )
-            .order("_pos")
+            .order(col("_pos"))
             .project(star(exclude=["_pos"]))
             .df()
         )
@@ -661,24 +661,20 @@ def _series_frame(
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
     rows = unpacked(shape.schema, SNAPSHOT, rows).set_alias("r")
-    _dr_positioned = rows.join(
+    positioned = rows.join(
         columns, ex_all(col("r", k) == col("k", k) for k in keys)
     ).project(
         *(col("r", g) for g in group_by),
         col("k", "_pos").alias("_col"),
         col("r", "value"),
     )
-    piv = anchored(
-        con.sql(
-            f"PIVOT _dr_positioned ON _col USING first(value) GROUP BY {', '.join(group_by)}"
-        ),
-        _dr_positioned,
+    present = sorted(
+        p for (p,) in positioned.project(col("_col")).distinct().fetchall()
     )
-
-    present = sorted(int(c) for c in set(piv.columns) - set(group_by))
     if not present:
         return pd.DataFrame(index=snapshots.index, columns=static_index[:0])
 
+    piv = positioned.pivot("_col", present, fn.first(col("value")))
     wide = (
         snapshots.left_join(piv.set_alias("piv"), group_by)
         .project(*(col(str(p)) for p in present))
@@ -1187,7 +1183,7 @@ def _add_component_type(
     for attr, (long, flags) in attributes.items():
         if SNAPSHOT not in flags.varies:
             continue
-        ts_rows = long.filter("snapshot IS NOT NULL AND value IS NOT NULL")
+        ts_rows = long.filter(col(SNAPSHOT).isnotnull() & col("value").isnotnull())
         wide = _series_frame(ts_rows, shape, snapshots, static_index, con)
         n._import_series_from_df(wide, ctype, attr)
 
@@ -1399,20 +1395,21 @@ def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
                 raise ValueError(msg)
 
 
-def _clash(rel: DuckDBPyRelation) -> str:
-    """The SQL aggregate over rows of `rel` at one label, true where their `value`s clash.
+def _clash(rel: DuckDBPyRelation) -> Expression:
+    """The aggregate over rows of `rel` at one label, true where their `value`s clash.
 
     Floats agree within `_RTOL` and `_ATOL` of their largest magnitude, an
     infinity only with one of its sign, any other type where equal; missing
     clashes with held.
     """
-    unequal = "count(DISTINCT value) > 1"
+    value = col("value")
+    unequal = value.n_unique() > lit(1)
     if rel.types[rel.columns.index("value")] in _FLOATS:
-        unequal += (
-            f" AND (bool_or(isinf(value)) OR max(value) - min(value) > "
-            f"{_ATOL} + {_RTOL} * max(abs(value)))"
-        )
-    return f"(0 < count(value) AND count(value) < count(*)) OR ({unequal})"
+        spread = fn.max(value) - fn.min(value)
+        tolerance = lit(_ATOL) + lit(_RTOL) * fn.max(fn.abs(value))
+        unequal &= fn.bool_or(fn.isinf(value)) | (spread > tolerance)
+    held = fn.count(value)
+    return ((lit(0) < held) & (held < fn.count())) | unequal
 
 
 def _agreed(
@@ -1441,8 +1438,8 @@ def _agreed(
     keys = list(range(1, long.index.nlevels))
     group = long.groupby(level=keys, sort=False, dropna=False).ngroup().to_numpy()
     rel = con.from_df(pd.DataFrame({"g": group, "value": long.to_numpy()}))
-    clashing = rel.aggregate(f"g, {_clash(rel)} AS clash", "g").filter("clash")
-    [(first,)] = clashing.aggregate("min(g)").fetchall()
+    clashing = rel.group_by(col("g")).agg(_clash(rel).alias("clash"))
+    [(first,)] = clashing.filter(col("clash")).aggregate([fn.min(col("g"))]).fetchall()
     if first is not None:
         label, held = _first_apart(long, group == first)
         name = label[0] if len(label) == 1 else label
@@ -2000,7 +1997,7 @@ class PyPSATool(Tool):
                 labels[CONNECTION] = _tuples_of(tuples, static)
             if not shape.stochastic and SCENARIO in static.columns:
                 static = static.project(star(exclude=[SCENARIO]))
-            static = static.project("*, row_number() OVER () AS _pos")
+            static = static.project(star(), _POS)
             connections = members.connections
             static = _collapse_connections(static, connections, ctype, con)
             attributes = {}
@@ -2048,9 +2045,7 @@ class PyPSATool(Tool):
         outlines = _shape_properties(schema, dim)
         names = [name for name in schema.properties[dim] if name not in outlines]
         labels = with_defaults(schema, dim, frame, names, con)
-        static = _keyed_as_entity(_empty_for_none(labels), dim).project(
-            "*, row_number() OVER () AS _pos"
-        )
+        static = _keyed_as_entity(_empty_for_none(labels), dim).project(star(), _POS)
         over = {**scenarios, dim: labels}
         attributes = {
             attr: (
@@ -2782,31 +2777,35 @@ class _NetworkSource:
         )
         if not valcols or wide.empty:
             return None
-        positional = [f"s{i}" for i in range(len(wide.index))]
-        _dr_wide = (
+        positional = [str(i) for i in range(len(wide.index))]
+        w = (
             wide.T.set_axis(positional, axis=1)
             .set_axis(pd.Index(valcols, name="colname"))
             .reset_index()
         )
-        inlist = ", ".join(f"{p} AS {lit(str(i))}" for i, p in enumerate(positional))
-        _dr_melted = con.sql(
-            "SELECT colname, CAST(pos AS INTEGER) AS pos, value FROM _dr_wide "
-            f"UNPIVOT INCLUDE NULLS (value FOR pos IN ({inlist}))"
+        inlist = ", ".join(str(col(p)) for p in positional)
+        melted = con.from_df(w).query(
+            "_dr_wide",
+            f"FROM _dr_wide UNPIVOT INCLUDE NULLS (value FOR pos IN ({inlist}))",
         )
+        colname = col("colname")
         if stochastic:
-            entity = "split_part(colname, chr(31), 2)"
-            scenario = "split_part(colname, chr(31), 1)"
+            entity = fn.split_part(colname, fn.chr(lit(31)), lit(2))
+            scenario = fn.split_part(colname, fn.chr(lit(31)), lit(1))
         else:
-            entity, scenario = "colname", "CAST(NULL AS VARCHAR)"
-        levels = ", ".join(
-            f"({lit(values.tolist())})[pos + 1] AS {col(level)}"
-            for level, values in self._snapshots.items()
+            entity, scenario = colname, lit(None).cast(sqltypes.VARCHAR)
+        pos = col("pos").cast(sqltypes.INTEGER) + lit(1)
+        return self._snapshot_packed(
+            melted.project(  # type: ignore[union-attr]  # a SELECT, so `query` returns a relation
+                entity.alias(ENTITY),
+                *(
+                    fn.list_extract(lit(values.tolist()), pos).alias(level)
+                    for level, values in self._snapshots.items()
+                ),
+                scenario.alias(SCENARIO),
+                col("value"),
+            )
         )
-        melted = con.sql(
-            f"SELECT {entity} AS entity, {levels}, "
-            f"{scenario} AS scenario, value FROM _dr_melted"
-        )
-        return self._snapshot_packed(anchored(melted, _dr_melted))
 
     def _scalar_rel(
         self,
@@ -2825,9 +2824,11 @@ class _NetworkSource:
             return None
         _dr_static = static
         snapshot = self.schema.duck_type(self.schema.dimensions[SNAPSHOT])
-        return self.con.sql(
-            f"SELECT entity, CAST(NULL AS {snapshot}) AS snapshot, scenario, value "
-            "FROM _dr_static"
+        return self.con.from_df(static).project(
+            col(ENTITY),
+            lit(None).cast(snapshot).alias(SNAPSHOT),
+            col(SCENARIO),
+            col("value"),
         )
 
     def _changing(
@@ -2934,10 +2935,12 @@ class _NetworkSource:
         """One axis weighting as long rows over its axis."""
         weighting = _WEIGHTINGS[attribute]
         table = self._weighting_table(weighting.dim)
-        _dr_weights = table[weighting.column].rename("value").reset_index()
-        rel = self.con.sql(
-            f"SELECT * EXCLUDE (value), {lit(attribute)} AS attribute, "
-            "NULL AS breakpoint, CAST(value AS DOUBLE) AS value FROM _dr_weights"
+        weights = table[weighting.column].rename("value").reset_index()
+        rel = self.con.from_df(weights).project(
+            star(exclude=["value"]),
+            lit(attribute).alias("attribute"),
+            lit(None).alias("breakpoint"),
+            col("value").cast(sqltypes.DOUBLE).alias("value"),
         )
         return self._snapshot_packed(rel) if weighting.dim == SNAPSHOT else rel
 
@@ -3090,9 +3093,9 @@ class _NetworkSource:
             buses = buses.droplevel(SCENARIO)
             buses = buses[~buses.index.duplicated()]
         buses = buses[buses.astype(str) != ""]
-        _dr_buses = buses.rename("bus").rename_axis("entity").reset_index()
-        bus_rel = self.con.sql(
-            "SELECT CAST(entity AS VARCHAR) entity, bus FROM _dr_buses"
+        bus_df = buses.rename(BUS).rename_axis(ENTITY).reset_index()
+        bus_rel = self.con.from_df(bus_df).project(
+            col(ENTITY).cast(sqltypes.VARCHAR).alias(ENTITY), col(BUS)
         )
         v = self._tagged_long_rel(c, attribute, column, drop_defaults=drop_defaults)
         if v is None:
@@ -3424,9 +3427,7 @@ class _ResultsSource(_NetworkSource):
             keys = [c for c in columns if c != "value"]
             rows = self._live_only(attr, self._base_rows(attr))
             for dim in self._holds.keys() & set(keys):
-                held = self._holds[dim]  # noqa: F841 - bound by name for the query below
-                on = col(dim)
-                rows = rows.filter(f"{on} IS NULL OR {on} IN (SELECT {on} FROM held)")
+                rows = _null_or_in(rows, col(dim), self._holds[dim], dim)
             parts = [written[attr]] if attr in written else []
             elsewhere = self._elsewhere
             if SNAPSHOT in keys and elsewhere is not None:
@@ -3478,7 +3479,7 @@ class _ResultsSource(_NetworkSource):
 
     def _live_only(self, attr: str, rows: DuckDBPyRelation) -> DuckDBPyRelation:
         """`rows` of `attr`, a value over no snapshot only at `_live_entities` or NULL on `entity`."""
-        live = self._live_entities  # noqa: F841 - bound by name for the query below
+        live = self._live_entities
         if live is None or SNAPSHOT in rows.columns:
             return rows
         if ENTITY in rows.columns:
@@ -3487,7 +3488,18 @@ class _ResultsSource(_NetworkSource):
             on = fn.struct_extract(col(CONNECTION), lit(ENTITY))
         else:
             return rows
-        return rows.filter(f"{on} IS NULL OR {on} IN (SELECT {col(ENTITY)} FROM live)")
+        return _null_or_in(rows, on, live, ENTITY)
+
+
+def _null_or_in(
+    rows: DuckDBPyRelation, on: Expression, among: DuckDBPyRelation, key: str
+) -> DuckDBPyRelation:
+    """The `rows` whose `on` is NULL or among the values of `among`'s `key`, as SQL's `IN` keeps them."""
+    listed = among.project(col(key).alias("_among")).distinct()
+    joined = rows.join(listed, on == col("_among"), how="left")
+    return joined.filter(on.isnull() | col("_among").isnotnull()).project(
+        star(exclude=["_among"])
+    )
 
 
 def _sub_network_results(schema: RecordSchema) -> frozenset[str]:
@@ -3528,12 +3540,13 @@ def _differs(held: Mapping[Any, DuckDBPyRelation], labels: Sequence[Any]) -> boo
     if any(label not in held for label in labels):
         return True
     first, *rest = held.values()
-    keys = ", ".join(str(col(c)) for c in first.columns if c != "value")
+    keys = [col(c) for c in first.columns if c != "value"]
 
     def apart(other: DuckDBPyRelation) -> bool:
         stacked = first.union(other.select(*map(col, first.columns)))
-        clash = f"count(*) < 2 OR {_clash(stacked)} AS clash"
-        return bool(stacked.aggregate(clash, keys).filter("clash").limit(1).fetchall())
+        clash = ((fn.count() < lit(2)) | _clash(stacked)).alias("clash")
+        clashing = stacked.group_by(*keys).agg(clash).filter(col("clash"))
+        return bool(clashing.limit(1).fetchall())
 
     return any(apart(other) for other in rest)
 
