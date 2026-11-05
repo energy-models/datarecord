@@ -31,12 +31,14 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
+from duckdb._relation import _render
 
 from datarecord.duck import (
     empty_relation,
     fn,
     null_safe,
     struct_of,
+    transaction,
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
@@ -292,6 +294,7 @@ class _PerCursor(threading.local):
 
     def __init__(self) -> None:
         self.frozen_coords: Coords | None = None
+        self.coords: Coords | None = None
 
 
 @dataclass(frozen=True)
@@ -397,6 +400,58 @@ class Record:
         """
         return self._fold.flags(**categories)
 
+    def register(self, name: str) -> None:
+        """Create the DuckDB schema `name` with a view per dim, property subject and attribute.
+
+        The views sit in `name.dims`, `name.properties` and `name.attributes`,
+        each reading as its relation here; over a `WorkingRecord` they follow
+        every edit. `name` is listed in the workspace's `registered()` table.
+
+        Raises
+        ------
+        duckdb.CatalogException
+            If the schema `name` exists.
+        ValueError
+            If `name` is a database attached to the workspace, which DuckDB
+            would read as the catalog of the nested schemas.
+        duckdb.TransactionException
+            Where the cursor already holds an open transaction.
+
+        Notes
+        -----
+        - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
+        """
+        con = self.con
+        if (name,) in con.sql(
+            "SELECT database_name FROM duckdb_databases()"
+        ).fetchall():
+            msg = f"`{name}` names a database attached to the workspace; register under another name"
+            raise ValueError(msg)
+        kinds = {
+            "dims": self.dims,
+            "properties": self.properties,
+            "attributes": self.attributes,
+        }
+        rendered = {
+            (name, kind, view): _render(rel, literals=True, wrap_text=True)[0]
+            for kind, relations in kinds.items()
+            for view, rel in relations.items()
+        }
+        with transaction(
+            con,
+            "register",
+            "https://energy-models.github.io/datarecord/design/storage/views/",
+        ):
+            con.execute(f"CREATE SCHEMA {col(name)}")
+            for kind in kinds:
+                con.execute(f"CREATE SCHEMA {col(name, kind)}")
+            for path, query in rendered.items():
+                con._create_view(path, query)
+            con.execute(
+                "INSERT INTO registered (name, revision, working) VALUES (?, ?, ?)",
+                [name, self.revision_id, not self.frozen],
+            )
+
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 
     def _axis(self, dim: str) -> DuckDBPyRelation:
@@ -418,8 +473,10 @@ class Record:
         """Return every declared dim's folded relation, and the dead labels.
 
         The frozen layers' fold is a set of shared tables (`Coords.shared`),
-        read on the calling thread's cursor. The sources after it are folded
-        per call onto those tables, so a read with staged edits opens no file.
+        read on the calling thread's cursor. The sources above them are folded
+        onto those tables once per thread too, so a read with staged edits
+        opens no file: that fold's plan is fixed, reading the staging tables
+        by name, so it reads every later edit.
 
         Notes
         -----
@@ -430,7 +487,10 @@ class Record:
         _, above = split_frozen(self.sources)
         if not above:
             return frozen
-        return Coords.resolve(self.sources, (frozen, above))
+        cache = self._per_cursor
+        if cache.coords is None:
+            cache.coords = Coords.resolve(self.sources, (frozen, above))
+        return cache.coords
 
     @property
     def _frozen_coords(self) -> Coords:
@@ -484,9 +544,9 @@ class Record:
         NULL takes each value it is owned for. Unmaterialised, in the long
         schema (`schema.long_columns_for`), and empty where no layer owns a
         row of `attribute`. Above the frozen layers the plan is fixed: the
-        staged layers fold onto their map one attribute at a time, and
-        only the rows of a layer holding keys both ways are ranked
-        (`_contested`).
+        staged layers fold onto their map one attribute at a time, onto none
+        where the frozen layers hold no row of it, and only the rows of a
+        layer holding keys both ways are ranked (`_contested`).
 
         Raises
         ------
@@ -505,7 +565,14 @@ class Record:
         con = self.con
         schema = self.schema
         if self._fixed:
-            om = _table(self.revision_id, self.sources, self._frozen_coords, attribute)
+            in_frozen = attribute in self._frozen_owners
+            om = _table(
+                self.revision_id,
+                self.sources,
+                self._frozen_coords,
+                attribute,
+                in_frozen=in_frozen,
+            )
             dead = self._coords.dead
         else:
             fold = self._fold

@@ -19,7 +19,7 @@ import operator
 import sys
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import reduce, wraps
+from functools import cached_property, reduce, wraps
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Concatenate, cast
 from uuid import UUID, uuid4
@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression, TransactionException, sqltypes
+from duckdb import DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
@@ -42,6 +42,7 @@ from datarecord.duck import (
     null_safe,
     scratch_table,
     struct_of,
+    transaction,
     union_all_by_name,
 )
 from datarecord.protocols import RecordLike
@@ -49,7 +50,7 @@ from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import owner_keys
 from datarecord.resolve.owner_map import named_sets, names_exactly, unsettled
-from datarecord.resolve.record import Record, _empty_long
+from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
@@ -261,6 +262,14 @@ class StagedSource:
         return union_all_by_name(arms)
 
 
+class _StagedPerCursor(_PerCursor):
+    """What a `WorkingRecord` keeps per thread besides a `Record`'s."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.labels: dict[str, DuckDBPyRelation] = {}
+
+
 def _atomic[**P](
     edit: Callable[Concatenate[WorkingRecord, P], None],
 ) -> Callable[Concatenate[WorkingRecord, P], None]:
@@ -282,24 +291,14 @@ def _atomic[**P](
 
     @wraps(edit)
     def run(self: WorkingRecord, *args: P.args, **kwargs: P.kwargs) -> None:
-        con = self.con
-        try:
-            con.begin()
-        except TransactionException as e:
-            msg = (
-                f"`{edit.__name__}` runs in its own transaction, and this cursor "
-                f"already holds one open; commit or roll it back before the edit "
-                f"(https://energy-models.github.io/datarecord/design/use/editing/#edits)"
-            )
-            raise TransactionException(msg) from e
-        try:
+        with transaction(
+            self.con,
+            edit.__name__,
+            "https://energy-models.github.io/datarecord/design/use/editing/#edits",
+        ):
             self._dirty.clear()
             edit(self, *args, **kwargs)
             self._refresh_owners()
-        except BaseException:
-            con.rollback()
-            raise
-        con.commit()
 
     return run
 
@@ -2031,17 +2030,32 @@ class WorkingRecord(Record):
         rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
         for name in self.schema.dimensions:
-            held = self._rows(f"{_AXIS_PREFIX}{name}")
-            if held is None or name not in columns:
+            if name in self.schema.one_of_dims or name not in columns:
                 continue
-            kept = held.project(col(name), lit(True).alias("_kept"))  # noqa: FBT003
             rel = (
                 rel.set_alias("l")
-                .join(kept.set_alias("k"), null_safe("l", "k", [name]), how="left")
+                .join(self._labels(name), null_safe("l", "k", [name]), how="left")
                 .filter(col("l", name).isnull() | col("k", "_kept").isnotnull())
                 .project(*(col("l", c) for c in columns))
             )
         return rel
+
+    @cached_property
+    def _per_cursor(self) -> _StagedPerCursor:
+        return _StagedPerCursor()
+
+    def _labels(self, dim: str) -> DuckDBPyRelation:
+        """The labels of `dim`'s staged axis, each flagged `_kept`, aliased `k`.
+
+        Built once per thread (`_collapsed_attribute` joins it per attribute):
+        it reads the staging table by name, so it reads every later edit.
+        """
+        labels = self._per_cursor.labels
+        if dim not in labels:
+            held = self.con.table(self._staged[f"{_AXIS_PREFIX}{dim}", None])
+            kept = held.project(col(dim), lit(True).alias("_kept"))  # noqa: FBT003
+            labels[dim] = kept.set_alias("k")
+        return labels[dim]
 
     # -- what edits write (https://energy-models.github.io/datarecord/design/use/editing/#edits) ------------------------------------------
 

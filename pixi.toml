@@ -21,16 +21,13 @@ uv = "*"
 
 [dependencies]
 datarecord = { path = "." }
-duckdb = ">=2.0,<3"
+# Capped at the newest release the suite passed on: `register` calls the
+# private `_create_view` and `_render`. `bump-duckdb.yml` raises the cap.
+duckdb = ">=2.0.0,<=2.0.0"
 pydantic = ">=2.12"
 
 [pypi-dependencies]
 mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "8982c556114992d149a83b3c6f3604c72e569829" }
-
-[exclude-newer]
-# DuckDB 2.0 is younger than the 7d cooldown; drop once it has aged past it.
-duckdb = "0d"
-python-duckdb = "0d"
 
 [feature.test.dependencies]
 pytest = "*"
@@ -43,6 +40,7 @@ pypsa = "*"
 boto3 = ">=1.35.69"
 [feature.test.tasks]
 test = "pytest"
+bench = "pytest -m benchmark -p no:xdist -s"
 test-coverage = "pytest --cov=datarecord --cov-report=xml --cov-report=term-missing"
 
 # `datarecord.tools.pypsa` is an optional extra (no tool import may leak into

@@ -147,6 +147,11 @@ All notable changes to datarecord are documented here. The format follows
   value on export leaves the component at its static value.
 - `PyPSA.build` takes any `RecordLike`, so `PyPSA.build(PyPSA.to_datarecord(n, con))`
   builds the network its committed record does.
+- `Record.register(name)` creates DuckDB views of a record's dims, properties
+  and attributes in the schemas `name.dims`, `name.properties` and
+  `name.attributes`. Over a `WorkingRecord` they are live and show every edit.
+  `Workspace.unregister(name)` drops them, and `Workspace.registered()` lists
+  them.
 
 ### Changed
 
@@ -178,6 +183,7 @@ All notable changes to datarecord are documented here. The format follows
   materialise it again.
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
+- `duckdb` is capped at 2.0.0, the newest release the suite passed on.
 
 - The PyPSA tool melts a time series one entity at a time, so a parquet row
   group holds few entity names and encodes them by dictionary. The

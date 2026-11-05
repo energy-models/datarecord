@@ -32,7 +32,8 @@ from urllib.parse import urlparse
 from uuid import UUID, uuid4, uuid5
 
 import duckdb
-from duckdb import DuckDBPyConnection
+from duckdb import ColumnExpression as col
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -42,6 +43,7 @@ from pydantic import (
     model_validator,
 )
 
+from datarecord.duck import transaction
 from datarecord.mutable import StagedSource, WorkingRecord
 from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
@@ -78,6 +80,15 @@ CREATE TABLE IF NOT EXISTS revisions (
   files    STRUCT(dims VARCHAR[], attributes VARCHAR[]),
   schema   VARCHAR,
   PRIMARY KEY (location, id)
+)
+"""
+
+_REGISTERED = """
+CREATE TABLE IF NOT EXISTS registered (
+  name     VARCHAR PRIMARY KEY,
+  revision UUID,
+  working  BOOLEAN,
+  created  TIMESTAMPTZ DEFAULT now()
 )
 """
 
@@ -119,6 +130,7 @@ class Workspace:
         self._db = duckdb.connect(database)
         self._db.execute(_SCHEMAS)
         self._db.execute(_REVISIONS)
+        self._db.execute(_REGISTERED)
         self._cursors = _Cursors(self._db)
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
@@ -130,6 +142,44 @@ class Workspace:
     def con(self) -> DuckDBPyConnection:
         """The calling thread's cursor, made on its first use in that thread."""
         return self._cursors.con
+
+    def unregister(self, name: str) -> None:
+        """Drop the schema `name` a record registered, with its views and its `registered()` row.
+
+        Raises
+        ------
+        duckdb.CatalogException
+            If `name` is not registered, so a schema no record registered is
+            never dropped.
+        duckdb.TransactionException
+            Where the cursor already holds an open transaction.
+
+        Notes
+        -----
+        - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
+        """
+        con = self.con
+        with transaction(
+            con,
+            "unregister",
+            "https://energy-models.github.io/datarecord/design/storage/views/",
+        ):
+            deleted = con.execute(
+                "DELETE FROM registered WHERE name = ? RETURNING name", [name]
+            ).fetchall()
+            if not deleted:
+                msg = f"no record is registered as `{name}` (`Workspace.registered()`)"
+                raise duckdb.CatalogException(msg)
+            con.execute(f"DROP SCHEMA {col(name)} CASCADE")
+
+    def registered(self) -> DuckDBPyRelation:
+        """Every registered name, with the `revision` it reads, whether it is `working`, and when it was `created`.
+
+        Notes
+        -----
+        - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
+        """
+        return self.con.table("registered")
 
     @classmethod
     def process(cls) -> Workspace:
