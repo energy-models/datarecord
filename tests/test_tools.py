@@ -180,6 +180,24 @@ def _with_schema(layer: HandBuilt, **kwargs) -> Revision:
     return replace(layer, schema=now).commit()
 
 
+def _redeclared_over(store, n, attr: str, dim: str, rows: list[dict]) -> Revision:
+    """`n` written as a root of `store` declaring `attr` static and over `dim` too, its rows `rows`.
+
+    Static, since an attribute over `snapshot` is over its coordinate `period` already.
+    """
+    revision = export_network(n, store)
+    declared = revision.manifest.schema
+    spec = declared.attributes[attr]
+    over = spec.model_copy(update={"dims": spec.dims - {"snapshot"} | {dim}})
+    attributes = {**declared.attributes, attr: over}
+    layer = empty_root(store, declared.model_copy(update={"attributes": attributes}))
+    source = Path(store.layer_dir(revision.id))
+    for kind in ("dims", "attributes"):
+        shutil.copytree(source / kind, layer.dir / kind)
+    write_attribute(layer, attr, rows)
+    return layer.commit()
+
+
 def _ctypes_written(revision) -> pd.Series:
     return revision.record.properties["entity"].df().set_index("entity")["ctype"]
 
@@ -1059,9 +1077,59 @@ class TestPyPSA:
 
         missing = PyPSA.verify(revision.record)
         assert ("Generator", "marginal_cost") in missing.unsupported_values
-        assert "piecewise-linear" in missing.describe()
+        assert "unsupported values" in missing.describe()
         with pytest.raises(UnsupportedRecordError):
             PyPSA.build(revision.record)
+
+    @pytest.mark.parametrize(
+        ("spread", "dim", "attr", "values"),
+        [
+            pytest.param(
+                lambda n: n.set_investment_periods([2030, 2040]),
+                "period",
+                "marginal_cost",
+                {2030: 30.0, 2040: 40.0},
+                id="period",
+            ),
+            pytest.param(
+                lambda n: n.set_scenarios({"lo": 0.5, "hi": 0.5}),
+                "scenario",
+                "p_nom_mod",
+                {"lo": 1.0, "hi": 2.0},
+                id="scenario",
+            ),
+        ],
+    )
+    def test_a_value_apart_over_a_dim_pypsa_holds_it_without_is_refused(
+        self, store, spread, dim, attr, values
+    ):
+        """A network holds one value along a dim PyPSA's registry declares the attribute without, so rows naming several of its labels are reported and refused, and a selection at one label builds its value.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        """
+        n = _north()
+        spread(n)
+        rows = [
+            {"entity": "gen", dim: label, "value": v} for label, v in values.items()
+        ]
+        record = _redeclared_over(store, n, attr, dim, rows).record
+
+        assert PyPSA.verify(record).unsupported_values == {("Generator", attr)}
+        with pytest.raises(
+            ValueError, match=rf"`{attr}` over \['{dim}'\].*list of one"
+        ):
+            PyPSA.build(record)
+        views = {label: record.select(**{dim: [label]}) for label in values}
+        assert not any(PyPSA.verify(view) for view in views.values())
+        built = {
+            label: PyPSA.build(view).c.Generator.static[attr].tolist()
+            for label, view in views.items()
+        }
+        assert built == {label: [v] for label, v in values.items()}, (
+            "each label builds its own value"
+        )
 
     @pytest.mark.parametrize(
         ("ctype", "dim", "branch", "standard", "changed", "extra"),

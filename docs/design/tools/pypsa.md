@@ -347,6 +347,7 @@ The tool adds only what PyPSA needs, as one more `select` on the view.
 A network is built from a selection squeezing `period`, `scenario` or the record's dim of its own, and `build` and `verify` refuse one squeezing any other dim, such as `snapshot`, `timestep`, `bus`, `entity`, `carrier` or `ctype`, which the network keeps.
 One label of these is written as a list of one, `snapshot=[t]`, as is a timestamp of a multi-period record, `timestep=[t]`, which selects that snapshot in every period holding it.
 A selection holding no snapshot is refused.
+A network holds one value of an attribute along a dim PyPSA's registry declares it without, so `verify` reports in `unsupported_values`, and `build` refuses, an attribute whose rows name a label of such a dim where the view holds several, such as a generator's `marginal_cost` over `period` differing between periods: the view at one label, `period=[2030]`, builds, as `PyPSACollection` builds each period.
 
 | selected                                 | one label                                                                   | a list, a slice or a partial date                                                         |
 | ---------------------------------------- | --------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |

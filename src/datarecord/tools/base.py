@@ -57,7 +57,8 @@ class Requirements:
     unsupported_values : frozenset of tuple of (str, str)
         `(category, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
-        piecewise-linear attribute where the tool takes a scalar.
+        piecewise-linear attribute where the tool takes a scalar, or one
+        whose rows differ along a dim the tool holds it without.
     names : frozenset of str
         Labels the framework scopes per category and two of its categories
         claim, where a record has one axis row per label.
@@ -116,9 +117,7 @@ class Requirements:
         if self.unsupported_dims:
             parts.append(f"unsupported dims {sorted(self.unsupported_dims)}")
         if self.unsupported_values:
-            parts.append(
-                f"piecewise-linear attributes {sorted(self.unsupported_values)}"
-            )
+            parts.append(f"unsupported values {sorted(self.unsupported_values)}")
         if self.names:
             parts.append(
                 f"labels claimed by more than one category "
