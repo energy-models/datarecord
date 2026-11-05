@@ -17,6 +17,7 @@ from pathlib import Path
 
 import duckdb
 import pandas as pd
+import pyarrow as pa
 import pytest
 from pydantic import ValidationError
 
@@ -620,6 +621,66 @@ def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
 
     with pytest.raises(ValueError, match=r"'connection' as .*\['entity', 'bus'\]"):
         store.commit(source, parent=None)
+
+
+_WHOLE = {"entity": "steel_dri", "bus": "h2_north"}
+_PARTIAL = {"entity": "steel_dri", "bus": None}
+
+
+def _connection_source(tuples: list[dict], attributes=None) -> _Source:
+    """A `_Source` whose `connection` axis holds `tuples`, its dims what they name."""
+    connections = {"connection": pd.DataFrame({"connection": tuples})}
+    dims = _named_axes(_SCHEMA, connections)
+    return _Source(_SCHEMA, attributes, connections, dims)
+
+
+@pytest.mark.parametrize(
+    ("source", "file"),
+    [
+        (lambda: _connection_source([_PARTIAL]), "dims/connection"),
+        (
+            lambda: _connection_source(
+                [_WHOLE],
+                {"efficiency": _long(attribute="efficiency", connection=_PARTIAL)},
+            ),
+            "attributes/efficiency",
+        ),
+    ],
+    ids=["dims", "attributes"],
+)
+def test_a_write_rejects_a_tuple_with_some_fields_null(store, source, file):
+    """A multi-dim value is a whole tuple or NULL, checked on the file the layer wrote.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    """
+    with pytest.raises(
+        ValueError,
+        match=rf"{file}\.parquet carries a 'connection' with some fields NULL",
+    ):
+        store.commit(source(), parent=None)
+
+
+def test_a_write_reads_its_source_once(store):
+    """A connection attribute is scanned by the write alone; its checks read the file.
+
+    A `RecordBatchReader` can be scanned once, so a second scan of it raises.
+    """
+    tuples = [{"entity": e, "bus": "h2"} for e in ("a", "b", "c")]
+    frame = pa.Table.from_pandas(
+        pd.concat(_long(attribute="efficiency", connection=t) for t in tuples),
+        preserve_index=False,
+    )
+    reader = pa.RecordBatchReader.from_batches(frame.schema, frame.to_batches())
+    rel = store.workspace.con.from_arrow(reader)
+
+    revision = store.commit(
+        _connection_source(tuples, {"efficiency": rel}), parent=None
+    )
+
+    efficiency = revision.record.attributes["efficiency"]
+    assert len(efficiency.fetchall()) == len(tuples), "the write landed every row"
 
 
 def test_a_write_rejects_a_missing_long_column(store):

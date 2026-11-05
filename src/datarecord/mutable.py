@@ -969,9 +969,9 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             call = f"`set({attribute!r}, <frame>)`"
             rel = as_relation(value, self.con)
-            self.schema.check_multi_dim_columns(
-                self.schema.multi_dims_of(attribute), rel, carrier=call
-            )
+            multi_dims = self.schema.multi_dims_of(attribute)
+            self.schema.check_multi_dim_columns(multi_dims, rel, carrier=call)
+            self.schema.refuse_partial_tuples(multi_dims, rel, carrier=call)
             self._validate_input(attribute, coords)
             table = self._ensure(_ATTRIBUTES, attribute)
             known = [

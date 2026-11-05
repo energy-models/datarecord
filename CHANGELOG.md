@@ -397,6 +397,8 @@ All notable changes to datarecord are documented here. The format follows
   holds.
   `Revision.materialise` writes the fold its workspace already holds rather
   than folding again.
+- A write builds each attribute and axis carrying a multi-dim once. It checks
+  for a tuple with some fields NULL on the file it wrote, not on the source.
 - An edit inside a transaction the caller holds open on the same cursor is
   refused with a `TransactionException` that says so, since an edit runs in
   its own transaction.

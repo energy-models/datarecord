@@ -603,9 +603,10 @@ class Schema(_Declared):
         *,
         carrier: str,
     ) -> None:
-        """Reject each of `multi_dims` carried other than as one struct column of exactly its coordinates, whole or NULL.
+        """Reject each of `multi_dims` carried other than as one struct column of exactly its coordinates.
 
-        A carrier without a multi-dim's column passes.
+        Judged by the relation's columns and types, so no row is read. A
+        carrier without a multi-dim's column passes.
 
         Parameters
         ----------
@@ -615,14 +616,13 @@ class Schema(_Declared):
         Raises
         ------
         ValueError
-            On a coordinate as a column of its own, a multi-dim column not a
-            struct of exactly the coordinates, naming the struct to pass
-            instead, or a struct with some fields NULL and not all.
+            On a coordinate as a column of its own, or a multi-dim column not
+            a struct of exactly the coordinates, naming the struct to pass
+            instead.
 
         Notes
         -----
         - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
         types = dict(zip(rel.columns, rel.types, strict=True))
         for multi in multi_dims:
@@ -643,9 +643,39 @@ class Schema(_Declared):
                     f"column with a field per coordinate, {key} (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
                 )
                 raise ValueError(msg)
-            if dtype is None:
+
+    def refuse_partial_tuples(
+        self,
+        multi_dims: Iterable[str],
+        rel: DuckDBPyRelation,
+        *,
+        carrier: str,
+    ) -> None:
+        """Reject a struct of any of `multi_dims` in `rel` with some fields NULL and not all.
+
+        Reads the rows, unlike `check_multi_dim_columns`. A carrier without a
+        multi-dim's column passes.
+
+        Parameters
+        ----------
+        carrier
+            What carries the columns, named in the message.
+
+        Raises
+        ------
+        ValueError
+            Naming `carrier` and the multi-dim.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        """
+        for multi in multi_dims:
+            if multi not in rel.columns:
                 continue
-            some = reduce(operator.or_, (col(multi)[c].isnull() for c in key))
+            some = reduce(
+                operator.or_, (col(multi)[c].isnull() for c in self.over(multi))
+            )
             partly = col(multi).isnotnull() & some
             if rel.filter(partly).limit(1).fetchall():
                 msg = (
