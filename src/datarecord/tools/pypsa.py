@@ -2669,14 +2669,22 @@ class _NetworkSource:
     @cached_property
     def _snapshot_rel(self) -> DuckDBPyRelation:
         """`_snapshots` as the `snapshot` axis, typed as declared."""
-        rel = self._snapshot_packed(self.con.from_df(self._snapshots))
+        rel = self.con.from_df(self._snapshots).project(self._snapshot_key)
         return cast_declared(self.schema, rel, SNAPSHOT)
 
-    def _snapshot_packed(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`rel`, carrying the columns of `_snapshots`, with them as the one `snapshot` column the schema declares."""
+    @cached_property
+    def _snapshot_key(self) -> Expression:
+        """The one `snapshot` column the schema declares, over the columns of `_snapshots`."""
         if SNAPSHOT not in self.schema.multi_dims:
-            return rel
-        return _packed(self.schema, SNAPSHOT, rel)
+            return col(SNAPSHOT)
+        return packed(self.schema, SNAPSHOT, self._snapshots.columns, {}).alias(
+            SNAPSHOT
+        )
+
+    @cached_property
+    def _snapshot_labels(self) -> list[Any]:
+        """The labels of `_snapshot_rel` in its order, a multi-dim's tuples as dicts."""
+        return [label for (label,) in self._snapshot_rel.fetchall()]
 
     @cached_property
     def _sub_networks(self) -> pd.DataFrame:
@@ -2839,9 +2847,9 @@ class _NetworkSource:
         its dictionary encodes, where snapshot-major rows put every name in
         each row group and leave them unencoded.
 
-        The snapshots are melted by position and looked up in a typed list of
-        each index level, so a label never becomes an SQL identifier and keeps
-        its dtype; a multi-period snapshot's levels are packed into its tuple.
+        The snapshots are melted by position and looked up in the list of
+        `_snapshot_labels`, so a label never becomes an SQL identifier and is
+        typed as declared.
         """
         con = self.con
         wide = c.dynamic[attr]
@@ -2871,16 +2879,14 @@ class _NetworkSource:
         else:
             entity, scenario = colname, lit(None).cast(sqltypes.VARCHAR)
         pos = col("pos").cast(sqltypes.INTEGER) + lit(1)
-        return self._snapshot_packed(
-            melted.project(  # type: ignore[union-attr]  # a SELECT, so `query` returns a relation
-                entity.alias(ENTITY),
-                *(
-                    fn.list_extract(lit(values.tolist()), pos).alias(level)
-                    for level, values in self._snapshots.items()
-                ),
-                scenario.alias(SCENARIO),
-                col("value"),
-            )
+        snapshot = fn.list_extract(lit(self._snapshot_labels), pos).cast(
+            self.schema.duck_type(self.schema.dimensions[SNAPSHOT])
+        )
+        return melted.project(  # type: ignore[union-attr]  # a SELECT, so `query` returns a relation
+            entity.alias(ENTITY),
+            snapshot.alias(SNAPSHOT),
+            scenario.alias(SCENARIO),
+            col("value"),
         )
 
     def _scalar_rel(
@@ -3012,13 +3018,15 @@ class _NetworkSource:
         weighting = _WEIGHTINGS[attribute]
         table = self._weighting_table(weighting.dim)
         weights = table[weighting.column].rename("value").reset_index()
-        rel = self.con.from_df(weights).project(
-            star(exclude=["value"]),
+        keys = (
+            self._snapshot_key if weighting.dim == SNAPSHOT else star(exclude=["value"])
+        )
+        return self.con.from_df(weights).project(
+            keys,
             lit(attribute).alias("attribute"),
             lit(None).alias("breakpoint"),
             col("value").cast(sqltypes.DOUBLE).alias("value"),
         )
-        return self._snapshot_packed(rel) if weighting.dim == SNAPSHOT else rel
 
     @cached_property
     def _output_names(self) -> dict[str, list[str]]:
@@ -3673,7 +3681,8 @@ def _axis_union(
     frame = pd.DataFrame(agreed, index=order, columns=columns)
     rel = con.from_df(frame.reset_index(names=keys))
     if subject in schema.multi_dims:
-        rel = _packed(schema, subject, rel)
+        struct = packed(schema, subject, keys, {}).alias(subject)
+        rel = rel.project(struct, *map(col, columns))
     return cast_declared(schema, rel, subject)
 
 
@@ -3954,20 +3963,6 @@ def _connection_struct(entity: Expression, bus: Expression) -> Expression:
     schema = _registry().schema
     struct = schema.duck_type(schema.dimensions[CONNECTION])
     return fn.struct_pack(**{ENTITY: entity, BUS: bus}).cast(struct).alias(CONNECTION)
-
-
-def _packed(schema: RecordSchema, dim: str, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-    """`rel` with the coordinate columns of the multi-dim `dim` packed into its struct, typed as declared, where the first of them stood."""
-    over = schema.over(dim)
-    struct = packed(schema, dim, rel.columns, {}).alias(dim)
-    first = next(c for c in rel.columns if c in over)
-    return rel.project(
-        *(
-            struct if c == first else col(c)
-            for c in rel.columns
-            if c == first or c not in over
-        )
-    )
 
 
 def _port_columns(
