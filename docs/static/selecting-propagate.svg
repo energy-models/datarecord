@@ -1,0 +1,94 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="sp-t sp-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="sp-t">Selecting country DE drops every label, tuple and attribute row referring to FR</title>
+  <desc id="sp-d">Selecting country DE drops the label FR. The state IDF, whose property country names FR, goes, and the state BY, in DE, stays. The bus b2, whose property state names IDF, goes; b1 in BY stays, and b3, NULL on state, names no label and stays. The connection tuple g2 b2 names the dropped bus and goes, while the entity g2 stays. The price row at b2 goes, the row at b1 stays, and the row NULL on bus stays and reaches the kept buses alone.</desc>
+  <defs>
+    <marker id="sp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="sp-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,84 V65 A3,3 0 0 1 19,62 H193 A3,3 0 0 1 196,65 V84 Z" fill="currentColor" fill-opacity="0.1"/>
+    <path d="M16,102 H196 V121 A3,3 0 0 1 193,124 H19 A3,3 0 0 1 16,121 Z" fill="url(#sp-hatch)"/>
+    <path d="M280,84 V65 A3,3 0 0 1 283,62 H457 A3,3 0 0 1 460,65 V84 Z" fill="currentColor" fill-opacity="0.1"/>
+    <rect x="280" y="102" width="180" height="18" fill="url(#sp-hatch)"/>
+    <path d="M580,84 V65 A3,3 0 0 1 583,62 H757 A3,3 0 0 1 760,65 V84 Z" fill="currentColor" fill-opacity="0.1"/>
+    <path d="M580,102 H760 V121 A3,3 0 0 1 757,124 H583 A3,3 0 0 1 580,121 Z" fill="url(#sp-hatch)"/>
+    <path d="M580,204 V185 A3,3 0 0 1 583,182 H757 A3,3 0 0 1 760,185 V204 Z" fill="currentColor" fill-opacity="0.1"/>
+    <rect x="580" y="222" width="180" height="18" fill="url(#sp-hatch)"/>
+    <rect x="16" y="262" width="14" height="14" fill="url(#sp-hatch)"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">select(record, country=["DE"])</text>
+    <text x="250" y="22" fill-opacity="0.7">drops FR</text>
+    <text x="16" y="52" font-weight="bold">state</text>
+    <text x="58" y="52" fill-opacity="0.7">property country</text>
+    <text x="280" y="52" font-weight="bold">bus</text>
+    <text x="312" y="52" fill-opacity="0.7">property state</text>
+    <text x="580" y="52" font-weight="bold">connection</text>
+    <text x="666" y="52" fill-opacity="0.7">tuples</text>
+    <text x="580" y="172" font-weight="bold">price</text>
+    <text x="622" y="172" fill-opacity="0.7">over bus</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+      <text x="24" y="76" font-weight="bold">state</text>
+      <text x="96" y="76" font-weight="bold">country</text>
+      <text x="24" y="98">BY</text>
+      <text x="96" y="98">DE</text>
+      <text x="24" y="116">IDF</text>
+      <text x="96" y="116">FR</text>
+      <text x="288" y="76" font-weight="bold">bus</text>
+      <text x="350" y="76" font-weight="bold">state</text>
+      <text x="288" y="98">b1</text>
+      <text x="350" y="98">BY</text>
+      <text x="288" y="116">b2</text>
+      <text x="350" y="116">IDF</text>
+      <text x="288" y="134">b3</text>
+      <text x="350" y="134">NULL</text>
+      <text x="588" y="76" font-weight="bold">entity</text>
+      <text x="660" y="76" font-weight="bold">bus</text>
+      <text x="588" y="98">g1</text>
+      <text x="660" y="98">b1</text>
+      <text x="588" y="116">g2</text>
+      <text x="660" y="116">b2</text>
+      <text x="588" y="196" font-weight="bold">bus</text>
+      <text x="660" y="196" font-weight="bold">value</text>
+      <text x="588" y="218">b1</text>
+      <text x="660" y="218">10</text>
+      <text x="588" y="236">b2</text>
+      <text x="660" y="236">20</text>
+      <text x="588" y="254">NULL</text>
+      <text x="660" y="254">5</text>
+    </g>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="62" width="180" height="62" rx="3"/>
+    <line x1="16" y1="84" x2="196" y2="84"/>
+    <rect x="280" y="62" width="180" height="80" rx="3"/>
+    <line x1="280" y1="84" x2="460" y2="84"/>
+    <rect x="580" y="62" width="180" height="62" rx="3"/>
+    <line x1="580" y1="84" x2="760" y2="84"/>
+    <rect x="580" y="182" width="180" height="80" rx="3"/>
+    <line x1="580" y1="204" x2="760" y2="204"/>
+    <rect x="16" y="262" width="14" height="14"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#sp-arrow)">
+    <path d="M196,113 H272"/>
+    <path d="M460,111 H572"/>
+    <path d="M520,111 V231 H572"/>
+  </g>
+  <g fill="currentColor">
+    <text x="206" y="106" font-size="12" fill-opacity="0.7">bus.state</text>
+    <text x="528" y="106" font-size="12" fill-opacity="0.7">tuple</text>
+    <text x="528" y="226" font-size="12" fill-opacity="0.7">row</text>
+    <text x="288" y="160" font-size="12" fill-opacity="0.7">b3, NULL on state, stays</text>
+    <text x="588" y="142" font-size="12" fill-opacity="0.7">the entity g2 stays</text>
+    <text x="588" y="280" font-size="12" fill-opacity="0.7">reaches b1 and b3 alone</text>
+    <text x="36" y="273" font-size="12">dropped by the select</text>
+  </g>
+</svg>
