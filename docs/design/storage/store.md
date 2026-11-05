@@ -40,6 +40,28 @@ A file-backed database keeps staged edits across a crash and the `revisions` cac
 Every cache keyed by id assumes that an id always names the same content.
 A fresh UUID, claimed once, over write-once files guarantees this, and a location wiped and written again breaks it.
 
+### The database's schemas
+
+The tables a workspace creates sit in schemas of their own, so `main` holds only its bookkeeping:
+
+| schema            | holds                                                                                        | created by                            |
+| ----------------- | -------------------------------------------------------------------------------------------- | ------------------------------------- |
+| `main`            | `schemas`, `revisions`, `registered`                                                         | the workspace                         |
+| `_fold.<rid>`     | the [shared tables](concurrency.md#a-cursor-per-thread) of revision `rid`'s fold             | the first cursor to fold `rid`        |
+| `_staged.<layer>` | a `WorkingRecord`'s [staging tables](../use/editing.md#staging)                              | `WorkingRecord(...)`                  |
+| `_scratch`        | a call's intermediate tables, a fold's checkpoints and the PyPSA exporter's joins among them | the call using them, which drops them |
+| `<name>`          | the [views of a registration](views.md)                                                      | `register(name)`                      |
+
+`_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as taken names.
+The id in a nested schema's name keys its tables, which do not carry it, and is its 32-digit hex, without dashes.
+A `Record` holds `_fold.<id>` of each layer it folds, its revision's among them, from construction until `close()`.
+A `WorkingRecord` holds its base's and its own `_staged.<layer>` until it is closed or collected.
+A registration holds every schema its record holds, until `Workspace.unregister(name)`.
+The workspace drops a schema, with every table in it, once no holder keeps it.
+A `Record` collected unclosed gives its schemas to the workspace, which keeps them for its life: `store.revision(rid).record.attributes["p_nom"].df()` collects the record before `.df()` reads its fold.
+A closed record refuses every read with `ValueError`, and `Revision.record` builds a new one once its cached record is closed.
+A workspace reopened on a file holds again, for every registration in `registered`, the schemas its `held` column lists, so its views read on and `unregister` drops them there too.
+
 ### The layers
 
 ```text

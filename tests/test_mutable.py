@@ -9,6 +9,7 @@ Notes
 - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
 """
 
+import gc
 import re
 from pathlib import Path
 
@@ -27,6 +28,7 @@ from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from tests.fixtures import (
     broadcast,
     empty_root,
+    nested_tables,
     schema,
     unpacked,
 )
@@ -72,12 +74,12 @@ def _small(store, **declared):
     `Norway` is both an entity and a `bus` label, as a load and its bus are in `ac_dc`.
     """
     revision = empty_root(store, schema(**declared)).commit()
-    staged = WorkingRecord(revision.record)
-    staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
-    staged.add("entity", ["Norway"], ctype="Bus")
-    staged.add("bus", ["Norway"])
-    staged.set("p_nom", [80.0, 100.0], entity=["Manchester Wind", "Norway Wind"])
-    return revision.store.commit(staged)
+    with revision.record as base, WorkingRecord(base) as staged:
+        staged.add("entity", ["Manchester Wind", "Norway Wind"], ctype=GEN)
+        staged.add("entity", ["Norway"], ctype="Bus")
+        staged.add("bus", ["Norway"])
+        staged.set("p_nom", [80.0, 100.0], entity=["Manchester Wind", "Norway Wind"])
+        return revision.store.commit(staged)
 
 
 def _layer_rows(revision, attribute):
@@ -1852,11 +1854,140 @@ def test_a_set_refused_after_it_staged_leaves_the_staging_tables_as_they_were(st
     )
 
 
-def test_an_edit_inside_an_open_transaction_is_refused(staged):
-    """An edit opens its own transaction, which DuckDB cannot nest."""
+@pytest.mark.parametrize(
+    "use",
+    [
+        pytest.param(
+            lambda w: w.set("p_max_pu", 0.42, entity=["Manchester Wind"]), id="edit"
+        ),
+        pytest.param(lambda w: WorkingRecord(w._base), id="create"),
+    ],
+)
+def test_a_use_inside_an_open_transaction_is_refused(staged, use):
+    """An edit opens its own transaction, which DuckDB cannot nest; a new
+    record's staging tables would be invisible to the cursor that drops them."""
     staged.con.begin()
     try:
         with pytest.raises(duckdb.TransactionException, match="already holds one open"):
-            staged.set("p_max_pu", 0.42, entity=["Manchester Wind"])
+            use(staged)
     finally:
         staged.con.rollback()
+
+
+def _staging(con):
+    """The staging schemas in `con`'s catalog, one per `WorkingRecord` whose tables are kept."""
+    return set(nested_tables(con, "_staged"))
+
+
+def _opened(small):
+    """A fresh `WorkingRecord` over `small`, and the staging schema it created."""
+    before = _staging(small.store.workspace.con)
+    w = WorkingRecord(small.record)
+    return w, _staging(w.con) - before
+
+
+def _close(small):
+    w, held = _opened(small)
+    w.close()
+    return held
+
+
+def _close_twice(small):
+    w, held = _opened(small)
+    w.close()
+    w.close()
+    return held
+
+
+def _leave(small):
+    w, held = _opened(small)
+    with w:
+        pass
+    return held
+
+
+def _collect(small):
+    w, held = _opened(small)
+    del w
+    gc.collect()
+    return held
+
+
+@pytest.mark.parametrize("discard", [_close, _close_twice, _leave, _collect])
+def test_a_discarded_working_record_drops_its_staging_tables(small, discard):
+    held = discard(small)
+    assert held, "a working record stages into a schema of its own"
+    assert not held & _staging(small.store.workspace.con), (
+        f"{discard.__name__} drops them"
+    )
+
+
+READS = [
+    pytest.param(lambda r: r.dims["entity"], id="dims"),
+    pytest.param(lambda r: r.properties["entity"], id="properties"),
+    pytest.param(lambda r: r.attributes["p_nom"], id="attributes"),
+    pytest.param(lambda r: r.flags(), id="flags"),
+    pytest.param(lambda r: r.register("closed"), id="register"),
+]
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        *READS,
+        pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
+        pytest.param(lambda w: w.add("bus", ["Oslo"]), id="add"),
+        pytest.param(lambda w: w.remove("bus", ["Norway"]), id="remove"),
+        pytest.param(lambda w: w.rollback(), id="rollback"),
+        pytest.param(lambda w: w.edits, id="edits"),
+    ],
+)
+def test_a_closed_working_record_refuses_reads_and_edits(small, use):
+    w = WorkingRecord(small.record)
+    w.close()
+    with pytest.raises(ValueError, match="`WorkingRecord` is closed"):
+        use(w)
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
+        pytest.param(lambda w: w.edits, id="edits"),
+    ],
+)
+def test_an_edit_over_a_closed_working_record_names_the_base(small, use):
+    base = WorkingRecord(small.record)
+    with WorkingRecord(base) as over:
+        base.close()
+        with pytest.raises(ValueError, match="staged over is closed"):
+            use(over)
+
+
+@pytest.mark.parametrize("use", READS)
+def test_a_closed_record_refuses_reads(small, use):
+    """`with` closes the record, and closing it again does nothing."""
+    with small.store.revision(small.id).record as record:
+        pass
+    record.close()
+    with pytest.raises(ValueError, match="`Record` is closed"):
+        use(record)
+
+
+def test_a_revision_reads_again_once_its_record_is_closed(small):
+    revision = small.store.revision(small.id)
+    revision.record.close()
+    assert len(revision.record.attributes["p_nom"].fetchall()) == 2, (
+        "a closed record is replaced, not handed out again"
+    )
+
+
+def test_closing_a_working_record_leaves_another_over_the_same_base(small):
+    one = WorkingRecord(small.record)
+    other = WorkingRecord(small.record)
+    other.set("p_nom", 1.0, entity="Norway Wind")
+    one.close()
+    assert _entity_values(other, "p_nom")["Norway Wind"] == 1.0, (
+        "the other's staging tables outlive the first's"
+    )
+    other.close()

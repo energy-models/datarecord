@@ -38,6 +38,7 @@ Every registration is a row of the workspace's `registered` table:
 | `name`     | the schema                                                                      |
 | `revision` | the node the record reads; for a `WorkingRecord`, the revision it was opened on |
 | `working`  | whether the record is a `WorkingRecord`                                         |
+| `held`     | the schemas it [holds](store.md#the-databases-schemas), held again on reopen    |
 | `created`  | when it was registered                                                          |
 
 `Workspace.registered()` reads it, and a SQL client reads the table itself.
@@ -46,7 +47,7 @@ DuckDB has no comments on schemas to mark them by, and a marker view in each sch
 
 `register` creates the schemas, the views and the row in one transaction, and raises if `name` exists.
 It refuses the name of a database attached to the workspace, which DuckDB would read as the catalog of `name.dims`.
-`Workspace.unregister(name)` drops the schema with its views and its row, in one transaction.
+`Workspace.unregister(name)` drops the schema with its views and its row, in one transaction, and then releases the registration's [hold](store.md#the-databases-schemas) on its record's staging tables, which go with their last holder.
 It refuses a name with no row, so a schema no record registered is never dropped.
 DuckDB nests no transaction, so both refuse a cursor that already holds one open, as [an edit](../use/editing.md#edits) does.
 

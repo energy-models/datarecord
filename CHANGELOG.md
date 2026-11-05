@@ -152,6 +152,22 @@ All notable changes to datarecord are documented here. The format follows
   `name.attributes`. Over a `WorkingRecord` they are live and show every edit.
   `Workspace.unregister(name)` drops them, and `Workspace.registered()` lists
   them.
+- `WorkingRecord.close()` drops the record's staging tables, as does
+  garbage collection, and `with WorkingRecord(base) as w:` closes it on exit.
+  A closed record raises `ValueError` on every read and edit. A registration
+  of the record keeps the tables until `Workspace.unregister(name)`. The
+  workspace keeps its tables out of `main`: a revision's fold in
+  `_fold."<id>"`, a `WorkingRecord`'s staging tables in `_staged."<id>"`, and
+  a call's intermediate tables in `_scratch`, so `register` refuses these
+  three names. A workspace reopened on a file can `unregister` the
+  registrations it lists.
+- `Record.close()` releases the record's folds, and `with record:` closes it
+  on exit. The workspace drops a revision's fold once no open record or
+  registration holds it. A record collected unclosed keeps its folds for the
+  workspace's life, so a chained read stays valid. A closed record raises
+  `ValueError` on every read, and `Revision.record` builds a new one once its
+  cached record is closed. `Workspace.registered()` lists the schemas each
+  registration `held`, which a reopened workspace holds for it again.
 
 ### Changed
 

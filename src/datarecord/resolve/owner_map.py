@@ -31,6 +31,8 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
+    FOLD,
+    SCRATCH,
     ex_all,
     fn,
     join_on,
@@ -43,7 +45,6 @@ from datarecord.resolve.coords import (
     Coords,
     _base_and_above,
     _dead_keys,
-    _table_name,
     removed_labels,
 )
 from datarecord.resolve.fold import Fold, read_owner_map
@@ -664,7 +665,7 @@ def _checkpoint(
     rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
     """`rel` as a table, its name appended to `made`."""
-    name = f"_fold_{uuid4().hex}"
+    name = f"{SCRATCH}.fold_{uuid4().hex}"
     rel.create(name)
     made.append(name)
     return con.table(name)
@@ -886,11 +887,11 @@ def _frozen_table(
     `None` over no source, so that the tail folds onto no map.
 
     Keyed by `revision_id` rather than by the layers: they *are* what that
-    node resolves from, a staged source only ever being appended after it. The
-    map is keyed by the last source's schema, which `revision_id` fixes, so
-    the table, `owner_map_<id>`, is shared by every cursor on the workspace and
-    valid for every reader of the node. A persisted map is cast, parquet not
-    carrying the declared types.
+    node resolves from, a staged source only ever being appended after it.
+    The map is keyed by the last source's schema, which `revision_id` fixes,
+    so the table, `_fold."<id>".owner_map`, is shared by every cursor on the
+    workspace and valid for every reader of the node. A persisted map is
+    cast, parquet not carrying the declared types.
 
     Notes
     -----
@@ -907,7 +908,5 @@ def _frozen_table(
         if rel is not None:
             return cast_declared(last.schema, rel)
     return shared_table(
-        con,
-        _table_name(revision_id),
-        lambda: _checkpointed(sources),
+        con, FOLD, revision_id, "owner_map", lambda: _checkpointed(sources)
     )
