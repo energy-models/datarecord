@@ -1131,6 +1131,25 @@ class TestPyPSA:
             "each label builds its own value"
         )
 
+    def test_a_selected_period_builds_its_row_over_the_broadcast_one(self, store):
+        """At one kept period, the row naming it is the more specific than the row leaving it NULL, so the component holds one value, the period's.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        """
+        n = _north()
+        n.set_investment_periods([2030, 2040])
+        rows: list[dict] = [
+            {"entity": "gen", "period": None, "value": 10.0},
+            {"entity": "gen", "period": 2030, "value": 30.0},
+        ]
+        record = _redeclared_over(store, n, "marginal_cost", "period", rows).record
+
+        built = PyPSA.build(record.select(period=[2030]))
+
+        assert built.c.Generator.static["marginal_cost"].tolist() == [30.0]
+
     @pytest.mark.parametrize(
         ("ctype", "dim", "branch", "standard", "changed", "extra"),
         [

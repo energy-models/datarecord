@@ -519,6 +519,11 @@ All notable changes to datarecord are documented here. The format follows
   `Requirements.unsupported_values`. The view at one label,
   `record.select(period=[2030])`, builds, as `PyPSACollection` builds each
   period. `Requirements.describe` lists the field as unsupported values.
+- `PyPSA.build` settles an attribute's rows over every dim but `snapshot` that
+  the record holds one label of, not only over `entity`, `scenario` and
+  `connection`. In `record.select(period=[2030])`, a generator with a row at
+  2030 and one leaving `period` NULL holds the 2030 value once, rather than
+  both.
 - Reading a property's default keeps the rows in their order. A relation
   filtered by several `IN (SELECT …)` subqueries no longer comes back
   reordered.
