@@ -2895,6 +2895,7 @@ class _NetworkSource:
         if stochastic:
             labels[SCENARIO] = columns.get_level_values(0).astype(str)
         steps = len(wide.index)
+        # PyPSA's float64 frame is one F-contiguous block: a zero-copy view, not a round trip
         values = pa.array(wide.to_numpy().T.reshape(-1), from_pandas=True)
         offsets = pa.array(np.arange(0, len(values) + 1, steps))
         table = pa.table(
