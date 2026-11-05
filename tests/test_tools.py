@@ -2114,6 +2114,31 @@ class TestPyPSA:
         expected = n.c.Generator.static.at[entity, attr]
         assert child.c.Generator.static.at[entity, attr] == expected
 
+    def test_a_full_export_over_base_writes_what_changed(self, store, ac_dc):
+        """Over `base`, an edited series is written whole, and a series, port value, custom value or weighting repeating `base`'s is not.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        n = ac_dc.copy()
+        n.c.Generator.static["subsidy"] = 2.0
+        revision = export_network(n, store)
+        n = PyPSA.build(revision.record)
+        wide = n.c.Generator.dynamic["p_max_pu"]
+        edited = wide.columns[0]
+        wide.iloc[0, 0] += 0.1
+        layer = PyPSA.to_datarecord(n, revision.record.con, base=revision.record)
+        rows = layer.attributes["p_max_pu"].df()
+        assert set(rows["entity"]) == {edited}, "an unchanged series is left out"
+        assert len(rows) == len(n.snapshots), "the edited series is written whole"
+        for attr in ("efficiency", "subsidy", "snapshot_weighting_objective"):
+            assert layer.attributes[attr].df().empty, attr
+        child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
+        pd.testing.assert_frame_equal(
+            child.c.Generator.dynamic["p_max_pu"][wide.columns], wide
+        )
+
     def test_link_internal_power_is_p_internal(self, single_revision, solved):
         """`Link.p` is power at no bus: an entity-level `p_internal`, no `bus`.
 

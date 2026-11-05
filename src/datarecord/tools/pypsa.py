@@ -2566,8 +2566,8 @@ class _NetworkSource:
     #: The record this export is written over, `None` for one over nothing.
     base: RecordLike | None
 
-    #: Whether a result's static rows still at their default are left out.
-    _DROP_RESULT_DEFAULTS: ClassVar[bool] = True
+    #: Whether a static value or series repeating what the record resolves without it is left out (`_changing`, `_changed`).
+    _LEAVES_OUT_REPEATS: ClassVar[bool] = True
 
     @cached_property
     def _own_statics(self) -> dict[str, pd.DataFrame]:
@@ -2833,13 +2833,28 @@ class _NetworkSource:
         )
 
     def _as_long_rel(
-        self, c: pypsa.Components, attr: str, *, unchanged: str | None = None
+        self,
+        c: pypsa.Components,
+        attr: str,
+        *,
+        unchanged: str | None,
+        buses: pd.Series | None,
+        drop_defaults: bool,
     ) -> DuckDBPyRelation | None:
         """`attr` as long rows `(entity, snapshot, scenario, value)`, `None` where it has none.
 
         A series is melted, a static scalar a NULL-snapshot row, left out
         where it repeats what record attribute `unchanged` resolves to
         without it (`_changing`).
+
+        Parameters
+        ----------
+        buses
+            Each entity's bus at the port `attr` is at, which keys `unchanged`;
+            `None` where `attr` is at no port.
+        drop_defaults
+            Whether a value is compared with its type's default where `base`
+            holds none for it.
 
         Raises
         ------
@@ -2868,7 +2883,16 @@ class _NetworkSource:
             excluded = c.dynamic[attr].columns
         static_backed = attr in c.defaults.index and bool(c.defaults.at[attr, "static"])
         if not varying or static_backed:
-            parts.append(self._scalar_rel(c, attr, excluded, unchanged=unchanged))
+            parts.append(
+                self._scalar_rel(
+                    c,
+                    attr,
+                    excluded,
+                    unchanged=unchanged,
+                    buses=buses,
+                    drop_defaults=drop_defaults,
+                )
+            )
         return _union_all(parts)
 
     def _melt_dynamic(self, c: pypsa.Components, attr: str) -> DuckDBPyRelation | None:
@@ -2924,13 +2948,22 @@ class _NetworkSource:
         attr: str,
         exclude: pd.Index,
         *,
-        unchanged: str | None = None,
+        unchanged: str | None,
+        buses: pd.Series | None,
+        drop_defaults: bool,
     ) -> DuckDBPyRelation | None:
-        """NULL-snapshot long rows from `attr`'s static scalars (`_scalar_rows`), `None` where none remain."""
+        """NULL-snapshot long rows from `attr`'s static scalars (`_scalar_rows`), `None` where none remain.
+
+        A custom column has no default of its type to compare with.
+        """
         static = _shared_across_scenarios(_scalar_rows(self._own(c)[attr], exclude))
-        if unchanged is not None and attr in c.defaults.index:
-            default = c.defaults.at[attr, "default"]
-            static = self._changing(c, unchanged, static, default)
+        if unchanged is not None:
+            undeclared = static
+            if drop_defaults and attr in c.defaults.index:
+                undeclared = _drop_default_rows(static, c.defaults.at[attr, "default"])
+            static = self._changing(
+                unchanged, _dim_of(c.name), static, undeclared.index, buses
+            )
         if static.empty:
             return None
         snapshot = self.schema.duck_type(self.schema.dimensions[SNAPSHOT])
@@ -2942,30 +2975,38 @@ class _NetworkSource:
         )
 
     def _changing(
-        self, c: pypsa.Components, attribute: str, rows: pd.DataFrame, default: Any
+        self,
+        attribute: str,
+        dim: str,
+        rows: pd.DataFrame,
+        undeclared: pd.Index,
+        buses: pd.Series | None,
     ) -> pd.DataFrame:
         """`rows` but those repeating what `attribute` resolves to without them.
 
-        An entity `base` holds rows of `attribute` for is compared with each
-        of them at the row's scenario or none, at any for a row at none, and
-        left out only where each is static and equal, NULL equal to NULL. Any
-        other entity is compared with `default`, as without `base`
-        (`_drop_default_rows`). The declared default of an entity `base`
-        lacks is the registry's, `default`, as this layer's schema says.
+        A label of `dim`, or an entity's connection to its bus in `buses`,
+        that `base` holds rows of `attribute` for is compared with each of
+        them at the row's scenario or none, at any for a row at none, and left
+        out only where each is static and equal, NULL equal to NULL. Any
+        other row is kept where its index is in `undeclared`, those not at
+        their declared default (`_drop_default_rows`).
 
         Notes
         -----
         - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
         """
-        rows = rows.reset_index(drop=True)
-        keep = pd.Series(rows.index.isin(_drop_default_rows(rows, default).index))
-        key = (attribute, _dim_of(c.name))
+        keep = pd.Series(rows.index.isin(undeclared), index=rows.index)
+        on = [ENTITY]
+        if buses is not None:
+            rows = rows.assign(**{BUS: rows[ENTITY].map(buses)})
+            on.append(BUS)
+        key = (attribute, dim if buses is None else CONNECTION)
         if key not in self._base_statics:
             self._base_statics[key] = self._base_static(*key)
         held = self._base_statics[key]
         if held is None:
             return rows[keep]
-        pairs = rows.reset_index().merge(held, on=ENTITY, suffixes=("", "_base"))
+        pairs = rows.reset_index().merge(held, on=on, suffixes=("", "_base"))
         scenario, scenario_base = pairs[SCENARIO], pairs[f"{SCENARIO}_base"]
         at = scenario.isna() | scenario_base.isna() | (scenario == scenario_base)
         pairs = pairs[at]
@@ -2976,33 +3017,52 @@ class _NetworkSource:
         return rows[keep]
 
     @cached_property
+    def _base_attributes(self) -> dict[str, DuckDBPyRelation | None]:
+        """`_base_attribute` by its argument, resolved once for each comparison with it."""
+        return {}
+
+    def _base_attribute(self, attribute: str) -> DuckDBPyRelation | None:
+        """`base`'s rows of `attribute`; `None` where it holds none or there is no `base`."""
+        if attribute not in self._base_attributes:
+            rel = None if self.base is None else self.base.attributes.get(attribute)
+            self._base_attributes[attribute] = rel
+        return self._base_attributes[attribute]
+
+    @cached_property
     def _base_statics(self) -> dict[tuple[str, str], pd.DataFrame | None]:
         """`_base_static` by its arguments, read once for the component types sharing an attribute."""
         return {}
 
     def _base_static(self, attribute: str, dim: str) -> pd.DataFrame | None:
-        """`base`'s rows of `attribute` keyed by `dim`, one `(entity, scenario, value, static)` per entity and scenario; `None` where it has none.
+        """`base`'s rows of `attribute` keyed by `dim`, one `(entity, scenario, value, static)` per entity and scenario, a connection's with its `bus` after `entity`; `None` where it has none.
 
         A row is static where no key but `dim` and `scenario` is set, and an
         entity at a scenario where each of its rows is; only then is `value`
         its one row's. Aggregated in DuckDB: a series' rows never reach pandas.
         """
-        rel = None if self.base is None else self.base.attributes.get(attribute)
+        rel = self._base_attribute(attribute)
         if rel is None or dim not in rel.columns:
             return None
         others = [
             c for c in rel.columns if c not in (dim, SCENARIO, "attribute", "value")
         ]
+        keys = {ENTITY: col(dim)}
+        if dim == CONNECTION:
+            keys = {k: fn.struct_extract(col(dim), lit(k)) for k in (ENTITY, BUS)}
         scenario = col(SCENARIO) if SCENARIO in rel.columns else lit(None)
         static = ex_all([lit(True), *(col(c).isnull() for c in others)])
         keyed = rel.filter(col(dim).isnotnull()).project(
-            col(dim).cast(sqltypes.VARCHAR).alias(ENTITY),
+            *(key.cast(sqltypes.VARCHAR).alias(k) for k, key in keys.items()),
             scenario.cast(sqltypes.VARCHAR).alias(SCENARIO),
             col("value"),
             static.alias("static"),
         )
         return keyed.aggregate(
-            "entity, scenario, any_value(value) AS value, bool_and(static) AS static"
+            [
+                *map(col, [*keys, SCENARIO]),
+                fn.any_value(col("value")).alias("value"),
+                fn.bool_and(col("static")).alias("static"),
+            ]
         ).df()
 
     @property
@@ -3013,10 +3073,41 @@ class _NetworkSource:
 
         def frame(attr: str) -> DuckDBPyRelation:
             if attr in results:
-                return results[attr]
-            return self._long_frame(attr, names[attr])
+                return self._changed(attr, results[attr])
+            return self._changed(attr, self._long_frame(attr, names[attr]))
 
         return LazyRelations((*names, *results), frame)
+
+    def _changed(self, attribute: str, rows: DuckDBPyRelation) -> DuckDBPyRelation:
+        """`rows` but each series repeating `base`'s at every snapshot.
+
+        A series is the rows at a snapshot sharing every key but `snapshot`.
+        One differing from `base`'s rows anywhere, NULL equal to NULL, is kept
+        whole, since `snapshot` is outside `partial`.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        held = self._base_attribute(attribute)
+        if held is None or SNAPSHOT not in rows.columns:
+            return rows
+        keys = [c for c in rows.columns if c not in (SNAPSHOT, "breakpoint", "value")]
+        timed = col(SNAPSHOT).isnotnull()
+        series = rows.filter(timed).set_alias("r")
+        differing = (
+            series.join(
+                held.filter(timed).set_alias("b"),
+                null_safe("r", "b", rows.columns),
+                how="anti",
+            )
+            .select(*map(col, keys))
+            .distinct()
+            .set_alias("d")
+        )
+        kept = series.join(differing, null_safe("r", "d", keys), how="semi")
+        return rows.filter(col(SNAPSHOT).isnull()).union(kept)
 
     @cached_property
     def _attribute_names(self) -> dict[str, list[str]]:
@@ -3165,10 +3256,19 @@ class _NetworkSource:
         source_attr: str,
         *,
         drop_defaults: bool,
+        buses: pd.Series | None = None,
     ) -> DuckDBPyRelation | None:
-        """PyPSA's `source_attr` as long rows of `attribute`, a scalar, keyed by `c`'s dim; `None` where it has none."""
-        unchanged = attribute if drop_defaults else None
-        rel = self._as_long_rel(c, source_attr, unchanged=unchanged)
+        """PyPSA's `source_attr` as long rows of `attribute`, a scalar, keyed by `c`'s dim; `None` where it has none.
+
+        A static value repeating what `base` resolves is left out (`_as_long_rel`).
+        """
+        rel = self._as_long_rel(
+            c,
+            source_attr,
+            unchanged=attribute if self._LEAVES_OUT_REPEATS else None,
+            buses=buses,
+            drop_defaults=drop_defaults,
+        )
         if rel is None:
             return None
         dim = _dim_of(c.name)
@@ -3209,7 +3309,9 @@ class _NetworkSource:
         bus_rel = self.con.from_df(bus_df).project(
             col(ENTITY).cast(sqltypes.VARCHAR).alias(ENTITY), col(BUS)
         )
-        v = self._tagged_long_rel(c, attribute, column, drop_defaults=drop_defaults)
+        v = self._tagged_long_rel(
+            c, attribute, column, drop_defaults=drop_defaults, buses=buses
+        )
         if v is None:
             return None
         return (
@@ -3283,8 +3385,7 @@ class _NetworkSource:
                 if name != attribute:
                     continue
                 port = ports[column][1] if column in ports else None
-                drop = self._DROP_RESULT_DEFAULTS
-                rels.append(self._rows(c, name, column, port, drop_defaults=drop))
+                rels.append(self._rows(c, name, column, port, drop_defaults=True))
         rel = _union_all(rels)
         if rel is None:
             return None
@@ -3328,7 +3429,7 @@ class _ResultsSource(_NetworkSource):
     #: The period `base`'s selection squeezed, at which a single-period network is written.
     period: Any = None
 
-    _DROP_RESULT_DEFAULTS: ClassVar[bool] = False
+    _LEAVES_OUT_REPEATS: ClassVar[bool] = False
 
     @cached_property
     def schema(self) -> RecordSchema:

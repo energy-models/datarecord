@@ -201,9 +201,12 @@ It reads that status on import alone, and the status decides only what `results_
 A full export leaves out a static value still at its default, so an unsolved network writes no result.
 
 A full export may take `base`, the record it is written over as a child.
-It then leaves out a static value only where it repeats what `base` resolves there: `base`'s value for that entity and scenario, else the default.
+It then leaves out a static value only where it repeats what `base` resolves there: `base`'s value for that entity or connection and scenario, else the default.
+An input at a port, or a value of a custom column, is compared with `base`'s alone, and written where `base` has none.
 A value back at its default over a `base` holding another is written, so `base`'s value does not show through.
+A series, a weighting among them, is left out where it repeats `base`'s at every snapshot, and written whole where it differs at any, since `snapshot` is outside `partial`.
 A value is compared exactly, and NULL repeats NULL.
+The axes are written whole, as the network holds them, since a layer restating an axis is how a label goes and a property changes ([removing labels](../layers/removal.md)).
 A collection is exported over nothing.
 
 With `results_only=True`, `to_datarecord` presents only what the solve produced.

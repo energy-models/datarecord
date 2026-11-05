@@ -284,7 +284,11 @@ All notable changes to datarecord are documented here. The format follows
   `ValueError` for `base` without `results_only`. Over `base` a static value
   is left out only where it repeats `base`'s value, else the default, so a
   value set back to PyPSA's default over a parent holding another is written
-  and no longer lets the parent's show through.
+  and no longer lets the parent's show through. A series, a weighting among
+  them, repeating `base`'s at every snapshot is left out too, one differing
+  anywhere written whole, and an input at a port or a custom column is
+  compared with `base`'s, so the layer holds what changed rather than every
+  series.
 
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are
