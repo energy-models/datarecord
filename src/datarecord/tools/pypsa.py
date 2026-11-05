@@ -47,6 +47,7 @@ from datarecord.duck import (
     empty_relation,
     ex_all,
     fn,
+    join_on,
     null_safe,
     scratch_table,
 )
@@ -772,6 +773,14 @@ def _as_entities(c) -> bool:
 def _names(index: pd.Index) -> pd.Index:
     """The `name` level of a static index, `(scenario, name)` on a stochastic network."""
     return index.get_level_values("name") if isinstance(index, pd.MultiIndex) else index
+
+
+def _series_labels(columns: pd.Index) -> dict[str, pd.Index]:
+    """The entity of each column of a dynamic frame, and its scenario on a stochastic network, by the key they are."""
+    labels = {ENTITY: columns.get_level_values(-1)}
+    if isinstance(columns, pd.MultiIndex):
+        labels[SCENARIO] = columns.get_level_values(0).astype(str)
+    return labels
 
 
 def _unscoped(
@@ -2566,7 +2575,7 @@ class _NetworkSource:
     #: The record this export is written over, `None` for one over nothing.
     base: RecordLike | None
 
-    #: Whether a static value or series repeating what the record resolves without it is left out (`_changing`, `_changed`).
+    #: Whether a static value or series repeating what the record resolves without it is left out (`_changing`, `_differing`).
     _LEAVES_OUT_REPEATS: ClassVar[bool] = True
 
     @cached_property
@@ -2843,9 +2852,9 @@ class _NetworkSource:
     ) -> DuckDBPyRelation | None:
         """`attr` as long rows `(entity, snapshot, scenario, value)`, `None` where it has none.
 
-        A series is melted, a static scalar a NULL-snapshot row, left out
-        where it repeats what record attribute `unchanged` resolves to
-        without it (`_changing`).
+        A series is melted, a static scalar a NULL-snapshot row, each left
+        out where it repeats what record attribute `unchanged` resolves to
+        without it (`_differing`, `_changing`).
 
         Parameters
         ----------
@@ -2879,7 +2888,7 @@ class _NetworkSource:
         parts: list[DuckDBPyRelation | None] = []
         excluded: pd.Index = pd.Index([])
         if varying:
-            parts.append(self._melt_dynamic(c, attr))
+            parts.append(self._melt_dynamic(c, attr, unchanged=unchanged, buses=buses))
             excluded = c.dynamic[attr].columns
         static_backed = attr in c.defaults.index and bool(c.defaults.at[attr, "static"])
         if not varying or static_backed:
@@ -2895,8 +2904,19 @@ class _NetworkSource:
             )
         return _union_all(parts)
 
-    def _melt_dynamic(self, c: pypsa.Components, attr: str) -> DuckDBPyRelation | None:
-        """Melt one varying attribute's wide dynamic frame to long rows, `None` where it has no columns.
+    def _melt_dynamic(
+        self,
+        c: pypsa.Components,
+        attr: str,
+        *,
+        unchanged: str | None,
+        buses: pd.Series | None,
+    ) -> DuckDBPyRelation | None:
+        """Melt one varying attribute's wide dynamic frame to long rows, `None` where it has no columns left.
+
+        A column repeating record attribute `unchanged`'s series is left out
+        (`_differing`), keyed by its entity's connection to its bus in
+        `buses` where given.
 
         Each column becomes one arrow row holding its series as a list, a
         view of the frame where its layout allows, which DuckDB unnests entity
@@ -2911,13 +2931,12 @@ class _NetworkSource:
         A NaN cell is a NULL row.
         """
         wide = c.dynamic[attr]
+        if unchanged is not None and not wide.empty:
+            keys = self._series_keys(wide.columns, _dim_of(c.name), buses)
+            wide = wide.loc[:, self._differing(unchanged, wide.to_numpy(), keys)]
         if wide.empty:
             return None
-        columns = wide.columns
-        stochastic = isinstance(columns, pd.MultiIndex)
-        labels = {ENTITY: columns.get_level_values(-1)}
-        if stochastic:
-            labels[SCENARIO] = columns.get_level_values(0).astype(str)
+        labels = _series_labels(wide.columns)
         steps = len(wide.index)
         # PyPSA's float64 frame is one F-contiguous block: a zero-copy view, not a round trip
         values = pa.array(wide.to_numpy().T.reshape(-1), from_pandas=True)
@@ -2934,13 +2953,77 @@ class _NetworkSource:
             fn.unnest(col("values")).alias("value"),
             fn.generate_subscripts(col("values"), lit(1)).alias("_pos"),
         )
-        scenario = col(SCENARIO) if stochastic else lit(None)
+        scenario = col(SCENARIO) if SCENARIO in labels else lit(None)
         return melted.cross(self._snapshot_labels).project(
             col(ENTITY).cast(sqltypes.VARCHAR).alias(ENTITY),
             fn.list_extract(col("_labels"), col("_pos")).alias(SNAPSHOT),
             scenario.cast(sqltypes.VARCHAR).alias(SCENARIO),
             col("value"),
         )
+
+    def _series_keys(
+        self, columns: pd.Index, dim: str, buses: pd.Series | None
+    ) -> DuckDBPyRelation:
+        """The keys of each column of a dynamic frame of `dim`'s type, its 1-based position as `_col`: its label of `dim`, or its entity's connection to its bus in `buses`, and its scenario where stochastic."""
+        labels = _series_labels(columns)
+        frame = pd.DataFrame({**labels, "_col": np.arange(1, len(columns) + 1)})
+        entity = col(ENTITY).cast(sqltypes.VARCHAR)
+        key = entity.alias(dim)
+        if buses is not None:
+            frame[BUS] = frame[ENTITY].map(buses)
+            key = _connection_struct(entity, col(BUS))
+        scenario = [col(SCENARIO)] if SCENARIO in labels else []
+        return self.con.from_df(frame).project(key, *scenario, col("_col"))
+
+    def _differing(
+        self, attribute: str, values: np.ndarray, keys: DuckDBPyRelation
+    ) -> np.ndarray:
+        """Whether each column of `values`, a series over `n.snapshots` in order, differs from `base`'s series of `attribute`.
+
+        A column is matched on its row of `keys`, by its 1-based position
+        `_col`, NULL equal to NULL. It differs where `base` holds no row at
+        one of the network's snapshots or another value there, NULL equal to
+        NaN, and wholly where `base` holds no such keys. `base`'s rows at
+        other snapshots, or set on a key `keys` lacks, are not compared.
+
+        Notes
+        -----
+        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        """
+        steps, width = values.shape
+        held = self._base_attribute(attribute)
+        on = [k for k in keys.columns if k != "_col"]
+        if held is None or not {SNAPSHOT, *on} <= set(held.columns):
+            return np.ones(width, dtype=bool)
+        unkeyed = [
+            col(c).isnull()
+            for c in held.columns
+            if c not in {*on, SNAPSHOT, "attribute", "value"}
+        ]
+        series = held.filter(ex_all([col(SNAPSHOT).isnotnull(), *unkeyed]))
+        series = series.set_alias("h")
+        matched = join_on(
+            series, keys.set_alias("k"), [null_safe("h", "k", on)] if on else []
+        )
+        positions = self._snapshot_positions.set_alias("s")
+        placed = matched.join(
+            positions, col("h", SNAPSHOT) == col("s", SNAPSHOT)
+        ).project(
+            (col("s", "_pos") - lit(1)).cast(sqltypes.INTEGER).alias("_pos"),
+            (col("k", "_col") - lit(1)).cast(sqltypes.INTEGER).alias("_col"),
+            col("h", "value").cast(sqltypes.DOUBLE).alias("value"),
+        )
+        seen = np.zeros(width, dtype=np.int64)
+        apart = np.zeros(width, dtype=bool)
+        for batch in placed.fetch_record_batch():
+            at = batch["_col"].to_numpy()
+            network = values[batch["_pos"].to_numpy(), at]
+            held_values = batch["value"].to_numpy(zero_copy_only=False)
+            nan = np.isnan(network) & np.isnan(held_values)
+            apart[at[(network != held_values) & ~nan]] = True
+            seen += np.bincount(at, minlength=width)
+        return apart | (seen < steps)
 
     def _scalar_rel(
         self,
@@ -3074,41 +3157,10 @@ class _NetworkSource:
 
         def frame(attr: str) -> DuckDBPyRelation:
             if attr in results:
-                return self._changed(attr, results[attr])
-            return self._changed(attr, self._long_frame(attr, names[attr]))
+                return results[attr]
+            return self._long_frame(attr, names[attr])
 
         return LazyRelations((*names, *results), frame)
-
-    def _changed(self, attribute: str, rows: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`rows` but each series repeating `base`'s at every snapshot.
-
-        A series is the rows at a snapshot sharing every key but `snapshot`.
-        One differing from `base`'s rows anywhere, NULL equal to NULL, is kept
-        whole, since `snapshot` is outside `partial`.
-
-        Notes
-        -----
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
-        """
-        held = self._base_attribute(attribute)
-        if held is None or SNAPSHOT not in rows.columns:
-            return rows
-        keys = [c for c in rows.columns if c not in (SNAPSHOT, "breakpoint", "value")]
-        timed = col(SNAPSHOT).isnotnull()
-        series = rows.filter(timed).set_alias("r")
-        differing = (
-            series.join(
-                held.filter(timed).set_alias("b"),
-                null_safe("r", "b", rows.columns),
-                how="anti",
-            )
-            .select(*map(col, keys))
-            .distinct()
-            .set_alias("d")
-        )
-        kept = series.join(differing, null_safe("r", "d", keys), how="semi")
-        return rows.filter(col(SNAPSHOT).isnull()).union(kept)
 
     @cached_property
     def _attribute_names(self) -> dict[str, list[str]]:
@@ -3134,10 +3186,15 @@ class _NetworkSource:
         return self.n.scenario_weightings
 
     def _weighting_frame(self, attribute: str) -> DuckDBPyRelation:
-        """One axis weighting as long rows over its axis."""
+        """One axis weighting as long rows over its axis, none where it is a series repeating `base`'s (`_differing`)."""
         weighting = _WEIGHTINGS[attribute]
         table = self._weighting_table(weighting.dim)
         weights = table[weighting.column].rename("value").reset_index()
+        if weighting.dim == SNAPSHOT:
+            values = weights[["value"]].to_numpy(dtype=float)
+            one = self.con.from_df(pd.DataFrame({"_col": [1]}))
+            if not self._differing(attribute, values, one)[0]:
+                weights = weights.iloc[:0]
         keys = (
             self._snapshot_key if weighting.dim == SNAPSHOT else star(exclude=["value"])
         )
