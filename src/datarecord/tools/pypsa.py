@@ -1227,13 +1227,29 @@ def _add_component_type(
     n._import_components_from_df(static_df, ctype)
 
     snapshots = Index.of(n.snapshots, con, shape.snapshots)
-    static_index = n.c[ctype].static.index
+    c = n.c[ctype]
     for attr, (long, flags) in attributes.items():
         if SNAPSHOT not in flags.varies:
             continue
         ts_rows = long.filter(col(SNAPSHOT).isnotnull() & col("value").isnotnull())
-        wide = _series_frame(ts_rows, shape, snapshots, static_index, con)
-        n._import_series_from_df(wide, ctype, attr)
+        wide = _series_frame(ts_rows, shape, snapshots, c.static.index, con)
+        if wide.columns.empty:
+            n._import_series_from_df(wide, ctype, attr)
+        else:
+            c.dynamic[attr] = _as_series(c, attr, wide)
+
+
+def _as_series(c: pypsa.Components, attr: str, wide: pd.DataFrame) -> pd.DataFrame:
+    """`wide` as `Network._import_series_from_df` leaves `c.dynamic[attr]` on a fresh network.
+
+    An attribute PyPSA keeps no static column of takes every component's
+    column, at its default where `wide` has none. Assigned directly, as that
+    method's `.loc` write goes column by column on a `(scenario, name)` index.
+    """
+    defaults = c.defaults
+    if attr not in defaults.index or defaults.at[attr, "static"]:
+        return wide
+    return wide.reindex(columns=c.static.index, fill_value=defaults.at[attr, "default"])
 
 
 def _add_shapes(n: pypsa.Network, record: RecordLike) -> None:
