@@ -2154,31 +2154,7 @@ class TestPyPSA:
         expected = n.c.Generator.static.at[entity, attr]
         assert child.c.Generator.static.at[entity, attr] == expected
 
-    def test_a_full_export_over_base_writes_what_changed(self, store, ac_dc):
-        """Over `base`, an edited series is written whole, and a series, port value, custom value or weighting repeating `base`'s is not.
-
-        Notes
-        -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
-        """
-        n = ac_dc.copy()
-        n.c.Generator.static["subsidy"] = 2.0
-        revision = export_network(n, store)
-        n = PyPSA.build(revision.record)
-        wide = n.c.Generator.dynamic["p_max_pu"]
-        edited = wide.columns[0]
-        wide.iloc[0, 0] += 0.1
-        layer = PyPSA.to_datarecord(n, revision.record.con, base=revision.record)
-        rows = layer.attributes["p_max_pu"].df()
-        assert set(rows["entity"]) == {edited}, "an unchanged series is left out"
-        assert len(rows) == len(n.snapshots), "the edited series is written whole"
-        for attr in ("efficiency", "subsidy", "snapshot_weighting_objective"):
-            assert layer.attributes[attr].df().empty, attr
-        child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
-        pd.testing.assert_frame_equal(
-            child.c.Generator.dynamic["p_max_pu"][wide.columns], wide
-        )
-
+    @pytest.mark.slow
     @pytest.mark.parametrize(
         ("scenarios", "edit", "written"),
         [
@@ -2193,11 +2169,15 @@ class TestPyPSA:
     ):
         """Over `base`, a series NaN where `base`'s is NULL repeats it, and one differing at a snapshot, or at one `base` lacks, is written whole for its entity and scenario.
 
+        A port value or custom value repeating `base`'s is left out, and so is
+        a weighting where the snapshots stay.
+
         Notes
         -----
         - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
         """
         n = ac_dc.copy()
+        n.c.Generator.static["subsidy"] = 2.0
         if scenarios is not None:
             n.set_scenarios(scenarios)
         n.c.Generator.dynamic["p_max_pu"].iloc[0, 0] = np.nan
@@ -2211,6 +2191,13 @@ class TestPyPSA:
         assert set(rows.set_index(keys).index) == set(wide.columns[written])
         assert len(rows) == len(wide.columns[written]) * len(n.snapshots), (
             "a differing series is written whole"
+        )
+        repeated = ["efficiency", "subsidy"]
+        if edit is not _one_snapshot_later:
+            repeated.append("snapshot_weighting_objective")
+        written_again = [a for a in repeated if not layer.attributes[a].df().empty]
+        assert written_again == [], (
+            "a repeated port, custom or weighting value is left out"
         )
         child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
         pd.testing.assert_frame_equal(
@@ -2987,6 +2974,7 @@ class TestPyPSA:
         built = PyPSA.build(staggered_revision.record.select(period=period))
         assert built.c.Generator.static.index.tolist() == held
 
+    @pytest.mark.slow
     def test_an_asset_a_later_period_lacks_retires_there(self, store):
         """A generator the 2050 member lacks is active until 2050, not in it.
 

@@ -172,4 +172,4 @@ results = PyPSA.to_datarecord(n, ws.con, results_only=True, base=view)  # at 201
 
 A record has one dim of its own, since collections do not nest: a collection over another is refused over a `base` that has one.
 A member holds the snapshots and components the first one does, its axes join the others' in one order, and a label's properties agree across the members holding it.
-Every check runs when `to_datarecord` is called ([design](../design/tools/pypsa.md#a-collection)).Every check runs when `to_datarecord` is called ([design](../design/tools/pypsa.md#a-collection)).
+Every check runs when `to_datarecord` is called ([design](../design/tools/pypsa.md#a-collection)).
