@@ -704,40 +704,33 @@ def _series_frame(
     static_index: pd.Index,
     con: DuckDBPyConnection,
 ) -> pd.DataFrame:
-    """Pivot long series rows to the `n.snapshots x static_index` frame.
+    """Scatter long series rows into the float `n.snapshots x static_index` frame, NaN where no row is.
 
-    Only the columns the rows pivot, in `static_index` order: PyPSA takes
+    Only the columns the rows fill, in `static_index` order: PyPSA takes
     every column given as a series, so completing them would move a static
-    component into `dynamic`. The pivot is on a column's position, so a name
-    never becomes an SQL identifier. A multi-dim snapshot is matched by its
-    coordinates (`NetworkShape.snapshots`).
+    component into `dynamic`. A row is placed by the positions of its
+    snapshot and entity, so a name never becomes an SQL identifier. A
+    multi-dim snapshot is matched by its coordinates (`NetworkShape.snapshots`).
     """
     group_by = list(shape.snapshots.columns)
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
     rows = unpacked(shape.schema, SNAPSHOT, rows).set_alias("r")
-    positioned = rows.join(
-        columns, ex_all(col("r", k) == col("k", k) for k in keys)
-    ).project(
-        *(col("r", g) for g in group_by),
-        col("k", "_pos").alias("_col"),
-        col("r", "value"),
+    placed = (
+        rows.join(columns, ex_all(col("r", k) == col("k", k) for k in keys))
+        .join(
+            snapshots.rel.set_alias("s"),
+            ex_all(col("r", g) == col("s", g) for g in group_by),
+        )
+        .project(col("s", "_pos"), col("k", "_pos").alias("_col"), col("r", "value"))
+        .fetchnumpy()
     )
-    present = sorted(
-        p for (p,) in positioned.project(col("_col")).distinct().fetchall()
-    )
-    if not present:
-        return pd.DataFrame(index=snapshots.index, columns=static_index[:0])
-
-    piv = positioned.pivot("_col", present, fn.first(col("value")))
-    wide = (
-        snapshots.left_join(piv.set_alias("piv"), group_by)
-        .project(*(col(str(p)) for p in present))
-        .df()
-    )
-    wide.index = snapshots.index
-    wide.columns = static_index[[p - 1 for p in present]]
-    return wide
+    taken = np.zeros(len(static_index) + 1, dtype=bool)
+    taken[placed["_col"]] = True
+    present = np.flatnonzero(taken)
+    wide = np.full((len(snapshots.index), len(present)), np.nan)
+    wide[placed["_pos"] - 1, np.cumsum(taken)[placed["_col"]] - 1] = placed["value"]
+    return pd.DataFrame(wide, index=snapshots.index, columns=static_index[present - 1])
 
 
 # -- build -------------------------------------------------------------------
