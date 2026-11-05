@@ -314,6 +314,8 @@ _INVESTMENT_PERIOD = "investment_period"
 _SQUEEZABLE = frozenset({PERIOD, SCENARIO})
 #: The keywords selecting snapshots, at all of which a results layer restates a series.
 _TIME = frozenset({SNAPSHOT, TIMESTEP, PERIOD})
+#: The dims PyPSA holds a value over, which an attribute its registry declares no spec of may be over.
+_HELD = frozenset({ENTITY, CONNECTION, SCENARIO, SNAPSHOT, *_AXIS_TYPES.values()})
 
 
 def _root(record: RecordLike) -> RecordLike:
@@ -510,6 +512,43 @@ def _multiperiod(record: RecordLike) -> bool:
     """Whether `record` is multi-period: its `snapshot` is a multi-dim over `period`."""
     spec = record.schema.dimensions.get(SNAPSHOT)
     return spec is not None and PERIOD in (spec.over or {})
+
+
+def _unheld(record: RecordLike, flags: Mapping[str, Flags]) -> dict[str, list[str]]:
+    """Each attribute of `flags`, with the dims its registry spec lacks along which its rows differ (`_apart`).
+
+    A network holds one value of the attribute across such a dim, so it
+    would keep one row's and drop the others. An attribute the registry
+    declares no spec of is held over `_HELD`. A dim of the record's own is
+    left to `_unsupported_dims`.
+
+    Notes
+    -----
+    - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+    """
+    specs = _registry().schema.attributes
+    own = set(_own_dims(record.schema))
+    unheld: dict[str, list[str]] = {}
+    for attr, f in flags.items():
+        spec = specs.get(attr)
+        beyond = f.varies - (_HELD if spec is None else spec.dims) - own
+        if dims := [d for d in sorted(beyond) if _apart(record, attr, d)]:
+            unheld[attr] = dims
+    return unheld
+
+
+def _apart(record: RecordLike, attr: str, dim: str) -> bool:
+    """Whether `record` holds more than one label of `dim` and a row of `attr` names one.
+
+    The rows, not `Flags.varies`, which a selection overstates; the axis, not
+    the labels the rows name, since a row naming one label leaves the others
+    at the default.
+    """
+    if len(record.dims[dim].limit(2).fetchall()) < 2:
+        return False
+    return bool(
+        record.attributes[attr].filter(col(dim).isnotnull()).limit(1).fetchall()
+    )
 
 
 # -- long -> wide -----------------------------------------------------------
@@ -1848,8 +1887,9 @@ class PyPSATool(Tool):
         tool cannot honour (and nothing else where it finds any), component
         types PyPSA does not know, required attributes (by source) with no
         row, property or declared default, a port's bus where a member has no
-        connection there, curves, and in `ignored` stored attributes a type
-        does not take, which `build` leaves out.
+        connection there, curves and values a network would hold one of
+        (`_unheld`), and in `ignored` stored attributes a type does not take,
+        which `build` leaves out.
 
         Raises
         ------
@@ -1885,6 +1925,12 @@ class PyPSATool(Tool):
 
         known = self.component_types()
         declared = record.schema
+        unheld = _unheld(record, record.flags())
+        unsupported_values |= {
+            (_TYPE_OF[dim], attr)
+            for attr in unheld
+            for dim in declared.attributes[attr].dims & set(_TYPE_OF)
+        }
         read: dict[str, _TypeMembers] = {}
         ctypes = _components(record)
         connection_frame = _record_connections(record) if known & set(ctypes) else None
@@ -1896,7 +1942,10 @@ class PyPSATool(Tool):
             taken = _taken(declared, ctype, resolved)
             ignored |= {(ctype, attr) for attr in resolved if attr not in taken}
             unsupported_values |= {
-                (ctype, attr) for attr in taken if resolved[attr].breakpoints
+                (ctype, attr)
+                for attr in taken
+                if resolved[attr].breakpoints
+                or resolved[attr].varies.intersection(unheld.get(attr, ()))
             }
             read[ctype] = _TypeMembers.of(record, ctype, connection_frame)
             static_cols = read[ctype].columns
@@ -1956,7 +2005,8 @@ class PyPSATool(Tool):
         ValueError
             If `record` is a selection squeezing a dim but `period`,
             `scenario` or a dim of its own, holding no snapshot, or keeping
-            scenarios weighing nothing in all.
+            scenarios weighing nothing in all, or if an attribute's rows name
+            several labels of a dim PyPSA holds it without (`_unheld`).
         UnsupportedRecordError
             If `verify` reports anything missing, a dim of the record's own included.
 
@@ -1967,6 +2017,15 @@ class PyPSATool(Tool):
         - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
         """
         record = _narrowed(record)
+        flagged = record.flags()
+        if unheld := _unheld(record, flagged):
+            over = ", ".join(f"`{attr}` over {dims}" for attr, dims in unheld.items())
+            msg = (
+                f"A network holds one value of {over}, where the record holds "
+                "several labels its rows name: select one label as a list of "
+                "one, or build a network per `period` with `PyPSACollection`"
+            )
+            raise ValueError(msg)
         missing, read = self._verify(record)
         if missing:
             raise UnsupportedRecordError(self.name, missing)
@@ -1975,7 +2034,6 @@ class PyPSATool(Tool):
         schema = record.schema
         shape = NetworkShape(schema, record.dims)
         n = _new_network(record, shape)
-        flagged = record.flags()
 
         periodless = {_INVESTMENT_PERIOD} if PERIOD in _squeezed(record) else set()
         over_entity = [

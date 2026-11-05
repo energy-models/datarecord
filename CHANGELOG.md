@@ -531,6 +531,13 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- `PyPSA.build` refuses a record whose rows of an attribute name several
+  labels of a dim PyPSA's registry declares it without, such as a generator's
+  `marginal_cost` over `period` in a multi-period record, rather than keeping
+  one label's value, and `PyPSA.verify` reports the attribute in
+  `Requirements.unsupported_values`. The view at one label,
+  `record.select(period=[2030])`, builds, as `PyPSACollection` builds each
+  period. `Requirements.describe` lists the field as unsupported values.
 - Reading a property's default keeps the rows in their order. A relation
   filtered by several `IN (SELECT …)` subqueries no longer comes back
   reordered.
