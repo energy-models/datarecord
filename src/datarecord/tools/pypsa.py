@@ -544,11 +544,27 @@ def _apart(record: RecordLike, attr: str, dim: str) -> bool:
     the labels the rows name, since a row naming one label leaves the others
     at the default.
     """
-    if len(record.dims[dim].limit(2).fetchall()) < 2:
+    if len(record.dims[dim]) < 2:
         return False
     return bool(
         record.attributes[attr].filter(col(dim).isnotnull()).limit(1).fetchall()
     )
+
+
+def _one_labelled(record: RecordLike) -> dict[str, DuckDBPyRelation]:
+    """Each dim but `snapshot` that `record` holds exactly one label of, with its axis, for `settle`.
+
+    Over one label, the row naming it is kept over one leaving it NULL. Over
+    several, a row naming one is refused before (`_unheld`) unless PyPSA holds
+    the dim, so settling would only copy a NULL row to every label. A NULL
+    `snapshot` marks a static row (`_assign_static`), which settling would
+    give the one snapshot's label.
+    """
+    return {
+        dim: rel
+        for dim, rel in record.dims.items()
+        if dim != SNAPSHOT and len(rel) == 1
+    }
 
 
 # -- long -> wide -----------------------------------------------------------
@@ -2041,16 +2057,18 @@ class PyPSATool(Tool):
             for a in schema.attributes
             if schema.addresses(a, ENTITY) and a not in periodless
         ]
-        scenarios = {SCENARIO: record.dims[SCENARIO]} if shape.stochastic else {}
+        settled = _one_labelled(record)
+        if shape.stochastic:
+            settled[SCENARIO] = record.dims[SCENARIO]
         tuples = record.dims.get(CONNECTION)
         for ctype in _AXIS_TYPES:
-            self._add_labels(n, record, ctype, flagged, shape, scenarios, con)
+            self._add_labels(n, record, ctype, flagged, shape, settled, con)
         _attach_sub_networks(n)
         for ctype, members in read.items():
             static = members.members
             if static is None:
                 continue
-            labels = {**scenarios, ENTITY: static}
+            labels = {**settled, ENTITY: static}
             if tuples is not None:
                 labels[CONNECTION] = _tuples_of(tuples, static)
             if not shape.stochastic and SCENARIO in static.columns:
@@ -2091,10 +2109,10 @@ class PyPSATool(Tool):
         ctype: str,
         flagged: dict[str, Flags],
         shape: NetworkShape,
-        scenarios: Mapping[str, DuckDBPyRelation],
+        settled: Mapping[str, DuckDBPyRelation],
         con: DuckDBPyConnection,
     ) -> None:
-        """Add an `_AXIS_TYPES` type's members: its dim's labels with their properties, defaults applied, and the attributes over it."""
+        """Add an `_AXIS_TYPES` type's members: its dim's labels with their properties, defaults applied, and the attributes over it, settled over its labels and `settled`."""
         dim = _AXIS_TYPES[ctype]
         frame = record.properties.get(dim)
         if frame is None or not frame.limit(1).fetchall():
@@ -2104,7 +2122,7 @@ class PyPSATool(Tool):
         names = [name for name in schema.properties[dim] if name not in outlines]
         labels = with_defaults(schema, dim, frame, names, con)
         static = _keyed_as_entity(_empty_for_none(labels), dim).project(star(), _POS)
-        over = {**scenarios, dim: labels}
+        over = {**settled, dim: labels}
         attributes = {
             attr: (
                 _keyed_as_entity(
