@@ -327,10 +327,13 @@ def numbered_relation(
 
     Read once, at the call: the values are bound as one parameter rather than
     rendered as literals, which a relation re-renders and DuckDB re-parses
-    wherever it is composed, at a cost growing with every value.
+    wherever it is composed, at a cost growing with every value. The rows come
+    from `range`, indexing into the parameter, since DuckDB estimates
+    `unnest` of a parameter at about one row and then builds a hash join on
+    whatever it is joined with, however large.
     """
     return con.sql(
-        f"SELECT unnest($1::{dtype}[]) AS {col(name)}, unnest(range($2)) AS {col(number)}",
+        f"SELECT ($1::{dtype}[])[i + 1] AS {col(name)}, i AS {col(number)} FROM range($2) AS r(i)",
         params=[list(values), len(values)],
     )
 
