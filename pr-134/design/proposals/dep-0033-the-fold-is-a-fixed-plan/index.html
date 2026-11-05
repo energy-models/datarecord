@@ -1992,10 +1992,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#one-fold-its-patterns-as-data" class="md-nav__link">
+  <a href="#named-sets-as-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        One fold, its patterns as data
+        Named sets as data
       
     </span>
   </a>
@@ -2003,10 +2003,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-read-ranks-only-contested-rows" class="md-nav__link">
+  <a href="#refusals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The read ranks only contested rows
+        Refusals
       
     </span>
   </a>
@@ -2014,10 +2014,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-staged-step-is-fixed" class="md-nav__link">
+  <a href="#contested-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The staged step is fixed
+        Contested layers
       
     </span>
   </a>
@@ -2025,10 +2025,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#last-writer-wins-in-staging" class="md-nav__link">
+  <a href="#the-staged-layer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Last writer wins in staging
+        The staged layer
       
     </span>
   </a>
@@ -2036,10 +2036,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#a-fold-starts-from-the-nearest-fold-at-hand" class="md-nav__link">
+  <a href="#crossing-staged-edits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A fold starts from the nearest fold at hand
+        Crossing staged edits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-nearest-fold-at-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The nearest fold at hand
       
     </span>
   </a>
@@ -2377,10 +2388,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#one-fold-its-patterns-as-data" class="md-nav__link">
+  <a href="#named-sets-as-data" class="md-nav__link">
     <span class="md-ellipsis">
       
-        One fold, its patterns as data
+        Named sets as data
       
     </span>
   </a>
@@ -2388,10 +2399,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-read-ranks-only-contested-rows" class="md-nav__link">
+  <a href="#refusals" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The read ranks only contested rows
+        Refusals
       
     </span>
   </a>
@@ -2399,10 +2410,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#the-staged-step-is-fixed" class="md-nav__link">
+  <a href="#contested-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
-        The staged step is fixed
+        Contested layers
       
     </span>
   </a>
@@ -2410,10 +2421,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#last-writer-wins-in-staging" class="md-nav__link">
+  <a href="#the-staged-layer" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Last writer wins in staging
+        The staged layer
       
     </span>
   </a>
@@ -2421,10 +2432,21 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#a-fold-starts-from-the-nearest-fold-at-hand" class="md-nav__link">
+  <a href="#crossing-staged-edits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A fold starts from the nearest fold at hand
+        Crossing staged edits
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-nearest-fold-at-hand" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The nearest fold at hand
       
     </span>
   </a>
@@ -2559,99 +2581,109 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 </tbody>
 </table>
+<p>The design landed in <a href="../../layers/resolution/">resolution</a>, <a href="../../use/editing/">editing</a> and <a href="../../use/writing/">writing</a>, which are authoritative where they and this DEP disagree.</p>
 <h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
-<p>The fold of a layer onto the owner map below it becomes one query whose joins do not depend on which named sets its rows hold: a row's named set is a column, not a loop. A <code>WorkingRecord</code>'s relations are planned without reading a staged row, so a relation built once reads every later edit. Where two staged edits cross, the later one wins.</p>
+<p>The <a href="../../layers/resolution/#owner-map">owner map</a> is the table of which layer owns each key. The fold is the step that merges each layer's rows onto the owner map below it. This DEP makes the fold one query with fixed joins. It no longer loops over the sets of dims that rows name, because each row's set is now a value in a column. A <code>WorkingRecord</code> (a record with staged, uncommitted edits) then plans its relations without reading a staged row. So a relation built before an edit returns that edit. Where two staged edits cross, the later edit wins.</p>
 <h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">&para;</a></h2>
-<p>The fold today loops over the named sets the rows of a layer hold, and runs joins per pair of them. Its plan depends on the data, and its joins grow with the patterns a deep ancestry accumulates: 388 joins for the frozen fold of a 16-layer PyPSA ancestry.</p>
-<p>A <code>WorkingRecord</code> decides from staged rows in Python whether a staging table exists, which layers own an attribute and whether an axis is staged. A relation built before an edit misses what that edit changes, and a view reads a stale plan.</p>
-<p>Two staged edits that cross, each naming a dim the other leaves NULL, are refused today, so the order of an editor's clicks matters.</p>
+<p>The <a href="../../layers/tree/#partial-the-granularity-of-an-override"><code>partial</code></a> dims are the dims a layer can override one label at a time. A row's named set is the set of <code>partial</code> dims on which its key has a label. Before this DEP, the fold loops over the named sets in a layer's rows and runs joins for each pair of them. So the plan of the fold depends on the data, and its joins grow with the named sets a deep ancestry accumulates. On a 16-layer PyPSA ancestry, the frozen fold runs 388 joins.</p>
+<p>A <code>WorkingRecord</code> checks its staged rows in Python to decide which staging tables exist, which layers own an attribute and which axes are staged. So a relation built before an edit misses what the edit changes, and a view over that relation uses a stale plan.</p>
+<p>Two staged edits cross where each names a dim that the other leaves NULL. Before this DEP, <code>set</code> refuses the second of two such edits. So the order of a user's clicks in an editor decides whether an edit succeeds.</p>
 <h2 id="specification">Specification<a class="headerlink" href="#specification" title="Permanent link">&para;</a></h2>
-<h3 id="one-fold-its-patterns-as-data">One fold, its patterns as data<a class="headerlink" href="#one-fold-its-patterns-as-data" title="Permanent link">&para;</a></h3>
-<p>A row's named set over the <code>partial</code> dims is a bitmask. The fold of one layer's owner-map rows onto the map below it is:</p>
+<h3 id="named-sets-as-data">Named sets as data<a class="headerlink" href="#named-sets-as-data" title="Permanent link">&para;</a></h3>
+<p>A row's named set is a bitmask over the <code>partial</code> dims, stored in a column of the row. The fold of one layer's owner-map rows onto the map below it runs three steps:</p>
 <ul>
-<li>Pruning: the parent rows naming a removed label are dropped, one anti-join per <code>partial</code> dim.</li>
-<li>Covering: each parent row is expanded to one row per subset of its named set, tagged with the subset and its labels on it. One semi-join on attribute, subset and labels against the layer's rows, keyed by their own named set, finds every parent row a row of the layer covers, and one anti-join drops them.</li>
-<li>Crossing: both sides are expanded to the named sets the other side's row may hold without either containing the other, and one equi-join keeps the pairs whose labels agree on the dims both name. Each gives an <a href="../../layers/resolution/#crossing-rows">overlap row</a>. An attribute over at most one <code>partial</code> dim cannot cross and runs no crossing join; the schema decides this.</li>
+<li>To prune, the fold drops the parent rows that name a removed label, with one anti-join per <code>partial</code> dim.</li>
+<li>To cover, the fold copies each parent row once per subset of its named set, and tags each copy with the subset and its labels. One semi-join matches these copies to the layer's rows on attribute, subset and labels, with each layer row's own named set as its subset. One anti-join then drops every parent row that a layer row covers.</li>
+<li>To cross, the fold expands both sides to the named sets that the other side's row may have without either set containing the other. One equi-join keeps the pairs whose labels agree on the dims both rows name, and each pair gives an <a href="../../layers/resolution/#crossing-rows">overlap row</a>.</li>
 </ul>
-<p>The query computes each row's candidate masks from its own mask and its attribute's domain, the <code>partial</code> dims the attribute is over, so the plan does not grow with the masks a schema allows.</p>
-<p>A named set no row holds costs nothing. Only owner-map rows are expanded, never value rows. The fold serves the frozen prefix and its materialised map, the staged step, <code>flags()</code> and the write of a whole record.</p>
-<p>Under <a href="../dep-0026-the-fold-reads-each-layer-under-its-own-schema/">DEP 26</a> the masks and the candidate masks of a layer are taken over its own schema's <code>partial</code> dims, once per distinct layer schema, after the map folded so far is widened to it.</p>
-<p>The fold no longer refuses rows. A frozen layer's unfilled rows are refused when a workspace first builds the fold over it, so a layer from any writer is still checked. Its own rows crossing unsettled are refused by the writer, or, for a layer another writer made, by the read that reaches the coordinate where they meet. A <code>set</code> whose own rows cross each other is refused, and its edit rolled back. <code>set</code> fills what it stages, so it runs no check for unfilled rows.</p>
-<h3 id="the-read-ranks-only-contested-rows">The read ranks only contested rows<a class="headerlink" href="#the-read-ranks-only-contested-rows" title="Permanent link">&para;</a></h3>
-<p>A layer is contested for an attribute where its rows name different sets of <code>partial</code> dims, so it reaches some coordinates twice and the read keeps the more specific row there. Whether a layer is contested is a column of the map, not a Python decision. The read joins the value rows of contested layers in one arm, which ranks them, and those of every other layer in a second arm, which passes them straight through. A frozen <code>Record</code> keeps today's check, taking the ranking arm only where a layer is contested.</p>
-<p>No read is slower than today's, at any depth or series length. Its memory may exceed today's by a small constant, never by an amount that grows with depth or series length.</p>
-<h3 id="the-staged-step-is-fixed">The staged step is fixed<a class="headerlink" href="#the-staged-step-is-fixed" title="Permanent link">&para;</a></h3>
-<p>The plan of a relation of a <code>WorkingRecord</code> never depends on the staged rows; it may depend on the rows of the frozen prefix, which do not change while the <code>WorkingRecord</code> lives.</p>
+<p>An attribute over at most one <code>partial</code> dim cannot cross, so its fold runs no crossing join. The schema alone shows which attributes these are, so the fold reads no rows to decide it.</p>
+<p>The query computes each row's candidate masks, the named sets the row may meet, from the row's own mask and its attribute's domain. The domain is the set of <code>partial</code> dims the attribute is over. So the plan does not grow with the number of masks a schema allows.</p>
+<p>A named set costs nothing unless some row has it. The fold expands owner-map rows only, never value rows. The same fold runs for the frozen layers and their materialised map, the staged layer, <code>flags()</code> and the write of a whole record.</p>
+<p>Under <a href="../dep-0026-the-fold-reads-each-layer-under-its-own-schema/">DEP 26</a>, each layer folds under its own schema. The fold first widens the map folded so far to that schema, then takes the layer's masks and candidate masks over the schema's <code>partial</code> dims. It builds these once per distinct layer schema.</p>
+<h3 id="refusals">Refusals<a class="headerlink" href="#refusals" title="Permanent link">&para;</a></h3>
+<p>The fold no longer refuses rows. The refusals move to three other places:</p>
 <ul>
-<li>Every <code>Record</code>, frozen or not, lists every dim and every attribute its schema declares. One with no rows reads an empty relation, where today it raises <code>KeyError</code>.</li>
-<li>A <code>WorkingRecord</code> creates every staging table when it is created. An axis table holds a copy of the base's axis, an attribute table starts empty. A <code>one_of</code> dim has none.</li>
-<li>The staged layer owns every axis from the start, so <a href="../../layers/resolution/#materialised-node-caches"><code>dim_owners</code></a> names it for every dim.</li>
-<li>The staged layer is a possible owner of every attribute, whether or not it holds rows.</li>
-<li>The dead labels of a staged restatement are always an anti-join, empty or not.</li>
+<li>A workspace refuses a frozen layer's unfilled rows when it first builds the fold over that layer. So a layer from any writer is still checked.</li>
+<li>The writer refuses a layer in which two rows cross and no row names both. A layer that another writer made fails only when a read reaches the coordinate where the two rows meet.</li>
+<li><code>set</code> refuses an edit whose own rows cross each other, and rolls the edit back. <code>set</code> fills every row it stages, so it runs no check for unfilled rows.</li>
+</ul>
+<h3 id="contested-layers">Contested layers<a class="headerlink" href="#contested-layers" title="Permanent link">&para;</a></h3>
+<p>A layer is contested for an attribute where its rows name different sets of <code>partial</code> dims. Such a layer reaches some coordinates twice, and the read keeps the more specific row there. Each row of the map has a flag that is true where its layer is contested, so the read needs no Python check. The read joins the value rows of contested layers in one arm, which ranks them. It joins the value rows of every other layer in a second arm, which passes them through unranked. A frozen <code>Record</code> keeps its Python check, and takes the ranking arm only where a layer is contested.</p>
+<p>No read is slower than before this DEP, at any depth or series length. A read may use more memory than before by a small constant. It never uses more by an amount that grows with depth or series length.</p>
+<h3 id="the-staged-layer">The staged layer<a class="headerlink" href="#the-staged-layer" title="Permanent link">&para;</a></h3>
+<p>The plan of a <code>WorkingRecord</code>'s relation never depends on the staged rows. It may depend on the rows of the committed layers below the staged one (the frozen prefix), which do not change while the <code>WorkingRecord</code> exists.</p>
+<ul>
+<li>Every <code>Record</code>, frozen or not, lists every dim and every attribute its schema declares. A dim or attribute with no rows gives an empty relation, where before this DEP the <code>Record</code> raises <code>KeyError</code>.</li>
+<li>A <code>WorkingRecord</code> creates every staging table when it is created. An axis table starts as a copy of the base's axis, and an attribute table starts empty. A <code>one_of</code> dim has no staging table.</li>
+<li>The staged layer owns every axis from the start, so <a href="../../layers/resolution/#materialised-node-caches"><code>dim_owners</code></a> lists the staged layer for every dim.</li>
+<li>The staged layer is a possible owner of every attribute, whether or not it has rows.</li>
+<li>The fold always runs the anti-join for the labels a staged restatement removes (<a href="../../layers/removal/">dead labels</a>), even when there are none.</li>
 <li>The staged layer folds onto the frozen map one attribute at a time, against the parent's rows of that attribute.</li>
-<li>The staged layer's owner-map rows are kept per attribute in a table that every edit refreshes, inside its transaction, for each attribute it touched. The fold, <code>flags()</code> and the write read these tables instead of aggregating the staged rows.</li>
-<li><code>rollback()</code> empties the attribute tables and refills each axis from the base. It drops no table.</li>
+<li>The staged layer's owner-map rows are kept in one table per attribute. Inside its transaction, each edit refreshes the tables of the attributes it touched. The fold, <code>flags()</code> and the write read these tables instead of aggregating the staged rows.</li>
+<li><code>rollback()</code> empties the attribute tables and refills each axis table from the base. It drops no table.</li>
 </ul>
-<h3 id="last-writer-wins-in-staging">Last writer wins in staging<a class="headerlink" href="#last-writer-wins-in-staging" title="Permanent link">&para;</a></h3>
-<p>A <code>set</code> whose row crosses a staged row of the same attribute, with no staged row naming both, also stages the crossing row with its own value. The later edit wins wherever the two meet, and the staged rows never hold a crossing the fold would refuse.</p>
-<h3 id="a-fold-starts-from-the-nearest-fold-at-hand">A fold starts from the nearest fold at hand<a class="headerlink" href="#a-fold-starts-from-the-nearest-fold-at-hand" title="Permanent link">&para;</a></h3>
-<p>A fold starts from the deepest proper ancestor whose fold is materialised on disk or held by the workspace: its owner map, axes and dead labels, kept as shared tables for as long as the workspace's connection. Only the layers above it are folded, and only they are checked. A record opened on a child after a commit folds one layer onto its parent's fold.</p>
+<h3 id="crossing-staged-edits">Crossing staged edits<a class="headerlink" href="#crossing-staged-edits" title="Permanent link">&para;</a></h3>
+<p>When <code>set</code> stages a row that crosses a staged row of the same attribute, it looks for a staged row that names both. If there is none, <code>set</code> stages one with the new value. So the later edit wins wherever the two edits meet. The staged rows never contain a crossing that the fold would refuse.</p>
+<h3 id="the-nearest-fold-at-hand">The nearest fold at hand<a class="headerlink" href="#the-nearest-fold-at-hand" title="Permanent link">&para;</a></h3>
+<p>A fold starts from the deepest proper ancestor whose fold is at hand, either materialised on disk or held by the workspace. It takes that ancestor's owner map, axes and dead labels as its seed. The workspace keeps the seed as shared tables for as long as its connection lives. It then folds and checks only the layers above the seed. So a record opened on a child after a commit folds one layer onto its parent's fold.</p>
 <h3 id="writing-staged-edits">Writing staged edits<a class="headerlink" href="#writing-staged-edits" title="Permanent link">&para;</a></h3>
-<p>A staged axis that equals the base's, as rows in position order, is not written, nor is an attribute table with no rows. An <code>add</code> undone by a <code>remove</code> writes nothing.</p>
+<p>The write skips a staged axis that equals the base's axis, comparing rows in position order. It also skips an attribute table with no rows. So if a <code>remove</code> undoes an <code>add</code>, nothing is written.</p>
 <h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
-<p>A fixed fold could enumerate every named set the schema allows, one join per pattern. Most of those joins would run on empty inputs, in every fold of every layer. Carrying the pattern as data keeps the plan fixed and the work proportional to the rows there are, at the price of copying each owner-map row once per named set it may meet, at most 2^k for k <code>partial</code> dims. One fold for every purpose replaces two whose agreement only tests could show.</p>
-<p>On a 16-layer PyPSA ancestry with 1,000 generators over 8,760 snapshots, the frozen fold runs 171 joins instead of 388, takes 0.68× the time and peaks at 0.45× the buffer memory. Its expansion takes at most 5,637 rows at every series length.</p>
-<p>The staged layer must fold one attribute at a time. A fold of all attributes at once binds every staging table into every relation. For a schema of 150 attributes, that costs seconds per relation.</p>
-<p>Eager staging tables have a price. Creating a <code>WorkingRecord</code> takes 0.4–0.5 s for a schema of 153 attributes, where today it takes no time, and each one holds a copy of every axis. In exchange the staged layer owns every axis from the start. Nothing tracks which axes an edit touched, because the write compares them with the base.</p>
-<p>Last writer wins is what the user of an editor expects. It is also what <code>set</code> already does where two rows name the same key.</p>
-<p>A fixed plan cannot skip the ranking from a Python check, as today's read does. Ranking every value row instead kept the plan fixed but read a single base layer with a long series 5× slower and with 1 GB more memory. Carrying the check as data keeps the ranking's input to the rows that need it. With the staged owner rows kept in tables, every read of the 16-layer ancestry above is at least as fast as today's, most of them 3–10× faster, and <code>flags()</code> takes 0.1 s instead of up to 2.7 s.</p>
-<p>Each edit recomputes the owner rows of the attributes it touched, which adds a few percent to a large <code>set</code>. The read of an edited record takes a few tens of MB more memory than today's on small data.</p>
-<p>A relation that stays valid across edits still pays for each of them. DuckDB 2.0 re-binds every Python relation after any committed write, to any table, schema or cursor. A consumer should therefore hold few relations across a write.</p>
-<p>The fixed fold cuts the joins per layer, not the statements, so a cold fold stays linear in depth: about 0.11 s per layer over 64 layers.</p>
+<p>With named sets as data, the plan stays fixed and the work grows only with the rows that exist. A fixed plan could instead enumerate every named set the schema allows, with one join per set. Most of those joins would run on empty inputs, in every fold of every layer. The price is that the fold copies each owner-map row once per named set it may meet, at most 2^k times for k <code>partial</code> dims. One fold also replaces the two folds there were before, which only the tests showed to agree.</p>
+<p>On a 16-layer PyPSA ancestry with 1,000 generators over 8,760 snapshots, the frozen fold runs 171 joins instead of 388. It takes 0.68× the time and peaks at 0.45× the buffer memory. At every series length, the fold expands to at most 5,637 rows.</p>
+<p>The staged layer must fold one attribute at a time, because a fold of all attributes at once binds every staging table into every relation. For a schema of 150 attributes, that costs seconds per relation.</p>
+<p>Eager staging tables have a cost. Creating a <code>WorkingRecord</code> takes 0.4–0.5 s for a schema of 153 attributes, where before this DEP it takes no time. Each <code>WorkingRecord</code> also keeps a copy of every axis. In return, the staged layer owns every axis from the start. Nothing tracks which axes an edit touched, because the write compares each axis with the base.</p>
+<p>The user of an editor expects the last writer to win. <code>set</code> already lets the last writer win where two rows name the same key.</p>
+<p>Before this DEP, the read skips the ranking where a Python check finds no contested layer. A fixed plan cannot run that check. Ranking every value row would also keep the plan fixed. However, a single base layer with a long series then read 5× slower, with 1 GB more memory. With the contested flag in the map, only the rows that need ranking are ranked. With the staged owner rows also in tables, every read of the 16-layer ancestry is as fast as before or faster. Most are 3–10× faster. <code>flags()</code> takes 0.1 s instead of up to 2.7 s.</p>
+<p>Each edit recomputes the owner rows of the attributes it touched, which adds a few percent to the time of a large <code>set</code>. On small data, a read of an edited record uses a few tens of MB more memory than before.</p>
+<p>A relation stays valid across edits, but each edit still costs it a re-bind. DuckDB 2.0 re-binds every Python relation after any committed write, to any table, schema or cursor. So a consumer should hold few relations across a write.</p>
+<p>The fixed fold cuts the joins per layer but not the number of statements. So a fold with no ancestor's fold at hand (a cold fold) stays linear in depth, at about 0.11 s per layer over 64 layers.</p>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
-<p>A crossing <code>set</code> succeeds:</p>
+<p>A <code>set</code> that crosses a staged row succeeds:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># refused today; now wind1 under high reads 0.7</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>
 </code></pre></div>
-<p>A relation built before an edit reads the edit:</p>
+<p>The second <code>set</code> crosses the first, so it also stages <code>wind1</code> under <code>high</code> with 0.7. A read of <code>wind1</code> under <code>high</code> returns 0.7. Before this DEP, <code>set</code> refuses the second call.</p>
+<p>A relation built before an edit returns the edit:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">rel</span> <span class="o">=</span> <span class="n">w</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">rel</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>  <span class="c1"># holds 150.0</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">rel</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
 </code></pre></div>
+<p><code>rel</code> was built before the <code>set</code>, and <code>fetchall()</code> still returns <code>wind1</code> with 150.0.</p>
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
-<li>Every declared dim and attribute listed by every <code>Record</code>, a typed empty relation for one with no rows.</li>
+<li>Every <code>Record</code> lists every declared dim and attribute, with a typed empty relation for one with no rows.</li>
 <li><code>_dead_keys</code> always returns the anti-join for an unfrozen restatement.</li>
 <li><code>_owners</code> includes every unfrozen layer.</li>
-<li>Eager staging tables, <code>rollback()</code> refilling them, and the write comparing axes with the base.</li>
-<li>The fold with patterns as data, replacing the per-pattern fold, and the checks moved to <code>set</code> and the first materialisation of a layer.</li>
-<li>The contested flag carried as data, and the read ranking only the rows of contested layers.</li>
+<li>Eager staging tables, with <code>rollback()</code> refilling them and the write comparing axes with the base.</li>
+<li>The fold with named sets as data replaces the per-pattern fold, and the checks move to <code>set</code> and to the first materialisation of a layer.</li>
+<li>The contested flag as a column of the map, with the read ranking only the rows of contested layers.</li>
 <li>The staged owner-map rows in per-attribute tables that every edit refreshes.</li>
 <li>Last writer wins in <code>set</code>.</li>
-<li>The refusal of a frozen layer's unfilled rows checked once, when a workspace first folds it, rather than on every read.</li>
-<li>Each layer's owner rows aggregated once into its checkpoint, and one union per layer in place of two binds.</li>
-<li>The parts of the plan derived from a schema built once per fold and layer schema.</li>
-<li><code>materialise</code> reusing the frozen fold a workspace already holds.</li>
-<li><code>_base_and_above</code> taking a workspace-held fold of an ancestor as its seed, beside a materialised one.</li>
+<li>A frozen layer's unfilled rows checked once, when a workspace first folds the layer, instead of on every read.</li>
+<li>Each layer's owner rows aggregated once into its checkpoint, and one union per layer instead of two binds.</li>
+<li>The parts of the plan that derive from a schema built once per fold and per layer schema.</li>
+<li><code>materialise</code> reuses the frozen fold that a workspace already holds.</li>
+<li><code>_base_and_above</code> takes a workspace-held fold of an ancestor as its seed, as it takes a materialised one.</li>
 </ol>
-<p>The check: today's suite, with crossing staged edits turned to last-writer-wins; owner maps equal to today's on every ancestry of the equivalence runs and on a map today's code materialised; after every edit, every relation built before it equals one built afresh.</p>
+<p>Three checks hold. The suite passes, with crossing staged edits changed to last writer wins. Owner maps equal those of the per-pattern fold on every ancestry of the equivalence runs, and on a map that the per-pattern fold materialised. After every edit, every relation built before the edit equals one built afresh.</p>
 <h2 id="rejected-ideas">Rejected Ideas<a class="headerlink" href="#rejected-ideas" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Masks taken from the powerset of <code>partial</code> coordinates while folding all attributes at once. The plan became intractable in a prototype.</li>
-<li>Named sets enumerated from the schema per attribute. The plan is fixed and fast for one attribute, but runs joins on empty patterns in every fold.</li>
-<li>Candidate masks as a constant list in the plan. Building the plan takes 4.4 s at nine <code>partial</code> dims, against 0.04 s computed per row.</li>
-<li>Candidate masks joined from a table per schema. It ties on PyPSA, but adds joins, memory and a table to keep.</li>
-<li>Ranking every value row on read. See <a href="#rationale">Rationale</a>.</li>
-<li>Refusing a <code>set</code> that crosses a staged row: it makes the order of a user's clicks matter.</li>
-<li>A checkpoint every few layers rather than every layer. The checks and the crossing join each read the map below, so the plan doubles with each layer left unchecked: 25 s for a depth-16 fold checkpointed every fourth layer, against 3 s.</li>
-<li>Separate schemas or attached databases to escape DuckDB's re-bind after a write. Every Python relation on the connection is re-bound regardless.</li>
+<li>Masks from the powerset of <code>partial</code> coordinates, folding all attributes at once. In a prototype, the plan became intractable.</li>
+<li>Named sets enumerated from the schema per attribute. The plan is fixed and fast for one attribute, but every fold runs joins on named sets that no row has.</li>
+<li>Candidate masks as a constant list in the plan. At nine <code>partial</code> dims, building the plan takes 4.4 s, against 0.04 s when the query computes the masks per row.</li>
+<li>Candidate masks joined from a table per schema. It ties on PyPSA, but it adds joins, memory and a table to maintain.</li>
+<li>Ranking every value row on read, for the reason in <a href="#rationale">Rationale</a>.</li>
+<li>Refusing a <code>set</code> that crosses a staged row, because the order of a user's clicks would then decide whether an edit succeeds.</li>
+<li>A checkpoint every few layers instead of every layer. The checks and the crossing join each read the map below, so the plan doubles with each layer left without a checkpoint. A depth-16 fold with a checkpoint every fourth layer takes 25 s, against 3 s.</li>
+<li>Separate schemas or attached databases, to avoid DuckDB's re-bind after a write. DuckDB re-binds every Python relation on the connection regardless.</li>
 </ul>
 <h2 id="open-issues">Open Issues<a class="headerlink" href="#open-issues" title="Permanent link">&para;</a></h2>
 <ul>
-<li>The checks at <code>set</code> and at write still enumerate named sets per pattern, with data-driven fetches.</li>
-<li><code>set</code> spreads a scenario-scoped or crossing broadcast into one staged row per entity and snapshot.</li>
-<li>When a deep ancestry materialises its map, so that a cold fold in a fresh workspace is bounded by depth.</li>
-<li>An edit runs in its own transaction, so it fails where the caller holds an open transaction on the same cursor.</li>
+<li>The checks in <code>set</code> and in the write still enumerate named sets per pattern, with fetches that depend on the data.</li>
+<li><code>set</code> spreads a broadcast that is scenario-scoped or crossing into one staged row per entity and snapshot.</li>
+<li>When a deep ancestry should materialise its map, so that a cold fold in a fresh workspace has a bounded depth.</li>
+<li>Each edit runs in its own transaction, so an edit fails where the caller holds an open transaction on the same cursor.</li>
 </ul>
 
 
