@@ -21,21 +21,19 @@ from __future__ import annotations
 
 import hashlib
 import json
+import operator
 import re
 from collections.abc import Iterable, Mapping
-from functools import cached_property
+from functools import cached_property, reduce
 from typing import Any, Self, cast
 
 import duckdb
 from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, sqltypes
-from duckdb import SQLExpression as sql
 from duckdb.sqltypes import DuckDBPyType
 from mathspec._expression_parser import NAME
 from pydantic import Field, model_validator
 
-from datarecord.duck import fn
 from datarecord.schema.dtypes import DUCK_TYPES, enum_type, takes
 from datarecord.schema.specs import (
     AttributeSpec,
@@ -647,10 +645,8 @@ class Schema(_Declared):
                 raise ValueError(msg)
             if dtype is None:
                 continue
-            some = " OR ".join(
-                f"{fn.struct_extract(col(multi), lit(c))} IS NULL" for c in key
-            )
-            partly = sql(f"{col(multi)} IS NOT NULL AND ({some})")
+            some = reduce(operator.or_, (col(multi)[c].isnull() for c in key))
+            partly = col(multi).isnotnull() & some
             if rel.filter(partly).limit(1).fetchall():
                 msg = (
                     f"{carrier} carries a {multi!r} with some fields NULL; a "

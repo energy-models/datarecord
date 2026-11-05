@@ -39,7 +39,6 @@ from datarecord.duck import (
     named_mask,
     null_safe,
     shared_table,
-    struct_of,
     union_all_by_name,
 )
 from datarecord.resolve.coords import (
@@ -474,7 +473,7 @@ def owned_rows(source: LayerSource, attribute: str) -> DuckDBPyRelation | None:
 
 
 def _field(flag: str, dim: str) -> Expression:
-    return fn.struct_extract(col(flag), lit(dim))
+    return col(flag)[dim]
 
 
 def _widened(
@@ -533,8 +532,12 @@ def _widened(
 
     extended = with_columns(now, rel, *joining).project(
         *(col(c) for c in (*now.owner_map_key, LAYER_COLUMN)),
-        struct_of({d: old("varies", d) for d in now.broadcast_dims}).alias("varies"),
-        struct_of({d: broadcast(d) for d in now.broadcast_dims}).alias("broadcast"),
+        fn.struct_pack(**{d: old("varies", d) for d in now.broadcast_dims}).alias(
+            "varies"
+        ),
+        fn.struct_pack(**{d: broadcast(d) for d in now.broadcast_dims}).alias(
+            "broadcast"
+        ),
         col("breakpoints"),
     )
     return union_all_by_name([extended, *parts])

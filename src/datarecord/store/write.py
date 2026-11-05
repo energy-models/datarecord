@@ -22,8 +22,6 @@ from typing import TYPE_CHECKING
 from uuid import uuid4
 
 from duckdb import ColumnExpression as col
-from duckdb import ConstantExpression as lit
-from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import as_relation, fn, null_safe, write_parquet
@@ -300,8 +298,8 @@ def _refuse_reordered(
     -----
     - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
     """
-    mine = rel.project(col(key), sql("row_number() OVER ()").alias("_mine"))
-    theirs = parent.project(col(key), sql("row_number() OVER ()").alias("_theirs"))
+    mine = rel.project(col(key), fn.row_number().over().alias("_mine"))
+    theirs = parent.project(col(key), fn.row_number().over().alias("_theirs"))
     shared = (
         mine.set_alias("m")
         .join(theirs.set_alias("t"), col("m", key) == col("t", key))
@@ -310,8 +308,8 @@ def _refuse_reordered(
     ranked = shared.project(
         col(key),
         col("_mine"),
-        sql("row_number() OVER (ORDER BY _mine)").alias("_a"),
-        sql("row_number() OVER (ORDER BY _theirs)").alias("_b"),
+        fn.row_number().over(order_by=[col("_mine")]).alias("_a"),
+        fn.row_number().over(order_by=[col("_theirs")]).alias("_b"),
     )
     first = (
         ranked.filter(col("_a") != col("_b"))
@@ -373,7 +371,7 @@ def _require_living_references(
     touched = layer.axes()
     references = [
         *(
-            (m, f, fn.struct_extract(col("t", m), lit(f)), d, False)
+            (m, f, col("t", m)[f], d, False)
             for m in schema.multi_dims
             for f, d in schema.over(m).items()
         ),
@@ -622,7 +620,7 @@ class _RecordLikeAsLayerData:
         if not values:
             return axis
         joined = (
-            axis.project(star(), sql("row_number() OVER ()").alias("_row"))
+            axis.project(star(), fn.row_number().over().alias("_row"))
             .set_alias("a")
             .join(
                 props.set_alias("p"),
