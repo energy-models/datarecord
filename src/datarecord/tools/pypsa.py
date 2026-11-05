@@ -1841,13 +1841,12 @@ def _drop_default_rows(rows: pd.DataFrame, default: Any) -> pd.DataFrame:
     return rows[rows["value"] != default]
 
 
-def _scalar_rows(c: pypsa.Components, attr: str, exclude: pd.Index) -> pd.DataFrame:
-    """Build long rows from the static scalars of `attr`, less their NULL `snapshot`.
+def _scalar_rows(static: pd.Series, exclude: pd.Index) -> pd.DataFrame:
+    """Build long rows from an attribute's static scalars, less their NULL `snapshot`.
 
     Ported from `pypsa.components.array.Components._scalar_rows`, built in one
     constructor: per-call pandas overhead dominated an export.
     """
-    static = _own_static(c)[attr]
     if len(exclude):
         static = static[~static.index.isin(exclude)]
     index = static.index
@@ -2568,6 +2567,17 @@ class _NetworkSource:
     _DROP_RESULT_DEFAULTS: ClassVar[bool] = True
 
     @cached_property
+    def _own_statics(self) -> dict[str, pd.DataFrame]:
+        """Each type's `_own_static` by its name, as `_own` fills it."""
+        return {}
+
+    def _own(self, c: pypsa.Components) -> pd.DataFrame:
+        """`c`'s `_own_static`, built once per type: an export reads it per attribute."""
+        if c.name not in self._own_statics:
+            self._own_statics[c.name] = _own_static(c)
+        return self._own_statics[c.name]
+
+    @cached_property
     def custom(self) -> _Custom:
         """The network's custom static columns, placed (`_Custom.of`)."""
         return _Custom.of(self.n)
@@ -2757,7 +2767,7 @@ class _NetworkSource:
     def _labels(self, ctype: str) -> pd.DataFrame:
         """One `_AXIS_TYPES` type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with their properties."""
         dim = _AXIS_TYPES[ctype]
-        static = _own_static(self.n.c[ctype])
+        static = self._own(self.n.c[ctype])
         columns = [p for p in self.schema.properties[dim] if p in static.columns]
         frame = static[columns].rename_axis(index={"name": dim}).reset_index()
         return self._with_shapes(
@@ -2903,7 +2913,7 @@ class _NetworkSource:
         unchanged: str | None = None,
     ) -> DuckDBPyRelation | None:
         """NULL-snapshot long rows from `attr`'s static scalars (`_scalar_rows`), `None` where none remain."""
-        static = _shared_across_scenarios(_scalar_rows(c, attr, exclude))
+        static = _shared_across_scenarios(_scalar_rows(self._own(c)[attr], exclude))
         if unchanged is not None and attr in c.defaults.index:
             default = c.defaults.at[attr, "default"]
             static = self._changing(c, unchanged, static, default)
@@ -3130,7 +3140,7 @@ class _NetworkSource:
 
     def _static_frame(self, ctype: str) -> pd.DataFrame:
         """Members of one type with the properties of `entity` it has columns for."""
-        static = _own_static(self.n.c[ctype])
+        static = self._own(self.n.c[ctype])
         columns = [p for p in self.schema.properties[ENTITY] if p in static.columns]
         frame = static[columns].reset_index().rename(columns={"name": "entity"})
         return _unscoped(frame, [ENTITY], ctype, self.con)
@@ -3791,21 +3801,21 @@ class _StackedSource:
         }
         attributes = {label: m.attributes for label, m in members.items()}
         names = [a for a in _keys(attributes) if a not in left]
+        held = {a: _held(attributes, a) for a in names}
         if apart:
             differing = set(names)
         else:
-            differing = {a for a in names if _differs(_held(attributes, a), labels)}
+            differing = {a for a in names if _differs(held[a], labels)}
         schema = _widened(schema, dim, labels, differing)
         if not apart:
             axis = con.from_df(pd.DataFrame({dim: labels}))
             dims[dim] = cast_declared(schema, axis, dim)
-        rows = {}
-        for attr in names:
-            held = _held(attributes, attr)
-            agreed = next(iter(held.values()))
-            rows[attr] = (
-                _labelled(schema, attr, held, dim) if attr in differing else agreed
-            )
+        rows = {
+            attr: _labelled(schema, attr, held[attr], dim)
+            if attr in differing
+            else next(iter(held[attr].values()))
+            for attr in names
+        }
         return cls(schema, dims, properties, rows, con)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
