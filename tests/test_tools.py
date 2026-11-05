@@ -2362,11 +2362,11 @@ class TestPyPSA:
         split = rows.filter("entity = 'split'")
         assert len(split) == 2, "one row per snapshot, NaN included"
 
-    def test_a_name_is_never_an_identifier_in_the_melt_or_pivot(self, store):
+    def test_a_name_is_never_an_identifier_between_long_and_wide(self, store):
         """Each name is stored and comes back as its own series.
 
-        `wind "north"` would end a quoted identifier, `snapshot` is the pivot's
-        group-by column, and `Gen` and `gen` one case-insensitive identifier.
+        `wind "north"` would end a quoted identifier, `snapshot` names a key
+        column, and `Gen` and `gen` one case-insensitive identifier.
 
         Notes
         -----
