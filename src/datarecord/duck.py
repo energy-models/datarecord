@@ -18,6 +18,7 @@ Notes
 - [module layout](https://energy-models.github.io/datarecord/design/package/)
 """
 
+import operator
 import sys
 import time
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
@@ -36,6 +37,7 @@ from duckdb import (
     Expression,
     FunctionExpression,
     TransactionException,
+    sqltypes,
 )
 from duckdb import SQLExpression as sql
 from duckdb.sqltypes import DuckDBPyType
@@ -184,6 +186,21 @@ def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     return ex_all(
         sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
         for c in columns
+    )
+
+
+def named_mask(dims: Sequence[str], alias: str | None = None) -> Expression:
+    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
+    return reduce(
+        operator.add,
+        (
+            (col(d) if alias is None else col(alias, d))
+            .isnotnull()
+            .cast(sqltypes.INTEGER)
+            * lit(1 << i)
+            for i, d in enumerate(dims)
+        ),
+        lit(0),
     )
 
 
