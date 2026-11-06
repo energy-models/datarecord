@@ -8,4 +8,5 @@ fom = "fom"
 
 [default]
 # Heading anchors: mkdocs slugs drop apostrophes, e.g. "property's" -> "propertys".
-extend-ignore-re = ["\\]\\([^)\\s]*#[a-z0-9-]+\\)"]
+# Pydantic's quoted errors cut `input_value` mid-word, e.g. "...onnection'".
+extend-ignore-re = ["\\]\\([^)\\s]*#[a-z0-9-]+\\)", "input_value=.*input_type="]

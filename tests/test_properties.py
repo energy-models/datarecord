@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+- [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
 """
 
 import pandas as pd
@@ -132,7 +132,7 @@ def test_a_category_no_label_has_selects_nothing(record):
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
     """
     assert record.dims["ctype"].df()["ctype"].tolist() == [
         "Generator",
@@ -218,7 +218,7 @@ def test_set_names_a_property_dotted_and_selects_by_it_bare(
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
     with pytest.raises(error, match=match):
         WorkingRecord(record).set(*args, **kwargs)

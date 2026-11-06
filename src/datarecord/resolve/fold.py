@@ -20,8 +20,8 @@ object that holds the map.
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+- [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+- [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
 """
 
 from __future__ import annotations
@@ -82,7 +82,7 @@ def flags_from_rows(
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
 
     def scope(attribute: str) -> tuple[str, ...]:
@@ -127,7 +127,7 @@ class Fold:
 
         Notes
         -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
@@ -151,8 +151,8 @@ class Fold:
 
         Notes
         -----
-        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
-        - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+        - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
+        - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
         schema = self.coords.schema
         dims = schema.broadcast_dims
@@ -239,8 +239,8 @@ class Fold:
 
         Notes
         -----
-        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         schema, attributes, con = record.schema, record.attributes, record.con
         layer = uuid4()
@@ -265,7 +265,7 @@ class Fold:
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         revision_id, store, con = layer.layer_id, layer.store, layer.con
         owner_map = read_owner_map(revision_id, con, store)
@@ -308,8 +308,8 @@ def read_owner_map(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
     """
     uri = store.owner_map_uri(revision_id)
     return con.read_parquet(uri) if store.files.exists(uri) else None
@@ -329,7 +329,7 @@ def read_dim_owners(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     rel = con.read_parquet(store.dim_owners_uri(revision_id))
     return rel.project(col("dim"), col(LAYER_COLUMN), col("has_dead")).fetchall()

@@ -10,8 +10,8 @@ Tools are module-level objects imported by name - no registry.
 
 Notes
 -----
-- [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
 
 from __future__ import annotations
@@ -69,9 +69,9 @@ class Requirements:
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
-    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
 
     dims: frozenset[str] = frozenset()
@@ -121,7 +121,7 @@ class Requirements:
         if self.names:
             parts.append(
                 f"labels claimed by more than one category "
-                f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)"
+                f"{sorted(self.names)} (https://energy-models.github.io/datarecord/reference/format/#labels)"
             )
         return ", ".join(parts) if parts else "nothing"
 
@@ -150,7 +150,7 @@ class Attr:
 
     Notes
     -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
 
     name: str
@@ -184,8 +184,8 @@ class Attr:
 
         Notes
         -----
-        - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
-        - [settling rows](https://energy-models.github.io/datarecord/design/use/reading/#settling-rows)
+        - [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
+        - [settling rows](https://energy-models.github.io/datarecord/reference/record/#settle)
         """
         rels = [
             settle(record.attributes[s], labels, flags[s], filter=filter)
@@ -211,8 +211,8 @@ class Schema:
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
 
     attrs: dict[str, tuple[Attr, ...]] = field(default_factory=dict)
@@ -271,7 +271,7 @@ class Tool(Protocol):
 
     Notes
     -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
 
     name: str
@@ -327,7 +327,7 @@ class Tool(Protocol):
 
         Notes
         -----
-        - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [the record format](https://energy-models.github.io/datarecord/reference/format/)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         ...

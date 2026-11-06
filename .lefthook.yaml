@@ -55,8 +55,8 @@ pre-commit:
             glob: "*"
             file_types: text
             exclude:
-              - docs/design/proposals/*
-              - docs/design/open-questions.md
+              - docs/development/proposals/*
+              - docs/about/open-questions.md
               - mkdocs.yml
             run: "! grep -nE 'proposals/dep-[0-9]{4}-' {staged_files}"
           - name: reuse

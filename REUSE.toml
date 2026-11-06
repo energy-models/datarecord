@@ -21,3 +21,10 @@ SPDX-License-Identifier = "CC-BY-4.0"
 path = ["pixi.lock"]
 SPDX-FileCopyrightText = "datarecord contributors"
 SPDX-License-Identifier = "MIT"
+
+# A skill file opens with YAML front matter, which has to be line 1, so the
+# header cannot go above it. A skill is prose, under the prose licence.
+[[annotations]]
+path = [".claude/skills/**/SKILL.md"]
+SPDX-FileCopyrightText = "datarecord contributors"
+SPDX-License-Identifier = "CC-BY-4.0"

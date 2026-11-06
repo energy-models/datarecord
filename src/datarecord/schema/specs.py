@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+- [the schema](https://energy-models.github.io/datarecord/reference/schema/)
 """
 
 from __future__ import annotations
@@ -73,11 +73,11 @@ class Dimension(_Declared):
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
-    - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-    - [unit and description](https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description)
-    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [unit and description](https://energy-models.github.io/datarecord/reference/schema/#unit-and-description)
+    - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
     """
 
     over: dict[str, str] | None = Field(
@@ -236,13 +236,13 @@ class AttributeSpec(_ValueSpec):
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
-    - [unit and description](https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description)
-    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+    - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
+    - [unit and description](https://energy-models.github.io/datarecord/reference/schema/#unit-and-description)
+    - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
     """
 
     dtype: ParameterDtype
@@ -283,10 +283,10 @@ class PropertySpec(_ValueSpec):
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+    - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
+    - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
+    - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+    - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
     """
 
     dtype: ParameterDtype | None = Field(

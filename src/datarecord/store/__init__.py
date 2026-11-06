@@ -11,11 +11,11 @@ of the tree, which reads back as a `Record`.
 
 Notes
 -----
-- [workspaces and stores](https://energy-models.github.io/datarecord/design/storage/store/)
-- [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
-- [threads, processes and concurrent writers](https://energy-models.github.io/datarecord/design/storage/concurrency/)
-- [writing](https://energy-models.github.io/datarecord/design/use/writing/)
-- [the package](https://energy-models.github.io/datarecord/design/package/)
+- [workspaces and stores](https://energy-models.github.io/datarecord/reference/store/)
+- [the record format](https://energy-models.github.io/datarecord/reference/format/)
+- [threads, processes and concurrent writers](https://energy-models.github.io/datarecord/reference/store/)
+- [writing](https://energy-models.github.io/datarecord/reference/layers/)
+- [the package](https://energy-models.github.io/datarecord/development/package/)
 """
 
 from datarecord.store.manifest import Manifest

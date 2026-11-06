@@ -10,8 +10,8 @@ is what `tools/` is built on.
 
 Notes
 -----
-- [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
-- [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
+- [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
+- [relations](https://energy-models.github.io/datarecord/reference/record/#relations)
 """
 
 from __future__ import annotations
@@ -32,7 +32,7 @@ does.
 
 Notes
 -----
-- [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
+- [relations](https://energy-models.github.io/datarecord/reference/record/#relations)
 """
 
 
@@ -54,7 +54,7 @@ class LazyRelations(Mapping[str, DuckDBPyRelation]):
 
     Notes
     -----
-    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
+    - [relations](https://energy-models.github.io/datarecord/reference/record/#relations)
     """
 
     def __init__(self, keys: tuple[str, ...], build: Callable[[str], DuckDBPyRelation]):
@@ -109,9 +109,9 @@ class Flags:
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
 
     varies: frozenset[str]
@@ -129,8 +129,8 @@ class RecordLike(Protocol):
 
     Notes
     -----
-    - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
+    - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
 
     @property
@@ -139,7 +139,7 @@ class RecordLike(Protocol):
 
         Notes
         -----
-        - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+        - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
         """
         ...
 
@@ -149,8 +149,8 @@ class RecordLike(Protocol):
 
         Notes
         -----
-        - [one engine](https://energy-models.github.io/datarecord/design/use/reading/#one-engine)
-        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        - [one engine](https://energy-models.github.io/datarecord/reference/record/)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
         """
         ...
 
@@ -164,8 +164,8 @@ class RecordLike(Protocol):
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-        - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+        - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
         """
         ...
 
@@ -175,7 +175,7 @@ class RecordLike(Protocol):
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         ...
 
@@ -188,7 +188,7 @@ class RecordLike(Protocol):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         ...
 
@@ -205,7 +205,7 @@ class RecordLike(Protocol):
 
         Notes
         -----
-        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+        - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
         """
         ...
 
@@ -226,7 +226,7 @@ class LayerData(Protocol):
 
     Notes
     -----
-    - [LayerData](https://energy-models.github.io/datarecord/design/use/writing/#layerdata)
+    - [LayerData](https://energy-models.github.io/datarecord/reference/layers/#layerdata)
     """
 
     @property

@@ -2,90 +2,66 @@
 SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 300" width="640" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="rg-t rg-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 250" width="460" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="rg-t rg-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rg-t">flags() unions the owner map's flag fields per attribute</title>
-  <desc id="rg-d">The owner map holds three rows: p_max_pu for wind, which sets timestep, so varies.timestep is true; p_max_pu for gas, a constant, so broadcast.timestep is true; and marginal_price, over bus and timestep and constant over both, so broadcast.bus and broadcast.timestep are true. flags() takes bool_or per attribute: p_max_pu has timestep in both varies and broadcast, which tells a consumer to use both containers, and marginal_price has bus and timestep in broadcast. Only the fields for timestep and bus are shown.</desc>
+  <desc id="rg-d">The owner map contains p_max_pu for wind, which sets snapshot, p_max_pu for gas, constant over snapshot, and p_nom with entity NULL. flags() takes the union per attribute: p_max_pu varies along entity and snapshot and broadcasts along snapshot, and p_nom broadcasts along entity and scenario.</desc>
   <defs>
     <marker id="rg-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
     </marker>
+    <pattern id="rg-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
   </defs>
   <g stroke="none">
-    <path d="M16,72 V53 A3,3 0 0 1 19,50 H425 A3,3 0 0 1 428,53 V72 Z" fill="currentColor" fill-opacity="0.1"/>
-    <path d="M16,252 V233 A3,3 0 0 1 19,230 H425 A3,3 0 0 1 428,233 V252 Z" fill="currentColor" fill-opacity="0.1"/>
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H435 A3,3 0 0 1 438,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="422" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="72" width="422" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H438 V109 A3,3 0 0 1 435,112 H19 A3,3 0 0 1 16,109 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,188 V169 A3,3 0 0 1 19,166 H435 A3,3 0 0 1 438,169 V188 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="16" y="188" width="422" height="18" fill="#009E73" fill-opacity="0.08"/>
+    <path d="M16,206 H438 V225 A3,3 0 0 1 435,228 H19 A3,3 0 0 1 16,225 Z" fill="#009E73" fill-opacity="0.08"/>
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">owner map</text>
-    <text x="96" y="22" fill-opacity="0.7">fields for timestep and bus</text>
-    <text x="241.0" y="37" text-anchor="middle" font-size="12">varies</text>
-    <text x="357.0" y="37" text-anchor="middle" font-size="12">broadcast</text>
-    <text x="241.0" y="217" text-anchor="middle" font-size="12">varies</text>
-    <text x="357.0" y="217" text-anchor="middle" font-size="12">broadcast</text>
-    <text x="16" y="202" font-weight="bold">flags</text>
-    <text x="62" y="202" fill-opacity="0.7">one row per attribute</text>
-    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
-      <text x="24" y="64" font-weight="bold">attribute</text>
-      <text x="144" y="64" font-weight="bold">entity</text>
-      <text x="206" y="64" font-weight="bold">timestep</text>
-      <text x="278" y="64" font-weight="bold">bus</text>
-      <text x="322" y="64" font-weight="bold">timestep</text>
-      <text x="394" y="64" font-weight="bold">bus</text>
-      <text x="24" y="86">p_max_pu</text>
-      <text x="144" y="86">wind</text>
-      <text x="206" y="86">✓</text>
-      <text x="278" y="86"></text>
-      <text x="322" y="86"></text>
-      <text x="394" y="86"></text>
-      <text x="24" y="104">p_max_pu</text>
-      <text x="144" y="104">gas</text>
-      <text x="206" y="104"></text>
-      <text x="278" y="104"></text>
-      <text x="322" y="104">✓</text>
-      <text x="394" y="104"></text>
-      <text x="24" y="122">marginal_price</text>
-      <text x="144" y="122">NULL</text>
-      <text x="206" y="122"></text>
-      <text x="278" y="122"></text>
-      <text x="322" y="122">✓</text>
-      <text x="394" y="122">✓</text>
-      <text x="24" y="244" font-weight="bold">attribute</text>
-      <text x="206" y="244" font-weight="bold">timestep</text>
-      <text x="278" y="244" font-weight="bold">bus</text>
-      <text x="322" y="244" font-weight="bold">timestep</text>
-      <text x="394" y="244" font-weight="bold">bus</text>
-      <text x="24" y="266">p_max_pu</text>
-      <text x="206" y="266">✓</text>
-      <text x="278" y="266"></text>
-      <text x="322" y="266">✓</text>
-      <text x="394" y="266"></text>
-      <text x="24" y="284">marginal_price</text>
-      <text x="206" y="284"></text>
-      <text x="278" y="284"></text>
-      <text x="322" y="284">✓</text>
-      <text x="394" y="284">✓</text>
-    </g>
+    <text x="102" y="22" fill-opacity="0.7">flag fields set to true</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attribute</text>
+    <text x="110" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="166" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">varies</text>
+    <text x="306" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">broadcast</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_max_pu</text>
+    <text x="110" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="166" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity snapshot</text>
+    <text x="306" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">-</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_max_pu</text>
+    <text x="110" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="166" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="306" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_nom</text>
+    <text x="110" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="166" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">-</text>
+    <text x="306" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity scenario</text>
+    <text x="16" y="156" font-weight="bold">flags()</text>
+    <text x="24" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attribute</text>
+    <text x="110" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12"></text>
+    <text x="166" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">varies</text>
+    <text x="306" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">broadcast</text>
+    <text x="24" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_max_pu</text>
+    <text x="110" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12"></text>
+    <text x="166" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity snapshot</text>
+    <text x="306" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="24" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_nom</text>
+    <text x="110" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12"></text>
+    <text x="166" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">-</text>
+    <text x="306" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity scenario</text>
   </g>
   <g fill="none" stroke="currentColor" stroke-width="1">
-    <path d="M194,46 V42 H288 V46"/>
-    <path d="M310,46 V42 H404 V46"/>
-    <rect x="16" y="50" width="412" height="80" rx="3"/>
-    <line x1="16" y1="72" x2="428" y2="72"/>
-    <path d="M194,226 V222 H288 V226"/>
-    <path d="M310,226 V222 H404 V226"/>
-    <rect x="16" y="230" width="412" height="62" rx="3"/>
-    <line x1="16" y1="252" x2="428" y2="252"/>
-    <path d="M434,253 H440 V269 H434"/>
+    <rect x="16" y="32" width="422" height="80" rx="3"/>
+    <line x1="16" y1="54" x2="438" y2="54"/>
+    <rect x="16" y="166" width="422" height="62" rx="3"/>
+    <line x1="16" y1="188" x2="438" y2="188"/>
   </g>
   <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rg-arrow)">
-    <path d="M120,136 V182"/>
-  </g>
-  <g fill="currentColor">
-    <text x="436" y="86" font-size="12" fill-opacity="0.7">wind sets timestep</text>
-    <text x="436" y="104" font-size="12" fill-opacity="0.7">gas is constant</text>
-    <text x="436" y="122" font-size="12" fill-opacity="0.7">constant over buses, timesteps</text>
-    <text x="130" y="156" font-size="12" font-weight="bold">flags()</text>
-    <text x="130" y="172" font-size="12" fill-opacity="0.7">bool_or per attribute</text>
-    <text x="446" y="260" font-size="12">timestep in both:</text>
-    <text x="446" y="275" font-size="12">use both containers</text>
+    <path d="M60,114 L60,148"/>
   </g>
 </svg>

@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
 
 import pandas as pd
@@ -28,7 +28,7 @@ def _has_export_to_parquet() -> bool:
 
 needs_export_to_parquet = pytest.mark.skipif(
     not _has_export_to_parquet(),
-    reason="needs PyPSA's own parquet reader/writer, unreleased (https://energy-models.github.io/datarecord/design/tools/)",
+    reason="needs PyPSA's own parquet reader/writer, unreleased (https://energy-models.github.io/datarecord/reference/tools/)",
 )
 
 
@@ -87,7 +87,7 @@ def test_roundtrip_matches_pypsa_reader(tmp_path, built, ac_dc):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record)
     """
     import pypsa
 
@@ -109,7 +109,7 @@ def test_static_series_split_preserved(built):
 
     Notes
     -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
     n = built
     # Only the three wind generators carry a p_max_pu series in ac_dc_meshed.

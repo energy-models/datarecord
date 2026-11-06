@@ -9,9 +9,9 @@ relations, however many layers it holds.
 
 Notes
 -----
-- [resolution](https://energy-models.github.io/datarecord/design/layers/resolution/)
-- [reading a record](https://energy-models.github.io/datarecord/design/use/reading/)
-- [the package](https://energy-models.github.io/datarecord/design/package/)
+- [resolution](https://energy-models.github.io/datarecord/reference/resolution/)
+- [reading a record](https://energy-models.github.io/datarecord/reference/record/)
+- [the package](https://energy-models.github.io/datarecord/development/package/)
 """
 
 from datarecord.resolve.record import Record

@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [selecting](https://energy-models.github.io/datarecord/design/use/selecting/)
+- [selecting](https://energy-models.github.io/datarecord/reference/selecting/)
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ class Selection:
 
     Notes
     -----
-    - [selecting](https://energy-models.github.io/datarecord/design/use/selecting/)
+    - [selecting](https://energy-models.github.io/datarecord/reference/selecting/)
     """
 
     base: RecordLike
@@ -96,7 +96,7 @@ class Selection:
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
         names = _declared(self.base.attributes, self.schema.attributes)
         return LazyRelations(names, self._attribute)
@@ -111,7 +111,7 @@ class Selection:
 
         Notes
         -----
-        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+        - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
         """
         if categories:
             categorized_dim(self.schema, categories)
@@ -146,7 +146,7 @@ class Selection:
 
         Notes
         -----
-        - [lifting rows back](https://energy-models.github.io/datarecord/design/use/selecting/#lifting-rows-back-to-the-base)
+        - [lifting rows back](https://energy-models.github.io/datarecord/reference/selecting/#lift)
         """
         base = self.base.schema
         coordinates = base.coordinates_of(attribute)
@@ -267,8 +267,8 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
 
     Notes
     -----
-    - [selecting](https://energy-models.github.io/datarecord/design/use/selecting/)
-    - [what goes with a dropped label](https://energy-models.github.io/datarecord/design/use/selecting/#what-goes-with-a-dropped-label)
+    - [selecting](https://energy-models.github.io/datarecord/reference/selecting/)
+    - [what goes with a dropped label](https://energy-models.github.io/datarecord/reference/selecting/#what-goes-with-a-dropped-label)
     """
     if isinstance(record, Selection):
         return record.select(**labels)
@@ -433,7 +433,7 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
 
     Notes
     -----
-    - [what goes with a dropped label](https://energy-models.github.io/datarecord/design/use/selecting/#what-goes-with-a-dropped-label)
+    - [what goes with a dropped label](https://energy-models.github.io/datarecord/reference/selecting/#what-goes-with-a-dropped-label)
     """
     referring = schema.one_of_properties()
     while True:
@@ -796,5 +796,5 @@ def _refused(labels: Mapping[str, Any], why: str) -> ValueError:
     asked = ", ".join(f"{k}={v!r}" for k, v in labels.items())
     return ValueError(
         f"`select({asked})` {why} "
-        f"(https://energy-models.github.io/datarecord/design/use/selecting/)"
+        f"(https://energy-models.github.io/datarecord/reference/selecting/)"
     )

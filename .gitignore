@@ -396,7 +396,8 @@ $RECYCLE.BIN/
 .gitmodules
 .ripgreprc
 .mcp.json
-.claude/
+.claude/*
+!.claude/skills/
 .idea
 .vscode
 .zed

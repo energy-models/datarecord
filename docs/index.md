@@ -6,59 +6,50 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # datarecord
 
-A record holds labeled data with a declared schema. Its labels sit on axes called dims. A multi-dim is a dim whose labels are tuples of other dims' labels, listing which combinations exist. Properties describe single labels, and attributes hold values at coordinates. The schema declares what may exist, and the data says what does.
+--8<-- "README.md:docs-pitch"
 
-A record can be one parquet directory or a tree of layers, and a reader reads both through one interface. A layer adds a partial record on top of its parent, so a scenario variant stores only the rows it changes. Any parquet reader can open a record's directory.
+<figure class="diagram">
+--8<-- "docs/static/index-abstract.svg"
+</figure>
 
-`datarecord` depends on `duckdb`, `pydantic` and `mathspec`, and names no modelling framework. A framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
+A schema shapes the base record, two scenarios hold only the rows they change, and reading `high wind` returns one whole record.
 
-```bash
-pip install datarecord           # core
-pip install datarecord[pypsa]    # with the PyPSA tool
-```
+--8<-- "README.md:docs-intro"
 
-The package does not yet declare `mathspec`, which is not on PyPI. Install it alongside from [GitHub](https://github.com/energy-models/mathspec), at the commit `pixi.toml` pins ([installation](installation.md)).
+## Example
 
-```python
-from datarecord import Workspace
+--8<-- "README.md:docs-example"
 
-ws = Workspace()
-record = ws.at("s3://bucket/my-record/")
+The [scenario tutorial](tutorials/scenario.md) builds this from an empty store in about ten minutes.
 
-record.properties["entity"].df()  # one row per entity, its properties
-record.attributes["p_max_pu"].df()  # long value rows
-record.flags(ctype="Generator")  # which axes each attribute uses
-```
+## Install
+
+--8<-- "README.md:docs-install"
+
+[Installation](installation.md) lists other package managers.
 
 ## Where to go
 
 <div class="grid cards" markdown>
 
-- :material-book-open-variant: **[Usage](usage/index.md)**
+- :material-school: **[Tutorials](tutorials/index.md)**
 
-  How to read, edit, layer and write a record, and how a modelling framework
-  consumes one.
+  Build a first record, branch a scenario and solve a record with PyPSA, one
+  step at a time.
 
-- :material-drawing: **[Design](design/index.md)**
+- :material-format-list-checks: **[How-to guides](howto/index.md)**
 
-  What a record is and why it is that way. The design is authoritative, and
-  the docstrings cite it.
+  Finish one task: declare a schema, read, select, edit, branch, store, or
+  hand a record to PyPSA.
 
-- :material-api: **[API Reference](api/index.md)**
+- :material-book-open-variant: **[Reference](reference/index.md)**
 
-  Generated signatures and docstrings for every public symbol.
+  What datarecord accepts, returns and refuses, and the format on disk.
+
+- :material-lightbulb-on-outline: **[About](about/index.md)**
+
+  Why the design is the way it is, what it rejected, and what it leaves open.
 
 </div>
 
-## Contributing
-
-See [`CONTRIBUTING.md`](https://github.com/energy-models/datarecord/blob/main/CONTRIBUTING.md)
-for the workflow and conventions, and
-[`AGENTS.md`](https://github.com/energy-models/datarecord/blob/main/AGENTS.md)
-for how AI-assisted contributions must be marked.
-
-```bash
-pixi run test    # the test suite
-pixi run lint    # ruff, prettier, taplo, typos, zizmor, reuse, mypy
-pixi run -e docs docs    # serve this site locally
-```
+To change datarecord itself, start at [Development](development/index.md).

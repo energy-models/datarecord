@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
+- [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
 """
 
 from datarecord.protocols import Flags
@@ -84,7 +84,7 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     layer = _root_with_curve(store)
     write_attribute(

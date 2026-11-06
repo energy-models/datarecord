@@ -10,8 +10,8 @@ file for its order and for its properties.
 
 Notes
 -----
-- [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-- [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+- [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
+- [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
 """
 
 from typing import Any
@@ -143,7 +143,7 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     layer = empty_root(store, _schema())
     write_axis(layer, "bus", [{"bus": "north"}, {"bus": "south"}])
@@ -253,7 +253,7 @@ def test_a_child_layer_restates_an_axis_whole(store):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
     """
     properties = {"country": {"co2_budget": PropertySpec(dtype="float")}}
     layer = empty_root(
@@ -342,7 +342,7 @@ def test_a_property_naming_a_dim_refuses_a_label_it_lacks(classified, edit):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+    - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
     """
     staged = WorkingRecord(classified.record)
     with pytest.raises(KeyError, match=r"names '(state|country)' labels \['coal'\]"):
@@ -385,7 +385,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+    - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
     """
     staged = WorkingRecord(classified.record)
     with pytest.raises(
@@ -406,7 +406,7 @@ def test_the_writer_refuses_a_property_naming_a_removed_label(classified):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     staged = WorkingRecord(classified.record)
     staged.remove("country", ["NO"])
