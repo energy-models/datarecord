@@ -9,7 +9,7 @@ is written into a layer and the fold is asked whether it keyed by it.
 
 Notes
 -----
-- [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+- [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
 """
 
 from pathlib import Path
@@ -31,7 +31,7 @@ def test_a_dim_names_its_own_file(store):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
     layer = empty_root(store, schema(dims={"bus": "str"}, partial=set()))
     target = Path(layer.dir, "dims")

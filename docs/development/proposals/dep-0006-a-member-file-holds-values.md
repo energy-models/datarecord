@@ -4,18 +4,18 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 6: a member file holds values, and nothing else
+# DEP 6: a member file contains values, and nothing else
 
 | DEP           | 6                                               |
 | ------------- | ----------------------------------------------- |
-| Title         | a member file holds values, and nothing else    |
+| Title         | a member file contains values, and nothing else |
 | Author        | Jonas Hörsch                                    |
 | Status        | Superseded (2026-10-13, implemented 2026-09-04) |
 | Created       | 2026-09-02                                      |
 | Version       | v0.1.0a1                                        |
 | Superseded-By | [DEP 12](dep-0012-properties.md)                |
 
-The design landed in [the record format](../../reference/format.md) and [the schema](../../reference/schema.md), which win where they and this DEP differ. [DEP 12](dep-0012-properties.md) makes the entity-type axis an `Enum` property of `entity`. A record with categories and one without then share one entity-axis layout with no member files.
+The design landed in [the record format](../../reference/format.md) and [the schema](../../reference/schema.md). Where they and this DEP differ, follow those pages. [DEP 12](dep-0012-properties.md) makes the entity-type axis an `Enum` property of `entity`. A record with categories and one without then share one entity-axis layout with no member files.
 
 ## Abstract
 
@@ -31,9 +31,9 @@ dims/entity_type/thing.parquet  entity, p_nom
 dims/entity_type/other.parquet  entity, p_nom
 ```
 
-The `entity_type` column there answers to no declaration. A special case in `_validate_frame` admits it and a fallback in `_axis_columns` types it as `String`. Every member file also has `deleted`, so `remove` writes a tombstone twice, to the axis and to the member table.
+The `entity_type` column there matches no declaration. A special case in `_validate_frame` admits it and a fallback in `_axis_columns` types it as `String`. Every member file also has `deleted`, so `remove` writes a tombstone twice, to the axis and to the member table.
 
-Dropping the column alone does not close. `entity_types()`, `entity_type_frame` and `attributes_of` all read the label off the resolved entity axis, so a column of NULLs would make `entity_types()` return `{None}`. Deriving the label from filenames costs a listing per layer per fold, which the entity axis exists to avoid.
+Dropping the column alone does not fix this. `entity_types()`, `entity_type_frame` and `attributes_of` all read the label off the resolved entity axis, so a column of NULLs would make `entity_types()` return `{None}`. Deriving the label from filenames needs a listing per layer per fold, which the entity axis exists to avoid.
 
 ## Specification
 
@@ -48,11 +48,11 @@ Dropping the column alone does not close. `entity_types()`, `entity_type_frame` 
 
 ## Rationale
 
-Both changes state one claim: a member file has values, and the entity axis has everything about a component's existence. Every column of the format then answers to a declaration, and `entity_type` appears only where it has a dtype. A record with no kinds has one axis file, not one file per label an `add` used. `Record.entity_types` stops reporting filenames as a vocabulary.
+Both changes follow from one claim: a member file has values, and the entity axis has everything about a component's existence. Every column of the format then matches a declaration, and `entity_type` appears only where it has a dtype. A record with no kinds has one axis file, not one file per label an `add` used. `Record.entity_types` stops reporting filenames as a vocabulary.
 
-`_FileLayer`, `ParquetLayer` and `DirectorySource` need no change, because they read whatever columns a file has. A file-backed source does not have to know which configuration it reads. The PyPSA tool always has types, so it is unaffected in practice.
+`_FileLayer`, `ParquetLayer` and `DirectorySource` need no change, because they read whatever columns a file has. A file-backed source reads both configurations the same way. The PyPSA tool always has types, so it is unaffected in practice.
 
-The design costs a second layout for one construct, keyed on one schema property. It replaces the `entity_type` special case and does not add to it. `attributes_on("entity")` changes meaning, so every caller needs an audit. Every record without a type axis is re-exported. A materialised cache written under the old layout is a rebuild.
+The design adds a second layout for one construct, keyed on one schema property. It replaces the `entity_type` special case and does not add to it. `attributes_on("entity")` changes meaning, so every caller needs an audit. Every record without a type axis is re-exported. A materialised cache written under the old layout needs a rebuild.
 
 ## Implementation notes
 

@@ -16,30 +16,32 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version  | Unreleased                                                                                                                                                                                                                       |
 | Replaces | the groups of [DEP 2](dep-0002-groups.md) and [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                                                                                                   |
 
+The design landed in [the data model](../../reference/data-model.md), [the schema](../../reference/schema.md), [editing](../../reference/editing.md) and [the record format](../../reference/format.md). Where they and this DEP differ, follow those pages.
+
 ## Abstract
 
-A group becomes a **multi-dim**: a dim declared under `dimensions` with `over`, whose labels are tuples of other dims' labels. It has its own dimension table in `dims/`, its coordinates are addressed as `connection.bus` as properties are, and a functional group's property `{one_of: <dim>}` becomes a property of the multi-dim, unchanged. The `groups` section, and every public name with `group` in it, goes.
+A group becomes a multi-dim: a dim declared under `dimensions` with `over`, whose labels are tuples of other dims' labels. It has its own table in `dims/`, and its coordinates are addressed as `connection.bus`, as properties are. A functional group's property `{one_of: <dim>}` becomes a property of the multi-dim, unchanged. The `groups` section and every public name with `group` in it go.
 
 ## Motivation
 
-**A group is a dim in all but name.** [DEP 10's amendment](dep-0010-a-group-is-a-struct-column.md#amendment-a-group-is-a-dim) found it so in every way the fold sees: it is one struct column, it broadcasts, it is listed in `partial` or owned whole, it has a table of properties. [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) made its file restated whole, as an axis file is. What still sets it apart is spelling, and the spelling costs:
+A group already behaves as a dim does. The amendment to [DEP 10](dep-0010-a-group-is-a-struct-column.md) found that the fold treats it as a dim in every way. It is one struct column, broadcasts, is in `partial` or outside it, and has properties. [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) made a layer restate its file whole, as for an axis file. Only its spelling still differs from a dim's, in each of these places:
 
-| a dim                                                                                  | a group                                                                                      |
-| -------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
-| declared under `dimensions`                                                            | under `groups`                                                                               |
-| `dims/bus.parquet`                                                                     | `groups/connection.parquet`                                                                  |
-| `add`, `remove`                                                                        | `add_group`, `remove_group`                                                                  |
-| `Schema.dimensions`                                                                    | `Schema.groups`, `group_columns`, `group_key`, `groups_of`                                   |
-| [`dims: [X]`](../model/multi-dims.md#attributes-over-a-multi-dim) resolves a dim first | …and a group if no dim is so named                                                           |
-| a property `{one_of: <dim>}` may [categorize](../model/properties.md#categories) it    | [never categorized](../open-questions.md#whether-a-multi-dim-in-partial-may-have-categories) |
+| A dim                                          | A group                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------- |
+| declared under `dimensions`                    | declared under `groups`                                    |
+| `dims/bus.parquet`                             | `groups/connection.parquet`                                |
+| `add`, `remove`                                | `add_group`, `remove_group`                                |
+| `Schema.dimensions`                            | `Schema.groups`, `group_columns`, `group_key`, `groups_of` |
+| `dims: [X]` resolves a dim first               | `dims: [X]` resolves a group if no dim has the name        |
+| a property `{one_of: <dim>}` may categorise it | never categorised                                          |
 
-Every reader of a schema asks twice, and every rule that holds for both is stated twice.
+So every reader looks up a name as a dim and then as a group, and every rule for both is stated twice.
 
 ## Specification
 
 ### A multi-dim
 
-**A multi-dim is a dim whose labels are tuples of other dims' labels.** It is declared under `dimensions` with `over`, as a group was, and has no `dtype`:
+A multi-dim is a dim whose labels are tuples of other dims' labels. It is declared under `dimensions` with `over`, as a group was, and has no `dtype`:
 
 ```yaml
 dimensions:
@@ -60,55 +62,47 @@ attributes:
 partial: [entity, bus, connection]
 ```
 
-- **`over` is a list or a coordinate→dim map**, as a group's was: `over: [entity, bus]` is `over: {entity: entity, bus: bus}`, and `corridor` draws two coordinates on `bus`. Each coordinate names a declared dim that is not a multi-dim.
-- **`over` excludes `dtype` and `one_of`.** A dim declaring `over` beside either is refused at load. A dim without `over` keeps its default `dtype: str`.
-- **Its table is `dims/connection.parquet`**, keyed by its struct column, with its properties as columns: `connection STRUCT(entity, bus) | role`, what `groups/connection.parquet` was. `dims/bus.parquet` is keyed by `bus` the same way. A layer that changes its tuples or their properties writes it whole and in order, as [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md#an-axis-is-its-deepest-file) has it write a group file today.
-- **`Dimension.over`** holds the map; `Schema.dimensions` holds every dim, multi or not.
+- `over` is a list or a map from coordinate to dim, as a group's was. `over: [entity, bus]` is `over: {entity: entity, bus: bus}`, and `corridor` has two coordinates on `bus`. Each coordinate maps to a declared dim that is not a multi-dim.
+- datarecord refuses at load a dim that declares `over` beside `dtype` or `one_of`. A dim without `over` keeps its default `dtype: str`.
+- Its table is `dims/connection.parquet`, keyed by its struct column, with its properties as columns: `connection STRUCT(entity, bus) | role`. A layer that changes its tuples or their properties writes it whole and in order.
+- `Dimension.over` has the map, and `Schema.dimensions` has every dim, multi or not.
 
-### What DEP 10 settled carries over
+### What DEP 10 settled
 
-- **A row addresses it by one struct column** named for it, a field per coordinate in `over` order.
-- **It may be listed in `partial`**, and is in the fold key there; owned whole otherwise.
-- **A value is a whole tuple or NULL.** A struct with some fields NULL is refused wherever a row comes in: `set`, `add` and the writer.
-- **A NULL broadcasts over its live tuples**, expanded against `dims/connection.parquet` as a NULL `bus` is against `dims/bus.parquet`.
-- **An attribute may not name a multi-dim beside a dim that shares a name with one of its coordinates**, since a keyword such as `bus=` would address both: `dims: [connection, bus]` is refused. A coordinate drawing on `bus` under another name, such as `port`, may sit beside `bus`, as [a group's](../model/multi-dims.md#attributes-over-a-multi-dim) may today.
-- **Removing a coordinate's label cascades**: `remove("bus", ["south"])` removes every tuple naming `south`, as it removed every group row.
+- A row addresses a multi-dim by one struct column named for it, with a field per coordinate in `over` order.
+- It may be listed in `partial`, and is then in the fold key. Otherwise it is outside `partial` and in no key.
+- A value is a whole tuple or NULL. datarecord refuses a struct with some fields NULL in `set`, in `add` and in the writer.
+- A NULL broadcasts over its live tuples, expanded against `dims/connection.parquet` as a NULL `bus` is against `dims/bus.parquet`.
+- datarecord refuses an attribute over a multi-dim and a dim named like one of its coordinates, such as `dims: [connection, bus]`, because `bus=` would address both. A coordinate on `bus` under another name, such as `port`, may sit beside `bus`.
+- Removing a coordinate's label cascades: `remove("bus", ["south"])` removes every tuple that contains `south`.
 
 ### Coordinates are addressed as properties are
 
-**`connection.bus` names the `bus` of each tuple**, wherever [DEP 13](dep-0013-buses-and-carriers-are-dims.md#a-propertys-name-is-its-subjects) lets a dotted name stand: `Schema.resolve` among them. A coordinate is not a property column: it is part of the key, so `set("connection.bus", …)` is refused, naming `remove` and `add`. A [`default_by`](../model/properties.md#default_by-a-default-per-category) keyed on `entity.ctype` reaches `entity` through the coordinate already, as it reaches a group's field today.
+`connection.bus` is the `bus` of each tuple, wherever [DEP 13](dep-0013-buses-and-carriers-are-dims.md) lets a dotted name stand, `Schema.resolve` included. A coordinate is part of the key and not a property column, so datarecord refuses `set("connection.bus", …)` and names `remove` and `add`. datarecord resolves a `default_by` keyed on `entity.ctype` through the coordinate `entity`.
 
-- A **selector keyword** stays bare: `bus="north"` on an attribute over `connection` selects the tuples whose `bus` is `north`, coordinate first, as today.
-- A property of a multi-dim named like one of its coordinates stays refused, as [the schema](../model/properties.md#names) refuses it for a group.
-- **A multi-dim is never categorized.** A property of it may refer to a dim with `one_of`, as `role` does, and still categorizes nothing, `partial` listing the multi-dim or not; a `default_by` keyed on one is refused. Whether that changes is left [open](#open-issues).
+- A selector keyword stays bare. `bus="north"` on an attribute over `connection` selects the tuples whose `bus` is `north`, coordinate first.
+- datarecord still refuses a property of a multi-dim named like one of its coordinates.
+- A multi-dim is never categorised. A property of it may refer to a dim with `one_of`, as `role` does, and still categorises nothing, whether `partial` lists the multi-dim or not. datarecord refuses a `default_by` keyed on one.
 
 ### A functional group is a property of a multi-dim
 
-**A group property `{one_of: <dim>}`**, which [DEP 18](dep-0018-drop-narwhals.md#into-goes) put in place of a group's `into`, **becomes a property of the multi-dim, declared the same way**:
+A group property `{one_of: <dim>}`, which [DEP 18](dep-0018-drop-narwhals.md) put in place of a group's `into`, becomes a property of the multi-dim, declared the same way:
 
 ```yaml
-# before
-groups:
-  plant_period: { over: [plant, period] }
-properties:
-  plant_period:
-    zone: { one_of: zone }
-
-# after
 dimensions:
-  plant_period: { over: [plant, period] }
+  plant_period: { over: [plant, period] } # was under `groups`
 properties:
   plant_period:
     zone: { one_of: zone }
 ```
 
-One `zone` per tuple is what a property is: one value per label of its subject. The live-label check, the `remove` refusal and NULL meaning none are [a property referring to a dim's](../model/properties.md#referring-to-a-dim).
+A property has one value per label of its subject, so one `zone` per tuple is a property. The live-label check, the `remove` refusal and NULL meaning none are those of any property that refers to a dim.
 
 ### Groups go
 
-**With that, `groups` holds nothing and is removed.** `Group`, `Schema.groups`, `Schema.group_columns`, `Schema.groups_of`, `Schema.group_key`, `add_group`, `remove_group` and the `groups/` directory go. [`dims: [X]`](../model/multi-dims.md#attributes-over-a-multi-dim) resolves a dim, and nothing else.
+The `groups` section then has nothing left and goes. `Group`, `Schema.groups`, `Schema.group_columns`, `Schema.groups_of`, `Schema.group_key`, `add_group`, `remove_group` and the `groups/` directory go, and `dims: [X]` resolves a dim and nothing else. A manifest with `groups` is refused as any unknown key is.
 
-**`add` and `remove` take a multi-dim's tuples** as a frame, anything DuckDB scans, holding the struct column named for the multi-dim, which is what `record.dims["connection"]` reads, so a read goes back in as it stands. A frame may instead carry a column per coordinate, and a list of mappings from coordinate to label is made into that frame up front. Every form then takes the same path and the same type checks. A frame carrying both the struct column and a coordinate column is refused as ambiguous:
+`add` and `remove` take a multi-dim's tuples as any frame DuckDB scans, with the struct column named for the multi-dim. That column is what `record.dims["connection"]` returns, so a read goes back in as it stands. A frame may instead have a column per coordinate, and a list of mappings from coordinate to label becomes that frame first. Every form then takes the same path and type checks. datarecord refuses a frame with both the struct column and a coordinate column as ambiguous:
 
 ```python
 w.add("connection", other.dims["connection"])  # another record's tuples, as read
@@ -117,64 +111,42 @@ w.add("connection", pd.DataFrame({"entity": ["g2"], "bus": ["south"]}))
 w.remove("connection", [{"entity": "g1", "bus": "north"}])
 ```
 
-A property is a keyword, as for any dim, or a further column of the frame. A tuple naming a label its coordinate's dim lacks is refused, as `add_group` refused it.
+A property is a keyword, as for any dim, or a further column of the frame. datarecord refuses a tuple that contains a label missing from its coordinate's dim.
 
 ## Rationale
 
-**A multi-dim, not a relation usable as a dim.** A tuple set that may stand in `dims` when used there and is a relation otherwise is two kinds of thing decided by the caller. Declaring it under `dimensions` says once what it is, gives it a table for its properties, and lets `add` and `remove` treat it as any other dim.
+A tuple set that is a dim in `dims` and a relation elsewhere has two kinds, and the caller picks one at each use. Declared under `dimensions`, it has one kind, with a table for its properties, and `add` and `remove` treat it as any dim.
 
-**A dim table, not a second directory.** `dims/` already holds one table per dim keyed by that dim's column, each restated whole; a multi-dim's is keyed by its struct column. A reader of the format looks in one place.
+`dims/` already has one table per dim, keyed by that dim's column and restated whole. A multi-dim's table is keyed by its struct column, so a reader of the format looks in one place.
 
-**What breaks:**
-
-- Every manifest with `groups` is rewritten, and every record re-exported: `groups/` moves to `dims/`.
-- Every public name with `group` in it goes; callers of `add_group` and `remove_group` call `add` and `remove`.
+What it costs: every manifest with `groups` is rewritten, and every record re-exported, as `groups/` moves to `dims/`. Every public name with `group` in it goes, and callers of `add_group` and `remove_group` call `add` and `remove`.
 
 ## Usage
 
 ```python
-record.dims["connection"]  # connection STRUCT(entity, bus)
-record.properties["connection"]  # connection | role
-record.attributes[
-    "efficiency"
-]  # connection | snapshot | attribute | breakpoint | value
-```
-
-```python
-w.add("connection", [{"entity": "g1", "bus": "north"}], role="output")
 w.set("efficiency", 0.9, entity="g1", bus="north")  # selector: the coordinates
 w.set("connection.role", "input", entity="g1", bus="north")
 w.set("connection.bus", "south", entity="g1")  # refused: a coordinate is the key
-w.remove("bus", ["north"])  # and every connection at it
 ```
 
 ## Implementation notes
 
-1. `Dimension.over`, parsed as a group's was; `over` exclusive with `dtype` and `one_of`; `groups` an unknown key, refused as any other.
-2. The group struct-column machinery keyed on the dim: fold key, broadcast, whole-or-NULL, cascade, the coordinate-name clash.
-3. `dims/<multi-dim>.parquet` for its table, restated whole; `groups/` and `resolved/groups/` dropped from the writer and reader.
-4. `add` and `remove` take tuples, as a frame with the struct column or a column per coordinate, or as a list of mappings; `add_group`, `remove_group` removed.
-5. `Schema.resolve` resolves a coordinate.
-6. `Group`, `Schema.groups`, `group_columns`, `groups_of`, `group_key` removed; the PyPSA tool declares `connection` under `dimensions`.
-7. Pages, usage, changelog; fixtures re-exported.
+1. `Dimension.over`, and the group struct-column machinery keyed on the dim.
+2. `dims/<multi-dim>.parquet`, with `groups/` and `resolved/groups/` dropped.
+3. `add` and `remove` take tuples, `Schema.resolve` resolves a coordinate, and the group names go.
+4. The PyPSA tool declares `connection` under `dimensions`, and fixtures are re-exported.
+5. Pages, usage pages and changelog.
 
-Checks that hold once built:
+Checks: the connection, broadcast, `partial` and cascade tests pass with `connection` under `dimensions`. The word `group` appears in no public name, and on no live page outside the DEPs. A PyPSA network round-trips with `connection` a multi-dim and `role` its property. datarecord refuses a `zone` that is not a live label on `set`, and refuses removing a `zone` that a value still refers to.
 
-- **A multi-dim behaves as a group did**: the connection, broadcast, `partial` and cascade tests pass with `connection` declared under `dimensions`.
-- **The word `group` appears in no public name**, and no live page outside the DEPs.
-- **A PyPSA network round-trips** with `connection` a multi-dim and `role` its property.
-- **A functional mapping is checked as a property is**: a `zone` naming no live label is refused on `set`, and removing a named `zone` refused.
+## Rejected ideas
 
-## Rejected Ideas
+- A relation usable as a dim in `dims: [connection]`: a tuple set becomes a relation or a dim by where it is used.
+- No multi-dims at all, with `dims: [entity, bus]` and validity by a condition: this loses the struct column, the whole-or-NULL broadcast and the table for `role`.
+- A surrogate port dim with properties `{one_of: entity}` and `{one_of: bus}`: a value is written against a port label, and the tuple stops being the address.
 
-**A relation usable as a dim** (`dims: [connection]` naming a relation). Makes a tuple set a relation or a dim depending on where it is used.
+## Open issues
 
-**No multi-dims at all** (`dims: [entity, bus]`, validity by a condition). Loses the struct column, the whole-or-NULL broadcast and the table for `role`.
-
-**A surrogate port dim**, one label per tuple with two properties `{one_of: entity}` and `{one_of: bus}`. A value is then written against a port label and its entity and bus looked up; the tuple stops being the address.
-
-## Open Issues
-
-- **Whether a multi-dim may be `over` another multi-dim.** Nothing needs it yet; it is refused until something does. Carried on as an [open question](../open-questions.md#whether-a-multi-dim-may-be-over-another-multi-dim).
-- **Whether a functional mapping over two coordinates justifies a dim.** `plant_period` exists only to carry `zone`; its labels must be written before the property can be. Carried on as an [open question](../open-questions.md#whether-a-functional-mapping-over-two-coordinates-justifies-a-dim).
-- **Whether a multi-dim in `partial` may be categorized.** Once a group is a dim, the [open question](../open-questions.md#whether-a-multi-dim-in-partial-may-have-categories) on a group's categories becomes whether the categories rule extends to a multi-dim. This DEP keeps a multi-dim uncategorized, as its specification says; a later DEP may lift that.
+- Whether a multi-dim may be `over` another multi-dim. Nothing needs it yet, so datarecord refuses it until something does. It is on the [open questions](../../about/open-questions.md) page.
+- Whether a functional mapping over two coordinates justifies a dim. `plant_period` exists only to have `zone`, and its labels must be written before the property can be. It is on the open questions page.
+- Whether a multi-dim in `partial` may be categorised, now that the open question on a group's categories becomes one on multi-dims. This DEP keeps a multi-dim uncategorised, and a later DEP may lift that.

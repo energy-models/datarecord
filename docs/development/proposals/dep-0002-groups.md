@@ -15,7 +15,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version       | v0.1.0a1                                                               |
 | Superseded-By | [DEP 23](dep-0023-multi-dims.md) (its groups, which become multi-dims) |
 
-The design landed in [the data model](../../reference/data-model.md) and [the record format](../../reference/format.md), which win where they and this DEP differ.
+The design landed in [the data model](../../reference/data-model.md) and [the record format](../../reference/format.md). Where they and this DEP differ, follow those pages.
 
 ## Abstract
 
@@ -23,9 +23,9 @@ A group with an optional `into` replaces both the group and the `on` mapping of 
 
 ## Motivation
 
-The schema declares "which tuples over dims exist" twice. A `Group` states it directly, and `Dimension(on=...)` states it for the case where each label appears once. The two are stored, addressed, aggregated and validated by different code, for the difference of one uniqueness constraint.
+The schema has two ways to declare "which tuples over dims exist". You state it directly with a `Group`, or with `Dimension(on=...)` for the case where each label appears once. The two are stored, addressed, aggregated and validated by different code, for the difference of one uniqueness constraint.
 
-A modeller pays for this when writing maths. Summing along a mapping is `GROUP BY country`, while summing along a group must say which coordinate survives. GAMS, Calliope and PyPSA all use one construct for both, so the split is datarecord's and not the domain's.
+A modeller pays for this when writing maths. Summing along a mapping is `GROUP BY country`, while to sum along a group you must say which coordinate survives. GAMS, Calliope and PyPSA all use one construct for both, so the split is datarecord's and not the domain's.
 
 ## Specification
 
@@ -36,16 +36,16 @@ A modeller pays for this when writing maths. Summing along a mapping is `GROUP B
 - A group may share its name with a dim. The rule against the two colliding is dropped.
 - In an attribute's `dims`, `X` is the dim `X` if one is declared, and otherwise the group `X` expanded to its coordinates. `into` is not consulted.
 - Every group's rows are `groups/<name>.parquet`, keyed by its coordinates. The `dims/<group>/<Type>.parquet` split and the mapping column on the classified dim's axis file are gone, and `Schema.group_columns` no longer leads with `entity_type`.
-- A reader's maths language collapses coordinates with `over=<group>[coords]`, whose brackets list what goes. The bracket is required on every `over=` over a group of several coordinates. `by=<group>` keeps the group's `into` dim and collapses all of `over`, and exists only where `into` is declared.
+- A reader collapses coordinates in its maths language with `over=<group>[coords]`, whose brackets list what goes. The bracket is required on every `over=` over a group of several coordinates. `by=<group>` keeps the group's `into` dim and collapses all of `over`, and exists only where `into` is declared.
 - A NULL group coordinate still means the group's rows, and a group in `dims` still expands to its coordinates. The record does not project across levels. `within` and traits are unchanged.
 
 ## Rationale
 
-`into` is the declaration that was missing. Without it, a group can only happen to be single-valued, and a duplicate row is an error the schema has no name for. GAMS and Calliope both leave functional lookups undeclared, so a duplicated label silently double-counts in every sum. A schema meant to make the shape of data checkable should close that gap.
+`into` is the declaration that was missing. Without it, a group can only happen to be single-valued, and a duplicate row is an error the schema has no name for. GAMS and Calliope both leave functional lookups undeclared, so every sum silently counts a duplicated label twice. datarecord's schema is meant to make the shape of data checkable, so datarecord should close that gap.
 
 `into` must be a declared dim because a functional group needs the axis file. It gives the labels an order and a place for a per-country CO2 budget. The argument for the axis file in DEP 1 stands unchanged.
 
-Sharing a name is the natural spelling for a group with `into`. `dims: [country]` finds the dim and `by=country` finds the group, so a rule against sharing would force a name like `country_map`. Addressing resolves dims first, so the case without `into` is not ambiguous either. The cost is that a shadowed group without `into` loses its only spelling in `dims` without an error.
+Sharing a name is the natural spelling for a group with `into`. `dims: [country]` resolves to the dim and `by=country` to the group, so a rule against sharing would force a name like `country_map`. datarecord resolves dims first when it addresses an attribute, so the case without `into` is not ambiguous either. The cost is that a shadowed group without `into` loses its only spelling in `dims` without an error.
 
 `group` stays the word, because `country` groups buses too. `GROUP BY`, PyPSA's `group_constraints` and Calliope's `group` overload it, so prose about aggregation says which is meant.
 
@@ -55,7 +55,7 @@ A relation between two entities, such as a contract between a seller and a buyer
 
 `by=` and `over=` are two keywords because they mean opposite things. A bare `over=country` read as "keep country" would give one keyword two senses. The bracket is required because a functional group needs it wherever a coordinate must survive that `by=` would collapse: `over=country[bus]` on `over: [bus, scenario]` keeps a per-scenario country total. Inference from the enclosing scope also fails under nesting. In `sum(sum(x, over=connection), over=siting)`, the inner sum would collapse `bus`, which the outer sum needs, and return the right shape with the wrong number.
 
-The change costs a rename across the tree and a format migration with no reader of both layouts. Reading a bus's country becomes a join instead of a column read. `WorkingRecord`'s `kind=` and the `CONNECTION` constant in `mutable.py` stop naming one group specially.
+The change needs a rename across the tree and a format migration with no reader of both layouts. Reading a bus's country becomes a join instead of a column read. `WorkingRecord`'s `kind=` and the `CONNECTION` constant in `mutable.py` stop naming one group specially.
 
 ## Usage
 

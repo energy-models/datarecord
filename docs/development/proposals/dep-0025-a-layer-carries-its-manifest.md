@@ -4,27 +4,27 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 25: a layer carries its manifest
+# DEP 25: each layer has its own manifest
 
-| DEP      | 25                           |
-| -------- | ---------------------------- |
-| Title    | a layer carries its manifest |
-| Author   | Jonas Hörsch                 |
-| Status   | Implemented (2026-11-03)     |
-| Requires | [DEP 9](dep-0009-store.md)   |
-| Created  | 2026-10-29                   |
+| DEP      | 25                              |
+| -------- | ------------------------------- |
+| Title    | each layer has its own manifest |
+| Author   | Jonas Hörsch                    |
+| Status   | Implemented (2026-11-03)        |
+| Requires | [DEP 9](dep-0009-store.md)      |
+| Created  | 2026-10-29                      |
 
-The design landed in [store](../../reference/store.md), [format](../../reference/format.md), [schema](../../reference/schema.md), [layers](../../reference/layers.md) and [resolution](../../reference/resolution.md), which win where they and this DEP differ.
+The design landed in [store](../../reference/store.md), [format](../../reference/format.md), [schema](../../reference/schema.md), [layers](../../reference/layers.md) and [resolution](../../reference/resolution.md). Where they and this DEP differ, follow those pages.
 
 ## Abstract
 
-Each layer has its own `manifest.json`, which lists the layer's id, parent, full schema, files and a flat `meta` map. The layer manifests replace the store's one `manifest.json` and its `revisions/` tree. A create-only `claim.json` reserves a layer's id and the manifest commits it, so a job may keep a revision open for days. Every file in a store is then written once.
+Each layer has its own `manifest.json`, which lists the layer's id, parent, full schema, files and a flat `meta` map. The layer manifests replace the store's one `manifest.json` and its `revisions/` tree. A create-only `claim.json` reserves a layer's id and writing the manifest commits it, so a job may keep a revision open for days. Every file in a store is then written once.
 
 ## Motivation
 
-Before this DEP, every write that widens the schema races on the store's one `manifest.json` through a bounded compare-and-swap. A writer can lose that race after writing its layer, and a credential that cannot read the manifest fails every write. With one schema per store, one branch's new attribute widens its siblings.
+Before this DEP, every write that widens the schema races on the store's one `manifest.json` through a bounded compare-and-swap. A writer can lose that race after writing its layer, and a credential that cannot read the manifest fails every write. With one schema per store, one branch's new attribute also widens the schema of its siblings.
 
-A workflow has no place in the store for a run's id. A run that takes days writes layer files that no revision file reaches yet, and a cleanup cannot tell them from a failed write. A standalone directory and a layer differ only by where the manifest sits, yet `ws.at` and `store.layer` read them under two rules.
+A workflow has no place in the store for a run's id. A run that takes days writes layer files that no revision file lists yet, and a cleanup cannot tell them from a failed write. A standalone directory and a layer differ only by where the manifest sits, yet `ws.at` and `store.layer` read them under two rules.
 
 ## Specification
 
@@ -45,7 +45,7 @@ A workflow has no place in the store for a run's id. A run that takes days write
 
 `schema` is the full schema the layer was written under, not a delta. `files` lists the dims and attributes the layer wrote, by declared name. `meta` is a flat map of `str`, `int`, `float` or `bool` values, set at the write, immutable and not inherited.
 
-A child's `schema` must pass `compatible_with` against its parent's, and a root's is free. A read opens exactly the files that `files` lists, globs nothing and ignores any other file in the layer. `schema.meta` stays, and a child inherits it with the rest of the schema. `Schema.id` goes.
+A child's `schema` must pass `compatible_with` against its parent's, and a root's may be any schema. A read opens exactly the files that `files` lists, globs nothing and ignores any other file in the layer. `schema.meta` stays, and a child inherits it with the rest of the schema. `Schema.id` goes.
 
 ### Claim and commit
 
@@ -55,9 +55,9 @@ A child's `schema` must pass `compatible_with` against its parent's, and a root'
 | data   | `dims/`, `attributes/` | unconditional | the layer's parquet               |
 | commit | `manifest.json`        | create-only   | the layer manifest                |
 
-A claim stays after the commit, so a second claim of one id fails at any time. A revision exists from the moment its manifest does. A layer with a claim and no manifest is _pending_, and no read reaches it. The commit checks that the manifest's `parent` equals the claim's, and that its `meta` keeps every key of the claim's unchanged. It may add keys, such as an outcome the job learns at its end.
+A claim stays after the commit, so a second claim of one id fails at any time. A revision exists from the moment its manifest does. A layer with a claim and no manifest is _pending_, and no read opens it. The commit checks that the manifest's `parent` equals the claim's, and that its `meta` keeps every key of the claim's unchanged. It may add keys, such as an outcome the job learns at its end.
 
-Data goes straight into `layers/<id>/`, so the local staging directory and its rename go. A local `resolved/` file keeps its temporary name and rename, because no manifest commits it. A remote write needs no rename, since an object appears whole or not at all.
+Data goes straight into `layers/<id>/`, so the local staging directory and its rename go. A local `resolved/` file keeps its temporary name and rename, because no manifest write commits it. A remote write needs no rename, since an object appears whole or not at all.
 
 ### Writing
 
@@ -73,15 +73,15 @@ ws.write(source, uri, *, meta: Meta | None = None) -> Record
 
 `store.commit(w)` writes `w`'s edits as a child of `w`'s base revision, and refuses a `parent` beside it. It refuses a base outside the store, and points to `ws.write(w, uri)`, which writes `w` whole. `claim.commit(w)` refuses a `w` whose base is not the claim's parent.
 
-A `Claim` crosses a process as a `Revision` does: it serialises as its location and id, and validates by reading its claim file.
+A `Claim` passes between processes as a `Revision` does: it serialises as its location and id, and validates by reading its claim file.
 
 ### Cleanup
 
-`store.cleanup(ids=[...])` and `store.cleanup(older_than=timedelta(days=14))` delete pending layers, and nothing else deletes. `cleanup` never deletes a layer with a manifest, and refuses an id that is not pending, naming it.
+`store.cleanup(ids=[...])` and `store.cleanup(older_than=timedelta(days=14))` delete pending layers, and no other call deletes. `cleanup` never deletes a layer with a manifest, and refuses an id that is not pending, naming it.
 
 ### Listing and the cache
 
-The workspace caches each committed manifest whole, since none ever changes, in a table `revisions` keyed by location and id. Its `meta` column is JSON, which keeps value types. Its `schema` column is a hash into `schemas`, which stores each distinct schema once. With a warm cache, building a `Record` reads no file.
+The workspace caches each committed manifest whole, since none ever changes, in a table `revisions` keyed by location and id. Its `meta` column is JSON, so each value has its type. Its `schema` column is a hash into `schemas`, which stores each distinct schema once. With a warm cache, building a `Record` reads no file.
 
 - `revisions()` lists `layers/` once, and it and `revision(id)` read only the manifests the table lacks.
 - `revisions(meta={...})` returns the revisions whose `meta` contains every pair given, as one query over the table.
@@ -91,13 +91,13 @@ Rows are only ever added, and `cleanup` deletes only pending layers, so it never
 
 ## Rationale
 
-Each writer checks compatibility against its parent's manifest, which never changes, so no race remains. A full schema gives a revision's schema from one file, and costs little beside a layer.
+Each writer checks compatibility against its parent's manifest, which never changes, so no race remains. With a full schema, a read gets a revision's schema from one file, and the schema is small beside a layer.
 
-The `files` list saves a remote read its listing per layer, so only `revisions()` lists `layers/`. A retried job's partial files do no harm, since no manifest lists them.
+With the `files` list, a remote read skips the listing per layer, so only `revisions()` lists `layers/`. A retried job's partial files do no harm, since no manifest lists them.
 
-The claim makes a pending revision visible to a listing by `meta`, and to the cleanup, which must not delete a running job. A kept claim makes "an id is claimed once" one create-only write, and no lost delete leaves the store between two states. A job may run for days, so no timeout is safe.
+The claim makes a pending revision visible to a listing by `meta`, and to the cleanup, which must not delete a running job. Because the claim stays, one create-only write is enough to claim an id once, and no failed delete can leave the store between two states. A job may run for days, so no timeout is safe.
 
-Root and child were already one path below the API, so a keyword `parent` makes the difference an argument. A `WorkingRecord` has exactly one valid parent, so it supplies it.
+Below the API, a root and a child already took one code path, so the keyword `parent` turns the difference into an argument. A `WorkingRecord` has exactly one valid parent, so it supplies it.
 
 `schema.meta` describes the record for a framework, such as PyPSA's network attributes, and a child inherits it. A revision's `meta` describes how one layer was made, such as a run id, and a child must not inherit it.
 
@@ -106,7 +106,7 @@ It costs:
 - datarecord cannot read an existing store, which has no layer manifests, so it is re-exported.
 - `store.commit(w)` writes `w`'s edits, where `rev.child(w)` wrote its whole record. A whole record goes to `ws.write`.
 - A call that names the store and a parent names the store twice, so `store.commit` must refuse a mismatch, which `rev.child` could not make.
-- A new attribute reaches only a revision whose ancestry declares it.
+- A new attribute exists only in a revision whose ancestry declares it.
 - Sibling branches may declare one name differently, which matters where their records are [combined](dep-0014-combining-records.md).
 - A cold listing reads one manifest per revision, each larger by its schema.
 - A failed local write leaves pending files for the cleanup, as a remote one does.
@@ -138,7 +138,7 @@ Once built, no file in a store is written twice, `resolved/` aside, and a commit
 - A schema delta per layer: reading a schema would fold the ancestry, and need a compatibility rule per delta.
 - Claiming an id by creating its directory: atomic only on a local filesystem, and S3 has no directories.
 - Dropping the claim after the commit: a reused id would fail days later at its manifest write. A failed delete would leave a committed layer that looks pending.
-- A heartbeat in the claim: a file a job rewrites for days, for a timeout no long job can live with.
+- A heartbeat in the claim: a file a job rewrites for days, for a timeout that would fail every long job.
 - `rev.child`, with the parent as receiver: it splits one write into two calls, and a pending claim has no receiver.
 - A commit that keeps the claim's `meta` exactly: a job learns its outcome at its end, and would have to keep it outside the store.
 - Removals in the `files` list: a second way to remove, which the fold would also have to obey.

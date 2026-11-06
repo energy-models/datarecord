@@ -9,8 +9,8 @@ combination a relation holds.
 
 Notes
 -----
-- [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
-- [default_by](https://energy-models.github.io/datarecord/design/model/properties/#default_by-a-default-per-category)
+- [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
+- [default_by](https://energy-models.github.io/datarecord/reference/schema/#default_by)
 """
 
 from __future__ import annotations

@@ -13,8 +13,8 @@ by the tool that cannot build it, not rejected here.
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-- [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+- [the schema](https://energy-models.github.io/datarecord/reference/schema/)
+- [one schema per record](https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record)
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from datarecord.schema.specs import (
     _ValueSpec,
 )
 
-# Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema). Not the
+# Columns the format fixes, whatever the schema declares (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet). Not the
 # dims or properties: each is declared and typed from that declaration, which is
 # what lets the `ENUM` of a dim with `one_of` pin them. These are the ones no schema
 # names - `breakpoint` is NULL for an ordinary scalar, so one column set serves
@@ -60,14 +60,14 @@ STRUCTURAL_TYPES = {
 
 # Every long row's trailing columns, whatever coordinates precede them: the
 # attribute named, the abscissa of a piecewise-linear value, and the value
-# (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema).
+# (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet).
 LONG_TAIL = ("attribute", "breakpoint", "value")
 
 
 # The owner map's flag columns: two structs with a field per declared dim, so
 # the map's column set does not depend on the schema and adding a dim stays the
 # compatible change versioning calls it. `breakpoints` is outside both, being no dim
-# (https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map, https://energy-models.github.io/datarecord/design/use/reading/#flags).
+# (https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map, https://energy-models.github.io/datarecord/reference/record/#flags).
 FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 
@@ -80,7 +80,7 @@ LAYER_COLUMN = "layer_uuid"
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+- [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
 """
 
 
@@ -93,7 +93,7 @@ where the fold always re-derives it from file order.
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+- [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
 """
 
 
@@ -108,7 +108,7 @@ declared name's first character instead.
 
 Notes
 -----
-- [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
+- [names](https://energy-models.github.io/datarecord/reference/schema/#names)
 """
 
 
@@ -137,8 +137,8 @@ def flag_type(dims: tuple[str, ...]) -> DuckDBPyType:
 
     Notes
     -----
-    - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     return duckdb.struct_type(dict.fromkeys(dims, sqltypes.BOOLEAN))
 
@@ -191,9 +191,9 @@ class Schema(_Declared):
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
+    - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
 
     version: int = 1
@@ -228,20 +228,20 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-        - [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
+        - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [names](https://energy-models.github.io/datarecord/reference/schema/#names)
         """
         self._check_names()
         declared = set(self.dimensions)
 
-        # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/design/model/dims/). Rejected here
+        # Attributes but no axes is a table, not a record (https://energy-models.github.io/datarecord/reference/data-model/). Rejected here
         # so the owner map never needs a struct with no fields, which DuckDB has
         # no type for. A wholly empty `Schema()` stays legal: "no manifest yet".
         if self.attributes and not declared:
             msg = (
                 "a schema declaring attributes must declare at least one dim; "
-                "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/design/model/dims/)"
+                "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/reference/data-model/)"
             )
             raise ValueError(msg)
 
@@ -256,7 +256,7 @@ class Schema(_Declared):
                 msg = (
                     f"multi-dim {multi!r} is over the multi-dims {nested}; each "
                     f"coordinate draws on a dim that is no multi-dim "
-                    f"(https://energy-models.github.io/datarecord/design/model/multi-dims/)"
+                    f"(https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
                 )
                 raise ValueError(msg)
 
@@ -276,7 +276,7 @@ class Schema(_Declared):
                         f"the multi-dim's coordinates, so a keyword such as "
                         f"{twice[0]}= would address both. Name the multi-dim's "
                         f"coordinate differently, e.g. over={{..., 'port': "
-                        f"{twice[0]!r}}} (https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)"
+                        f"{twice[0]!r}}} (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)"
                     )
                     raise ValueError(msg)
 
@@ -329,7 +329,7 @@ class Schema(_Declared):
                 f"properties are declared on {on_one_of}, which list their labels "
                 f"with `one_of`; such a dim's axis is the schema's list, with "
                 f"no axis file to hold a property "
-                f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+                f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
             )
             raise ValueError(msg)
         for (subject, name), dim in self.one_of_properties().items():
@@ -337,14 +337,14 @@ class Schema(_Declared):
                 msg = (
                     f"property {subject}.{name} refers to {dim!r}, "
                     f"an undeclared dim "
-                    f"(https://energy-models.github.io/datarecord/design/model/properties/#properties)"
+                    f"(https://energy-models.github.io/datarecord/reference/data-model/#properties)"
                 )
                 raise ValueError(msg)
             if dim in self.multi_dims:
                 msg = (
                     f"property {subject}.{name} refers to the multi-dim {dim!r}; "
                     f"a property refers to a dim that is no multi-dim "
-                    f"(https://energy-models.github.io/datarecord/design/model/properties/#referring-to-a-dim)"
+                    f"(https://energy-models.github.io/datarecord/reference/data-model/#properties)"
                 )
                 raise ValueError(msg)
         for subject, by_name in self.properties.items():
@@ -394,7 +394,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         return {
             (subject, name): spec.one_of
@@ -419,8 +419,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [names](https://energy-models.github.io/datarecord/reference/schema/#names)
+        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         declared = [
             *(("dim", d) for d in self.dimensions),
@@ -471,7 +471,7 @@ class Schema(_Declared):
                 f"a schema may not declare these names: {'; '.join(problems)}. "
                 f"Rename each: a declared name becomes a column beside those "
                 f"datarecord writes itself, {sorted(RESERVED)} and any starting "
-                f"with `_` (https://energy-models.github.io/datarecord/design/model/schema/#names)"
+                f"with `_` (https://energy-models.github.io/datarecord/reference/schema/#names)"
             )
             raise ValueError(msg)
 
@@ -482,7 +482,7 @@ class Schema(_Declared):
         """
         return {subject}
 
-    # -- derived key sets (https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override) --------------------------------------
+    # -- derived key sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
 
     @property
     def dims(self) -> tuple[str, ...]:
@@ -490,7 +490,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         return tuple(d for d, spec in self.dimensions.items() if spec.over is None)
 
@@ -500,7 +500,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         return tuple(d for d, spec in self.dimensions.items() if spec.over is not None)
 
@@ -510,7 +510,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
         """
         return tuple(d for d, spec in self.dimensions.items() if spec.one_of)
 
@@ -524,7 +524,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         return self.dimensions[dim].over or {}
 
@@ -541,8 +541,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         return (*self.dims, *self.multi_dims)
 
@@ -563,9 +563,9 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-        - [addressing](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         if attribute not in self.attributes:
             msg = f"the schema declares no attribute {attribute!r}"
@@ -585,8 +585,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         if isinstance(spec, PropertySpec) and spec.one_of is not None:
             return self.duck_type(self.dimensions[spec.one_of])
@@ -624,7 +624,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         types = dict(zip(rel.columns, rel.types, strict=True))
         for multi in multi_dims:
@@ -642,7 +642,7 @@ class Schema(_Declared):
                 carried = f"{flat} flat" if flat else f"{multi!r} as {dtype}"
                 msg = (
                     f"{carrier} carries {carried}; pass {multi!r} as one struct "
-                    f"column with a field per coordinate, {key} (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
+                    f"column with a field per coordinate, {key} (https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
                 )
                 raise ValueError(msg)
 
@@ -670,7 +670,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
         for multi in multi_dims:
             if multi not in rel.columns:
@@ -682,7 +682,7 @@ class Schema(_Declared):
             if rel.filter(partly).limit(1).fetchall():
                 msg = (
                     f"{carrier} carries a {multi!r} with some fields NULL; a "
-                    f"multi-dim value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+                    f"multi-dim value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)"
                 )
                 raise ValueError(msg)
 
@@ -699,7 +699,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
@@ -711,7 +711,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+        - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
         if dim not in (self.partial or set()):
             return ()
@@ -750,7 +750,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+        - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
         allowed = self.categorizing(subject)
         unknown = sorted(set(keys) - set(allowed))
@@ -779,7 +779,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+        - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
         """
         specs = self.properties.get(subject, {})
         for name, values in data.items():
@@ -813,8 +813,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
-        - [default_by](https://energy-models.github.io/datarecord/design/model/properties/#default_by-a-default-per-category)
+        - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
+        - [default_by](https://energy-models.github.io/datarecord/reference/schema/#default_by)
         """
         resolved = self.resolve(name)
         spec = resolved[1] if isinstance(resolved, tuple) else resolved
@@ -835,7 +835,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
         """
         spec = self.attributes.get(attribute)
         return (spec is not None and dim in spec.dims) or any(
@@ -863,8 +863,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-        - [coordinates](https://energy-models.github.io/datarecord/design/model/multi-dims/#coordinates)
+        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
+        - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         subject, dot, prop = name.partition(".")
         if dot:
@@ -915,8 +915,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+        - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
@@ -936,14 +936,14 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         partial = self.partial or frozenset()
         return tuple(d for d in self.broadcast_dims if d in partial)
 
-    # -- key and column sets (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema, https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map) -----------------------------------
+    # -- key and column sets (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map) -----------------------------------
 
     @property
     def long_columns(self) -> tuple[str, ...]:
@@ -956,7 +956,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         return (*self.multi_dims, *self.dims, *LONG_TAIL)
 
@@ -973,9 +973,9 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+        - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         return (*self.partial_dims, "attribute")
 
@@ -984,7 +984,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [addressing](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
+        - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
         """
         spec = self.attributes.get(attribute)
         if spec is None:
@@ -997,11 +997,11 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         return (*self.owner_map_key, LAYER_COLUMN, *FLAG_COLUMNS)
 
-    # -- typing (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema, https://energy-models.github.io/datarecord/design/use/writing/) -------------------------------------------------
+    # -- typing (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/layers/) -------------------------------------------------
 
     def column_type(
         self, column: str, subject: str | None = None
@@ -1025,8 +1025,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
-        - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+        - [one schema per record](https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record)
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         found = self.declared(column, subject)
         return None if found is None else found[1]
@@ -1062,7 +1062,7 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+        - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
         """
         own = self.properties.get(subject or "", {})
         spec: Dimension | AttributeSpec | PropertySpec
@@ -1101,8 +1101,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         wrong = []
         nulls: dict[str, DuckDBPyType] = {}
@@ -1138,12 +1138,12 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         spec = self.attributes.get(attribute)
         return None if spec is None else DUCK_TYPES[spec.dtype]
 
-    # -- versioning (https://energy-models.github.io/datarecord/design/model/schema/#versioning) --------------------------------------------------
+    # -- versioning (https://energy-models.github.io/datarecord/reference/schema/#compatibility) --------------------------------------------------
 
     def compatible_with(self, other: Schema) -> list[str]:
         """Why layers written under `other` would not read under `self`.
@@ -1160,8 +1160,8 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-        - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+        - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
         """
         problems = []
 

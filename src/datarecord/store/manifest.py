@@ -10,8 +10,8 @@ before any data is written, and is kept.
 
 Notes
 -----
-- [workspaces and stores](https://energy-models.github.io/datarecord/design/storage/store/)
-- [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+- [workspaces and stores](https://energy-models.github.io/datarecord/reference/store/)
+- [the record format](https://energy-models.github.io/datarecord/reference/format/)
 """
 
 from __future__ import annotations
@@ -66,7 +66,7 @@ class Manifest:
 
     Notes
     -----
-    - [workspaces and stores](https://energy-models.github.io/datarecord/design/storage/store/)
+    - [workspaces and stores](https://energy-models.github.io/datarecord/reference/store/)
     """
 
     id: UUID

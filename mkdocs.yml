@@ -26,83 +26,86 @@ validation:
 nav:
   - Home: index.md
   - Installation: installation.md
-  - Usage:
-      - usage/index.md
-      - Reading a record: usage/reading.md
-      - Declaring a schema: usage/schema.md
-      - Editing: usage/editing.md
-      - Branching and layers: usage/layers.md
-      - Storage: usage/storage.md
-      - The PyPSA tool: usage/tools.md
-  - Design:
-      - Overview: design/index.md
-      - The data model:
-          - Dims and labels: design/model/dims.md
-          - Multi-dims: design/model/multi-dims.md
-          - Properties and categories: design/model/properties.md
-          - Attributes and the broadcast rule: design/model/attributes.md
-          - The schema: design/model/schema.md
-      - Layers:
-          - A tree of layers: design/layers/tree.md
-          - Removing labels: design/layers/removal.md
-          - Resolution: design/layers/resolution.md
-      - Using a record:
-          - Reading: design/use/reading.md
-          - Selecting: design/use/selecting.md
-          - Editing: design/use/editing.md
-          - Writing: design/use/writing.md
-      - Storage:
-          - The record format: design/storage/format.md
-          - Workspaces and stores: design/storage/store.md
-          - Threads, processes and concurrent writers: design/storage/concurrency.md
-          - Registered views: design/storage/views.md
-      - Frameworks:
-          - Tools: design/tools/index.md
-          - PyPSA: design/tools/pypsa.md
-      - The package: design/package.md
-      - Open questions: design/open-questions.md
+  - Tutorials:
+      - tutorials/index.md
+      - tutorials/first-record.md
+      - tutorials/scenario.md
+      - tutorials/pypsa.md
+  - How-to guides:
+      - howto/index.md
+      - howto/declare-a-schema.md
+      - howto/read-a-record.md
+      - howto/select-a-view.md
+      - howto/edit-a-record.md
+      - howto/branch-and-materialise.md
+      - howto/store-a-record.md
+      - howto/use-the-pypsa-tool.md
+      - howto/present-a-framework-object.md
+  - Reference:
+      - reference/index.md
+      - reference/data-model.md
+      - reference/schema.md
+      - reference/record.md
+      - reference/selecting.md
+      - reference/editing.md
+      - reference/layers.md
+      - reference/resolution.md
+      - reference/format.md
+      - reference/store.md
+      - reference/tools.md
+      - reference/glossary.md
+      - API:
+          - reference/api/index.md
+          - reference/api/schema.md
+          - reference/api/record.md
+          - reference/api/mutable.md
+          - reference/api/store.md
+          - reference/api/tools.md
+  - About:
+      - about/index.md
+      - about/one-record.md
+      - about/data-model.md
+      - about/layers.md
+      - about/storage.md
+      - about/open-questions.md
+  - Development:
+      - development/index.md
+      - development/contributing.md
+      - development/package.md
       - Enhancement proposals:
-          - Template: design/proposals/dep-NNNN-template.md
-          - "DEP 1: Dims, mappings, groups and traits": design/proposals/dep-0001-dims-groups-traits.md
-          - "DEP 2: Groups": design/proposals/dep-0002-groups.md
-          - "DEP 3: Trait switches": design/proposals/dep-0003-trait-switches.md
-          - "DEP 4: Staging as a layer": design/proposals/dep-0004-staging-as-a-layer.md
-          - "DEP 5: One Record over a NodeCache": design/proposals/dep-0005-one-record-over-a-node-cache.md
-          - "DEP 6: A member file holds values": design/proposals/dep-0006-a-member-file-holds-values.md
-          - "DEP 7: Staging without _seq": design/proposals/dep-0007-staging-without-seq.md
-          - "DEP 8: One interface, source and fold": design/proposals/dep-0008-one-interface-source-and-fold.md
-          - "DEP 9: A Workspace and a Store": design/proposals/dep-0009-store.md
-          - "DEP 10: A group is one struct column": design/proposals/dep-0010-a-group-is-a-struct-column.md
-          - "DEP 11: Deletion cascades through tombstones": design/proposals/dep-0011-deletion-cascades-through-tombstones.md
-          - "DEP 12: Properties": design/proposals/dep-0012-properties.md
-          - "DEP 13: Buses and carriers are dims": design/proposals/dep-0013-buses-and-carriers-are-dims.md
-          - "DEP 14: Combining a record with an extension": design/proposals/dep-0014-combining-records.md
-          - "DEP 15: A dim is flat": design/proposals/dep-0015-a-dim-is-flat.md
-          - "DEP 16: Remove traits": design/proposals/dep-0016-remove-traits.md
-          - "DEP 17: Results are attributes": design/proposals/dep-0017-results-are-attributes.md
-          - "DEP 18: Drop narwhals": design/proposals/dep-0018-drop-narwhals.md
-          - "DEP 19: One Record and a package layout": design/proposals/dep-0019-one-record-and-a-package-layout.md
-          - "DEP 20: A layer restates an axis whole": design/proposals/dep-0020-a-layer-restates-an-axis-whole.md
-          - "DEP 21: The owner map holds keys as written": design/proposals/dep-0021-the-owner-map-holds-keys-as-written.md
-          - "DEP 22: A layer restates membership whole": design/proposals/dep-0022-a-layer-restates-membership-whole.md
-          - "DEP 23: Multi-dims replace groups": design/proposals/dep-0023-multi-dims.md
-          - "DEP 24: Categories are enum dimensions": design/proposals/dep-0024-categories-are-enum-dimensions.md
-          - "DEP 25: A layer carries its manifest": design/proposals/dep-0025-a-layer-carries-its-manifest.md
-          - "DEP 26: The fold reads each layer under its own schema": design/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema.md
-          - "DEP 31: A record selects a view of its labels": design/proposals/dep-0031-a-record-selects-a-view.md
-          - "DEP 33: The fold is a fixed plan": design/proposals/dep-0033-the-fold-is-a-fixed-plan.md
-          - "DEP 34: A record registers its relations as views": design/proposals/dep-0034-a-record-registers-as-views.md
-          - "DEP 35: A record holds the tables it reads": design/proposals/dep-0035-a-record-holds-the-tables-it-reads.md
-  - Contributing: contributing.md
+          - development/proposals/index.md
+          - Template: development/proposals/dep-NNNN-template.md
+          - "DEP 1: dims, mappings, groups and traits": development/proposals/dep-0001-dims-groups-traits.md
+          - "DEP 2: groups, one construct for classification and sparsity": development/proposals/dep-0002-groups.md
+          - "DEP 3: trait switches, a trait a component opts into": development/proposals/dep-0003-trait-switches.md
+          - "DEP 4: staging as a layer, one fold, two sources": development/proposals/dep-0004-staging-as-a-layer.md
+          - "DEP 5: one `Record`, over a `NodeCache`": development/proposals/dep-0005-one-record-over-a-node-cache.md
+          - "DEP 6: a member file contains values, and nothing else": development/proposals/dep-0006-a-member-file-holds-values.md
+          - "DEP 7: staging without `_seq`": development/proposals/dep-0007-staging-without-seq.md
+          - "DEP 8: one interface over two objects: a source returns its own rows, and a fold returns the resolved rows": development/proposals/dep-0008-one-interface-source-and-fold.md
+          - "DEP 9: a `Workspace` holds the connection, a `Store` holds a location": development/proposals/dep-0009-store.md
+          - "DEP 10: a group is one struct column": development/proposals/dep-0010-a-group-is-a-struct-column.md
+          - "DEP 11: deletion cascades through tombstones, not through filters": development/proposals/dep-0011-deletion-cascades-through-tombstones.md
+          - "DEP 12: properties, metadata declared apart from data": development/proposals/dep-0012-properties.md
+          - "DEP 13: buses and carriers are dims": development/proposals/dep-0013-buses-and-carriers-are-dims.md
+          - "DEP 14: combining a record with an extension": development/proposals/dep-0014-combining-records.md
+          - "DEP 15: a dim is flat": development/proposals/dep-0015-a-dim-is-flat.md
+          - "DEP 16: remove traits": development/proposals/dep-0016-remove-traits.md
+          - "DEP 17: results are attributes": development/proposals/dep-0017-results-are-attributes.md
+          - "DEP 18: drop narwhals": development/proposals/dep-0018-drop-narwhals.md
+          - "DEP 19: one Record and a package layout": development/proposals/dep-0019-one-record-and-a-package-layout.md
+          - "DEP 20: a layer restates an axis whole": development/proposals/dep-0020-a-layer-restates-an-axis-whole.md
+          - "DEP 21: the owner map contains keys as written": development/proposals/dep-0021-the-owner-map-holds-keys-as-written.md
+          - "DEP 22: a layer restates membership whole": development/proposals/dep-0022-a-layer-restates-membership-whole.md
+          - "DEP 23: multi-dims replace groups": development/proposals/dep-0023-multi-dims.md
+          - "DEP 24: categories are enum dimensions": development/proposals/dep-0024-categories-are-enum-dimensions.md
+          - "DEP 25: each layer has its own manifest": development/proposals/dep-0025-a-layer-carries-its-manifest.md
+          - "DEP 26: the fold reads each layer under its own schema": development/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema.md
+          - "DEP 31: `select` returns a view of a record's labels": development/proposals/dep-0031-a-record-selects-a-view.md
+          - "DEP 33: the fold is a fixed plan": development/proposals/dep-0033-the-fold-is-a-fixed-plan.md
+          - "DEP 34: `register` creates one view per relation": development/proposals/dep-0034-a-record-registers-as-views.md
+          - "DEP 35: the workspace keeps the tables a record reads": development/proposals/dep-0035-a-record-holds-the-tables-it-reads.md
   - Changelog: changelog.md
-  - API Reference:
-      - api/index.md
-      - The data model: api/schema.md
-      - Using a record:
-          - Reading: api/record.md
-          - Editing: api/mutable.md
-      - Storage: api/store.md
-      - Frameworks: api/tools.md
 
 theme:
   name: material
@@ -160,16 +163,82 @@ plugins:
   - search
   - redirects:
       redirect_maps:
-        design/schema.md: design/model/schema.md
-        design/record.md: design/use/reading.md
-        design/layers.md: design/layers/tree.md
-        design/read-path.md: design/layers/resolution.md
-        design/working-record.md: design/use/editing.md
-        design/writing.md: design/use/writing.md
-        design/format.md: design/storage/format.md
-        design/module-layout.md: design/package.md
-        usage/writing.md: usage/layers.md
-        design/model/groups.md: design/model/multi-dims.md
+        usage/index.md: howto/index.md
+        usage/reading.md: howto/read-a-record.md
+        usage/schema.md: howto/declare-a-schema.md
+        usage/editing.md: howto/edit-a-record.md
+        usage/layers.md: howto/branch-and-materialise.md
+        usage/storage.md: howto/store-a-record.md
+        usage/tools.md: howto/use-the-pypsa-tool.md
+        design/index.md: about/index.md
+        design/model/dims.md: reference/data-model.md
+        design/model/multi-dims.md: reference/data-model.md
+        design/model/properties.md: reference/data-model.md
+        design/model/attributes.md: reference/data-model.md
+        design/model/schema.md: reference/schema.md
+        design/layers/tree.md: reference/layers.md
+        design/layers/removal.md: reference/layers.md
+        design/layers/resolution.md: reference/resolution.md
+        design/use/reading.md: reference/record.md
+        design/use/editing.md: reference/editing.md
+        design/use/writing.md: reference/layers.md
+        design/use/selecting.md: reference/selecting.md
+        design/storage/format.md: reference/format.md
+        design/storage/views.md: reference/format.md
+        design/storage/store.md: reference/store.md
+        design/storage/concurrency.md: reference/store.md
+        design/tools/index.md: reference/tools.md
+        design/tools/pypsa.md: reference/tools.md
+        design/package.md: development/package.md
+        design/open-questions.md: about/open-questions.md
+        design/proposals/dep-0001-dims-groups-traits.md: development/proposals/dep-0001-dims-groups-traits.md
+        design/proposals/dep-0002-groups.md: development/proposals/dep-0002-groups.md
+        design/proposals/dep-0003-trait-switches.md: development/proposals/dep-0003-trait-switches.md
+        design/proposals/dep-0004-staging-as-a-layer.md: development/proposals/dep-0004-staging-as-a-layer.md
+        design/proposals/dep-0005-one-record-over-a-node-cache.md: development/proposals/dep-0005-one-record-over-a-node-cache.md
+        design/proposals/dep-0006-a-member-file-holds-values.md: development/proposals/dep-0006-a-member-file-holds-values.md
+        design/proposals/dep-0007-staging-without-seq.md: development/proposals/dep-0007-staging-without-seq.md
+        design/proposals/dep-0008-one-interface-source-and-fold.md: development/proposals/dep-0008-one-interface-source-and-fold.md
+        design/proposals/dep-0009-store.md: development/proposals/dep-0009-store.md
+        design/proposals/dep-0010-a-group-is-a-struct-column.md: development/proposals/dep-0010-a-group-is-a-struct-column.md
+        design/proposals/dep-0011-deletion-cascades-through-tombstones.md: development/proposals/dep-0011-deletion-cascades-through-tombstones.md
+        design/proposals/dep-0012-properties.md: development/proposals/dep-0012-properties.md
+        design/proposals/dep-0013-buses-and-carriers-are-dims.md: development/proposals/dep-0013-buses-and-carriers-are-dims.md
+        design/proposals/dep-0014-combining-records.md: development/proposals/dep-0014-combining-records.md
+        design/proposals/dep-0015-a-dim-is-flat.md: development/proposals/dep-0015-a-dim-is-flat.md
+        design/proposals/dep-0016-remove-traits.md: development/proposals/dep-0016-remove-traits.md
+        design/proposals/dep-0017-results-are-attributes.md: development/proposals/dep-0017-results-are-attributes.md
+        design/proposals/dep-0018-drop-narwhals.md: development/proposals/dep-0018-drop-narwhals.md
+        design/proposals/dep-0019-one-record-and-a-package-layout.md: development/proposals/dep-0019-one-record-and-a-package-layout.md
+        design/proposals/dep-0020-a-layer-restates-an-axis-whole.md: development/proposals/dep-0020-a-layer-restates-an-axis-whole.md
+        design/proposals/dep-0021-the-owner-map-holds-keys-as-written.md: development/proposals/dep-0021-the-owner-map-holds-keys-as-written.md
+        design/proposals/dep-0022-a-layer-restates-membership-whole.md: development/proposals/dep-0022-a-layer-restates-membership-whole.md
+        design/proposals/dep-0023-multi-dims.md: development/proposals/dep-0023-multi-dims.md
+        design/proposals/dep-0024-categories-are-enum-dimensions.md: development/proposals/dep-0024-categories-are-enum-dimensions.md
+        design/proposals/dep-0025-a-layer-carries-its-manifest.md: development/proposals/dep-0025-a-layer-carries-its-manifest.md
+        design/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema.md: development/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema.md
+        design/proposals/dep-0031-a-record-selects-a-view.md: development/proposals/dep-0031-a-record-selects-a-view.md
+        design/proposals/dep-0033-the-fold-is-a-fixed-plan.md: development/proposals/dep-0033-the-fold-is-a-fixed-plan.md
+        design/proposals/dep-0034-a-record-registers-as-views.md: development/proposals/dep-0034-a-record-registers-as-views.md
+        design/proposals/dep-0035-a-record-holds-the-tables-it-reads.md: development/proposals/dep-0035-a-record-holds-the-tables-it-reads.md
+        design/proposals/dep-NNNN-template.md: development/proposals/dep-NNNN-template.md
+        api/index.md: reference/api/index.md
+        api/schema.md: reference/api/schema.md
+        api/record.md: reference/api/record.md
+        api/mutable.md: reference/api/mutable.md
+        api/store.md: reference/api/store.md
+        api/tools.md: reference/api/tools.md
+        contributing.md: development/contributing.md
+        design/schema.md: reference/schema.md
+        design/record.md: reference/record.md
+        design/layers.md: reference/layers.md
+        design/read-path.md: reference/resolution.md
+        design/working-record.md: reference/editing.md
+        design/writing.md: reference/layers.md
+        design/format.md: reference/format.md
+        design/module-layout.md: development/package.md
+        usage/writing.md: howto/branch-and-materialise.md
+        design/model/groups.md: reference/data-model.md
   - mkdocstrings:
       handlers:
         python:

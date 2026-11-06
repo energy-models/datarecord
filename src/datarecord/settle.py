@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [settling rows](https://energy-models.github.io/datarecord/design/use/reading/#settling-rows)
+- [settling rows](https://energy-models.github.io/datarecord/reference/record/#settle)
 """
 
 from __future__ import annotations
@@ -62,8 +62,8 @@ def settle(
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [settling rows](https://energy-models.github.io/datarecord/design/use/reading/#settling-rows)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [settling rows](https://energy-models.github.io/datarecord/reference/record/#settle)
     """
     over = [d for d in labels if d in rel.columns and (filter or d in flags.broadcast)]
     mixed = [d for d in over if d in flags.broadcast and d in flags.varies]
@@ -96,7 +96,7 @@ def settle(
             coordinate,
             lit(
                 " and no row reaching it names both, so neither is the more specific "
-                "there (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+                "there (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)"
             ),
         )
     )
@@ -126,7 +126,7 @@ def most_specific(
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     by = [col(c) for c in coordinates]
     windows = {

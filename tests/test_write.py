@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+- [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
 """
 
 import json
@@ -146,7 +146,7 @@ def _long(**overrides) -> pd.DataFrame:
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     """
     row = {
         "connection": None,
@@ -165,7 +165,7 @@ def _long(**overrides) -> pd.DataFrame:
     return pd.DataFrame([{c: row[c] for c in columns}])
 
 
-# -- the lazy mapping (https://energy-models.github.io/datarecord/design/storage/format/) -------------------------------------------------
+# -- the lazy mapping (https://energy-models.github.io/datarecord/reference/format/) -------------------------------------------------
 
 
 def test_a_write_builds_each_key_once(store):
@@ -196,7 +196,7 @@ def test_a_write_creates_a_new_layer(store):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
     revision = store.commit(
         _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None, meta={"run": 1}
@@ -253,7 +253,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
     """
     revision = store.commit(_with_ctype_axis(_CTYPES), parent=None)
     assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
@@ -295,7 +295,7 @@ def test_a_record_handing_over_another_one_of_axis_is_refused(store, labels, mat
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
     """
     with pytest.raises(ValueError, match=match):
         store.commit(_with_ctype_axis(labels), parent=None)
@@ -307,7 +307,7 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [one schema per record](https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record)
     """
     out = str(tmp_path / "standalone")
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
@@ -346,7 +346,7 @@ def test_a_cold_read_refuses_a_spoilt_manifest(workspace, tmp_path, spoil, match
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
     out = tmp_path / "standalone"
     workspace.write(_p_nom(1.0), str(out))
@@ -362,7 +362,7 @@ def test_a_manifest_carries_its_layers_id(store, tmp_path):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
     out = tmp_path / "standalone"
@@ -390,7 +390,7 @@ def test_a_layer_of_a_tree_is_no_standalone_record(store, tmp_path):
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
     root = store.commit(source, parent=None)
@@ -407,7 +407,7 @@ def test_a_standalone_write_refuses_an_existing_directory(workspace, tmp_path):
 
     Notes
     -----
-    - [a standalone directory](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-standalone-directory)
+    - [a standalone directory](https://energy-models.github.io/datarecord/reference/store/#a-standalone-directory)
     """
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
     with pytest.raises(FileExistsError, match="does not exist yet"):
@@ -429,7 +429,7 @@ def test_a_failed_standalone_write_leaves_no_record(workspace, tmp_path):
 
     Notes
     -----
-    - [a standalone directory](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-standalone-directory)
+    - [a standalone directory](https://energy-models.github.io/datarecord/reference/store/#a-standalone-directory)
     """
     out = tmp_path / "standalone"
     short = _long().drop(columns=["breakpoint"])
@@ -460,7 +460,7 @@ def test_a_record_written_again_at_one_uri_reads_as_itself(workspace, tmp_path):
 
     Notes
     -----
-    - [a standalone directory](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-standalone-directory)
+    - [a standalone directory](https://energy-models.github.io/datarecord/reference/store/#a-standalone-directory)
     """
     out = tmp_path / "standalone"
     assert _read_p_nom(workspace.write(_p_nom(1.0), str(out))) == [1.0]
@@ -475,7 +475,7 @@ def test_a_relative_uri_is_read_where_it_was_resolved(workspace, tmp_path, monke
 
     Notes
     -----
-    - [a standalone directory](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-standalone-directory)
+    - [a standalone directory](https://energy-models.github.io/datarecord/reference/store/#a-standalone-directory)
     """
     for name, value in [("a", 1.0), ("b", 2.0)]:
         (tmp_path / name).mkdir()
@@ -506,8 +506,8 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+    - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     connection = {"entity": "steel_dri", "bus": "h2_north"}
     revision = store.commit(
@@ -576,8 +576,8 @@ def test_a_write_rejects_an_undeclared_attribute_or_dim(store, source, match):
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
-    - [shape](https://energy-models.github.io/datarecord/design/use/writing/#shape)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
+    - [shape](https://energy-models.github.io/datarecord/reference/layers/#what-a-layer-may-contain)
     """
     with pytest.raises(ValueError, match=f"not a declared {match}"):
         store.commit(source, parent=None)
@@ -593,7 +593,7 @@ def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     """
     wide = _long().assign(bus=None)
     source = _Source(_SCHEMA, attributes={"p_nom": wide})
@@ -612,7 +612,7 @@ def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
     row |= {"snapshot": None, "scenario": None, "period": None}
@@ -653,7 +653,7 @@ def test_a_write_rejects_a_tuple_with_some_fields_null(store, source, file):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     with pytest.raises(
         ValueError,
@@ -698,7 +698,7 @@ def test_a_write_rejects_a_multi_dim_frame_not_keyed_by_its_struct(store):
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     frame = pd.DataFrame({"entity": ["steel_dri"], "bus": ["h2"]})
     source = _Source(_SCHEMA, connections={"connection": frame})
@@ -739,8 +739,8 @@ def test_an_undeclared_column_is_refused(store, axes, write, accepted):
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
     with pytest.raises(ValueError, match=r"\['junk'\]") as raised:
         write(store, axes)
@@ -780,7 +780,7 @@ def test_an_axis_file_holding_a_label_twice_is_refused(store, by):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     with pytest.raises(ValueError, match=re.escape("holds 2 rows at scenario=high;")):
         by(store, pd.DataFrame({"scenario": ["high", "low", "high"]}))
@@ -805,7 +805,7 @@ def test_a_restatement_in_its_parents_order_is_written(store, order):
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
     """
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
     root = _xyz(store)
@@ -821,7 +821,7 @@ def test_a_restatement_reordering_its_parents_labels_is_refused(store, order, fi
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
     """
     root = _xyz(store)
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
@@ -834,7 +834,7 @@ def test_an_attribute_column_in_a_dims_frame_is_refused(store):
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     source = _Source(
         schema(),
@@ -975,7 +975,7 @@ def test_a_layer_reads_its_more_specific_row(axes, via, attribute, rows, read):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     got = _read(_rows_layer(axes, rows, via, attribute), attribute)
     assert got == read, "one value per coordinate, the most specific row's"
@@ -1013,7 +1013,7 @@ def test_a_later_set_replaces_what_it_covers(axes, attribute, rows, read):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
     got = _read(_rows_layer(axes, rows, "set", attribute), attribute)
     assert got == read, "the later set wins where it covers"
@@ -1062,8 +1062,8 @@ def test_a_value_at_a_label_its_axis_lacks_is_refused(axes, via, row, dim):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
+    - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
     with pytest.raises((KeyError, ValueError), match=rf"names '{dim}' labels \["):
         if via == "child":
@@ -1081,8 +1081,8 @@ def test_a_value_at_a_tuple_its_multi_dim_lacks_is_refused(axes, via):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
+    - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
     row = {"connection": _A1, "value": 1.0}
     with pytest.raises((KeyError, ValueError), match=r"names 'connection' tuples \["):
@@ -1097,7 +1097,7 @@ def test_set_at_a_tuple_naming_an_unknown_label_names_the_label(axes):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+    - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
     """
     row = {"connection": {"entity": "a", "bus": "zz"}, "value": 1.0}
     with pytest.raises(
@@ -1112,8 +1112,8 @@ def test_a_tuple_naming_a_label_no_axis_holds_is_refused(axes, via):
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
+    - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
     tuples = [_AB, _BB, {"entity": "a", "bus": "zz"}]
     with pytest.raises(
@@ -1131,7 +1131,7 @@ def test_a_label_removed_after_its_set_takes_the_value_with_it(axes):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
     staged = _rows_staged(axes, [{"entity": "b", "value": 1.0}], "p_nom")
     staged.add("snapshot", [_T2])
@@ -1153,7 +1153,7 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(axes):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
     lower = _rows_layer(axes, rows, "write_layer")
@@ -1191,7 +1191,7 @@ def test_a_layer_with_two_rows_neither_more_specific_is_refused(axes, rows, coor
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     with pytest.raises(ValueError, match=rf"p_nom\.parquet.*{coordinate}"):
         _rows_layer(axes, rows, "write_layer")
@@ -1214,8 +1214,8 @@ def test_a_set_crossing_a_staged_row_wins_where_the_two_meet(axes, rows, dims, m
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
     record = _rows_layer(axes, rows, "set").record
     assert broadcast(record, "p_nom", *dims)[meet] == 2.0, "the later edit wins"
@@ -1226,7 +1226,7 @@ def test_a_set_crossing_a_later_staged_row_keeps_its_value_elsewhere(axes):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
     rows = [{"scenario": "x", "value": 2.0}, {"entity": "a", "value": 1.0}]
     assert _read(_rows_layer(axes, rows, "set")) == {
@@ -1253,8 +1253,8 @@ def test_the_last_of_three_crossing_sets_wins_where_they_meet(axes, order):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
     rows = [_THREE_DIMS[d] for d in order]
     dims = tuple(_THREE_DIMS)
@@ -1278,7 +1278,7 @@ def test_two_rows_crossing_where_a_row_names_both_are_written(axes):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     rows = [*_ENTITY_SCENARIO, {"entity": "a", "scenario": "x", "value": 3.0}]
     record = _rows_layer(axes, rows, "write_layer").record
@@ -1292,7 +1292,7 @@ def test_a_frame_staging_two_rows_neither_more_specific_is_refused(axes):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     staged = _rows_staged(axes, [], "p_nom")
     frame = pd.DataFrame(
@@ -1339,7 +1339,7 @@ def test_a_layer_with_two_rows_naming_the_same_dims_is_refused(axes, rows, coord
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     with pytest.raises(
         ValueError, match=rf"p_nom\.parquet holds 2 rows at {coordinate};"
@@ -1359,7 +1359,7 @@ def test_a_stored_pair_naming_the_same_dims_fails_the_read(axes):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     rows: list[dict] = [{"value": 2.0}, {"entity": "a", "value": 1.0}]
     revision = _rows_layer(axes, rows, "write_layer")
@@ -1420,7 +1420,7 @@ def test_a_write_stores_the_declared_type_widening_a_column(
 
     Notes
     -----
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
     revision = store.commit(_typed(file, column, values), parent=None)
     path = Path(store.layer_dir(revision.id), file)
@@ -1456,7 +1456,7 @@ def test_a_write_refuses_a_column_that_does_not_fit_its_dtype(
 
     Notes
     -----
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
     with pytest.raises(
         ValueError, match=f"{file}: column '{column}' has type .*{match}"
@@ -1491,7 +1491,7 @@ def test_widening_a_single_dim_attribute_reads_old_rows_in_every_scenario(store)
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
     narrow = _plant(frozenset({"entity"}))
     layer = _plant_layer(store, narrow)
@@ -1563,7 +1563,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
 
     Notes
     -----
-    - [names](https://energy-models.github.io/datarecord/design/model/schema/#names)
+    - [names](https://energy-models.github.io/datarecord/reference/schema/#names)
     """
     root = store.commit(_awkward({("a", "near"): 1.0, ("b", "far"): 2.0}), parent=None)
     child = root.store.commit(_awkward({("b", "far"): 5.0}), parent=root)
@@ -1587,7 +1587,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     )
 
 
-# -- the PyPSA source (https://energy-models.github.io/datarecord/design/storage/format/) ------------------------------------------------
+# -- the PyPSA source (https://energy-models.github.io/datarecord/reference/format/) ------------------------------------------------
 
 
 def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
@@ -1598,7 +1598,7 @@ def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     assert "p_max_pu" in source.attributes
     assert "v_nom" in source.attributes, "a static attribute is long rows too"
     assert "carrier" not in source.attributes, "a property is no attribute"
-    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim).
+    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes
 
@@ -1608,8 +1608,8 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store):
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
     import pypsa
 

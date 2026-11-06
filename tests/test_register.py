@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
+- [registered views](https://energy-models.github.io/datarecord/reference/format/#registered-views)
 """
 
 import gc

@@ -17,9 +17,9 @@ SPDX-License-Identifier: CC-BY-4.0
 | Replaces      | the DEP this one makes obsolete, linked (omit if none)                                 |
 | Superseded-By | the DEP that makes this one obsolete, linked, with the part it replaces (omit if none) |
 
-Once implemented, one sentence here names the reference and about pages the design landed in, which win where they and this DEP differ.
+Once implemented, this paragraph reads: `The design landed in [x](…) and [y](…). Where they and this DEP differ, follow those pages.` It links the reference and about pages the design landed in.
 
-A DEP is under 1,500 words. Each rule is stated once, in the section it belongs to. Cut what restates a rule, narrates how the design was found, or describes internals the reader can look up.
+A DEP is under 1,500 words. Each rule is stated once, in the section it belongs to. Cut what restates a rule, narrates how the design was found, or describes internals you can look up in the code.
 
 ## Abstract
 
