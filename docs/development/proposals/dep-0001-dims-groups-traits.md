@@ -84,9 +84,15 @@ Every step is incompatible: `version` bumps once, a record is rewritten, and sce
 
 ```python
 attributes = {
-    "p_max_pu": AttributeSpec(dtype="DOUBLE", dims={"entity", "snapshot", "scenario"}, default=1.0),
-    "efficiency": AttributeSpec(dtype="DOUBLE", dims={"connection", "snapshot"}, default=1.0),
-    "objective_weighting": AttributeSpec(dtype="DOUBLE", dims={"snapshot"}, default=1.0),
+    "p_max_pu": AttributeSpec(
+        dtype="DOUBLE", dims={"entity", "snapshot", "scenario"}, default=1.0
+    ),
+    "efficiency": AttributeSpec(
+        dtype="DOUBLE", dims={"connection", "snapshot"}, default=1.0
+    ),
+    "objective_weighting": AttributeSpec(
+        dtype="DOUBLE", dims={"snapshot"}, default=1.0
+    ),
 }
 groups = {
     "connection": Group(over={"entity": "entity", "bus": "bus"}),
