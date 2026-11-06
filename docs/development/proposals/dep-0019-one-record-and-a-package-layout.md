@@ -105,12 +105,14 @@ What it costs: every internal import path changes, with the monkeypatches and th
 # before
 from datarecord.layered.resolve import Resolver
 from datarecord.layered.revision import Revision
+
 rev.resolver.sources
 Record(Resolver(layer_id, sources, ws, schema))
 
 # after
 from datarecord.resolve.record import Record
 from datarecord.store.store import Revision
+
 rev.record.sources
 Record(layer_id, sources, ws, schema)
 ```
