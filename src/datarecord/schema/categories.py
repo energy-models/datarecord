@@ -100,7 +100,7 @@ def with_defaults(
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
     """
     if not names:
         return rel.project(col(subject))

@@ -597,7 +597,7 @@ def test_the_record_layer_imports_no_tool():
 
     Notes
     -----
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
     import subprocess
     import sys
@@ -677,7 +677,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         """
         got = PyPSA.build(PyPSA.to_datarecord(ac_dc, workspace.con))
         pd.testing.assert_index_equal(got.snapshots, built.snapshots)
@@ -695,7 +695,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
         """
         dim = "ctype"
         record = single_revision.record
@@ -715,7 +715,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+        - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
         role = "output"
         record = single_revision.record
@@ -742,7 +742,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         record = single_revision.record
         assert not {"Bus", "Carrier"} & set(
@@ -783,7 +783,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         n = _north()
         n.add("Carrier", "AC", color="black")
@@ -809,8 +809,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         from datarecord.mutable import WorkingRecord
 
@@ -831,7 +831,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+        - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
         """
         from datarecord.mutable import WorkingRecord
 
@@ -847,7 +847,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a value its type does not take](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-value-its-type-does-not-take)
+        - [a value its type does not take](https://energy-models.github.io/datarecord/reference/tools/#a-value-its-type-does-not-take)
         """
         from datarecord.mutable import WorkingRecord
 
@@ -910,7 +910,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
         from datarecord.mutable import WorkingRecord
 
@@ -928,7 +928,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+        - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
         """
         from datarecord.mutable import WorkingRecord
 
@@ -955,7 +955,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         """
         revision = _with_schema(exported, dims={"snapshot": "datetime"}, partial=set())
 
@@ -977,8 +977,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [entity types](https://energy-models.github.io/datarecord/design/model/properties/#categories)
-        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [entity types](https://energy-models.github.io/datarecord/reference/data-model/#categories)
+        - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         """
         # Declared alongside PyPSA's own types, since the `one_of` labels pin the
         # vocabulary.
@@ -1021,7 +1021,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
         """
         revision = _with_schema(exported, partial={"scenario", "snapshot"})
 
@@ -1038,7 +1038,7 @@ class TestPyPSA:
         no default can stand in for it.
         """
         # A Generator member with no connection row supplying its bus
-        # (https://energy-models.github.io/datarecord/design/tools/pypsa/#ports).
+        # (https://energy-models.github.io/datarecord/reference/tools/#ports).
         write_component(exported, "Generator", [{"entity": "g1"}])
         # One file across every type, so the Generators' rows are dropped from it
         # rather than a per-type file being unlinked.
@@ -1061,7 +1061,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
+        - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
         """
         write_attribute(
             exported,
@@ -1120,7 +1120,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         n = _north()
         spread(n)
@@ -1149,7 +1149,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
         n = _north()
         n.set_investment_periods([2030, 2040])
@@ -1196,7 +1196,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [standard types](https://energy-models.github.io/datarecord/design/tools/pypsa/#standard-types)
+        - [standard types](https://energy-models.github.io/datarecord/reference/tools/#standard-types)
         """
         n = pypsa.Network()
         n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
@@ -1249,7 +1249,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [standard types](https://energy-models.github.io/datarecord/design/tools/pypsa/#standard-types)
+        - [standard types](https://energy-models.github.io/datarecord/reference/tools/#standard-types)
         """
         held = set(single_revision.manifest.files.dims)
         assert not held & {"line_type", "transformer_type"}
@@ -1263,8 +1263,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
-        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+        - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         """
         n = _north()
         n.add("Generator", "north", bus="north")
@@ -1354,7 +1354,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
         """
         n = _north()
         _with_bus_column(n, name, "x")
@@ -1404,8 +1404,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
-        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
+        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
         """
         from geopandas.testing import assert_geodataframe_equal
 
@@ -1452,7 +1452,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
+        - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
         """
         n = _shaped()
         _add_shape(n, idx="north", component="country", type="onshore")
@@ -1513,7 +1513,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
+        - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
         """
         n = _shaped()
         edit(n)
@@ -1525,7 +1525,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         members = {2013: _shaped(), 2014: _shaped()}
         members[2014].c.Generator.static["p_nom"] = 2.0
@@ -1543,7 +1543,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [geometry](https://energy-models.github.io/datarecord/design/tools/pypsa/#geometry)
+        - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
         """
         from geopandas.testing import assert_geodataframe_equal
 
@@ -1558,7 +1558,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         record = export_network(_shaped(), store).record
         built = PyPSA.build(record.select(bus=["north"]))
@@ -1582,7 +1582,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         assert set(solved.c["SubNetwork"].static.index) & set(
             solved.c["Line"].static.index
@@ -1632,7 +1632,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+        - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         """
         n = solved
 
@@ -1640,11 +1640,11 @@ class TestPyPSA:
         assert "p" in results
         assert "p_nom_opt" in results
 
-        # Relations, lazy so a tool may fetch on demand (https://energy-models.github.io/datarecord/design/tools/).
+        # Relations, lazy so a tool may fetch on demand (https://energy-models.github.io/datarecord/reference/tools/).
         assert isinstance(results["p"], DuckDBPyRelation)
         p = results["p"].df()
-        # The long schema's columns (https://energy-models.github.io/datarecord/design/use/reading/), so the write path can persist it as-is -
-        # and no `ctype`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim).
+        # The long schema's columns (https://energy-models.github.io/datarecord/reference/record/), so the write path can persist it as-is -
+        # and no `ctype`, an attribute row being keyed by `name` (https://energy-models.github.io/datarecord/reference/format/#labels).
         assert {"connection", "snapshot", "scenario", "value"} <= set(p.columns)
         assert "ctype" not in p.columns
         assert "period" not in p.columns, "a series over `snapshot` reaches its period"
@@ -1670,7 +1670,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         results = PyPSA.to_datarecord(built, single_revision.record.con).attributes
         assert "p" not in results
@@ -1681,7 +1681,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
+        - [results on connections](https://energy-models.github.io/datarecord/reference/tools/#results-on-connections)
         """
         n = solved
 
@@ -1710,8 +1710,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [results on connections](https://energy-models.github.io/datarecord/reference/tools/#results-on-connections)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         schema = results.record.schema
         over_bus = {
@@ -1741,7 +1741,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         expected = _prices(results)
         pd.testing.assert_frame_equal(_prices(empty_child(results).commit()), expected)
@@ -1760,7 +1760,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         *kept, dropped = sorted(solved.c["SubNetwork"].static.index)
         assert _sub_networks(results) == sorted([*kept, dropped])
@@ -1790,7 +1790,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         base, n = (results, results_built) if over_solved else (single_revision, built)
         n = n.copy()
@@ -1819,7 +1819,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         left_out = {"Line": "mu_upper", "Bus": "marginal_price"}
         n = results_built.copy()
@@ -1856,7 +1856,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         from datarecord.mutable import WorkingRecord
 
@@ -1893,7 +1893,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         n = _north()
         n.add("GlobalConstraint", "co2", sense="<=", constant=100.0)
@@ -1921,7 +1921,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         base = _results_over(exported.commit(), solved)
         n = PyPSA.build(base.record.select(**select))
@@ -1961,7 +1961,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         base = _results_over(exported.commit(), solved)
         n = PyPSA.build(base.record.select(snapshot=list(solved.snapshots[:2])))
@@ -2027,7 +2027,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         revision = request.getfixturevalue(base)
         view = revision.record.select(**labels)
@@ -2044,8 +2044,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         view = swept.record.select(snapshot=list(solved.snapshots[:2]))
         part = PyPSACollection.build(view)
@@ -2074,7 +2074,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         agreed = _results_over(
             exported.commit(), _over({"lo": solved, "hi": solved.copy()}, "sensitivity")
@@ -2099,7 +2099,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         with pytest.raises(ValueError, match="takes `base` with `results_only=True`"):
             PyPSA.to_datarecord(solved, single_revision.record.con, results_only=True)
@@ -2123,7 +2123,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         revision = exported.commit()
         n = PyPSA.build(revision.record)
@@ -2174,7 +2174,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         n = ac_dc.copy()
         n.c.Generator.static["subsidy"] = 2.0
@@ -2219,7 +2219,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         n = _north()
         n.set_scenarios(["a", "b"])
@@ -2237,7 +2237,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
+        - [results on connections](https://energy-models.github.io/datarecord/reference/tools/#results-on-connections)
         """
         n = solved
 
@@ -2254,7 +2254,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
+        - [results on connections](https://energy-models.github.io/datarecord/reference/tools/#results-on-connections)
         """
         n = _three_port_link()
         flows = {"p0": [3.0, 4.0], "p1": [-1.0, -2.0], "p2": [-1.5, -1.5]}
@@ -2281,8 +2281,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [entities and their properties](https://energy-models.github.io/datarecord/design/tools/pypsa/#entities-and-their-properties)
-        - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
+        - [entities and their properties](https://energy-models.github.io/datarecord/reference/tools/#entities)
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
         n = _three_port_link()
         n.add("Generator", "g", bus="a", p_nom=10.0, marginal_cost=1.0)
@@ -2313,7 +2313,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
         """
         n = _north()
         n.set_scenarios({"low": 0.5, "high": 0.5})
@@ -2330,7 +2330,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
         """
         n = _north()
         n.set_scenarios({"low": 0.5, "high": 0.5})
@@ -2378,7 +2378,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
         series_attr, values = series
         n = network()
@@ -2410,7 +2410,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
+        - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
         """
         import pypsa
 
@@ -2458,7 +2458,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [ports](https://energy-models.github.io/datarecord/design/tools/pypsa/#ports)
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
         n = _three_port_process()
         n.c["Process"].static.loc["dri", ["delay0", "delay1"]] = [1, 2]
@@ -2516,7 +2516,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
+        - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
         """
         import pypsa
 
@@ -2587,8 +2587,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-        - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [snapshots and weightings](https://energy-models.github.io/datarecord/reference/tools/#snapshots-and-weightings)
         """
         schema = multiperiod_revision.record.schema
         timesteps = multiperiod.snapshots.get_level_values("timestep")
@@ -2633,7 +2633,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         from datarecord.mutable import WorkingRecord
 
@@ -2669,7 +2669,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         whole = _results_over(multiperiod_revision, multiperiod_solved)
         members = _over(_myopic(multiperiod_solved), "period")
@@ -2710,7 +2710,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         record = multiperiod_revision.record
         members = _over(edit(_myopic(multiperiod_solved)), "period")
@@ -2727,7 +2727,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         members = _over(_myopic(multiperiod_solved), "period")
         myopic = store.commit(
@@ -2763,7 +2763,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         member = _myopic(multiperiod_solved)[period]
         base = (
@@ -2794,7 +2794,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         base = multiperiod_revision
         view = base.record.select(period=[period])
@@ -2811,7 +2811,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
+        - [snapshots and weightings](https://energy-models.github.io/datarecord/reference/tools/#snapshots-and-weightings)
         """
         base = multiperiod_revision
         n = PyPSA.build(
@@ -2852,7 +2852,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         revision, solves = staggered_revision, {}
         for period in (2030, 2040, 2050):
@@ -2885,8 +2885,8 @@ class TestPyPSA:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         whole = _solve(PyPSA.build(staggered_revision.record))
         base = _results_over(staggered_revision, whole)
@@ -2920,7 +2920,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         record = staggered_revision.record
         if source == "built":
@@ -2969,7 +2969,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         built = PyPSA.build(staggered_revision.record.select(period=period))
         assert built.c.Generator.static.index.tolist() == held
@@ -2980,7 +2980,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         members = _myopic(_staggered("repeated"))
         members[2050].remove("Generator", "gen-2040")
@@ -3007,7 +3007,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [snapshots and weightings](https://energy-models.github.io/datarecord/design/tools/pypsa/#snapshots-and-weightings)
+        - [snapshots and weightings](https://energy-models.github.io/datarecord/reference/tools/#snapshots-and-weightings)
         """
         other = _staggered("distinct" if layout == "repeated" else "repeated")
         record = staggered_revision.record
@@ -3057,7 +3057,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         n = solved if network == "plain" else _myopic(multiperiod_solved)[2030]
         record = multiperiod_revision.record
@@ -3069,7 +3069,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         built = PyPSACollection.build(staggered_revision.record)
         assert built.index.name == "period"
@@ -3101,7 +3101,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         record = _collection(sweep, store, exported, "sensitivity", results_only)
         attributes = record.schema.attributes
@@ -3137,7 +3137,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         collection = _over(
             edit({"lo": ac_dc.copy(), "hi": ac_dc.copy()}), "sensitivity"
@@ -3152,7 +3152,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         model = _over({"lo": solved, "hi": solved.copy()}, "sensitivity")
         record = _results_over(swept, model).record
@@ -3208,7 +3208,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         collection = _over(edit({"lo": ac_dc.copy(), "hi": ac_dc.copy()}), dim)
         with pytest.raises(ValueError, match=match):
@@ -3220,7 +3220,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         swept = _results_over(exported.commit(), _over(sweep, "sensitivity"))
         collection = _over({"lo": solved, "hi": solved.copy()}, dim)
@@ -3232,7 +3232,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         was = exported.schema
         own = {
@@ -3294,7 +3294,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         built = PyPSA.build(single_revision.record.select(**select))
         held = {ctype: built.c[ctype].static.index.tolist() for ctype in expected}
@@ -3309,7 +3309,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         built = PyPSA.build(single_revision.record.select(snapshot=value))
         assert list(built.snapshots) == list(ac_dc.snapshots[hours])
@@ -3329,7 +3329,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         built = PyPSA.build(multiperiod_revision.record.select(timestep=value))
         timesteps = multiperiod.snapshots.get_level_values("timestep")
@@ -3370,7 +3370,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         n = multiperiod.copy()
         n.set_scenarios({"lo": 0.2, "hi": 0.8})
@@ -3395,7 +3395,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         later = multiperiod.copy()
         later.c.Generator.static.loc["Manchester Gas", "build_year"] = 2040
@@ -3429,7 +3429,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         n = _over_periods(ac_dc, layout)
         n.c.Generator.static.loc["Manchester Gas", "build_year"] = 2040
@@ -3466,7 +3466,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         n = _over_periods(ac_dc, "repeated")
         n.add(
@@ -3498,7 +3498,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         built = PyPSA.build(multiperiod_revision.record.select(period=value))
         in_period = multiperiod.snapshots.get_level_values("period") == 2040
@@ -3547,7 +3547,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         path = Path(
             stochastic.store.layer_dir(stochastic.id),
@@ -3609,7 +3609,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         years = {2012: sweep["lo"], 2013: sweep["hi"]}
         record = _collection(years, store, None, "weather_year", results_only=False)
@@ -3630,7 +3630,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         years = {2012: sweep["lo"], 2013: sweep["hi"]}
         record = _collection(years, store, None, "weather_year", results_only=False)
@@ -3647,7 +3647,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         members = {2013: _north(), 2019: _north()}
         members[2013].c.Bus.static["x"] = 1.0
@@ -3665,7 +3665,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/design/tools/pypsa/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
         """
         members = {2013: _north(), 2019: _north()}
         for n in members.values():
@@ -3725,7 +3725,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [selecting before a build](https://energy-models.github.io/datarecord/design/tools/pypsa/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
         """
         (dim,) = labels
         with pytest.raises(ValueError, match=rf"not \['{dim}'\]"):

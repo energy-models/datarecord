@@ -14,9 +14,9 @@ A dim is a set of unique labels, stored as one key column, and every dim is decl
 
 The rejected alternative is a nested dim, keyed by its parent's label and its own. A multi-period snapshot would be `(period, snapshot)`, and every series over `snapshot` would contain its period. Each check that placed a label by one column would need a branch for two. mathspec, which supplies datarecord's dtypes, gives every dimension one flat list of labels, so a tool would flatten the key anyway.
 
-datarecord states the nesting as a property instead. `snapshot.period` maps each snapshot to its period, and you read it as you read `bus.carrier`. With one key column, datarecord applies one rule to the axis, the fold key and the broadcast rule. No dim has a parent, so no series can leave a parent's label NULL.
+datarecord states the nesting in one of two flat forms instead. A property maps each label to a label of another dim: `bus.country` names each bus's country, and you read it as you read `bus.carrier`. A multi-dim names both in each label: PyPSA's multi-period `snapshot` is a multi-dim over `(period, timestep)`, one struct column ([below](#why-a-multi-dim-is-one-struct-column)). With one key column either way, datarecord applies one rule to the axis, the fold key and the broadcast rule. No dim has a parent, so no series can leave a parent's label NULL.
 
-A source whose labels repeat across parents needs extra work. PyPSA reuses its timesteps in every period, so the PyPSA tool gives each snapshot a label of its own. "The same timestep in every period" becomes a selection over `snapshot.timestep`, which stages one row per matching snapshot.
+A source whose labels repeat across parents takes the multi-dim form. PyPSA reuses its timesteps in every period, so the PyPSA tool makes each snapshot the tuple of its period and timestep. "The same timestep in every period" is then the coordinate keyword `timestep=[t]`, which selects that tuple in every period.
 
 ## Why a multi-dim is one struct column
 
