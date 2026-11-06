@@ -9,7 +9,7 @@ so the record write alone dominates the suite runtime.
 
 Notes
 -----
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
 
 import tracemalloc

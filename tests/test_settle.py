@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [settling rows](https://energy-models.github.io/datarecord/design/use/reading/#settling-rows)
+- [settling rows](https://energy-models.github.io/datarecord/reference/record/#settle)
 """
 
 import duckdb
@@ -40,8 +40,8 @@ def test_settle_reads_the_same_whatever_flags_overstate(rows, filtered):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
     con = duckdb.connect()
     frame = pd.DataFrame(rows, columns=["entity", "scenario", "value"])

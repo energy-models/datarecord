@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [selecting](https://energy-models.github.io/datarecord/design/use/selecting/)
+- [selecting](https://energy-models.github.io/datarecord/reference/selecting/)
 """
 
 from datetime import datetime

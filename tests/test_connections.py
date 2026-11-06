@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
+- [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
 """
 
 from contextlib import nullcontext
@@ -169,7 +169,7 @@ def test_component_level_attribute_is_unaffected(store):
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     """
     layer = _root(store)
     write_attribute(
@@ -218,8 +218,8 @@ def test_a_dim_a_multi_dim_draws_on_still_broadcasts(store):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     price = AttributeSpec(dtype="float", dims={"bus", "snapshot"})
     declared = schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"})
@@ -252,7 +252,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     root = _root(store).commit()
     child = empty_child(root)
@@ -278,7 +278,7 @@ def test_a_multi_dim_outside_partial_is_owned_whole(store):
 
     Notes
     -----
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
     """
     root = _root(store, schema(partial={"scenario"})).commit()
     child = empty_child(root)
@@ -306,7 +306,7 @@ def test_add_refuses_a_tuple_naming_a_removed_entity(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     root = _root(store).commit()
     staged = WorkingRecord(root.record)
@@ -355,7 +355,7 @@ def test_a_tuple_an_ancestor_left_dangling_fails_the_next_restatement(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     root = _root(store).commit()
     dangling_layer = empty_child(root)
@@ -373,7 +373,7 @@ def test_set_requires_every_party_to_exist(store):
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+    - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
     """
     staged = WorkingRecord(_contract_root(store).record)
     contract: dict[str, Any] = {"from": "plant", "to": "nobody"}
@@ -386,7 +386,7 @@ def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root = _root(store, schema(partial={"scenario"})).commit()
     dead = Path(store.resolved_dir(root.id), "dead")
@@ -407,7 +407,7 @@ def test_readding_a_tuple_outside_partial_revives_its_values(store):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     root = _root(store, schema(partial={"scenario"})).commit()
     staged = WorkingRecord(root.record)
@@ -476,8 +476,8 @@ def test_remove_reaches_a_multi_dims_second_entity_before_and_after_commit(store
 
     Notes
     -----
-    - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     root = _contract_root(store)
     assert _prices(root.record) == {"mill": 10.0, "smelter": 20.0}
@@ -499,7 +499,7 @@ def test_set_addresses_a_multi_dims_coordinates_by_keyword(store):
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
     staged = WorkingRecord(_contract_root(store).record)
     contract: dict[str, Any] = {"from": "plant", "to": "mill"}

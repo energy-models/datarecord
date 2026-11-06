@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+- [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
 """
 
 from collections.abc import Iterable, Mapping
@@ -26,7 +26,7 @@ DUCK_TYPES: Mapping[str, DuckDBPyType] = {
 
 Notes
 -----
-- [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+- [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
 """
 
 

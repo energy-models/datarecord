@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
 
 import shutil
@@ -153,7 +153,7 @@ def _with_schema(layer: HandBuilt, **kwargs) -> Revision:
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
     was = layer.schema
     now = schema(**kwargs)

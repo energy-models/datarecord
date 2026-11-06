@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-- [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+- [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
+- [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
 """
 
 from __future__ import annotations
@@ -41,7 +41,7 @@ def _fold_name(revision_id: UUID, table: str) -> str:
 
     Notes
     -----
-    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     """
     return f"{nested(FOLD, revision_id)}.{table}"
 
@@ -61,8 +61,8 @@ def _fold_axis(
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
     """
     if not files:
         return seed
@@ -82,7 +82,7 @@ def one_of_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRe
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
     """
     spec = schema.dimensions[dim]
     if spec.one_of is None:
@@ -104,14 +104,14 @@ def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
     """
     held = sorted(set(dims) & set(schema.one_of_dims))
     if held:
         msg = (
             f"{where} holds an axis file of {held}, which list their labels "
             f"with `one_of`; such a dim's axis is the schema's list, so no "
-            f"layer writes one (https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+            f"layer writes one (https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
         )
         raise ValueError(msg)
 
@@ -148,7 +148,7 @@ def refuse_twice(
     keys: Sequence[str],
     file: str,
     why: str = "an axis file holds each of its labels once "
-    "(https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)",
+    "(https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)",
 ) -> None:
     """Refuse `file`, read as `rel`, holding two rows that agree on every one of `keys`.
 
@@ -161,7 +161,7 @@ def refuse_twice(
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     twin = _twin(rel, keys)
     if twin is None:
@@ -213,8 +213,8 @@ def refuse_unheld(
 
     Notes
     -----
-    - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
-    - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+    - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
+    - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
     taken = {n: d for (s, n), d in schema.one_of_properties().items() if s == subject}
     labels: dict[str, tuple[Expression, str]] = {}
@@ -243,18 +243,18 @@ def refuse_unheld(
     if name in schema.one_of_dims:
         holder = f"its `one_of`, {list(schema.dimensions[name].one_of or ())},"
         remedy = "use one of its labels"
-        link = "model/dims/#a-dim-with-one_of"
+        link = "data-model/#a-dim-with-one_of"
     elif staged:
         holder = "the staged axis"
         remedy = "`add` them first"
-        link = "use/editing/#validation"
+        link = "editing/#validation"
     else:
         holder = f"the layer's dims/{name}.parquet"
         remedy = "add them there or drop those rows"
-        link = "use/writing/"
+        link = "layers/"
     msg = (
         f"{where} names {shown}{via}, which {holder} does not hold; {remedy} "
-        f"(https://energy-models.github.io/datarecord/design/{link})"
+        f"(https://energy-models.github.io/datarecord/reference/{link})"
     )
     raise (KeyError if staged else ValueError)(msg)
 
@@ -332,7 +332,7 @@ def _dead_keys(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     labels = [rel.project(col(key)) for rel in held]
     union = reduce(DuckDBPyRelation.union, labels).distinct().set_alias("h")
@@ -365,7 +365,7 @@ def _base_and_above[B](
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     for i in range(len(sources) - 2, -1, -1):
         base = at_hand(sources[i])
@@ -392,7 +392,7 @@ def mortal(schema: Schema) -> tuple[str, ...]:
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     drawn = {
         *(d for m in schema.multi_dims for d in schema.over(m).values()),
@@ -427,9 +427,9 @@ class Coords:
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
     """
 
     schema: Schema
@@ -475,7 +475,7 @@ class Coords:
 
         Notes
         -----
-        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
         """
         return cls.from_rows(
             schema,
@@ -510,8 +510,8 @@ class Coords:
 
         Notes
         -----
-        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
         """
         schema, con = sources[-1].schema, sources[-1].con
 
@@ -563,9 +563,9 @@ class Coords:
 
         Notes
         -----
-        - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-        - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+        - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
+        - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
         """
         schema, con = sources[-1].schema, sources[-1].con
         base, above = split or _base_and_above(sources, _coords_at_hand)
@@ -616,8 +616,8 @@ class Coords:
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
         """
         return con.sql(
             "SELECT unnest($dims::VARCHAR[]) AS dim, "

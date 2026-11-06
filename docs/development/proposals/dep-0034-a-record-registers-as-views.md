@@ -4,18 +4,18 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 34: a record registers its relations as views
+# DEP 34: `register` creates one view per relation
 
 | DEP      | 34                                                                                                                                                                       |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Title    | a record registers its relations as views                                                                                                                                |
+| Title    | `register` creates one view per relation                                                                                                                                 |
 | Author   | Jonas Hörsch                                                                                                                                                             |
 | Status   | Implemented (2026-11-03)                                                                                                                                                 |
 | Requires | [DEP 25](dep-0025-a-layer-carries-its-manifest.md), [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md), [DEP 33](dep-0033-the-fold-is-a-fixed-plan.md) |
 | Created  | 2026-11-02                                                                                                                                                               |
 | Version  | Unreleased                                                                                                                                                               |
 
-The design landed in [record](../../reference/record.md), [store](../../reference/store.md) and [format](../../reference/format.md), which win where they and this DEP differ.
+The design landed in [record](../../reference/record.md), [store](../../reference/store.md) and [format](../../reference/format.md). Where they and this DEP differ, follow those pages.
 
 ## Abstract
 
@@ -25,10 +25,10 @@ The design landed in [record](../../reference/record.md), [store](../../referenc
 
 A frontend reads a revision and edits it through a server. The server opens a revision in a `Workspace`, wraps it in a `WorkingRecord`, and gives the frontend a name to query over a DuckDB server. The frontend then sends edits, reads them back, and finally asks for a commit.
 
-Before this DEP, each server builds these views itself. A prototype wraps each relation's `sql_query()` in `CREATE VIEW`, with one catalog per revision and three schemas inside. It works for a frozen record and fails for an edited one:
+Before this DEP, each server builds these views itself. A prototype wraps the SQL of each relation (the DuckDB query object that a read returns), from `sql_query()`, in `CREATE VIEW`, with one catalog per revision and three schemas inside. It works for a frozen record and fails for an edited one:
 
-- A view keeps the plan its relation had when it was created. That plan depends on the staged rows, so an edit that changes the plan never reaches the view. DEP 33 removes this.
-- The SQL of a staged relation reads Python objects by name, which are gone when the view is next read.
+- DuckDB stores a view's query when the view is created. The query of a relation over a `WorkingRecord` depends on the staged rows. So after an edit that changes the query, the view still runs the old one. DEP 33 makes the query fixed, which removes this fault.
+- The SQL of a staged relation refers to Python objects by name, which are gone when the view is next read.
 
 ## Specification
 
@@ -54,7 +54,7 @@ Two records under one schema register the same views, since every record lists e
 
 ### Consistent states
 
-Every state a reader on another cursor can observe is a state that some sequence of whole edits could leave. An edit that writes several statements orders them so that each committed step is such a state, or commits them as one. A removal drops a multi-dim's tuples before the label they name.
+Every state a reader on another cursor can observe is a state that some sequence of whole edits could leave. An edit that writes several statements orders them so that each committed step is such a state, or commits them as one. A removal drops a multi-dim's tuples before the label they contain.
 
 ### Schema changes
 
@@ -97,19 +97,19 @@ The check: views registered on a fresh `WorkingRecord`, then `set`, `add` and `r
 
 - One catalog per revision, attached as `:memory:`, with three schemas inside. DuckDB 2.0 nests schemas, so the workspace's database suffices, and the views read its tables without naming the catalog.
 - One flat schema with prefixed names, `dim_bus` and `attr_p_nom`. Nested schemas keep each kind's names apart without a naming convention.
-- `CREATE VIEW … AS rel.sql_query()`. The text reads Python objects that are released with the relation, and breaks on a relation with parameters.
+- `CREATE VIEW … AS rel.sql_query()`. The text refers to Python objects that are released with the relation, and breaks on a relation with parameters.
 - A two-step registration through a helper view in `main`. It works with public API only, and clutters `main` with one view per relation.
 - Replacing views on structural edits, for the reason in [Rationale](#rationale).
-- Marking a registered schema instead of listing it in a table. DuckDB 2.0 does not implement comments on schemas. A comment on every view adds a catalog change per view. A marker view inside each schema is found only by a reserved view name, which a table avoids.
+- Marking a registered schema instead of listing it in a table. DuckDB 2.0 does not implement comments on schemas. A comment on every view adds a catalog change per view. A marker view inside each schema is found only by a reserved view name, and a table needs no reserved name.
 - Leaving discovery to the server. A crashed server leaves schemas that no one can tell from the workspace's own.
 - `MERGE INTO` in place of a transaction per edit. Every edit also writes the staged owner tables, so no edit fits in one statement: `set` takes two or three, and `rollback` nine. Without a transaction, a reader saw a half-written edit in about half its reads. Inside one, `MERGE` was 5–30% slower than `DELETE` and `INSERT`, and no more consistent.
 
 ## Open issues
 
-- Schema changes that alter an existing view: refused for now, or replacing the views they reach.
+- Schema changes that alter an existing view: refused for now, or replacing the views they affect.
 - Settling in the client: `settle` ported to the frontend, and a page on the raw format for SQL clients.
 - Cleanup: who unregisters an abandoned schema, and by what rule. The `registered` table lists them, and DuckDB 2.0 has no comments on schemas to mark them by.
 - A public `create_view` that takes a qualified name, to request upstream.
 - DuckDB 2.0 lets a reader on another cursor see part of a committed transaction that writes about 300,000 rows or more, in 0.1–1% of reads. No edit can rule it out until DuckDB does, and it is to be reported upstream.
-- `register` or the first read of a view pays the cold fold of a deep revision, once per lineage in a workspace. It stays linear in depth until a revision's map is materialised.
+- `register` or the first read of a view runs the cold fold of a deep revision, once per lineage in a workspace. It stays linear in depth until a revision's map is materialised.
 - The workspace holds the fold of every revision a server opens for the life of its connection: who drops it, and when.

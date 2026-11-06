@@ -12,21 +12,24 @@ SPDX-License-Identifier: CC-BY-4.0
 [![pypi-version](https://img.shields.io/pypi/v/datarecord.svg?logo=pypi&logoColor=white&style=flat-square)](https://pypi.org/project/datarecord)
 [![python-version](https://img.shields.io/pypi/pyversions/datarecord?logoColor=white&logo=python&style=flat-square)](https://pypi.org/project/datarecord)
 
-Dimensioned attribute data with a declared schema.
+datarecord keeps a base dataset and its scenarios in one store, and writes only the rows that each scenario changes.
 
-A record holds **entities** (labels unique record-wide, classified by **properties** such as their type), **multi-dims** whose labels are tuples of entities and further dims — a `connection` over `(entity, bus)` is the one every record with connections has — **attribute values** over both, and the **axes** those values vary along. A schema declares what may exist; the data says what does.
+datarecord stores each scenario as a layer, which contains only the rows that differ from its parent. So to see what a scenario changes, you read its layer. When you read the scenario, datarecord combines its layers from the base down.
 
-Records stack: a layer is a partial record on top of a parent, resolved last-writer-wins, so a scenario variant costs the rows it changes rather than a copy of everything. On disk a record is a plain parquet directory that a tool knowing nothing about this package can read.
+Each record has a schema, which lists the dims (the labels that values vary along) and the properties of each label. It also lists the attributes, with their dtypes and units. datarecord checks every edit against the schema and refuses it before it writes anything.
 
-`datarecord` depends only on `duckdb`, `pydantic` and `mathspec`. It names no modelling framework — a framework consumes a record, a workflow engine produces one, and neither needs to know how the other works.
+On disk, each layer is a directory of parquet files. You can open these files with any parquet library, such as pandas or polars, without datarecord installed.
+
+datarecord depends only on `duckdb`, `pydantic` and `mathspec`, and not on any modelling framework. A framework such as PyPSA reads a record, a workflow engine writes one, and neither needs to know how the other works.
 
 ## Documentation
 
 Full documentation is at **<https://energy-models.github.io/datarecord/>**:
 
-- [Usage](https://energy-models.github.io/datarecord/usage/) — reading, editing, layering and writing a record
-- [Design](https://energy-models.github.io/datarecord/design/) — what a record is and why, the authoritative design
-- [API Reference](https://energy-models.github.io/datarecord/api/) — every public symbol
+- [Tutorials](https://energy-models.github.io/datarecord/tutorials/): your first record, a scenario on a branch, a record solved with PyPSA
+- [How-to guides](https://energy-models.github.io/datarecord/howto/): declaring a schema, reading, selecting, editing, branching and storing a record
+- [Reference](https://energy-models.github.io/datarecord/reference/): the data model, the schema, layers, resolution, the format and the [Python API](https://energy-models.github.io/datarecord/reference/api/)
+- [About](https://energy-models.github.io/datarecord/about/): why a record is built the way it is
 
 ## Installation
 
@@ -38,7 +41,7 @@ pip install datarecord[remote]   # with records on S3
 
 The package does not yet declare `mathspec`, which is not on PyPI: install it alongside from [GitHub](https://github.com/energy-models/mathspec), at the commit `pixi.toml` pins.
 
-## A taste
+## Example
 
 ```python
 from datarecord import Workspace
@@ -51,19 +54,19 @@ record.attributes["p_max_pu"].df()  # long value rows, one per value
 record.flags(ctype="Generator")  # which axes each attribute uses
 ```
 
-Every value is a DuckDB relation — a plan, not data. Nothing is read until you fetch it, with `.df()`, `.pl()` or `.to_arrow_table()`.
+Every read returns a DuckDB relation (a query that has not run yet). DuckDB reads the files only when you call `.df()`, `.pl()` or `.to_arrow_table()`.
 
-Records stack, and a `WorkingRecord` accumulates edits that become one layer when written as a child:
+To branch a scenario, you stage edits on a `WorkingRecord`, and `store.commit` writes them as one child layer:
 
 ```python
 from datarecord import WorkingRecord
 
 w = WorkingRecord(revision.record)
 w.set("p_nom", 150.0, entity=["wind1", "wind2"])
-child = store.commit(w)  # a child of `revision`, holding the edits
+child = store.commit(w)  # a child of `revision`, with the edits
 ```
 
-See [Usage](https://energy-models.github.io/datarecord/usage/) for the rest.
+See the [how-to guides](https://energy-models.github.io/datarecord/howto/) for the rest.
 
 ## Development
 

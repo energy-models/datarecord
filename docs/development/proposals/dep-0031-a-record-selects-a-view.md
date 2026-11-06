@@ -4,18 +4,18 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-# DEP 31: a record selects a view of its labels
+# DEP 31: `select` returns a view of a record's labels
 
 | DEP      | 31                                                                                                                                                                             |
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Title    | a record selects a view of its labels                                                                                                                                          |
+| Title    | `select` returns a view of a record's labels                                                                                                                                   |
 | Author   | Jonas Hörsch                                                                                                                                                                   |
 | Status   | Implemented (2026-11-04)                                                                                                                                                       |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md), [DEP 23](dep-0023-multi-dims.md), [DEP 24](dep-0024-categories-are-enum-dimensions.md) |
 | Created  | 2026-11-02                                                                                                                                                                     |
 | Version  | Unreleased                                                                                                                                                                     |
 
-The design landed in [selecting](../../reference/selecting.md), [select a view](../../howto/select-a-view.md) and [open questions](../../about/open-questions.md), which win where they and this DEP differ.
+The design landed in [selecting](../../reference/selecting.md), [select a view](../../howto/select-a-view.md) and [open questions](../../about/open-questions.md). Where they and this DEP differ, follow those pages.
 
 ## Abstract
 
@@ -49,7 +49,7 @@ class Selection:  # a RecordLike: schema, dims, properties, attributes, flags
 
 ### Keywords and values
 
-A keyword names a dim, as in `set`. A keyword for a multi-dim's coordinate that is no dim, such as `from=`, narrows the tuples. Any other keyword names a property, which narrows its subject to the labels whose value, default applied, is selected. A NULL value is never selected. Coordinate and property keywords never squeeze, so their values are stored as lists. `select` refuses a property or coordinate name that two subjects declare, and a multi-dim's own name.
+A keyword is a dim's name, as in `set`. A keyword for a multi-dim's coordinate that is no dim, such as `from=`, narrows the tuples. Any other keyword is a property's name, which narrows its subject to the labels whose value, default applied, is selected. A NULL value is never selected. Coordinate and property keywords never squeeze, so their values are stored as lists. `select` refuses a property or coordinate name that two subjects declare, and a multi-dim's own name.
 
 | Value                                     | Selects                                              | The dim           |
 | ----------------------------------------- | ---------------------------------------------------- | ----------------- |
@@ -74,7 +74,7 @@ To squeeze `d` at the label `l`, `select` keeps `l` alone, so everything that re
 - `d` leaves the schema, with its axis and its properties.
 - A property that refers to `d` goes. A `default_by` keyed on it applies its entry for `l` as the default, and the keys before it still override.
 - Where a `default_by` lists `l` and a kept label is NULL on the property, `select` refuses the squeeze, because the label's value would change. The caller writes `[l]`.
-- A multi-dim that draws on `d` loses that coordinate, and one left with no coordinate is squeezed with it.
+- A multi-dim with a coordinate on `d` loses that coordinate, and one left with no coordinate is squeezed with it.
 - An attribute over `d` keeps its rows at `l` and those NULL on `d`, settled along `d` alone, without the column. One over squeezed dims alone is one value over no dim.
 - `partial` and every `Flags` lose `d`.
 
@@ -84,12 +84,12 @@ Any dim squeezes, and a reader that needs one refuses a selection without it.
 
 A selection keeps every axis closed under reference, as the writer keeps a layer's:
 
-- A label whose property, default applied, names a dropped label goes. A NULL stays.
-- A tuple that names a dropped label goes, and the labels it names stay.
-- This repeats until nothing goes, so `country` reaches a bus through `bus.state` and `state.country`.
-- An attribute row that names a dropped label, in a column or a struct field, goes. A row NULL there stays.
+- A label whose property, default applied, is a dropped label goes. A NULL stays.
+- A tuple that contains a dropped label goes, and its other labels stay.
+- This repeats until nothing goes, so dropping a `country` drops a bus through `bus.state` and `state.country`.
+- An attribute row that contains a dropped label, in a column or a struct field, goes. A row NULL there stays.
 
-Nothing flows the other way: a dim keeps a label nothing kept refers to. A removal follows the same rule, except that a removal refuses where a selection drops the referring label.
+Propagation never runs the other way: a dim keeps a label even where no kept label refers to it. A removal follows the same rule, except that a removal refuses where a selection drops the referring label.
 
 ### Laziness and layers
 
@@ -105,15 +105,15 @@ A selection writes nothing, and `WorkingRecord` refuses it. Over a `WorkingRecor
 
 ## Rationale
 
-Selection belongs to the record because its rules are the schema's: what refers to what, which tuples name a label and how a NULL broadcasts. A tool restating them restates the format.
+Selection belongs to the record because the schema sets its rules: what refers to what, which tuples contain a label and how a NULL broadcasts. A tool that restated them would duplicate rules that the format already sets.
 
-One label squeezes, as in xarray, for every reader. A rule that squeezed for one reader and not another would make one call two selections.
+One label squeezes its dim for every reader, as in xarray. If it squeezed for one reader and not another, one call would give two selections.
 
-`labels` records the request, which alone rebuilds the selection, so propagation stays derived.
+`labels` records the request, and the request alone rebuilds the selection, so datarecord derives propagation and never stores it.
 
 Propagation never runs back from a dropped label. Dropping a carrier nobody has would drop labels nobody selected.
 
-`lift` knows the labels asked for and the base's schema, not what a value means. Which results a subset may write stays the reader's rule.
+`lift` uses only the labels asked for and the base's schema, not what a value means. The reader decides which results a subset may write.
 
 ## Usage
 
@@ -144,4 +144,4 @@ record.select(period=2030).select(carrier=["AC"]).labels
 - Whether a multi-dim left with one coordinate reads as that dim.
 - Editing through a selection, staging at the base's coordinates through `lift`.
 - A selection whose narrowed axes follow a `WorkingRecord`'s edits, and registering a selection as DuckDB views.
-- Whether propagation applies a default that names no live label ([open questions](../../about/open-questions.md)).
+- Whether propagation applies a default that is not a live label ([open questions](../../about/open-questions.md)).

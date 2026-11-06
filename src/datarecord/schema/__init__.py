@@ -9,12 +9,12 @@ hold, and loads from and dumps to a layer's `manifest.json`.
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-- [dims and labels](https://energy-models.github.io/datarecord/design/model/dims/)
-- [properties and categories](https://energy-models.github.io/datarecord/design/model/properties/)
-- [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-- [attributes](https://energy-models.github.io/datarecord/design/model/attributes/)
-- [the package](https://energy-models.github.io/datarecord/design/package/)
+- [the schema](https://energy-models.github.io/datarecord/reference/schema/)
+- [dims and labels](https://energy-models.github.io/datarecord/reference/data-model/)
+- [properties and categories](https://energy-models.github.io/datarecord/reference/data-model/#properties)
+- [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+- [attributes](https://energy-models.github.io/datarecord/reference/data-model/#attributes)
+- [the package](https://energy-models.github.io/datarecord/development/package/)
 """
 
 from datarecord.schema.schema import Schema

@@ -6,9 +6,9 @@
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+- [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
 
 import json
@@ -68,8 +68,8 @@ def test_union_all_by_name_folds_every_relation_by_name(store):
 
     Notes
     -----
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
     con = store.workspace.con
     rels = [con.sql("SELECT 1 AS x, 'a' AS y"), con.sql("SELECT 2 AS x")]
@@ -87,8 +87,8 @@ def keys(revision):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     df = revision.record._fold.owner_map.df()
     return {(r["entity"], str(r.attribute)) for _, r in df.iterrows()}
@@ -103,7 +103,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     assert Path(store.resolved_dir(parent.id), "owner_map.parquet").exists()
     assert Path(store.dim_owners_uri(parent.id)).exists()
@@ -113,7 +113,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     # The cache shares the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
-    # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/design/layers/removal/).
+    # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/reference/layers/#removing-labels).
     assert not Path(store.layer_dir(parent.id), "owner_map").exists()
     # The globs the fold and `Record.at` actually use must not reach a
     # cached file.
@@ -170,7 +170,7 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropp
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root_layer = empty_root(store, schema())
     write_component(root_layer, "Generator", [{"entity": "wind"}])
@@ -220,7 +220,7 @@ def test_removing_a_component_removes_all_its_attributes(ac_dc_root):
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     parent = ac_dc_root
     before = {k for k in keys(parent) if k[0] == "Norway Gas"}
@@ -251,7 +251,7 @@ def test_a_removed_cache_falls_back_to_the_fold(store, parent):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     child_layer = empty_child(parent)
     write_attribute(child_layer, "p_min_pu", [{"entity": "Norway Gas", "value": 0.1}])
@@ -274,8 +274,8 @@ def test_a_record_with_no_manifest_folds(store):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [one schema per record](https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     revision = empty_root(store, Schema()).commit()
     assert revision.record.schema.dims == ()
@@ -334,7 +334,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
 
     Notes
     -----
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
+    - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
     """
     names, snapshots = ["wind", "solar"], 200
     base = empty_root(
@@ -381,7 +381,7 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     base = empty_root(
         store,
@@ -475,8 +475,8 @@ def test_a_broadcast_reaches_every_label_a_named_row_leaves(
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
     """
     base = empty_root(store, entity_series_schema).commit()
     w = WorkingRecord(base.record)
@@ -520,8 +520,8 @@ def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
     """
     base = empty_root(
         store,
@@ -568,8 +568,8 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     base = empty_root(store, entity_series_schema).commit()
     root = WorkingRecord(base.record)
@@ -602,7 +602,7 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(sto
 
     Notes
     -----
-    - [a dim outside partial](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
+    - [a dim outside partial](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
     """
     base = empty_root(
         store,
@@ -669,7 +669,7 @@ def test_a_widening_child_splits_its_parents_rows_by_their_labels(store, materia
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
     """
     root = _scenario_root(store, materialised=materialised)
     before = _p_max_pu(root)
@@ -710,8 +710,8 @@ def test_a_node_reads_the_same_whichever_descendant_widens(store):
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
-    - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
     """
     narrow = schema(partial={"period", "connection"})
     layer = empty_root(store, narrow)
@@ -764,8 +764,8 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
 
     def q_over(*dims):
@@ -802,8 +802,8 @@ def test_a_label_removed_along_a_dim_joining_partial_names_no_row(
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     node = _scenario_root(store, materialised=False)
     if remover == "parent":
@@ -917,8 +917,8 @@ def test_a_widening_of_partial_reads_what_the_narrower_layers_wrote(store, build
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     read, expected = build(store)
     assert read == expected, build.__doc__
@@ -929,7 +929,7 @@ def test_a_layer_leaving_a_dim_outside_partial_unfilled_is_refused(store):
 
     Notes
     -----
-    - [a dim outside partial](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
+    - [a dim outside partial](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
     """
     layer = empty_root(store, schema(partial={"period", "connection"}))
     write_component(layer, "Generator", [{"entity": "gas"}])

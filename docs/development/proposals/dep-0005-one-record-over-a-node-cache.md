@@ -16,7 +16,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Version       | v0.1.0a1                                                                                |
 | Superseded-By | [DEP 19](dep-0019-one-record-and-a-package-layout.md) (its `Record` over a `NodeCache`) |
 
-The design landed in [the fold](../../reference/resolution.md) and [the `RecordLike` protocol](../../reference/record.md), which win where they and this DEP differ.
+The design landed in [the fold](../../reference/resolution.md) and [the `RecordLike` protocol](../../reference/record.md). Where they and this DEP differ, follow those pages.
 
 ## Abstract
 
@@ -48,11 +48,11 @@ Over one source the fold is a scan. It computes `flags` in its ownership `GROUP 
 
 ## Rationale
 
-`tools/` builds against narwhals frames, so keeping `NodeCache` and `Record` apart keeps that interface. A framework object still satisfies the protocol structurally, so the protocol stays and takes the longer name, which states "anything shaped like a record".
+`tools/` builds against narwhals frames, so keeping `NodeCache` and `Record` apart keeps that interface. A framework object still satisfies the protocol structurally, so the protocol stays and takes the longer name, `RecordLike`, for "anything shaped like a record".
 
 Two arguments for keeping `DirectoryRecord` fail. A one-source fold leaves no owner map on the connection, because a `DirectorySource`'s id derives from its URI and nothing is created: five tables before, five after. And a directory copied out of any tree, with no `revisions` row, folds identically, because the fold needs a layer layout and not a node.
 
-The change withdraws a design property: a directory is now read with resolution. If reading it as a one-layer record is wrong, it is wrong here. `DirectoryRecord.flags` memoised per type, so the first call favours the fold and the tenth the cache.
+The change withdraws a design property: a directory is now read with resolution. If reading it as a one-layer record is wrong, it is wrong here. `DirectoryRecord.flags` memoised per type, so the fold is faster on the first call and the cache on the tenth.
 
 ## Implementation notes
 
