@@ -1227,8 +1227,8 @@ def packed(
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     over = schema.over(multi)
     struct = schema.duck_type(schema.dimensions[multi])
@@ -1238,7 +1238,7 @@ def packed(
     if missing:
         msg = (
             f"{multi!r} is keyed by {list(over)}, and {missing} was not given; "
-            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
+            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
         )
         raise ValueError(msg)
     fields = {
@@ -1255,7 +1255,7 @@ def unpacked(schema: Schema, multi: str, rel: DuckDBPyRelation) -> DuckDBPyRelat
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     if multi not in rel.columns or multi not in schema.multi_dims:
         return rel

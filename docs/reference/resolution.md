@@ -138,6 +138,14 @@ A dim outside `partial` is in no key, so the fold reads none of its labels.
 The read drops each row that has a removed label on such a dim, or a removed tuple of such a multi-dim.
 A removed label is one that a layer's restatement dropped and the revision's axis lacks.
 
+Take `partial = {"entity"}`, a root with `p_max_pu` for wind at snapshots 0, 1 and 2, and a child that removes snapshot 2:
+
+<figure class="diagram">
+--8<-- "docs/static/resolution-labels-outside.svg"
+</figure>
+
+The child writes no `p_max_pu` file, yet the read drops the root's row at snapshot 2 and returns its other two rows.
+
 With `connection` outside `partial`, a connection attribute's key is the attribute's name alone.
 Removing a tuple then removes its values at read, as it does for a multi-dim in `partial` at the fold.
 

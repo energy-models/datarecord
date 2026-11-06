@@ -43,7 +43,9 @@ the design enhancement proposals (see
 - A tool's page states only what the tool reads from a record and what it
   writes back. How PyPSA builds or solves a network is PyPSA's documentation.
 - An open question goes on `docs/about/open-questions.md`, not on the page
-  that raises it.
+  that raises it. Its heading is the question itself, ending in a question
+  mark, and a settled question keeps that form with the answer as the first
+  sentence under it.
 
 ## The running example
 

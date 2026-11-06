@@ -316,7 +316,7 @@ def uncovered(
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     for mask in named_sets(staged, columns):
         part = staged.filter(names_exactly(columns, mask))

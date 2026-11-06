@@ -13,13 +13,13 @@ This page shows how to install datarecord for use and for development. datarecor
 === "pixi"
 
     ```bash
-    pixi add --pypi datarecord
+    pixi add --pypi "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
 === "uv"
 
     ```bash
-    uv add datarecord
+    uv add "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
 === "conda"
@@ -27,22 +27,18 @@ This page shows how to install datarecord for use and for development. datarecor
     ```bash
     conda create -n datarecord "python>=3.12" pip
     conda activate datarecord
-    pip install datarecord
+    pip install "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
 === "pip"
 
     ```bash
-    pip install datarecord
+    pip install "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
-Two extras add optional parts: `datarecord[pypsa]` adds the PyPSA tool, and `datarecord[remote]` adds records on S3.
+Two extras add optional parts. Write `datarecord[pypsa]` in place of `datarecord` for the PyPSA tool, and `datarecord[remote]` for records on S3.
 
-datarecord reads its dtypes from mathspec, which is not on PyPI yet. If your installer does not install mathspec with datarecord, install it from GitHub at the commit that `rev` in [`pixi.toml`](https://github.com/energy-models/datarecord/blob/main/pixi.toml) pins:
-
-```bash
-pip install "mathspec @ git+https://github.com/energy-models/mathspec.git@<rev>"
-```
+Each form installs from GitHub, because the release on PyPI, `0.1.0a1`, predates the design these pages describe. The install brings `mathspec` with it, at the commit that `pyproject.toml` pins, so there is nothing to install beside it.
 
 ## Install for development
 

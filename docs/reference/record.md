@@ -119,6 +119,12 @@ A record you never close leaves its tables in place for the workspace's life, so
 `settle` expands each NULL on a coordinate in `labels` over the labels passed, and drops a row with a label outside them.
 At each point it keeps the row that leaves no coordinate in `labels` NULL that another row there sets.
 
+<figure class="diagram">
+--8<-- "docs/static/record-settle.svg"
+</figure>
+
+Over the generators `wind` and `gas`, the NULL row gives each a row at `snapshot` NULL, beside `wind`'s series.
+
 A coordinate left out of `labels` stays as written, and its NULL counts as one more label:
 
 ```python

@@ -328,6 +328,6 @@ class Tool(Protocol):
         Notes
         -----
         - [the record format](https://energy-models.github.io/datarecord/reference/format/)
-        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#a-results-layer)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         ...
