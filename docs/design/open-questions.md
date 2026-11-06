@@ -26,7 +26,7 @@ A [results layer](tools/pypsa.md#writing-results) replaces the SubNetworks of it
 
 ### Naming a label by a property's value as the dim's own keyword
 
-A multi-period record labels its snapshots by position, and [`select`](use/selecting.md#keywords-and-values) matches `snapshot=` against those labels. Taking a timestamp there, matched against `snapshot.timestep`, would need a rule for when a keyword reads a property rather than the label.
+A record may label a dim by position and carry what a label means as a property, such as a snapshot's timestamp as `snapshot.timestep`, and [`select`](use/selecting.md#keywords-and-values) matches `snapshot=` against the positions. Taking a timestamp there would need a rule for when a keyword reads a property rather than the label. PyPSA's multi-period snapshots need none: they are a [multi-dim](model/multi-dims.md) whose `timestep` is a coordinate keyword.
 
 ### Whether a multi-dim left with one coordinate reads as that dim
 
@@ -86,9 +86,9 @@ A [selection](use/selecting.md#what-goes-with-a-dropped-label) applies the defau
 
 PyPSA's `partial` gains `bus` so a layer patches one bus's `v_nom`, and every `partial` coordinate is paid for by every read ([keep it small](layers/tree.md#partial-the-granularity-of-an-override)). Measuring it on a pypsa-eur-sized record would settle it.
 
-### Whether a custom bus column can be a property
+### Whether `partial` may name a coordinate of a multi-dim
 
-It is an attribute over `bus` today, so custom `Bus.country` beside custom `Generator.country` is [one attribute over two dims](tools/pypsa.md#custom-columns) and refused. Placing it as `bus.country` would dissolve the one remaining custom-column clash, but needs a rule telling a custom property from a custom attribute.
+`partial` may name [a multi-dim](model/multi-dims.md#attributes-over-a-multi-dim) whole, and a layer owns an attribute along `attribute.dims ∩ partial` ([partial](layers/tree.md#partial-the-granularity-of-an-override)). So `period` in `partial` does not reach a series over `snapshot`, the multi-dim over `(period, timestep)`, and a per-period, myopic re-solve [restates the whole series](tools/pypsa.md#writing-results), every other period's values included. Allowing a coordinate would key `p` by `(attribute, connection, period)`, so the re-solve restates its own period's series only. The cost is a wider fold key on every read of every attribute over `snapshot`.
 
 ### Whether selector keywords need a qualified form
 

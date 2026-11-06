@@ -31,6 +31,36 @@ It returns a `Requirements` that is falsy when the record is usable.
 A stored attribute that a type does not take, such as `p_max_pu` on a load, is left out of the build and listed in `ignored`, and the result stays falsy.
 `build` raises `UnsupportedRecordError` for a record it cannot build in full.
 
+`build` and `verify` take a [selection](reading.md#selecting-a-view) of a record like any record, so a network is built from some of its labels ([design](../design/tools/pypsa.md#selecting-before-a-build)):
+
+```python
+PyPSA.build(record.select(period=2030))  # single-period, its active entities
+PyPSA.build(record.select(period=[2030, 2040]))  # multi-period, those two
+PyPSA.build(record.select(period=slice(2030, None)))  # 2030 onwards, multi-period
+PyPSA.build(record.select(snapshot=slice("2013-02", "2013-03")))  # Feb and March
+PyPSA.build(record.select(timestep=["2013-02-01 06:00"]))  # in every period
+PyPSA.build(record.select(scenario=["low", "high"]))  # weights renormalised
+PyPSA.build(record.select(weather_year=2012))  # the member at 2012
+PyPSA.build(record.select(bus=["north", "south"]))  # and what attaches to them
+PyPSA.build(record.select(carrier=["AC", "wind"]))  # AC buses, wind entities
+```
+
+One label of `period`, `scenario` or the record's dim of its own squeezes the dim, and a list keeps it.
+Any other dim the network keeps, `snapshot`, `timestep`, `bus`, `entity` or `carrier`, takes a list, a slice or a partial date string such as `"2013-02"`, and one label of it is refused: write `snapshot=["2013-02-01 06:00"]`.
+A multi-period record's snapshots are selected through `timestep` and `period`.
+On top of the selection, `build` drops a period left without snapshots, an entity attached to a dropped bus and, over fewer periods than the record holds, an entity active in none of them.
+
+A network built from a selection writes its results over that selection, which puts them back at the labels it squeezed:
+
+```python
+view = record.select(period=2030)
+n = PyPSA.build(view)
+n.optimize()
+results = PyPSA.to_datarecord(n, ws.con, results_only=True, base=view)  # at 2030
+```
+
+Results of fewer scenarios than the record holds are refused where they hold a first-stage value such as `p_nom_opt`, since that value is one for every scenario.
+
 ## Buses and carriers
 
 PyPSA's buses and carriers are dims.
@@ -46,6 +76,7 @@ record.attributes["marginal_price"]  # bus | snapshot | scenario | ..., a result
 ```
 
 A property is named by its subject, so `x` is a line's reactance and `bus.x` is a bus's coordinate.
+A column PyPSA does not know is a property where it holds text, such as pypsa-eur's `Bus.country` as `bus.country`, and an attribute where it holds numbers, such as `Bus.nom_max_onwind_2050` ([design](../design/tools/pypsa.md#custom-columns)).
 `entity.carrier` and `bus.carrier` are `{"one_of": "carrier"}`, so they refer to `carrier`:
 
 ```python
@@ -65,6 +96,18 @@ A bus and a load may share a name, since they are labels of two dims.
 `to_datarecord` adds every carrier that a component or bus names and `n.carriers` lacks, and it stores PyPSA's `""` carrier as NULL.
 `verify` reports an entity attached to no bus.
 
+## Writing an edited network over its parent
+
+A network edited in PyPSA is written back whole as a child of the record it was built from, with that record as `base`:
+
+```python
+n = PyPSA.build(rev.record)
+n.c.Generator.static.loc["wind1", "p_nom_extendable"] = False  # PyPSA's default
+edited = store.commit(PyPSA.to_datarecord(n, ws.con, base=rev.record), parent=rev)
+```
+
+The layer holds what differs from `base`, a value back at its default included, so `base`'s value does not show through ([design](../design/tools/pypsa.md#writing-results)).
+
 ## Solving and writing results back
 
 A result is an attribute.
@@ -82,6 +125,51 @@ solved.record.attributes["marginal_price"]  # a child of solved reads it too
 PyPSA.build(solved.record)  # marginal_price is in the network
 ```
 
-`base` is required with `results_only` and refused without it.
+`base` is required with `results_only`.
 A SubNetwork is a label of the dim `sub_network`, `0`, `1`, … as PyPSA names it.
 The results layer restates that axis with this solve's SubNetworks and leaves the entity axis to `base`, so a re-solve leaves none stale ([design](../design/tools/pypsa.md#writing-results)).
+
+## Collections
+
+`PyPSACollection` writes and builds a `pypsa.NetworkCollection`, each member through `PyPSA`, as a full export or as results over `base`.
+The name of the collection's index is its dim.
+A myopic solve, one network per investment period, is a collection over `period`, and its layer is the one a perfect-foresight solve of `base` would write:
+
+```python
+from datarecord.tools.pypsa import PyPSACollection
+
+members = PyPSACollection.build(inputs.record)  # one network per period
+for n in members.networks:
+    n.optimize(multi_investment_periods=True)
+results = PyPSACollection.to_datarecord(
+    members, ws.con, results_only=True, base=inputs.record
+)
+solved = store.commit(results, parent=inputs)
+```
+
+Two members that hold different static values for one entity active in both, such as `p_nom_opt`, are refused over `period`.
+Networks solved apart, such as a sweep over weather years, are a collection over a dim of your own.
+An attribute whose values differ across the members varies over it, one whose values agree is written once, as declared, and `build` returns a `NetworkCollection` indexed by it:
+
+```python
+members = pd.Series({2012: n_2012, 2013: n_2013}).rename_axis("weather_year")
+layer = PyPSACollection.to_datarecord(pypsa.NetworkCollection(members), ws.con)
+record = store.commit(layer, parent=None).record
+record.attributes["p_nom_opt"]  # a row per entity and weather_year, where they differ
+PyPSACollection.build(record)  # a NetworkCollection over weather_year
+PyPSA.build(record)  # refused: a dim of its own is a collection's
+```
+
+A stochastic network holds its scenarios itself, so a collection over `scenario` is refused.
+A re-solve of some members writes their results at their labels alone and leaves the others' to `base`, whether as a collection of a selection or as one network over the selection at its label:
+
+```python
+view = record.select(weather_year=2013)
+n = PyPSA.build(view)
+n.optimize()
+results = PyPSA.to_datarecord(n, ws.con, results_only=True, base=view)  # at 2013
+```
+
+A record has one dim of its own, since collections do not nest: a collection over another is refused over a `base` that has one.
+A member holds the snapshots and components the first one does, its axes join the others' in one order, and a label's properties agree across the members holding it.
+Every check runs when `to_datarecord` is called ([design](../design/tools/pypsa.md#a-collection)).

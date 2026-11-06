@@ -58,11 +58,11 @@ from datarecord.protocols import RecordLike
 from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import owner_keys
-from datarecord.resolve.owner_map import named_sets, names_exactly, unsettled
+from datarecord.resolve.owner_map import named_sets, names_exactly, uncovered, unsettled
 from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
-from datarecord.schema.schema import LONG_TAIL, Schema
+from datarecord.schema.schema import LONG_TAIL, Schema, packed, unpacked
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection
@@ -1445,7 +1445,7 @@ class WorkingRecord(Record):
             if d in present:
                 return col(d)
             if d in self.schema.multi_dims_of(attribute):
-                return _packed(self.schema, d, present, dims).alias(d)
+                return packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
         coordinates = self._staged_coordinates(attribute)
@@ -1627,7 +1627,7 @@ class WorkingRecord(Record):
         coordinate the base holds labels of carries nothing.
 
         A carried row is expanded along the whole-owned dims it leaves NULL, and
-        every coordinate a staged row reaches is dropped (`_uncovered`), so no
+        every coordinate a staged row reaches is dropped (`uncovered`), so no
         fill sits beside a staged row neither of which is the more specific.
         A staged row leaving a whole-owned dim NULL is itself written out along
         the labels the base rows it crosses name there (`_spread`).
@@ -1675,7 +1675,7 @@ class WorkingRecord(Record):
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
         base = self._base.attributes[attribute]
-        carried = _uncovered(_reaching(base, keys, scope, axes), staged, coordinate)
+        carried = uncovered(_reaching(base, keys, scope, axes), staged, coordinate)
         self._insert(carried, table, {})
         spread = _spread(self.con.table(table), base, scope, present, coordinate)
         if spread is not None:
@@ -1974,7 +1974,7 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
         return rel.project(
-            _packed(self.schema, multi, rel.columns, {}).alias(multi),
+            packed(self.schema, multi, rel.columns, {}).alias(multi),
             *(col(c) for c in rel.columns if c not in over),
         )
 
@@ -2238,51 +2238,10 @@ def _flat_coordinates(schema: Schema, attribute: str) -> dict[str, str]:
     return flat
 
 
-def _packed(
-    schema: Schema,
-    multi: str,
-    present: Container[str],
-    dims: Mapping[str, Any],
-) -> Expression:
-    """The struct column of the multi-dim `multi`, packed from flat coordinates.
-
-    A field is the column of that name where the relation carries one, else
-    the caller's keyword. No field given at all is a NULL struct, every tuple.
-
-    Raises
-    ------
-    ValueError
-        Where some fields are given and others not: a struct NULL in some
-        fields and not all matches no tuple.
-
-    Notes
-    -----
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    """
-    over = schema.over(multi)
-    struct = _column_type(schema, multi)
-    missing = [c for c in over if c not in present and c not in dims]
-    if len(missing) == len(over):
-        return lit(None).cast(struct)
-    if missing:
-        msg = (
-            f"{multi!r} is keyed by {list(over)}, and {missing} was not given; "
-            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
-        )
-        raise ValueError(msg)
-    return fn.struct_pack(
-        **{
-            c: col(c) if c in present else lit(dims[c]).cast(_column_type(schema, d))
-            for c, d in over.items()
-        }
-    ).cast(struct)
-
-
 def _unpacked(
     schema: Schema, multi: str, rel: DuckDBPyRelation, call: str
 ) -> DuckDBPyRelation:
-    """`rel` with the struct column of the multi-dim `multi`, where it carries one, spelled as a column per coordinate.
+    """`rel` with the struct column of the multi-dim `multi`, where it carries one, spelled as a column per coordinate (`unpacked`), checked as a caller gave it.
 
     Raises
     ------
@@ -2309,10 +2268,7 @@ def _unpacked(
             f"tuples of {multi!r} as a struct of its coordinates {list(over)}"
         )
         raise ValueError(msg)
-    return rel.project(
-        *(col(multi)[c].alias(c) for c in over),
-        *(col(c) for c in rel.columns if c != multi),
-    )
+    return unpacked(schema, multi, rel)
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
@@ -2408,28 +2364,6 @@ def _reaching(
             )
         )
     return _most_named(rel, (*scope, *axes), base.columns)
-
-
-def _uncovered(
-    rel: DuckDBPyRelation, staged: DuckDBPyRelation, columns: Sequence[str]
-) -> DuckDBPyRelation:
-    """`rel` without the rows a row of `staged` reaches, equal or NULL on each of `columns`.
-
-    Split by which `columns` `staged` leaves NULL, each part an equi-join over
-    the columns it names, as `_delete_covered` does.
-
-    Notes
-    -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    """
-    for mask in named_sets(staged, columns):
-        part = staged.filter(names_exactly(columns, mask))
-        rel = rel.set_alias("r").join(
-            part.set_alias("s"),
-            null_safe("r", "s", [c for c in columns if c in mask]),
-            how="anti",
-        )
-    return rel
 
 
 def _spread(
