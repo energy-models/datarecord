@@ -25,6 +25,7 @@ from datarecord.resolve.fold import read_dim_owners
 from datarecord.resolve.owner_map import _fold_map
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import Schema
+from datarecord.store.manifest import LayerFiles, Manifest
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -38,22 +39,20 @@ from tests.fixtures import (
     write_component,
     write_connections,
     write_scenarios,
-    write_schema,
 )
 
 
 @pytest.fixture
 def parent(store):
     """A materialised root of three generators, each with two attributes."""
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
+    layer = empty_root(store, schema())
     names = ["Manchester Wind", "Norway Wind", "Norway Gas"]
-    write_component(revision, "Generator", [{"entity": n} for n in names])
+    write_component(layer, "Generator", [{"entity": n} for n in names])
     for attribute, value in (("p_max_pu", 0.5), ("marginal_cost", 10.0)):
         write_attribute(
             layer, attribute, [{"entity": n, "value": value} for n in names]
         )
+    revision = layer.commit()
     revision.materialise()
     return revision
 
@@ -184,19 +183,21 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropp
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    write_schema(schema(), store)
-    root = empty_root(store)
-    write_component(root, "Generator", [{"entity": "wind"}])
-    write_axis(root, "bus", [{"bus": "north"}])
-    write_connections(root, [{"entity": "wind", "bus": "north"}])
-    write_scenarios(root, [{"scenario": "low"}, {"scenario": "high"}])
-    middle = empty_child(root)
-    write_component(middle, "Generator", [{"entity": "gas"}])
-    leaf = empty_child(middle)
-    write_axis(leaf, "bus", [{"bus": "south"}])
+    root_layer = empty_root(store, schema())
+    write_component(root_layer, "Generator", [{"entity": "wind"}])
+    write_axis(root_layer, "bus", [{"bus": "north"}])
+    write_connections(root_layer, [{"entity": "wind", "bus": "north"}])
+    write_scenarios(root_layer, [{"scenario": "low"}, {"scenario": "high"}])
+    root = root_layer.commit()
+    middle_layer = empty_child(root)
+    write_component(middle_layer, "Generator", [{"entity": "gas"}])
+    middle = middle_layer.commit()
+    leaf_layer = empty_child(middle)
+    write_axis(leaf_layer, "bus", [{"bus": "south"}])
     if dropped:
-        drop_entities(leaf, dropped)
-    reader = empty_child(leaf)
+        drop_entities(leaf_layer, dropped)
+    leaf = leaf_layer.commit()
+    reader = empty_child(leaf).commit()
     full = _coords(store, reader)
 
     nodes = {"root": root, "middle": middle}
@@ -239,12 +240,11 @@ def test_last_writer_wins_per_key(store, parent):
     assert "layer_uuid" not in record._coords.axes["entity"].columns
     assert ("Manchester Wind", "p_max_pu") in keys(parent)
 
-    child = empty_child(parent)
+    child_layer = empty_child(parent)
     write_attribute(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
+        child_layer, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}]
     )
+    child = child_layer.commit()
     df = child.record._fold.owner_map.df()
 
     def owner_of(name, attr):
@@ -271,9 +271,10 @@ def test_removing_a_component_removes_all_its_attributes(store, ac_dc):
     assert len(before) > 1
     assert "Norway Gas" in entity_names(parent)
 
-    child = empty_child(parent)
-    drop_entities(child, ["Norway Gas"])
-    sibling = empty_child(parent)
+    child_layer = empty_child(parent)
+    drop_entities(child_layer, ["Norway Gas"])
+    child = child_layer.commit()
+    sibling = empty_child(parent).commit()
     assert not {k for k in keys(child) if k[0] == "Norway Gas"}
     assert "Norway Gas" not in entity_names(child)
     assert "Norway Gas" in entity_names(sibling), (
@@ -296,12 +297,9 @@ def test_a_removed_cache_falls_back_to_the_fold(store, parent):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    child = empty_child(parent)
-    write_attribute(
-        store.layer_dir(child.id),
-        "p_min_pu",
-        [{"entity": "Norway Gas", "value": 0.1}],
-    )
+    child_layer = empty_child(parent)
+    write_attribute(child_layer, "p_min_pu", [{"entity": "Norway Gas", "value": 0.1}])
+    child = child_layer.commit()
     child.materialise()
     expected = keys(child)
 
@@ -317,13 +315,12 @@ def test_any_node_may_be_a_parent(store, parent):
     -----
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
     """
-    child = empty_child(parent)
+    child_layer = empty_child(parent)
     write_attribute(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
+        child_layer, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}]
     )
-    grandchild = empty_child(child)
+    child = child_layer.commit()
+    grandchild = empty_child(child).commit()
     # The child was never materialised, yet its layer resolves for the
     # grandchild all the same.
     df = grandchild.record._fold.owner_map.df()
@@ -344,7 +341,7 @@ def test_a_record_with_no_manifest_folds(store):
     - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    revision = empty_root(store)
+    revision = empty_root(store, Schema()).commit()
     assert revision.record.schema.dims == ()
 
     owner_map = revision.record._fold.owner_map
@@ -364,7 +361,10 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
     revision_id = uuid4()
-    source = ParquetLayer(revision_id, Schema(), store)
+    manifest = Manifest(
+        id=revision_id, parent=None, schema=Schema(), files=LayerFiles()
+    )
+    source = ParquetLayer(manifest, store)
     assert isinstance(source, LayerSource), (
         "structural, so no import is needed to be one"
     )
@@ -373,8 +373,6 @@ def test_a_parquet_layer_locates_a_layers_files(store):
     assert source.uri("attributes/p_nom.parquet") == (
         store.layer_dir(revision_id) + "attributes/p_nom.parquet"
     )
-    # A glob is a path like any other: the source neither parses nor validates.
-    assert source.uri("attributes/*.parquet").endswith("attributes/*.parquet")
 
 
 def _largest_intermediate(store, rel):
@@ -407,7 +405,9 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
     -----
     - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     """
-    write_schema(
+    names, snapshots = ["wind", "solar"], 200
+    base = empty_root(
+        store,
         Schema(
             dimensions={
                 "entity": {"dtype": "str"},
@@ -417,10 +417,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
             attributes={"p_max_pu": {"dtype": "float", "dims": ["entity", "snapshot"]}},
             partial=frozenset({"entity", "snapshot"}),
         ),
-        store,
-    )
-    names, snapshots = ["wind", "solar"], 200
-    base = empty_root(store)
+    ).commit()
     staged = WorkingRecord(base.record)
     staged.add("entity", names, ctype="Generator")
     staged.add("snapshot", list(range(snapshots)))
@@ -434,7 +431,7 @@ def test_a_read_joins_no_more_rows_than_the_layers_hold(store):
             }
         ),
     )
-    revision = base.child(staged.edits)
+    revision = base.store.commit(staged)
 
     rel = revision.record.attributes["p_max_pu"]
     stored = len(names) * snapshots
@@ -455,7 +452,8 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    write_schema(
+    base = empty_root(
+        store,
         Schema(
             dimensions={
                 "entity": {"dtype": "str"},
@@ -468,19 +466,17 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
             },
             partial=frozenset({"entity", "snapshot"}),
         ),
-        store,
-    )
-    base = empty_root(store)
+    ).commit()
     staged = WorkingRecord(base.record)
     staged.add("entity", ["wind", "solar"], ctype="Generator")
     staged.add("snapshot", [0, 1])
     staged.set("weight", 1.0)
     staged.set("p_max_pu", 0.5, entity="wind")
-    root = base.child(staged.edits)
+    root = base.store.commit(staged)
     staged = WorkingRecord(root.record)
     staged.set("weight", 2.0, snapshot=1)
     staged.set("p_max_pu", 0.7, snapshot=1)
-    record = root.child(staged.edits).record
+    record = root.store.commit(staged).record
 
     for plan in (
         _fold_map(record.sources, record.con, record.schema).explain().upper(),
@@ -551,8 +547,7 @@ def test_a_broadcast_reaches_every_label_a_named_row_leaves(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
-    write_schema(entity_series_schema, store)
-    base = empty_root(store)
+    base = empty_root(store, entity_series_schema).commit()
     w = WorkingRecord(base.record)
     w.add("entity", ["wind", "gas", "house"], ctype=["Generator", "Generator", "Load"])
     w.add("snapshot", [0, 1, 2, 3, 4, 5])
@@ -561,7 +556,7 @@ def test_a_broadcast_reaches_every_label_a_named_row_leaves(
     w.set("p_max_pu", 0.9)
     w.set("p_max_pu", [0.2, 0.7, 0.4, 0.6], entity="wind", snapshot=[0, 1, 2, 3])
 
-    for record in (w, base.child(w.edits).record):
+    for record in (w, base.store.commit(w).record):
         assert broadcast(record, "p_nom", "entity") == {
             ("wind",): 100.0,
             ("house",): 100.0,
@@ -597,7 +592,8 @@ def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
-    write_schema(
+    base = empty_root(
+        store,
         Schema(
             dimensions={"entity": {"dtype": "str"}, "scenario": {"dtype": "str"}},
             attributes={
@@ -609,9 +605,7 @@ def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
             },
             partial=frozenset({"entity", "scenario"}),
         ),
-        store,
-    )
-    base = empty_root(store)
+    ).commit()
     root = WorkingRecord(base.record)
     root.add("entity", ["wind", "gas"])
     root.add("scenario", ["low", "high"])
@@ -619,7 +613,7 @@ def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
     root.set("p_nom", 50.0, entity="gas")
     staged = WorkingRecord(root)
     staged.set("p_nom", 999.0, scenario="high")
-    committed = base.child(root.edits)
+    committed = base.store.commit(root)
     child = WorkingRecord(committed.record)
     child.set("p_nom", 999.0, scenario="high")
 
@@ -629,7 +623,7 @@ def test_a_deeper_broadcast_owns_its_scenario_across_named_entities(store):
         ("wind", "high"): 999.0,
         ("wind", "low"): 100.0,
     }
-    for record in (staged, child, committed.child(child.edits).record):
+    for record in (staged, child, committed.store.commit(child).record):
         assert broadcast(record, "p_nom", "entity", "scenario") == expected
 
 
@@ -646,15 +640,14 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    write_schema(entity_series_schema, store)
-    base = empty_root(store)
+    base = empty_root(store, entity_series_schema).commit()
     root = WorkingRecord(base.record)
     root.add("entity", ["wind", "gas"], ctype="Generator")
     root.add("snapshot", [0, 1, 2])
     root.set("p_max_pu", [0.2, 0.5, 0.8], snapshot=[0, 1, 2])
     staged = WorkingRecord(root)
     staged.set("p_max_pu", 0.9, entity="wind")
-    committed = base.child(root.edits)
+    committed = base.store.commit(root)
     child = WorkingRecord(committed.record)
     child.set("p_max_pu", 0.9, entity="wind")
 
@@ -666,7 +659,7 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
         ("gas", 1): 0.5,
         ("gas", 2): 0.8,
     }
-    for record in (staged, child, committed.child(child.edits).record):
+    for record in (staged, child, committed.store.commit(child).record):
         assert broadcast(record, "p_max_pu", "entity", "snapshot") == expected
 
 
@@ -686,7 +679,8 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
     -----
     - [a dim outside partial](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
     """
-    write_schema(
+    base = empty_root(
+        store,
         Schema(
             dimensions={
                 "entity": {"dtype": "str"},
@@ -698,16 +692,14 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
             },
             partial=frozenset({"entity"}),
         ),
-        store,
-    )
-    base = empty_root(store)
+    ).commit()
     root = WorkingRecord(base.record)
     root.add("entity", ["a"])
     root.add("period", [1, 2])
     root.add("snapshot", [0, 1])
     for p, s in product([1, 2], [0, 1]):
         root.set("x", 10.0 * p + s, entity="a", period=p, snapshot=s)
-    committed = base.child(root.edits)
+    committed = base.store.commit(root)
     if materialised:
         committed.materialise()
     child = WorkingRecord(committed.record)
@@ -717,7 +709,7 @@ def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(
         ("a", p, s): 99.0 if {"period": p, "snapshot": s}[named] == 1 else 10.0 * p + s
         for p, s in product([1, 2], [0, 1])
     }
-    for record in (child, committed.child(child.edits).record):
+    for record in (child, committed.store.commit(child).record):
         assert broadcast(record, "x", "entity", "period", "snapshot") == expected, (
             f"the set reaches every {null} at {named}=1, the root keeps the rest"
         )

@@ -4,24 +4,32 @@
 
 """Hand-built layers, written beside the write path rather than through it.
 
+A hand-built layer is claimed like any other, its files written directly by
+the helpers here, and `HandBuilt.commit` writes its manifest last, listing
+them under the schema the layer was started with.
+
 Notes
 -----
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+from __future__ import annotations
+
 from collections import defaultdict
 from collections.abc import Sequence
+from dataclasses import dataclass
 from itertools import product
 from pathlib import Path
 from typing import Any
+from uuid import UUID
 
 import duckdb
 import pandas as pd
 
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
-from datarecord.store.files import Files, Version
-from datarecord.store.store import Revision, Store
+from datarecord.store.manifest import LayerFiles, Manifest
+from datarecord.store.store import Claim, Revision, Store
 
 TYPES = (
     "Bus",
@@ -53,7 +61,7 @@ LONG_COLUMNS = [
 
 
 def write_attribute(
-    layer: str,
+    layer: HandBuilt,
     attribute: str,
     rows: list[dict],
     *,
@@ -68,9 +76,6 @@ def write_attribute(
     packed into the one `connection` struct column - unless `connection` says
     otherwise, for an attribute over the `bus` dim itself; `breakpoint` marks a
     piecewise-linear one; neither is the ordinary component-level scalar.
-
-    Write every file of a layer before its first read: a read freezes the
-    layer for its workspace, as a layer is write-once.
 
     Notes
     -----
@@ -92,7 +97,7 @@ def write_attribute(
     df["breakpoint"] = df["breakpoint"].astype("float64")
     df["value"] = df["value"].astype("float64")
 
-    target = Path(layer, "attributes")
+    target = Path(layer.dir, "attributes")
     target.mkdir(parents=True, exist_ok=True)
     rel = duckdb.connect().from_df(df[LONG_COLUMNS])
     if connection:
@@ -107,18 +112,18 @@ def _hashable(value: Any) -> Any:
     return tuple(value.values()) if isinstance(value, dict) else value
 
 
-def _as_written(revision: Revision, kind: str, name: str) -> pd.DataFrame:
+def _as_written(layer: HandBuilt, kind: str, name: str) -> pd.DataFrame:
     """The layer's file of `name` so far, else its parent's resolved one, else nothing.
 
     A layer restates an axis whole, so a first write in a child starts
     from what its parent resolves, properties and order included.
     """
-    path = Path(revision.store.layer_dir(revision.id), kind, f"{name}.parquet")
+    path = Path(layer.dir, kind, f"{name}.parquet")
     if path.exists():
         return pd.read_parquet(path)
-    if revision.parent is None:
+    if layer.parent is None:
         return pd.DataFrame()
-    record = revision.store.revision(revision.parent).record
+    record = layer.parent.record
     if name in record.schema.properties:
         rel = record.properties.get(name)
     else:
@@ -131,14 +136,14 @@ def _as_written(revision: Revision, kind: str, name: str) -> pd.DataFrame:
 
 
 def restate(
-    revision: Revision,
+    layer: HandBuilt,
     kind: str,
     name: str,
     rows: list[dict],
     *,
     drop: Sequence[Any] = (),
 ) -> None:
-    """Write `{kind}/{name}.parquet` of `revision`'s layer whole, as a layer restates it.
+    """Write `{kind}/{name}.parquet` of `layer` whole, as a layer restates it.
 
     It starts from `_as_written`. A row of `rows` replaces the row of its key
     in place, a new key is appended, and a key in `drop` is left out.
@@ -147,7 +152,7 @@ def restate(
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    old = _as_written(revision, kind, name)
+    old = _as_written(layer, kind, name)
     records = old.to_dict("records")
     at = {_hashable(r[name]): i for i, r in enumerate(records)}
     for row in rows:
@@ -161,19 +166,19 @@ def restate(
     kept = [r for r in records if _hashable(r[name]) not in gone]
     columns = list(dict.fromkeys([*old.columns, *(c for r in rows for c in r)]))
     frame = pd.DataFrame(kept, columns=columns)
-    target = Path(revision.store.layer_dir(revision.id), kind)
+    target = Path(layer.dir, kind)
     target.mkdir(parents=True, exist_ok=True)
     frame.to_parquet(target / f"{name}.parquet", index=False)
 
 
-def write_multi_dim(revision: Revision, multi: str, rows: list[dict]) -> None:
+def write_multi_dim(layer: HandBuilt, multi: str, rows: list[dict]) -> None:
     """Restate `dims/<multi>.parquet` with `rows`, each keyed by the struct column, a dict.
 
     Notes
     -----
     - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
-    restate(revision, "dims", multi, rows)
+    restate(layer, "dims", multi, rows)
 
 
 def unpacked(rel: Any, multi: str = "connection") -> pd.DataFrame:
@@ -191,7 +196,7 @@ def _connection(row: dict) -> dict:
     return {"connection": {"entity": row["entity"], "bus": row["bus"]}, **rest}
 
 
-def write_connections(revision: Revision, rows: list[dict]) -> None:
+def write_connections(layer: HandBuilt, rows: list[dict]) -> None:
     """Restate `dims/connection.parquet` with `rows`, each needing `entity` and `bus`.
 
     No component type - one file holds every type's rows.
@@ -201,10 +206,10 @@ def write_connections(revision: Revision, rows: list[dict]) -> None:
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
     """
-    restate(revision, "dims", "connection", [_connection(r) for r in rows])
+    restate(layer, "dims", "connection", [_connection(r) for r in rows])
 
 
-def drop_connections(revision: Revision, pairs: list[tuple[str, str]]) -> None:
+def drop_connections(layer: HandBuilt, pairs: list[tuple[str, str]]) -> None:
     """Restate `dims/connection.parquet` without the `(entity, bus)` pairs.
 
     Notes
@@ -212,42 +217,42 @@ def drop_connections(revision: Revision, pairs: list[tuple[str, str]]) -> None:
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
     """
     gone = [{"entity": e, "bus": b} for e, b in pairs]
-    restate(revision, "dims", "connection", [], drop=gone)
+    restate(layer, "dims", "connection", [], drop=gone)
 
 
-def write_component(revision: Revision, ctype: str, rows: list[dict]) -> None:
+def write_component(layer: HandBuilt, ctype: str, rows: list[dict]) -> None:
     """Restate `dims/entity.parquet` with `rows`, each an entity of type `ctype`."""
-    restate(revision, "dims", "entity", [{**r, "ctype": ctype} for r in rows])
+    restate(layer, "dims", "entity", [{**r, "ctype": ctype} for r in rows])
 
 
-def drop_entities(revision: Revision, names: list[str]) -> None:
+def drop_entities(layer: HandBuilt, names: list[str]) -> None:
     """Restate `dims/entity.parquet` without `names`.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
     """
-    restate(revision, "dims", "entity", [], drop=names)
+    restate(layer, "dims", "entity", [], drop=names)
 
 
-def write_axis(revision: Revision, dim: str, rows: list[dict]) -> None:
+def write_axis(layer: HandBuilt, dim: str, rows: list[dict]) -> None:
     """Restate `dims/<dim>.parquet` with `rows`, each carrying `dim` and its properties.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
-    restate(revision, "dims", dim, rows)
+    restate(layer, "dims", dim, rows)
 
 
-def write_scenarios(revision: Revision, rows: list[dict]) -> None:
+def write_scenarios(layer: HandBuilt, rows: list[dict]) -> None:
     """Restate `dims/scenario.parquet`; each row needs `scenario`."""
-    write_axis(revision, "scenario", rows)
+    write_axis(layer, "scenario", rows)
 
 
-def write_periods(revision: Revision, rows: list[dict]) -> None:
+def write_periods(layer: HandBuilt, rows: list[dict]) -> None:
     """Restate `dims/period.parquet`; each row needs `period`."""
-    write_axis(revision, "period", rows)
+    write_axis(layer, "period", rows)
 
 
 def example(load):
@@ -317,26 +322,76 @@ def rename_components(n, ctype: str, suffix: str) -> None:
         frame.rename(columns=renamed, inplace=True)
 
 
-def empty_root(store: Store) -> Revision:
-    """A new root revision, for a test to hand-write its layer into.
+@dataclass(frozen=True)
+class HandBuilt:
+    """A claimed layer a test writes the files of directly, a revision once committed.
 
-    No public API makes an empty revision; this is the store's private
-    revision-file write. Its layer holds nothing, the axis of a dim with `one_of`
-    included: a label a property names is one a test adds.
-
-    Write every file of a layer before its first read: a read freezes the
-    layer for its workspace, as a layer is write-once.
+    Attributes
+    ----------
+    schema
+        What `commit` writes into the manifest.
     """
-    return store._create(None)
+
+    claim: Claim
+    schema: Schema
+
+    @property
+    def id(self) -> UUID:
+        return self.claim.id
+
+    @property
+    def store(self) -> Store:
+        return self.claim.store
+
+    @property
+    def dir(self) -> Path:
+        return Path(self.store.layer_dir(self.id))
+
+    @property
+    def parent(self) -> Revision | None:
+        """The revision the layer folds over, which a first restatement starts from."""
+        return (
+            None
+            if self.claim.parent is None
+            else self.store.revision(self.claim.parent)
+        )
+
+    def commit(self) -> Revision:
+        """Write the manifest listing the layer's files, which makes it a revision."""
+        files = LayerFiles(
+            dims=tuple(sorted(p.stem for p in self.dir.glob("dims/*.parquet"))),
+            attributes=tuple(
+                sorted(p.stem for p in self.dir.glob("attributes/*.parquet"))
+            ),
+        )
+        manifest = Manifest(
+            id=self.id,
+            parent=self.claim.parent,
+            schema=self.schema,
+            files=files,
+        )
+        manifest.write(self.store.files, self.store.manifest_uri(self.id))
+        return self.store.revision(self.id)
 
 
-def empty_child(parent: Revision) -> Revision:
-    """A new child of `parent` with no layer, like `empty_root`.
+def empty_root(store: Store, schema: Schema) -> HandBuilt:
+    """A new root layer under `schema`, for a test to hand-write.
 
-    Write every file of a layer before its first read: a read freezes the
-    layer for its workspace, as a layer is write-once.
+    No public API writes files into a layer; this claims one beside the write
+    path. Its layer holds nothing, the axis of a dim with `one_of` included: a
+    label a property names is one a test adds.
     """
-    return parent.store._create(parent.id)
+    return HandBuilt(store.claim(parent=None), schema)
+
+
+def empty_child(parent: Revision, schema: Schema | None = None) -> HandBuilt:
+    """A new child layer of `parent`, like `empty_root`, under `schema`, else the parent's.
+
+    A hand-built layer is checked against no parent schema, so `schema` may be
+    one `Claim.commit` refuses.
+    """
+    declared = parent.manifest.schema if schema is None else schema
+    return HandBuilt(parent.store.claim(parent=parent), declared)
 
 
 def export_network(n, store: Store) -> Revision:
@@ -344,30 +399,12 @@ def export_network(n, store: Store) -> Revision:
 
     Not `n.export_to_parquet`: that emits PyPSA's upstream manifest format,
     which is a different vocabulary from the schema a record declares.
-    Going through `store.root` means a test record is written exactly as
+    Going through `store.commit` means a test record is written exactly as
     `blocks` writes one.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
     from datarecord.tools.pypsa import PyPSA
 
-    return store.root(PyPSA.to_datarecord(n, store.workspace.con))
-
-
-def write_schema(schema: Schema, store: Store) -> None:
-    """Declare the record's one schema, beside the layers.
-
-    Not per layer: a layer holds only data, so this writes the record-level
-    `manifest.json` that every layer in the tree is read under.
-
-    Notes
-    -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
-    """
-    tree = schema.model_copy(update={"id": None})
-    store.files.write_text(store.manifest_uri, tree.model_dump_json(), expect=None)
+    return store.commit(PyPSA.to_datarecord(n, store.workspace.con), parent=None)
 
 
 def widened(base: Schema, attribute: str) -> Schema:
@@ -378,34 +415,6 @@ def widened(base: Schema, attribute: str) -> Schema:
             "attributes": {**base.attributes, attribute: base.attributes["p_nom"]},
         }
     )
-
-
-class RivalWrite:
-    """`Files` where a rival replaces `uri` right after this writer reads it.
-
-    Two writers racing on the manifest, made deterministic: the read hands back
-    a version the rival's write has already made stale, once.
-
-    Notes
-    -----
-    - [the manifest's compare-and-swap](https://energy-models.github.io/datarecord/design/storage/concurrency/#the-manifests-compare-and-swap)
-    """
-
-    def __init__(self, inner: Files, uri: str, text: str) -> None:
-        self._inner = inner
-        self._uri = uri
-        self._text = text
-        self.raced = False
-
-    def __getattr__(self, name: str):
-        return getattr(self._inner, name)
-
-    def read_text(self, uri: str) -> tuple[str, Version] | None:
-        found = self._inner.read_text(uri)
-        if uri == self._uri and not self.raced:
-            self.raced = True
-            self._inner.write_text(uri, self._text, expect=None)
-        return found
 
 
 def _default_attributes(dims: dict[str, Any], multi_dims: dict[str, dict[str, str]]):

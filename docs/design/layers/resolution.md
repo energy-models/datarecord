@@ -298,12 +298,12 @@ A directory therefore has the same properties as a revision:
 - `schema.partial` sets the granularity of a patch, and one layer patches nothing, so `partial` is inert there.
 
 The fold requires a layer layout, and a record directory is one.
-A directory copied out of any tree, with no revision file, reads identically.
+A standalone directory and a layer of a store share that layout, and each is read under its own manifest by one rule.
 
 ## Materialised node caches
 
 A revision's owner map, the layers holding its resolved axes and its dead labels may be materialised under `layers/<id>/resolved/`.
-The schema is not, since there is [one for the whole record](../model/schema.md#one-schema-per-record) and nothing per revision to resolve.
+The schema is not, since each layer's manifest carries [its schema whole](../model/schema.md#one-schema-per-record) and nothing folds it.
 
 Where a materialised map exists, a read stops there.
 The map is already folded over everything above it, so a read walks the ancestry back to the nearest materialised revision and no further.
@@ -323,4 +323,5 @@ A read above the revision seeds its dead labels from these files, since the axis
 
 Materialising is a policy: every N layers, at a branch point, or on demand.
 It only adds files under `resolved/`, so it changes no answer, only how many layers a read touches.
+No manifest lists them: they are written after the commit, at any later time, and a read opens each by name.
 The persisted map is the fold's result, and a NULL in it reaches the labels of the node read, so a label added below the node is reached as it would be without the cache.

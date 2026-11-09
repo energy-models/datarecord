@@ -12,8 +12,8 @@ Notes
 import pytest
 
 from datarecord.protocols import Flags
-from datarecord.store.store import Revision
 from tests.fixtures import (
+    HandBuilt,
     empty_child,
     empty_root,
     relation,
@@ -21,7 +21,6 @@ from tests.fixtures import (
     write_attribute,
     write_component,
     write_connections,
-    write_schema,
 )
 
 PROCESS = "Process"
@@ -40,12 +39,10 @@ def _flags(revision, attribute: str) -> Flags:
     return flags[attribute]
 
 
-def _root_with_curve(store, *, scalar: float | None = None) -> Revision:
+def _root_with_curve(store, *, scalar: float | None = None) -> HandBuilt:
     """A root whose `steel_dri` has a three-point `marginal_cost`, or `scalar` instead."""
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
+    layer = empty_root(store, schema())
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     rows = (
         [{"ctype": PROCESS, "entity": "steel_dri", "value": scalar}]
         if scalar is not None
@@ -60,7 +57,7 @@ def _root_with_curve(store, *, scalar: float | None = None) -> Revision:
         ]
     )
     write_attribute(layer, "marginal_cost", rows)
-    return revision
+    return layer
 
 
 @pytest.mark.parametrize("scalar", [None, 20.0], ids=["over-a-curve", "over-a-scalar"])
@@ -70,12 +67,12 @@ def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
     So a child's curve replaces a parent's curve entirely - never a mix of the
     two - and may turn a scalar into a curve, it being one key either way.
     """
-    root = _root_with_curve(store, scalar=scalar)
+    root = _root_with_curve(store, scalar=scalar).commit()
     root.materialise()
 
-    child = empty_child(root)
+    child_layer = empty_child(root)
     write_attribute(
-        store.layer_dir(child.id),
+        child_layer,
         "marginal_cost",
         [
             {
@@ -87,6 +84,7 @@ def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
             for x, v in ((0.0, 25.0), (90.0, 70.0))
         ],
     )
+    child = child_layer.commit()
 
     assert _curve(child, "marginal_cost") == [(0.0, 25.0), (90.0, 70.0)], (
         "the child's breakpoints only"
@@ -101,12 +99,13 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
     -----
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    revision = _root_with_curve(store)
+    layer = _root_with_curve(store)
     write_attribute(
-        store.layer_dir(revision.id),
+        layer,
         "p_nom",
         [{"ctype": PROCESS, "entity": "steel_dri", "value": 100.0}],
     )
+    revision = layer.commit()
 
     curve = _flags(revision, "marginal_cost")
     scalar = _flags(revision, "p_nom")
@@ -133,12 +132,10 @@ def test_curve_on_a_connection(store):
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
     """
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
+    layer = empty_root(store, schema())
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_connections(
-        revision,
+        layer,
         [
             {"entity": "steel_dri", "bus": "h2_north"},
             {"entity": "steel_dri", "bus": "dri"},
@@ -162,12 +159,13 @@ def test_curve_on_a_connection(store):
             )
         ],
     )
+    revision = layer.commit()
     revision.materialise()
 
     # Each connection owns its own curve, so a patch to one leaves the other.
     child = empty_child(revision)
     write_attribute(
-        store.layer_dir(child.id),
+        child,
         "efficiency",
         [
             {
@@ -182,7 +180,7 @@ def test_curve_on_a_connection(store):
     )
 
     df = (
-        relation(child, "efficiency")
+        relation(child.commit(), "efficiency")
         .project("connection.bus AS bus, breakpoint, value")
         .order("bus, breakpoint")
         .df()
@@ -198,10 +196,8 @@ def test_curve_on_a_connection(store):
 
 def test_curve_varying_by_snapshot(store):
     """A curve per snapshot: `breakpoint` multiplies by the dims like anything else."""
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
-    write_component(revision, PROCESS, [{"entity": "steel_dri"}])
+    layer = empty_root(store, schema())
+    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
     write_attribute(
         layer,
         "marginal_cost",
@@ -222,6 +218,7 @@ def test_curve_varying_by_snapshot(store):
         ],
     )
 
+    revision = layer.commit()
     flags = _flags(revision, "marginal_cost")
     # A curve that varies over snapshots: on the snapshot axis and a curve too.
     assert "snapshot" in flags.varies

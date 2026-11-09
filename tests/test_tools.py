@@ -10,6 +10,7 @@ Notes
 """
 
 import shutil
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -19,9 +20,8 @@ import pandas as pd
 import pytest
 from duckdb import DuckDBPyRelation
 
-from datarecord import Workspace
+from datarecord import Revision, Workspace
 from datarecord.schema.categories import matching
-from datarecord.store.manifest import read_schema
 from datarecord.tools.base import Requirements, Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
     CTYPE,
@@ -32,14 +32,15 @@ from datarecord.tools.pypsa import (
     _weightings,
 )
 from tests.fixtures import (
+    HandBuilt,
     empty_child,
+    empty_root,
     export_network,
     relation,
     schema,
     unpacked,
     write_attribute,
     write_component,
-    write_schema,
 )
 from tests.test_roundtrip import assert_networks_equal
 
@@ -61,12 +62,23 @@ def solved(single_revision):
 
 
 @pytest.fixture
-def exported(single_revision, workspace, tmp_path):
-    """A copy of `single_revision`'s store, for a test to rewrite its files or schema."""
-    uri = str(tmp_path / "ac_dc")
-    shutil.copytree(single_revision.store.uri, uri)
-    (revision,) = workspace.store(uri).revisions()
-    return revision
+def exported(single_revision, workspace, tmp_path) -> HandBuilt:
+    """`single_revision`'s files in a hand-built root of a new store, under its schema.
+
+    For a test to add files or redeclare the schema before it commits.
+    """
+    store = workspace.store(str(tmp_path / "ac_dc"))
+    layer = empty_root(store, single_revision.manifest.schema)
+    source = Path(single_revision.store.layer_dir(single_revision.id))
+    for kind in ("dims", "attributes"):
+        shutil.copytree(source / kind, layer.dir / kind)
+    return layer
+
+
+@pytest.fixture
+def copied(exported) -> Revision:
+    """`exported` committed as it is, for a test to write children over."""
+    return exported.commit()
 
 
 def _results_over(revision, n):
@@ -74,7 +86,7 @@ def _results_over(revision, n):
     layer = PyPSA.to_datarecord(
         n, revision.record.con, results_only=True, base=revision.record
     )
-    return revision.child(layer)
+    return revision.store.commit(layer, parent=revision)
 
 
 def _sub_networks(revision) -> list[str]:
@@ -376,7 +388,7 @@ def test_a_build_settles_rows_of_several_layers_by_the_broadcast_rule(
     for edit in layers:
         w = WorkingRecord(revision.record)
         edit(w)
-        revision = revision.child(w.edits)
+        revision = revision.store.commit(w)
 
     static = PyPSA.build(revision.record).c.Generator.static
     assert static["p_max_pu"].to_dict() == built
@@ -418,8 +430,7 @@ def test_verify_reports_a_missing_dim(exported):
     -----
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision = exported
-    _with_schema(revision, dims={"snapshot": "datetime"}, partial=set())
+    revision = _with_schema(exported, dims={"snapshot": "datetime"}, partial=set())
 
     missing = PyPSA.verify(revision.record)
     assert missing
@@ -443,15 +454,15 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
     - [entity types](https://energy-models.github.io/datarecord/design/model/properties/#categories)
     - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
     """
-    revision, store = exported, exported.store
     # Declared alongside PyPSA's own types, since the `one_of` labels pin the
     # vocabulary.
-    declared = read_schema(store)
+    declared = exported.schema
     assert declared.categorizing("entity") == (CTYPE,)
     dim = declared.dimensions[CTYPE]
     assert dim.one_of is not None, "PyPSA lists its types on the dim"
-    write_schema(
-        declared.model_copy(
+    layer = replace(
+        exported,
+        schema=declared.model_copy(
             update={
                 "dimensions": {
                     **declared.dimensions,
@@ -459,9 +470,9 @@ def test_verify_reports_a_type_the_tool_does_not_know(exported):
                 }
             }
         ),
-        revision.store,
     )
-    write_component(revision, "Widget", [{"entity": "w1"}])
+    write_component(layer, "Widget", [{"entity": "w1"}])
+    revision = layer.commit()
 
     missing = PyPSA.verify(revision.record)
     assert missing.categories == {"Widget"}
@@ -478,18 +489,18 @@ _DIMS = {
 }
 
 
-def _with_schema(revision, **kwargs) -> None:
-    """Redeclare the record's schema, keeping the attributes it already declares.
+def _with_schema(layer: HandBuilt, **kwargs) -> Revision:
+    """`layer` committed under a redeclared schema, keeping the attributes it already declares.
 
-    Written directly rather than through `write_record`, which would reject an
-    incompatible redeclaration - here the point is to hand the tool a
+    Hand-built rather than written through `store.commit`, which would reject
+    an incompatible redeclaration - here the point is to hand the tool a
     schema it must report on rather than one the writer accepted.
 
     Notes
     -----
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    was = read_schema(revision.store)
+    was = layer.schema
     now = schema(**kwargs)
     labelled = {d: spec for d, spec in was.dimensions.items() if d not in _DIMS}
     redeclared = {d: s for d, s in now.dimensions.items() if d not in labelled}
@@ -511,7 +522,7 @@ def _with_schema(revision, **kwargs) -> None:
             "meta": was.meta,
         }
     )
-    write_schema(now, revision.store)
+    return replace(layer, schema=now).commit()
 
 
 def test_verify_reports_a_snapshot_key(exported):
@@ -528,8 +539,7 @@ def test_verify_reports_a_snapshot_key(exported):
     -----
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
-    revision = exported
-    _with_schema(revision, partial={"scenario", "snapshot"})
+    revision = _with_schema(exported, partial={"scenario", "snapshot"})
 
     missing = PyPSA.verify(revision.record)
     assert ("owner_map_key", "snapshot") in missing.unsupported_keys
@@ -544,21 +554,20 @@ def test_verify_reports_a_missing_required_attribute(exported, ac_dc):
     A port's bus is the `connection` tuple itself, declared as no attribute, so
     no default can stand in for it.
     """
-    revision, store = exported, exported.store
     # A Generator member with no connection row supplying its bus
     # (https://energy-models.github.io/datarecord/design/tools/pypsa/#ports).
-    write_component(revision, "Generator", [{"entity": "g1"}])
+    write_component(exported, "Generator", [{"entity": "g1"}])
     # One file across every type, so the Generators' rows are dropped from it
     # rather than a per-type file being unlinked.
-    path = Path(store.layer_dir(revision.id), "dims", "connection.parquet")
+    path = exported.dir / "dims" / "connection.parquet"
     rows = pd.read_parquet(path)
     generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
     entities = rows["connection"].map(lambda c: c["entity"])
     rows[~entities.isin(generators)].to_parquet(path, index=False)
 
-    write_component(revision, "Line", [{"entity": "l1"}])
+    write_component(exported, "Line", [{"entity": "l1"}])
 
-    missing = PyPSA.verify(revision.record)
+    missing = PyPSA.verify(exported.commit().record)
     assert ("Generator", "bus") in missing.attributes
     assert ("Line", "x") not in missing.attributes, (
         "PyPSA declares the required `x` with a default, resolvable with no row"
@@ -572,19 +581,19 @@ def test_verify_reports_a_piecewise_linear_attribute(exported):
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
     """
-    revision, store = exported, exported.store
     write_attribute(
-        store.layer_dir(revision.id),
+        exported,
         "marginal_cost",
         [{"entity": "Manchester Wind", "value": 20.0}],
     )
+    revision = exported.commit()
     assert not PyPSA.verify(revision.record).unsupported_values, (
         "the same attribute without breakpoints is not reported"
     )
 
-    revision = empty_child(revision)
+    child = empty_child(revision)
     write_attribute(
-        store.layer_dir(revision.id),
+        child,
         "marginal_cost",
         [
             {
@@ -595,6 +604,7 @@ def test_verify_reports_a_piecewise_linear_attribute(exported):
             for x, v in ((0.0, 20.0), (50.0, 35.0))
         ],
     )
+    revision = child.commit()
 
     missing = PyPSA.verify(revision.record)
     assert ("Generator", "marginal_cost") in missing.unsupported_values
@@ -926,7 +936,7 @@ def test_a_solved_p_is_one_row_per_connection(single_revision, solved):
         )
 
 
-def test_bus_results_are_keyed_by_bus(exported, solved):
+def test_bus_results_are_keyed_by_bus(copied, solved):
     """`marginal_price`, `v_mag_pu` and `v_ang` are over `bus`; `Bus.p` and the rest are derived.
 
     `build` copies a result into the network like any attribute.
@@ -936,7 +946,7 @@ def test_bus_results_are_keyed_by_bus(exported, solved):
     - [results on connections](https://energy-models.github.io/datarecord/design/tools/pypsa/#results-on-connections)
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    revision = _results_over(exported, solved)
+    revision = _results_over(copied, solved)
     schema = revision.record.schema
     over_bus = {
         a for a, spec in _registry_schema().attributes.items() if "bus" in spec.dims
@@ -959,35 +969,35 @@ def test_bus_results_are_keyed_by_bus(exported, solved):
     )
 
 
-def test_a_child_reads_its_parents_results_and_the_latest_wins(exported, solved):
+def test_a_child_reads_its_parents_results_and_the_latest_wins(copied, solved):
     """A result is an attribute: it inherits through layers, a later one standing over it.
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    revision = _results_over(exported, solved)
+    revision = _results_over(copied, solved)
     expected = _prices(revision)
-    pd.testing.assert_frame_equal(_prices(empty_child(revision)), expected)
+    pd.testing.assert_frame_equal(_prices(empty_child(revision).commit()), expected)
 
     n = PyPSA.build(revision.record)
     n.c["Bus"].dynamic["marginal_price"] *= 2
     resolved = _results_over(revision, n)
-    pd.testing.assert_frame_equal(_prices(empty_child(resolved)), expected * 2)
+    pd.testing.assert_frame_equal(_prices(empty_child(resolved).commit()), expected * 2)
 
 
-def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
+def test_a_re_solve_leaves_no_stale_sub_network(copied, solved):
     """A results layer replaces `base`'s SubNetworks rather than adding to them.
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    revision = _results_over(exported, solved)
+    revision = _results_over(copied, solved)
     *kept, dropped = sorted(solved.c["SubNetwork"].static.index)
     assert _sub_networks(revision) == sorted([*kept, dropped])
     entities = revision.record.dims["entity"].df()
-    assert entities.equals(exported.record.dims["entity"].df()), (
+    assert entities.equals(copied.record.dims["entity"].df()), (
         "a results layer leaves the entity axis alone"
     )
 
@@ -1002,14 +1012,14 @@ def test_a_re_solve_leaves_no_stale_sub_network(exported, solved):
 @pytest.mark.parametrize(
     ("over_solved", "listed"), [(False, None), (True, [])], ids=["unsolved", "solved"]
 )
-def test_results_without_sub_networks_list_none(exported, solved, over_solved, listed):
+def test_results_without_sub_networks_list_none(copied, solved, over_solved, listed):
     """A solve without SubNetworks restates a `sub_network` axis `base` has empty, and writes none where it has none.
 
     Notes
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    base = _results_over(exported, solved) if over_solved else exported
+    base = _results_over(copied, solved) if over_solved else copied
     n = PyPSA.build(base.record)
     n.remove("SubNetwork", n.c["SubNetwork"].static.index)
     n.c["Bus"].dynamic["marginal_price"] = pd.DataFrame(
@@ -1026,7 +1036,7 @@ def test_results_without_sub_networks_list_none(exported, solved, over_solved, l
 @pytest.mark.parametrize(
     ("ctype", "attr"), [("Line", "mu_upper"), ("Bus", "marginal_price")]
 )
-def test_a_result_a_re_solve_leaves_out_reads_as_null(exported, solved, ctype, attr):
+def test_a_result_a_re_solve_leaves_out_reads_as_null(copied, solved, ctype, attr):
     """A results layer restates `base`'s results it does not write as NULL.
 
     Built back, the network holds PyPSA's own default there.
@@ -1035,11 +1045,11 @@ def test_a_result_a_re_solve_leaves_out_reads_as_null(exported, solved, ctype, a
     -----
     - [writing results](https://energy-models.github.io/datarecord/design/tools/pypsa/#writing-results)
     """
-    n = PyPSA.build(_results_over(exported, solved).record)
+    n = PyPSA.build(_results_over(copied, solved).record)
     n.c[ctype].dynamic[attr] = pd.DataFrame(
         1.0, index=n.snapshots, columns=n.c[ctype].static.index
     )
-    base = _results_over(exported, n)
+    base = _results_over(copied, n)
     n = PyPSA.build(base.record)
     n.c[ctype].dynamic[attr] = n.c[ctype].dynamic[attr].iloc[:, :0]
     resolved = _results_over(base, n)
@@ -1348,7 +1358,7 @@ def test_per_type_defaults_round_trip_with_nothing_written(store):
         [{"entity": e, "bus": "b"} for e in ("l1", "su1")],
         role="attached",
     )
-    child = root.child(staged.edits)
+    child = root.store.commit(staged)
 
     inputs = Path(store.layer_dir(child.id)) / "attributes"
     written = {p.stem for p in inputs.glob("*.parquet")} if inputs.exists() else set()
@@ -1443,7 +1453,7 @@ def test_a_name_is_never_an_identifier_in_the_melt_or_pivot(store):
     )
     n.c["Generator"].dynamic["p_max_pu"] = series
 
-    revision = store.root(PyPSA.to_datarecord(n, store.workspace.con))
+    revision = store.commit(PyPSA.to_datarecord(n, store.workspace.con), parent=None)
     rows = revision.record.attributes["p_max_pu"]
     assert sorted(rows.project("entity, value").fetchall()) == sorted(
         (name, value) for name in names for value in series[name]
@@ -1497,8 +1507,7 @@ def test_schema_dims_stay_generic(exported):
     Keying it would be a different matter, reported by the tool against the
     real record - see `test_verify_reports_a_snapshot_key`.
     """
-    revision = exported
-    _with_schema(revision, dims={**_DIMS, "vintage": "str"})
+    revision = _with_schema(exported, dims={**_DIMS, "vintage": "str"})
     record = revision.record
     assert "vintage" in record.schema.dims
     # No axis rows anywhere, so the dim is absent from the mapping rather than
@@ -1654,7 +1663,7 @@ def test_a_set_on_some_snapshots_keeps_the_rest_of_the_series(
     staged = WorkingRecord(record)
     staged.set("p_max_pu", 0.5, entity="Manchester Wind", **selector)
 
-    built = PyPSA.build(multiperiod_revision.child(staged.edits).record)
+    built = PyPSA.build(multiperiod_revision.store.commit(staged).record)
     series = multiperiod.c["Generator"].dynamic["p_max_pu"]["Manchester Wind"]
     pd.testing.assert_series_equal(
         built.c["Generator"].dynamic["p_max_pu"]["Manchester Wind"],

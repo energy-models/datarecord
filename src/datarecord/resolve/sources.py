@@ -8,7 +8,8 @@ The fold names files, not locations: `attributes/p_nom.parquet` is what it wants
 and a source hands over its rows. Three answer - a parquet directory under
 `layers/<uuid>/`, a plain directory read as one layer, and a staging area whose
 rows are tables rather than files (`mutable.StagedSource`) - so the fold is
-written once and knows about none of them.
+written once and knows about none of them. A file-backed source reads under
+its layer's own manifest, opening the files it lists and globbing nothing.
 
 Notes
 -----
@@ -22,13 +23,13 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
-from datarecord.duck import parquet_names, try_read_parquet
 from datarecord.resolve.fold import Fold
 
 if TYPE_CHECKING:
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
     from datarecord.schema.schema import Schema
+    from datarecord.store.manifest import LayerFiles, Manifest
     from datarecord.store.store import Store, Workspace
 
 
@@ -76,16 +77,15 @@ class LayerSource(Protocol):
 
     @property
     def schema(self) -> Schema:
-        """The record's one manifest, passed in at construction, never re-read.
+        """The schema this layer was written under: its own manifest's.
 
-        A layer holds only data - its schema lives beside the tree, not in the
-        layer - so this is the reference the constructing reader already held,
-        carried so `write_layer` can read it off the source it is handed. Every
-        source in one fold carries the same one.
+        A staging area's is its record's, which is what a write of it declares.
+        Each source in one fold may carry another, a child's widening its
+        parent's.
 
         Notes
         -----
-        - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+        - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
         """
         ...
 
@@ -103,8 +103,8 @@ class LayerSource(Protocol):
     def axes(self) -> set[str]:
         """Which dims this layer has an axis file for.
 
-        One listing rather than a probe per declared dim: `resolve_coords` asks
-        each source once and folds only the dims some source holds.
+        Asked once per source rather than probed per declared dim:
+        `resolve_coords` folds only the dims some source holds.
         """
         ...
 
@@ -151,11 +151,12 @@ class LayerSource(Protocol):
 class _FileLayer:
     """The layer layout over a URI, shared by every file-backed source.
 
-    Each member is one file, addressed by what keys it. A subclass supplies
-    where the layer root is (`uri`), the workspace to read it through, and the
-    schema its reader held, and inherits every accessor unchanged - which is
-    what keeps "a directory read as a layer" from being a second reading of the
-    format.
+    Each member is one file, addressed by what keys it, and opened only where
+    the layer's manifest lists it: a file it does not list is no part of the
+    layer. A subclass supplies where the layer root is (`uri`), the workspace
+    to read it through, and the manifest, and inherits every accessor
+    unchanged - which is what keeps "a directory read as a layer" from being a
+    second reading of the format.
 
     No cursor is held: each read takes the calling thread's (`_con`), so a
     source serves every thread.
@@ -163,10 +164,19 @@ class _FileLayer:
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
 
-    schema: Schema
+    manifest: Manifest
     frozen: bool = True
+
+    @property
+    def schema(self) -> Schema:
+        return self.manifest.schema
+
+    @property
+    def files(self) -> LayerFiles:
+        return self.manifest.files
 
     def uri(self, path: str = "") -> str:
         """Where `path` is, relative to the layer root.
@@ -180,39 +190,33 @@ class _FileLayer:
         """The calling thread's cursor on the workspace this layer is read through."""
         raise NotImplementedError
 
-    def _read(self, path: str, **kwargs: object) -> DuckDBPyRelation | None:
-        return try_read_parquet(self.uri(path), self._con, **kwargs)
+    def _read(self, kind: str, names: list[str]) -> DuckDBPyRelation:
+        uris = [self.uri(f"{kind}/{name}.parquet") for name in names]
+        return self._con.read_parquet(uris, union_by_name=True)
 
     def axes(self) -> set[str]:
-        return {
-            name.removesuffix(".parquet")
-            for name in parquet_names(self.uri("dims/"), self._con)
-        }
+        return set(self.files.dims)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        return self._restatement("dims", dim)
-
-    def _restatement(self, kind: str, subject: str) -> DuckDBPyRelation | None:
-        """Return `{kind}/{subject}.parquet`, refusing a column it has no place for."""
-        file = f"{kind}/{subject}.parquet"
-        rel = self._read(file, union_by_name=True)
-        if rel is not None:
-            refuse_foreign_columns(
-                set(rel.columns), {subject}, self.schema, subject, file
-            )
+        if dim not in self.files.dims:
+            return None
+        rel = self._read("dims", [dim])
+        file = f"dims/{dim}.parquet"
+        refuse_foreign_columns(set(rel.columns), {dim}, self.schema, dim, file)
         return rel
 
     def attributes(self) -> set[str]:
-        return {
-            name.removesuffix(".parquet")
-            for name in parquet_names(self.uri("attributes/"), self._con)
-        }
+        return set(self.files.attributes)
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
-        return self._read(f"attributes/{name}.parquet")
+        if name not in self.files.attributes:
+            return None
+        return self._read("attributes", [name])
 
     def all_attributes(self) -> DuckDBPyRelation | None:
-        return self._read("attributes/*.parquet", union_by_name=True)
+        if not self.files.attributes:
+            return None
+        return self._read("attributes", list(self.files.attributes))
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """No cache by default: only a `ParquetLayer` has a revision to key one by."""
@@ -258,7 +262,7 @@ def refuse_foreign_columns(
 
 @dataclass(frozen=True)
 class ParquetLayer(_FileLayer):
-    """A layer as a parquet directory, located from its revision UUID.
+    """A revision's layer, located from its manifest's id.
 
     The location is derived from the store, never stored, so changing the
     layout is a change to `Store.layer_dir` and nothing else.
@@ -268,25 +272,28 @@ class ParquetLayer(_FileLayer):
     - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
     """
 
-    revision_id: UUID
-    schema: Schema
+    manifest: Manifest
     store: Store
     frozen: bool = True
 
     @property
     def layer_id(self) -> UUID:
-        return self.revision_id
+        return self.manifest.id
 
     @property
     def _con(self) -> DuckDBPyConnection:
         return self.store.workspace.con
 
     def uri(self, path: str = "") -> str:
-        return self.store.layer_dir(self.revision_id) + path
+        return self.store.layer_dir(self.layer_id) + path
 
     def materialised(self, con: DuckDBPyConnection, schema: Schema) -> Fold | None:
         """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
-        return Fold.read(self.revision_id, con, schema, self.store)
+        return Fold.read(self.layer_id, con, schema, self.store)
+
+    def sibling(self, layer_id: UUID) -> ParquetLayer:
+        """Layer `layer_id` of this layer's store."""
+        return ParquetLayer(self.store.revision(layer_id).manifest, self.store)
 
 
 @dataclass(frozen=True)
@@ -295,7 +302,8 @@ class DirectorySource(_FileLayer):
 
     What `Workspace.at(uri)` and `Store.layer(id)` fold over, and the whole of what reading a plain
     directory takes: the layout is the same as a tree layer's, so every member
-    is one of the directory's files and the fold needs no conditional path.
+    is one of the files its manifest lists and the fold needs no conditional
+    path.
 
     It is no node in a layer tree, so this makes such a record *readable*
     through the fold, not a revision to branch from.
@@ -304,17 +312,16 @@ class DirectorySource(_FileLayer):
     ----------
     id
         The layer's identity, which keys the workspace's shared fold tables:
-        a standalone record's is minted by its write and read from its
-        manifest, so a record written again at one URI is another layer.
+        a standalone record's is its manifest's, minted by its write, so a
+        record written again at one URI is another layer.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     """
 
     base: str
-    schema: Schema
+    manifest: Manifest
     workspace: Workspace
     id: UUID
     frozen: bool = True

@@ -10,6 +10,8 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
@@ -18,8 +20,7 @@ from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.specs import AttributeSpec
 from datarecord.store.cache import sources_to_read
-from datarecord.store.manifest import read_schema
-from datarecord.store.store import ancestry
+from datarecord.store.store import lineage
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
@@ -30,7 +31,6 @@ from tests.fixtures import (
     write_attribute,
     write_component,
     write_multi_dim,
-    write_schema,
 )
 
 
@@ -41,13 +41,11 @@ def parent(store):
     `Norway Wind` also carries an `efficiency` on its connection, so a
     attribute keyed by a multi-dim folds through the base too.
     """
-    revision = empty_root(store)
-    layer = store.layer_dir(revision.id)
-    write_schema(schema(), store)
+    layer = empty_root(store, schema())
     names = ["Manchester Wind", "Norway Wind"]
-    write_component(revision, "Generator", [{"entity": n} for n in names])
+    write_component(layer, "Generator", [{"entity": n} for n in names])
     write_multi_dim(
-        revision, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
+        layer, "connection", [{"connection": {"entity": "Norway Wind", "bus": "NO"}}]
     )
     write_attribute(
         layer,
@@ -61,6 +59,7 @@ def parent(store):
     write_attribute(
         layer, "efficiency", [{"entity": "Norway Wind", "bus": "NO", "value": 0.9}]
     )
+    revision = layer.commit()
     revision.materialise()
     return revision
 
@@ -72,7 +71,7 @@ def network(store, ac_dc):
     return revision
 
 
-def test_child_overwrites_component(store, parent):
+def test_child_overwrites_component(parent):
     """A child's rows replace all of that component's rows for the attribute.
 
     Notes
@@ -80,13 +79,9 @@ def test_child_overwrites_component(store, parent):
     - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
     """
     child = empty_child(parent)
-    write_attribute(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
-    )
+    write_attribute(child, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}])
 
-    df = relation(child, "p_max_pu").df()
+    df = relation(child.commit(), "p_max_pu").df()
     manchester = df[df["entity"] == "Manchester Wind"]
     # The parent's 3 series rows are gone, replaced by the child's single row.
     assert len(manchester) == 1
@@ -97,31 +92,23 @@ def test_child_overwrites_component(store, parent):
     assert len(df[df["entity"] == "Norway Wind"]) == 3
 
 
-def test_child_overwrite_reaches_model(store, network):
+def test_child_overwrite_reaches_model(network):
     """The overwrite turns a series component into a static one in the model."""
     child = empty_child(network)
-    write_attribute(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
-    )
+    write_attribute(child, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}])
 
-    n = PyPSA.build(child.record)
+    n = PyPSA.build(child.commit().record)
     assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
     assert "Manchester Wind" not in n.c["Generator"].dynamic["p_max_pu"].columns
     assert "Norway Wind" in n.c["Generator"].dynamic["p_max_pu"].columns
 
 
-def test_child_adds_attribute(store, network):
+def test_child_adds_attribute(network):
     """A child may write an attribute no ancestor had."""
     child = empty_child(network)
-    write_attribute(
-        store.layer_dir(child.id),
-        "p_min_pu",
-        [{"entity": "Norway Gas", "value": 0.1}],
-    )
+    write_attribute(child, "p_min_pu", [{"entity": "Norway Gas", "value": 0.1}])
 
-    n = PyPSA.build(child.record)
+    n = PyPSA.build(child.commit().record)
     assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
     # Untouched generators keep the catalog default.
     assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
@@ -138,12 +125,8 @@ def test_closed_child_reads_own_cache(store, network):
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     child = empty_child(network)
-    write_attribute(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
-    )
-    child.materialise()
+    write_attribute(child, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}])
+    child.commit().materialise()
 
     reloaded = store.revision(child.id)
     n = PyPSA.build(reloaded.record)
@@ -164,20 +147,18 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     assert they agree on the owner map, the entity axis, every attribute
     relation, and the multi-dim axes.
     """
-    child = empty_child(parent)
+    child_layer = empty_child(parent)
     write_attribute(
-        store.layer_dir(child.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.42}],
+        child_layer, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}]
     )
+    child = child_layer.commit()
     child.materialise()
 
     grandchild = empty_child(child)
     write_attribute(
-        store.layer_dir(grandchild.id),
-        "p_max_pu",
-        [{"entity": "Manchester Wind", "value": 0.99}],
+        grandchild, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.99}]
     )
+    grandchild.commit()
 
     # `unresolved` folds the whole ancestry from the root: every layer read from
     # its own directory, no base short-circuit, even though the ancestors are
@@ -187,15 +168,15 @@ def test_resolved_reads_same_as_unresolved(store, parent):
         def materialised(self, con, schema):  # noqa: ARG002
             return None
 
-    schema = read_schema(store)
-    full = ancestry(store, grandchild.id)
+    full = lineage(store, grandchild.id)
+    schema = full[-1].schema
     workspace = store.workspace
     truncated = Record(
         grandchild.id, sources_to_read(full, store, schema), workspace, schema
     )
     unresolved = Record(
         grandchild.id,
-        [_Unmaterialised(uid, schema, store) for uid in full],
+        [_Unmaterialised(manifest, store) for manifest in full],
         workspace,
         schema,
     )
@@ -228,39 +209,30 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     )
 
 
-def test_a_new_attribute_is_a_schema_amendment(store, network):
-    """Adding an attribute amends the record's one schema, not a layer's.
+def test_a_child_widens_the_schema_with_a_new_attribute(network):
+    """A child declares an attribute its parent's schema lacks, in its own manifest.
 
-    A schema is not layered data: folding it would let a layer redefine what
-    an attribute means, and make the schema unknowable without walking the
-    ancestry. So the amendment lands beside the layers, and every layer in the
-    tree - including ones already written - is read under it.
+    The child's manifest holds the full schema, so the record is read under it,
+    and the parent's layers stay as they were written.
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
+    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    amended = read_schema(store)
-    amended.attributes["p_min_pu"] = AttributeSpec(
-        dtype="float", dims={"entity", "snapshot"}, default=0.25
-    )
-    write_schema(amended, store)
+    amended = network.manifest.schema.model_copy(deep=True)
+    amended.attributes["site_quality"] = AttributeSpec(dtype="float", dims={"entity"})
+    assert amended.compatible_with(network.manifest.schema) == []
 
-    # Adding an attribute is compatible, so the layers written before the
-    # amendment stay readable (https://energy-models.github.io/datarecord/design/model/schema/#versioning).
-    assert amended.compatible_with(read_schema(store)) == []
-
-    child = empty_child(network)
+    child_layer = empty_child(network, amended)
     write_attribute(
-        store.layer_dir(child.id),
-        "p_min_pu",
-        [{"entity": "Norway Gas", "value": 0.1}],
+        child_layer, "site_quality", [{"entity": "Norway Gas", "value": 0.1}]
     )
-    n = PyPSA.build(child.record)
-    assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
-    # And the amendment is visible from the record, not just from the layer
-    # that happens to carry a row for it.
-    assert "p_min_pu" in child.record.schema.attributes
+    child = child_layer.commit()
+    assert relation(child, "site_quality").df()["value"].tolist() == [0.1]
+    assert "site_quality" in child.record.schema.attributes
+    assert "site_quality" not in network.record.schema.attributes, (
+        "the parent reads as written"
+    )
 
 
 def test_a_schema_narrowing_is_refused(store, parent):
@@ -268,10 +240,9 @@ def test_a_schema_narrowing_is_refused(store, parent):
 
     Notes
     -----
-    - [one schema per record](https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record)
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    narrowed = read_schema(store)
+    narrowed = parent.manifest.schema.model_copy(deep=True)
     narrowed.attributes["p_max_pu"] = AttributeSpec(dtype="float", dims=frozenset())
 
     class _Narrowed:
@@ -284,10 +255,10 @@ def test_a_schema_narrowing_is_refused(store, parent):
         def flags(self):
             return {}
 
-    before = read_schema(store)
+    claim = store.claim(parent=parent)
     with pytest.raises(ValueError, match="no longer varies over"):
-        parent.child(_Narrowed())
-    assert read_schema(store) == before, "the manifest is never narrowed"
+        claim.commit(_Narrowed())
     assert [r.id for r in store.revisions()] == [parent.id], (
-        "the layer was written, but without its revision file nothing reaches it"
+        "the layer is claimed, but without its manifest nothing reaches it"
     )
+    assert not Path(store.manifest_uri(claim.id)).exists()

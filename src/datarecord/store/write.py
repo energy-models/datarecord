@@ -16,7 +16,6 @@ Notes
 
 from __future__ import annotations
 
-import shutil
 from functools import cached_property
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -40,7 +39,7 @@ from datarecord.resolve.owner_map import cast_declared, unsettled
 from datarecord.resolve.record import PinnedRecord, Record
 from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
 from datarecord.schema.schema import DERIVED, Schema
-from datarecord.store.files import Absent
+from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -77,35 +76,27 @@ def write_layer(
     base: str,
     workspace: Workspace,
     *,
-    manifest: str | None = None,
     parents: Sequence[LayerSource] = (),
-) -> None:
-    """Write `data` as the layer directory `base`, which must not exist yet.
+) -> LayerFiles:
+    """Write `data`'s files into the layer directory `base`, and return what it wrote.
 
-    An existing layer directory is an error rather than an overwrite or a merge,
-    so a whole-record write can never half-replace what a record holds. Keys are
-    looked up one at a time and each file written before the next is built, so a
+    Only the data: the manifest listing the files is the caller's to write
+    after, and until it is there no read reaches them. Keys are looked up one
+    at a time and each file written before the next is built, so a
     lazily-building source does one read per file rather than one per key up
-    front. Locally the layer is staged into a sibling and renamed, so a failed
-    write leaves nothing; remotely it can leave part of a layer, which nothing
-    reaches without the file written after it.
+    front. A failed write leaves the files it wrote, which no manifest lists.
 
     Parameters
     ----------
     data
         The layer's contents, validated against its own schema as each frame is
         built.
-    manifest
-        A standalone record's `manifest.json` text, written into the
-        directory last; a tree layer holds only data.
     parents
         The sources the layer folds over, root first; none for a root or a
         standalone record.
 
     Raises
     ------
-    FileExistsError
-        If the layer directory already exists locally.
     ValueError
         If a long frame is missing a long-schema column, or the schema
         declares a key dim no frame carries - either would make the fold
@@ -134,20 +125,10 @@ def write_layer(
     -----
     - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
     - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
-    - [a revision exists only by its file](https://energy-models.github.io/datarecord/design/storage/store/#a-revision-exists-only-by-its-file)
+    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
     """
-    local = "://" not in base
-    if local and Path(base).exists():
-        msg = f"layer {base} already exists; a write creates a new layer (https://energy-models.github.io/datarecord/design/use/writing/)"
-        raise FileExistsError(msg)
     schema = data.schema
-
-    # Staged then renamed, so a frame that fails validation part-way through
-    # leaves no layer rather than half of one (https://energy-models.github.io/datarecord/design/use/writing/). Validation happens as each
-    # frame is built, since building it twice would defeat the laziness.
-    staging = f"{base.rstrip('/')}.staging/" if local else base
-    if local:
-        Path(staging).mkdir(parents=True)
+    written: dict[str, list[str]] = {"dims": [], "attributes": []}
     try:
         refuse_one_of_file(schema, data.axes(), "the layer")
         kinds = [
@@ -173,54 +154,46 @@ def write_layer(
                 if rel is None:
                     continue
                 _validate_frame(rel, kind, key, schema)
-                uri = _write_frame(rel, staging, kind, key, schema, workspace.con)
-                written = workspace.con.read_parquet(uri)
+                uri = _write_frame(rel, base, kind, key, schema, workspace.con)
+                written[kind].append(key)
+                frame = workspace.con.read_parquet(uri)
                 file = f"{kind}/{key}.parquet"
                 if kind == "attributes":
-                    _refuse_unordered(written, key, schema)
+                    _refuse_unordered(frame, key, schema)
                     coordinates = schema.coordinates_of(key)
-                    refuse_unheld(
-                        written, schema, coordinates, final, file, staged=False
-                    )
+                    refuse_unheld(frame, schema, coordinates, final, file, staged=False)
                     continue
                 if key in schema.multi_dims:
                     refuse_unheld(
-                        written, schema, [key], final, file, staged=False, subject=key
+                        frame, schema, [key], final, file, staged=False, subject=key
                     )
-                resolved[key] = written
-                refuse_twice(written, [key], file)
+                resolved[key] = frame
+                refuse_twice(frame, [key], file)
                 before = resolve_one(schema, parents, workspace.con, key)
                 if before is not None:
-                    _refuse_reordered(written, before, key, file)
+                    _refuse_reordered(frame, before, key, file)
+        files = LayerFiles(
+            dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
+        )
         if data.axes():
-            layer = DirectorySource(staging, schema, workspace, uuid4())
+            manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=files)
+            layer = DirectorySource(base, manifest, workspace, manifest.id)
             _require_living_references(parents, layer, workspace.con, schema)
-        # A standalone directory *is* one record, so its schema is in it, and
-        # written last: a directory without one reads as no record.
-        if manifest is not None:
-            workspace.files(staging).write_text(
-                staging + "manifest.json", manifest, expect=Absent()
-            )
-    except BaseException:
-        if local:
-            shutil.rmtree(staging, ignore_errors=True)
-        raise
     finally:
         if isinstance(data, _RecordLikeAsLayerData):
             data.release()
-    if local:
-        Path(staging).rename(base.rstrip("/"))
+    return files
 
 
 def _write_frame(
     rel: DuckDBPyRelation,
-    staging: str,
+    base: str,
     kind: str,
     key: str,
     schema: Schema,
     con: DuckDBPyConnection,
 ) -> str:
-    """Write `rel` as `{kind}/{key}.parquet` under `staging`, unmaterialised; return its URI.
+    """Write `rel` as `{kind}/{key}.parquet` under `base`, unmaterialised; return its URI.
 
     Columns are cast to their declared types on the way out, so a reader can
     trust them. Before that, a column whose type does not fit its declared
@@ -240,7 +213,7 @@ def _write_frame(
     - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
     """
     file = f"{kind}/{key}.parquet"
-    uri = f"{staging}{file}"
+    uri = f"{base}{file}"
     if "://" not in uri:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
     unwritable = [c for c in DERIVED if c in rel.columns]

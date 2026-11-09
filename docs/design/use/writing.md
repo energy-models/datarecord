@@ -6,34 +6,43 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Writing
 
-There are three ways to write: `store.root`, `rev.child` and `ws.write`.
-Each one writes one layer from a `LayerData` source and returns what it made.
+There are two destinations: a store, written by `store.commit`, or by `store.claim` and `claim.commit`, and a standalone directory, written by `ws.write`.
+Each call writes one layer from a `LayerData` source and returns what it made.
 The writer casts every column to its declared type.
 It refuses rows that do not fit the schema or that name labels the layer's axes lack, and it refuses an axis whose order differs from its parent's.
-A tree write puts the revision file last, so a layer becomes reachable only once it is complete.
+A store write puts the layer's manifest last, so a layer becomes reachable only once it is complete.
 A standalone directory gets its manifest last for the same reason.
 
 ```python
-store.root(source) -> Revision  # a new root with this layer
-rev.child(source) -> Revision  # a new child of rev with this layer
-ws.write(source, uri) -> Record  # a standalone directory, read back
+store.claim(*, parent: Revision | None, meta: Meta | None = None) -> Claim
+claim.commit(source, *, meta: Meta | None = None) -> Revision
+store.commit(source, *, parent: Revision | None, meta: Meta | None = None) -> Revision
+store.commit(w, *, meta: Meta | None = None) -> Revision  # w a WorkingRecord
+ws.write(source, uri, *, meta: Meta | None = None) -> Record  # a standalone directory, read back
 ```
 
-There is one call per destination, and each is named for what it returns.
-A tree write needs the location and the tree, a directory write needs only a connection, and the two return different things.
-`child` lives on the parent, so the call names the store once.
-Its name says that it makes something new, since layers are [write-once](../layers/tree.md#a-layers-data-is-write-once) and `rev` itself never changes.
+`store.commit` is `store.claim(...).commit(source)` in one call.
+`parent` is a required keyword, so a new root is written out as `parent=None`, and a root and a child differ by an argument.
+
+A claim hands out the id before any data is written.
+A job submitted with a claim commits it at its end, days later if need be, and until then `store.claims()` lists the layer as pending, with its `meta`, and no [cleanup](../storage/store.md#cleanup) by age reaches it while it is young.
+
+A `WorkingRecord` brings its parent.
+`store.commit(w)` writes `w`'s [edits](editing.md#edits), a delta, as a child of the revision `w` was built over.
+
+`meta` is the revision's own, as its [manifest](../storage/store.md#the-layers) holds it, and `store.revisions(meta={...})` finds the revisions whose `meta` holds every pair given.
+What a commit checks before it writes, its parent, its `meta` and its schema, is in [a revision exists only by its file](../storage/store.md#a-revision-exists-only-by-its-file).
 
 ## A write makes a new layer
 
-Each call writes `source` as a new layer.
-An existing layer directory is an error, so a write never half-replaces what a record holds.
+Each call writes `source` as a new layer, under an id that is claimed once, so a write never half-replaces what a record holds.
 `ws.write` refuses anything that already exists at `uri`: locally the path, even an empty directory, and remotely any key under it.
 
 The writer looks up keys one at a time and writes each file before it builds the next.
 A lazily-building source therefore does one read per file written.
-Locally, the layer is staged into a sibling directory and renamed on success, so a frame that fails validation leaves no layer.
-Remotely, a failed write can leave part of a layer, which nothing reaches without the [revision file](../storage/store.md#a-revision-exists-only-by-its-file) or the manifest written after it.
+Data goes straight into the layer directory, locally as remotely, and nothing is staged and renamed.
+A frame that fails validation leaves the files written before it and no manifest, so the layer stays [pending](../storage/store.md#a-revision-exists-only-by-its-file) and no read reaches it.
+A failed `ws.write` leaves its files at `uri` the same way, and they block a write there until the caller deletes them.
 
 ## Types
 
