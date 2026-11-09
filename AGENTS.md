@@ -182,8 +182,7 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
 
 ## Running the tests and other long runs
 
-The suite takes ~4 minutes, which is long enough that reading it as it scrolls wastes
-the wait. Redirect it to a file and grep the file instead:
+The suite takes ~4 minutes. Redirect it to a file and grep the file instead:
 
 ```console
 $ pixi run test > "$TMPDIR/pytest.log" 2>&1; echo "exit=$?"
