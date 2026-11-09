@@ -1,0 +1,33 @@
+// SPDX-FileCopyrightText: datarecord Contributors
+//
+// SPDX-License-Identifier: MIT
+
+// Renovate only raises the DuckDB cap: Dependabot keeps the actions current.
+// `widen` keeps the lower bound, so `pixi lock` keeps the locked release, and
+// `pixi update` moves the lock to the new cap for CI to test.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  enabledManagers: ["pep621", "pixi"],
+  dependencyDashboard: false,
+  separateMajorMinor: false,
+  semanticCommits: "enabled",
+  semanticCommitType: "build",
+  packageRules: [
+    { matchPackageNames: ["*"], enabled: false },
+    {
+      matchPackageNames: ["duckdb"],
+      enabled: true,
+      groupName: "duckdb",
+      labels: ["dependencies"],
+      rangeStrategy: "widen",
+      minimumReleaseAge: "7 days",
+      internalChecksFilter: "none",
+      prCreation: "not-pending",
+      postUpgradeTasks: {
+        commands: ["pixi update --no-install duckdb python-duckdb"],
+        fileFilters: ["pixi.lock"],
+        executionMode: "branch",
+      },
+    },
+  ],
+}

@@ -22,7 +22,7 @@ uv = "*"
 [dependencies]
 datarecord = { path = "." }
 # Capped at the newest release the suite passed on: `register` calls the
-# private `_create_view` and `_render`. `bump-duckdb.yml` raises the cap.
+# private `_create_view` and `_render`. Renovate raises the cap.
 duckdb = ">=2.0.0,<=2.0.0"
 pydantic = ">=2.12"
 
