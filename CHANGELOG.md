@@ -72,7 +72,8 @@ All notable changes to datarecord are documented here. The format follows
   axes and groups of the layer, and every group tuple against the final axes.
   Each check is one DuckDB anti-join.
 - A schema is checked at load. A dim, group, group coordinate or attribute
-  name that holds `"` or `.`, starts with `_`, is a column that datarecord
+  name that is not a plain identifier (mathspec's rule: ASCII letters, digits
+  and `_`, not starting with a digit), starts with `_`, is a column that datarecord
   writes itself (`value`, `layer_uuid` and others, ignoring case), or differs
   from another name only in case fails with an error that names each offender.
   Based on #26 by @FBumann.

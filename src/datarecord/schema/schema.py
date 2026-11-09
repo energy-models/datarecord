@@ -21,6 +21,7 @@ Notes
 from __future__ import annotations
 
 import json
+import re
 from collections.abc import Iterable, Mapping
 from typing import Any, cast
 from uuid import UUID
@@ -31,6 +32,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyRelation, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb.sqltypes import DuckDBPyType
+from mathspec._expression_parser import NAME
 from pydantic import Field, model_validator
 
 from datarecord.duck import fn
@@ -108,17 +110,14 @@ Notes
 def _misnamed(name: str) -> str | None:
     """Why `name` cannot be a declared dim, coordinate or attribute, if so.
 
-    `duckdb.ColumnExpression` is how every declared name becomes a column
-    reference, and it reads `a.b` as column `b` of table `a` and cannot spell a
-    `"` at all; those two are what make a name unquotable, rather than a space
-    or a keyword, which it quotes.
+    mathspec's `NAME` is the rule, since an expression must be able to write
+    the name; it also keeps a dim's name usable unquoted in the fold's shared
+    table names (`_coord_table`).
     """
-    if '"' in name:
-        return 'contains `"`, which no DuckDB column reference can spell'
-    if "." in name:
-        return "contains `.`, which DuckDB reads as a table qualifier"
     if name.startswith("_"):
         return "starts with `_`, kept for the columns a fold adds and drops"
+    if re.fullmatch(NAME, name) is None:
+        return "is not a name: use only ASCII letters, digits and `_`, starting with a letter"
     if name.lower() in RESERVED:
         return f"is `{name.lower()}`, a column datarecord writes into every record"
     return None
