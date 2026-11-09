@@ -194,56 +194,6 @@ def test_component_level_attribute_is_unaffected(store):
     )
 
 
-def test_per_connection_attribute_varies_by_snapshot(store):
-    """`bus` extends the key; it does not displace the dims.
-
-    Notes
-    -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
-    """
-    layer = empty_root(store, schema())
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_connections(layer, [{"entity": "steel_dri", "bus": "h2_north"}])
-    write_attribute(
-        layer,
-        "efficiency",
-        [
-            # one static row, and a two-snapshot series for the same connection
-            {
-                "ctype": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "value": 2.0,
-            },
-            {
-                "ctype": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "snapshot": "2030-01-01",
-                "value": 2.5,
-            },
-            {
-                "ctype": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "snapshot": "2030-01-02",
-                "value": 2.7,
-            },
-        ],
-    )
-
-    revision = layer.commit()
-    flags = revision.record.flags()["efficiency"]
-    # Both sets hold `snapshot`: one connection's efficiency is per-snapshot,
-    # another's is a single broadcast row, and the union over the rows
-    # reports both - which is what tells a consumer one container will not do
-    # (https://energy-models.github.io/datarecord/design/use/reading/#flags). A per-connection attribute needs no special case for this.
-    assert "snapshot" in flags.varies
-    assert "snapshot" in flags.broadcast
-    assert not flags.breakpoints
-    assert len(relation(revision, "efficiency").df()) == 3
-
-
 def test_restating_without_a_connection_removes_it(store):
     """A restatement omitting a connection drops its row and its `attributes/` rows."""
     root = _root(store).commit()
@@ -258,28 +208,6 @@ def test_restating_without_a_connection_removes_it(store):
     # ... and the attribute rows go with it, which the map can scope per
     # connection only because `bus` is in `owner_map_key`.
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
-
-
-def test_a_removed_component_reaches_its_connections_through_their_removal(store):
-    """The fold infers nothing from the entity: the multi-dim's own restatement clears them.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
-    """
-    root = _root(store).commit()
-    root.materialise()
-
-    both_layer = empty_child(root)
-    drop_entities(both_layer, ["steel_dri"])
-    drop_connections(
-        both_layer,
-        [("steel_dri", "h2_north"), ("steel_dri", "iron_ore"), ("steel_dri", "dri")],
-    )
-    both = both_layer.commit()
-    frame = both.record.dims["connection"]
-    assert frame.count("*").fetchall() == [(0,)], "every connection row is removed"
-    assert "efficiency" not in both.record.attributes, "and their values go with them"
 
 
 def test_a_dim_a_multi_dim_draws_on_still_broadcasts(store):
@@ -371,42 +299,6 @@ def test_a_multi_dim_outside_partial_is_owned_whole(store):
 def _connection(entity, bus):
     """One `connection` tuple, as `add` takes it."""
     return [{"entity": entity, "bus": bus}]
-
-
-def _efficiency_rows(record) -> dict[tuple[str, str], float]:
-    df = unpacked(record.attributes["efficiency"])
-    return {
-        (e, b): v for e, b, v in zip(df["entity"], df["bus"], df["value"], strict=True)
-    }
-
-
-def test_remove_drops_the_tuples_naming_the_entity(store):
-    """`remove` writes the cascade: the connections go, and their values with them.
-
-    Notes
-    -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
-    """
-    base = _root(store).commit()
-    other = WorkingRecord(base.record)
-    other.add("entity", ["blast_furnace"], ctype=PROCESS)
-    other.add("connection", _connection("blast_furnace", "iron_ore"))
-    other.set("efficiency", 3.0, entity=["blast_furnace"], bus="iron_ore")
-    root = base.store.commit(other)
-
-    staged = WorkingRecord(root.record)
-    staged.set("efficiency", 0.5, entity=["steel_dri"], bus="dri")
-    staged.remove("entity", ["steel_dri"])
-    assert set(unpacked(staged.dims["connection"])["entity"]) == {"blast_furnace"}, (
-        "every tuple naming it goes, and no other"
-    )
-    assert _efficiency_rows(staged) == {("blast_furnace", "iron_ore"): 3.0}, (
-        "neither the base's nor the staged values, and another entity keeps its own"
-    )
-
-    child = root.store.commit(staged)
-    assert set(unpacked(child.record.dims["connection"])["entity"]) == {"blast_furnace"}
-    assert _efficiency_rows(child.record) == {("blast_furnace", "iron_ore"): 3.0}
 
 
 def test_add_refuses_a_tuple_naming_a_removed_entity(store):

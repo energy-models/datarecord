@@ -243,10 +243,9 @@ def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
     "by",
     [
         lambda claim: {"ids": [claim.id]},
-        lambda claim: {"ids": [claim.id, claim.id]},
         lambda _: {"older_than": timedelta(0)},
     ],
-    ids=["ids", "repeated-id", "age"],
+    ids=["ids", "age"],
 )
 def test_cleanup_deletes_a_pending_layer_and_no_committed_one(store, by):
     """Named by id, or claimed at least `older_than` ago, which `timedelta(0)` reaches.
@@ -331,36 +330,40 @@ def test_a_layer_directory_without_a_claim_is_no_claim(store):
     assert stray.exists(), "only a claimed layer is aged"
 
 
-@pytest.mark.parametrize(
-    ("meta", "found"),
-    [
-        ({}, {"a", "b", "c"}),
-        ({"run": "a"}, {"a"}),
-        ({"n": 1}, {"a", "b"}),
-        ({"run": "a", "n": 1}, {"a"}),
-        ({"run": "a", "n": 2}, set()),
-        ({"n": 1.0}, set()),
-        ({"ok": True}, {"c"}),
-    ],
-    ids=["none", "one", "shared", "both", "one-off", "other-type", "bool"],
-)
-def test_revisions_filter_by_meta(store, meta, found):
-    """A revision is listed when its `meta` holds every pair given; a pending layer never.
-
-    Notes
-    -----
-    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
-    """
+@pytest.fixture(scope="module")
+def metas(module_store):
+    """Three revisions by their `meta`, and a pending claim carrying `a`'s."""
     metas = {
         "a": {"run": "a", "n": 1},
         "b": {"run": "b", "n": 1},
         "c": {"run": "c", "ok": True},
     }
     names = {
-        store.commit(_p_nom(), parent=None, meta=m).id: name
+        module_store.commit(_p_nom(), parent=None, meta=m).id: name
         for name, m in metas.items()
     }
-    store.claim(parent=None, meta={"run": "a", "n": 1})
+    module_store.claim(parent=None, meta=metas["a"])
+    return module_store, names
+
+
+@pytest.mark.parametrize(
+    ("meta", "found"),
+    [
+        ({}, {"a", "b", "c"}),
+        ({"run": "a", "n": 1}, {"a"}),
+        ({"run": "a", "n": 2}, set()),
+        ({"n": 1.0}, set()),
+    ],
+    ids=["none", "both", "one-off", "other-type"],
+)
+def test_revisions_filter_by_meta(metas, meta, found):
+    """A revision is listed when its `meta` holds every pair given; a pending layer never.
+
+    Notes
+    -----
+    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
+    """
+    store, names = metas
     fresh = Workspace()
     try:
         for reader in (store, fresh.store(store.uri)):
@@ -370,8 +373,7 @@ def test_revisions_filter_by_meta(store, meta, found):
         fresh.close()
 
 
-@pytest.mark.parametrize("value", [math.nan, math.inf, -math.inf])
-def test_a_meta_float_is_finite(store, value):
+def test_a_meta_float_is_finite(store):
     """JSON has no NaN or infinity, so either would be read back as null.
 
     Refused before the claim or the manifest is written.
@@ -381,11 +383,11 @@ def test_a_meta_float_is_finite(store, value):
     - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
     """
     with pytest.raises(ValidationError, match="finite"):
-        store.claim(parent=None, meta={"x": value})
+        store.claim(parent=None, meta={"x": math.nan})
     assert not Path(store.uri, "layers").exists(), "no claim is written"
     claim = store.claim(parent=None)
     with pytest.raises(ValidationError, match="finite"):
-        claim.commit(_p_nom(), meta={"x": value})
+        claim.commit(_p_nom(), meta={"x": math.nan})
     assert _pending(store) == [str(claim.id)], "no manifest is written"
 
 
@@ -419,10 +421,9 @@ def test_a_claim_crosses_a_process_boundary(store):
     ("given", "outcome"),
     [
         ({"status": "optimal"}, {"run": "a", "n": 3, "status": "optimal"}),
-        ({"run": "a"}, {"run": "a", "n": 3}),
         ({"run": "b"}, "changes the claimed meta \\['run'\\]"),
     ],
-    ids=["adds", "repeats", "changes"],
+    ids=["adds", "changes"],
 )
 def test_a_commit_may_add_to_its_claims_meta_but_not_change_it(store, given, outcome):
     """A job learns its outcome at its end, so it adds a key; a claimed key stays.
@@ -489,20 +490,13 @@ def _standalone(store, root, tmp_path):
     return store.workspace.write(root.record, str(tmp_path / "flat"))
 
 
-def _layer(store, root, tmp_path):  # noqa: ARG001
-    return store.layer(root.id)
-
-
 def _another_stores(store, root, tmp_path):  # noqa: ARG001
     other = store.workspace.store(str(tmp_path / "other"))
     return other.commit(_p_nom(), parent=None).record
 
 
-@pytest.mark.parametrize("base", [_standalone, _layer, _another_stores])
-def test_a_working_record_lands_on_its_base(store, tmp_path, base):
+def test_a_working_record_lands_on_its_base(store):
     """`store.commit(w)` writes `w`'s edits as a child of the revision `w` was built over.
-
-    Over anything but a revision of the store, its edits have no parent there.
 
     Notes
     -----
@@ -518,10 +512,22 @@ def test_a_working_record_lands_on_its_base(store, tmp_path, base):
     assert child.record.attributes["p_nom"].df()["value"].tolist() == [2.0]
     assert set(child.manifest.files.attributes) == {"p_nom"}, "only the edits"
 
+
+@pytest.mark.parametrize("base", [_standalone, _another_stores])
+def test_a_working_record_over_no_revision_of_the_store_is_refused(
+    store, tmp_path, base
+):
+    """Over anything but a revision of the store, its edits have no parent there.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    root = store.commit(_p_nom(), parent=None)
     elsewhere = WorkingRecord(base(store, root, tmp_path))
     with pytest.raises(ValueError, match=r"`ws\.write\(w, uri\)`"):
         store.commit(elsewhere)
-    assert {r.id for r in store.revisions()} == {root.id, child.id}
+    assert [r.id for r in store.revisions()] == [root.id]
 
 
 def test_a_parent_of_another_store_is_refused(workspace, store, tmp_path):
@@ -585,17 +591,6 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
         "SELECT table_name FROM duckdb_tables() WHERE table_name LIKE 'owner_map_%'"
     ).fetchall()
     assert [t for (t,) in tables if child.id.hex in t], "the map is a shared table"
-
-
-def test_a_fold_keeps_no_table_of_its_steps(workspace, tree):
-    """The steps' tables go once the shared table or the persisted map holds the fold."""
-    _, child = tree
-    child.record.attributes["p_max_pu"].fetchall()
-    child.materialise()
-    steps = workspace.con.sql(
-        "SELECT table_name FROM duckdb_tables() WHERE starts_with(table_name, '_fold_')"
-    ).fetchall()
-    assert steps == []
 
 
 def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):

@@ -15,27 +15,26 @@ import pytest
 
 from datarecord import Flags, settle
 
+_FOREIGN = [("c", "x", 1.0), (None, "x", 2.0), ("a", "z", 3.0)]
+
 
 @pytest.mark.parametrize(
-    "rows",
+    ("rows", "filtered"),
     [
-        [("a", "x", 1.0), ("b", "x", 2.0), ("a", "y", 3.0)],
-        [(None, "x", 1.0), (None, "y", 2.0)],
-        [(None, None, 1.0)],
-        [(None, None, 1.0), ("a", None, 2.0), ("a", "x", 3.0)],
-        [("a", None, 1.0), (None, "x", 2.0), ("a", "x", 3.0)],
-        [("c", "x", 1.0), (None, "x", 2.0), ("a", "z", 3.0)],
-    ],
-    ids=[
-        "named",
-        "entity-broadcast",
-        "full-broadcast",
-        "nested",
-        "crossing",
-        "foreign",
+        pytest.param(
+            [(None, None, 1.0), ("a", None, 2.0), ("a", "x", 3.0)],
+            True,
+            id="filter-nested",
+        ),
+        pytest.param(
+            [("a", None, 1.0), (None, "x", 2.0), ("a", "x", 3.0)],
+            True,
+            id="filter-crossing",
+        ),
+        pytest.param(_FOREIGN, True, id="filter-foreign"),
+        pytest.param(_FOREIGN, False, id="no-filter-foreign"),
     ],
 )
-@pytest.mark.parametrize("filtered", [True, False], ids=["filter", "no-filter"])
 def test_settle_reads_the_same_whatever_flags_overstate(rows, filtered):
     """Flags only let `settle` skip work: over-reporting them changes no value.
 

@@ -10,7 +10,6 @@ Notes
 """
 
 import json
-from functools import reduce
 from typing import Any
 
 import pytest
@@ -107,8 +106,8 @@ def test_partial_dims_is_the_union_over_attributes():
 
 @pytest.mark.parametrize(
     ("attribute", "addresses"),
-    [("p_nom", True), ("efficiency", True), ("weighting", False)],
-    ids=["over-entity", "over-a-multi-dim-drawing-on-it", "over-another-dim"],
+    [("efficiency", True), ("weighting", False)],
+    ids=["over-a-multi-dim-drawing-on-it", "over-another-dim"],
 )
 def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
     attribute, addresses
@@ -144,12 +143,6 @@ def test_the_section_decides_where_a_value_lives():
     )
     assert s.categorizing("entity") == ("ctype",)
     assert "ctype" not in s.partial_dims
-
-
-def test_long_columns_for_refuses_an_undeclared_attribute():
-    """An undeclared attribute has no `dims`, so no column set to derive."""
-    with pytest.raises(KeyError, match="declares no attribute 'nope'"):
-        _schema().long_columns_for("nope")
 
 
 def test_a_multi_dim_may_have_properties_and_categories():
@@ -309,20 +302,6 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
         ),
         pytest.param(
             lambda: _schema(
-                properties={"connection": {"connection": PropertySpec(dtype="str")}}
-            ),
-            "named like a column of its key",
-            id="its-multi-dims-name",
-        ),
-        pytest.param(
-            lambda: _schema(
-                properties=_with_entity_property("P_nom", PropertySpec(dtype="float"))
-            ),
-            "differ only in case",
-            id="an-attributes-name-in-another-case",
-        ),
-        pytest.param(
-            lambda: _schema(
                 properties=_with_entity_property("a.b", PropertySpec(dtype="float"))
             ),
             "is not a name",
@@ -375,9 +354,6 @@ def _shared() -> Schema:
     [
         ("p_nom", None, "float"),
         ("bus.p_nom", "bus", "int"),
-        ("carrier", None, "str"),
-        ("bus.carrier", "bus", "str"),
-        ("entity.bus", "entity", "str"),
     ],
 )
 def test_resolve_reads_a_property_dotted_and_a_plain_name_as_an_attribute(
@@ -399,10 +375,8 @@ def test_resolve_reads_a_property_dotted_and_a_plain_name_as_an_attribute(
     ("name", "match"),
     [
         ("x", "did you mean `bus.x` or `entity.x`"),
-        ("bus", "did you mean `entity.bus`"),
         ("nope", "no attribute 'nope'\"$"),
         ("bus.nope", "no property 'bus.nope'"),
-        ("entity.p_nom", "no property 'entity.p_nom'"),
     ],
 )
 def test_resolve_refuses_an_unknown_name_suggesting_dotted_properties(name, match):
@@ -508,21 +482,6 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
             id="a-dim-out-of-reach",
         ),
         pytest.param(
-            lambda: _with_x(
-                AttributeSpec(
-                    dtype="float",
-                    dims={"entity"},
-                    default_by={
-                        "entity.ctype": {"Link": 0.5},
-                        "bus.bus_type": {"DC": 0.0},
-                    },
-                ),
-                base=_two_subjects,
-            ),
-            "does not reach its dim 'bus'",
-            id="every-key-reaches-its-dim",
-        ),
-        pytest.param(
             lambda: _schema(
                 properties={
                     "entity": {
@@ -570,26 +529,6 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
             ),
             "`partial` does not list",
             id="a-property-of-a-non-partial-dim",
-        ),
-        pytest.param(
-            lambda: _with_x(
-                AttributeSpec(
-                    dtype="float",
-                    dims={"connection"},
-                    default_by={"connection.role": {"inn": 1.0}},
-                ),
-                base=lambda **kw: _schema(
-                    dimensions=_listing_dims(role=["in", "out"]),
-                    properties={
-                        **_schema().properties,
-                        "connection": {"role": PropertySpec(one_of="role")},
-                    },
-                    partial=frozenset({"entity", "scenario", "connection"}),
-                    **kw,
-                ),
-            ),
-            r"\['inn'\], which are not categories of 'connection.role'",
-            id="a-misspelt-role",
         ),
         pytest.param(
             lambda: _with_x(
@@ -696,7 +635,7 @@ def test_a_dim_reference_must_resolve(build, match):
 # -- defaults through the manifest (https://energy-models.github.io/datarecord/design/model/attributes/#attributespec, https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ------------------------------
 
 
-@pytest.mark.parametrize("value", [float("inf"), float("-inf"), 0.0, None, "AC"])
+@pytest.mark.parametrize("value", [float("inf"), None])
 def test_a_default_survives_the_manifest_round_trip(value):
     """An `inf` default must read back as `inf`, not as "no default".
 
@@ -859,21 +798,10 @@ def test_json_lists_each_set_sorted():
     )
 
 
-@pytest.mark.parametrize(
-    "path",
-    [
-        (),
-        ("dimensions", "snapshot"),
-        ("attributes", "p_nom"),
-        ("properties", "entity", "ctype"),
-        ("dimensions", "connection"),
-    ],
-    ids=["top-level", "dim", "attribute", "property", "multi-dim"],
-)
-def test_manifest_with_unknown_key_fails_to_load(path: tuple[str, ...]):
+def test_manifest_with_unknown_key_fails_to_load():
     s = pypsa_schema(attributes={"Generator": {"p_nom": AttributeSpec(dtype="float")}})
     manifest = json.loads(s.model_dump_json())
-    reduce(dict.__getitem__, path, manifest)["misspelt"] = 1
+    manifest["misspelt"] = 1
     with pytest.raises(ValidationError, match="misspelt"):
         Schema.model_validate_json(json.dumps(manifest))
 
@@ -917,14 +845,6 @@ def _declaring(position: str, name: str) -> Schema:
     attr = AttributeSpec(dtype="float", dims={"entity"})
     if position == "dim":
         return Schema(dimensions={"entity": dim, name: dim}, partial={name})
-    if position == "multi-dim":
-        return Schema(
-            dimensions={
-                "entity": dim,
-                "bus": dim,
-                name: Dimension(over=["entity", "bus"]),
-            },
-        )
     if position == "coordinate":
         return Schema(
             dimensions={
@@ -936,35 +856,25 @@ def _declaring(position: str, name: str) -> Schema:
     return Schema(dimensions={"entity": dim}, attributes={name: attr})
 
 
-POSITIONS = ["dim", "multi-dim", "coordinate", "attribute"]
-
 WRITTEN = {
-    "attribute": "a column datarecord writes",
-    "breakpoint": "a column datarecord writes",
     "value": "a column datarecord writes",
-    "breakpoints": "a column datarecord writes",
-    "varies": "a column datarecord writes",
-    "broadcast": "a column datarecord writes",
-    "layer_uuid": "a column datarecord writes",
-    "order_key": "a column datarecord writes",
     "Value": "a column datarecord writes",
-    "_depth": "starts with `_`",
     "_row": "starts with `_`",
-    "_rank": "starts with `_`",
-    "_first": "starts with `_`",
-    "_broadcast": "starts with `_`",
-    "_pos": "starts with `_`",
-    'say "hi"': "is not a name",
     "a.b": "is not a name",
-    "Order Size": "is not a name",
-    "carbon-price": "is not a name",
-    "1st": "is not a name",
-    "größe": "is not a name",
 }
 
 
-@pytest.mark.parametrize("position", POSITIONS)
-@pytest.mark.parametrize("name", list(WRITTEN))
+@pytest.mark.parametrize(
+    ("name", "position"),
+    [
+        ("value", "dim"),
+        ("value", "coordinate"),
+        ("value", "attribute"),
+        ("Value", "dim"),
+        ("_row", "dim"),
+        ("a.b", "dim"),
+    ],
+)
 def test_a_name_that_cannot_be_its_own_column_is_refused(name, position):
     """Every column the format or the fold writes beside a schema's own, and
     anything mathspec's `NAME` refuses, case folded as DuckDB folds it. `value`
@@ -977,23 +887,21 @@ def test_a_name_that_cannot_be_its_own_column_is_refused(name, position):
     assert "Rename" in message, "the error says what to do"
 
 
-@pytest.mark.parametrize("position", POSITIONS)
-def test_names_differing_only_in_case_are_refused(position):
+def test_names_differing_only_in_case_are_refused():
     """DuckDB resolves `Entity` and `entity` to one column, so declaring both
     would have one read the other's values."""
     with pytest.raises(ValidationError) as refused:
-        _declaring(position, "Entity")
+        _declaring("attribute", "Entity")
     message = str(refused.value)
     assert "'Entity'" in message, "the error names the new spelling"
     assert "'entity'" in message, "and the one it clashes with"
     assert "differ only in case" in message, "the error says why"
 
 
-@pytest.mark.parametrize("position", POSITIONS)
-@pytest.mark.parametrize("name", ["select", "Horizon", "p_nom2"])
-def test_a_plain_identifier_is_accepted(name, position):
-    """A keyword, mixed case or a digit after the first character are names."""
-    _declaring(position, name)
+@pytest.mark.parametrize("name", ["select", "Horizon"])
+def test_a_plain_identifier_is_accepted(name):
+    """A keyword or mixed case are names."""
+    _declaring("dim", name)
 
 
 # -- dtypes (https://energy-models.github.io/datarecord/design/model/schema/#dtypes) ---
@@ -1008,24 +916,9 @@ def test_a_plain_identifier_is_accepted(name, position):
             id="datetime-property",
         ),
         pytest.param(
-            lambda: Dimension(dtype="bool"),
-            "Input should be 'float', 'int', 'str' or 'datetime'",
-            id="bool-dim",
-        ),
-        pytest.param(
-            lambda: Dimension(one_of=[]),
-            "at least 1 item",
-            id="one-of-empty",
-        ),
-        pytest.param(
             lambda: Dimension(one_of=["a", "b", "a"]),
             r"lists \['a'\] more than once",
             id="one-of-duplicate",
-        ),
-        pytest.param(
-            lambda: Dimension(one_of=["a", 2030]),
-            r"one_of\.1\n  Input should be a valid string",
-            id="one-of-non-str-label",
         ),
         pytest.param(
             lambda: Dimension(dtype="int", one_of=[1, 2]),

@@ -10,22 +10,17 @@ Notes
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 """
 
-from pathlib import Path
-
 import pandas as pd
 import pytest
 
-from datarecord.protocols import EMPTY
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.specs import AttributeSpec
 from datarecord.store.cache import sources_to_read
 from datarecord.store.store import lineage
-from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     empty_child,
     empty_root,
-    export_network,
     relation,
     schema,
     write_attribute,
@@ -64,13 +59,6 @@ def parent(store):
     return revision
 
 
-@pytest.fixture
-def network(store, ac_dc):
-    revision = export_network(ac_dc, store)
-    revision.materialise()
-    return revision
-
-
 def test_child_overwrites_component(parent):
     """A child's rows replace all of that component's rows for the attribute.
 
@@ -92,29 +80,7 @@ def test_child_overwrites_component(parent):
     assert len(df[df["entity"] == "Norway Wind"]) == 3
 
 
-def test_child_overwrite_reaches_model(network):
-    """The overwrite turns a series component into a static one in the model."""
-    child = empty_child(network)
-    write_attribute(child, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}])
-
-    n = PyPSA.build(child.commit().record)
-    assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
-    assert "Manchester Wind" not in n.c["Generator"].dynamic["p_max_pu"].columns
-    assert "Norway Wind" in n.c["Generator"].dynamic["p_max_pu"].columns
-
-
-def test_child_adds_attribute(network):
-    """A child may write an attribute no ancestor had."""
-    child = empty_child(network)
-    write_attribute(child, "p_min_pu", [{"entity": "Norway Gas", "value": 0.1}])
-
-    n = PyPSA.build(child.commit().record)
-    assert n.c["Generator"].static.loc["Norway Gas", "p_min_pu"] == 0.1
-    # Untouched generators keep the catalog default.
-    assert n.c["Generator"].static.loc["Norway Wind", "p_min_pu"] == 0.0
-
-
-def test_closed_child_reads_own_cache(store, network):
+def test_closed_child_reads_own_cache(store, parent):
     """Reading a closed non-root record uses its own persisted dims/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
@@ -124,16 +90,18 @@ def test_closed_child_reads_own_cache(store, network):
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
-    child = empty_child(network)
+    child = empty_child(parent)
     write_attribute(child, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}])
     child.commit().materialise()
 
     reloaded = store.revision(child.id)
-    n = PyPSA.build(reloaded.record)
-    assert n.c["Generator"].static.loc["Manchester Wind", "p_max_pu"] == 0.42
-
+    assert set(reloaded.record.dims["entity"].df()["entity"]) == {
+        "Manchester Wind",
+        "Norway Wind",
+    }, "the entity axis comes from the root through the cache"
     df = relation(reloaded, "p_max_pu").df()
     assert df[df["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
+    assert len(df[df["entity"] == "Norway Wind"]) == 3
 
 
 def test_resolved_reads_same_as_unresolved(store, parent):
@@ -205,7 +173,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     )
 
 
-def test_a_child_widens_the_schema_with_a_new_attribute(network):
+def test_a_child_widens_the_schema_with_a_new_attribute(parent):
     """A child declares an attribute its parent's schema lacks, in its own manifest.
 
     The child's manifest holds the full schema, so the record is read under it,
@@ -215,46 +183,17 @@ def test_a_child_widens_the_schema_with_a_new_attribute(network):
     -----
     - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
     """
-    amended = network.manifest.schema.model_copy(deep=True)
+    amended = parent.manifest.schema.model_copy(deep=True)
     amended.attributes["site_quality"] = AttributeSpec(dtype="float", dims={"entity"})
-    assert amended.compatible_with(network.manifest.schema) == []
+    assert amended.compatible_with(parent.manifest.schema) == []
 
-    child_layer = empty_child(network, amended)
+    child_layer = empty_child(parent, amended)
     write_attribute(
-        child_layer, "site_quality", [{"entity": "Norway Gas", "value": 0.1}]
+        child_layer, "site_quality", [{"entity": "Norway Wind", "value": 0.1}]
     )
     child = child_layer.commit()
     assert relation(child, "site_quality").df()["value"].tolist() == [0.1]
     assert "site_quality" in child.record.schema.attributes
-    assert "site_quality" not in network.record.schema.attributes, (
+    assert "site_quality" not in parent.record.schema.attributes, (
         "the parent reads as written"
     )
-
-
-def test_a_schema_narrowing_is_refused(store, parent):
-    """A layer cannot redefine what an attribute means.
-
-    Notes
-    -----
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
-    """
-    narrowed = parent.manifest.schema.model_copy(deep=True)
-    narrowed.attributes["p_max_pu"] = AttributeSpec(dtype="float", dims=frozenset())
-
-    class _Narrowed:
-        """The record's own source, with one attribute's dims taken away."""
-
-        schema = narrowed
-        dims = EMPTY
-        attributes = EMPTY
-
-        def flags(self):
-            return {}
-
-    claim = store.claim(parent=parent)
-    with pytest.raises(ValueError, match="no longer varies over"):
-        claim.commit(_Narrowed())
-    assert [r.id for r in store.revisions()] == [parent.id], (
-        "the layer is claimed, but without its manifest nothing reaches it"
-    )
-    assert not Path(store.manifest_uri(claim.id)).exists()

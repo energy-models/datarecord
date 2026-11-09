@@ -12,9 +12,7 @@ Notes
 import pandas as pd
 import pytest
 
-from datarecord import Workspace
 from datarecord.tools.pypsa import PyPSA
-from tests.fixtures import export_network
 
 
 def _has_export_to_parquet() -> bool:
@@ -72,14 +70,9 @@ def assert_networks_equal(got, expected):
 
 
 @pytest.fixture(scope="module")
-def built(tmp_path_factory, ac_dc):
-    """`ac_dc` exported and built back once for the module; tests only read it."""
-    workspace = Workspace()
-    revision = export_network(
-        ac_dc, workspace.store(str(tmp_path_factory.mktemp("ac_dc")))
-    )
-    yield PyPSA.build(revision.record)
-    workspace.close()
+def built(ac_dc_root):
+    """`ac_dc` built back once for the module; tests only read it."""
+    return PyPSA.build(ac_dc_root.record)
 
 
 @needs_export_to_parquet

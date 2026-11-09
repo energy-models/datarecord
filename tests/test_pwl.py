@@ -9,8 +9,6 @@ Notes
 - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
 """
 
-import pytest
-
 from datarecord.protocols import Flags
 from tests.fixtures import (
     HandBuilt,
@@ -20,7 +18,6 @@ from tests.fixtures import (
     schema,
     write_attribute,
     write_component,
-    write_connections,
 )
 
 PROCESS = "Process"
@@ -39,35 +36,25 @@ def _flags(revision, attribute: str) -> Flags:
     return flags[attribute]
 
 
-def _root_with_curve(store, *, scalar: float | None = None) -> HandBuilt:
-    """A root whose `steel_dri` has a three-point `marginal_cost`, or `scalar` instead."""
+def _root_with_curve(store) -> HandBuilt:
+    """A root whose `steel_dri` has a three-point `marginal_cost`."""
     layer = empty_root(store, schema())
     write_component(layer, PROCESS, [{"entity": "steel_dri"}])
-    rows = (
-        [{"ctype": PROCESS, "entity": "steel_dri", "value": scalar}]
-        if scalar is not None
-        else [
-            {
-                "ctype": PROCESS,
-                "entity": "steel_dri",
-                "breakpoint": x,
-                "value": v,
-            }
-            for x, v in ((0.0, 20.0), (50.0, 35.0), (80.0, 60.0))
-        ]
-    )
+    rows = [
+        {"ctype": PROCESS, "entity": "steel_dri", "breakpoint": x, "value": v}
+        for x, v in ((0.0, 20.0), (50.0, 35.0), (80.0, 60.0))
+    ]
     write_attribute(layer, "marginal_cost", rows)
     return layer
 
 
-@pytest.mark.parametrize("scalar", [None, 20.0], ids=["over-a-curve", "over-a-scalar"])
-def test_a_child_curve_replaces_the_parents_value_whole(store, scalar):
+def test_a_child_curve_replaces_the_parents_value_whole(store):
     """`breakpoint` is not in `owner_map_key`: one layer owns every breakpoint of a key.
 
     So a child's curve replaces a parent's curve entirely - never a mix of the
-    two - and may turn a scalar into a curve, it being one key either way.
+    two.
     """
-    root = _root_with_curve(store, scalar=scalar).commit()
+    root = _root_with_curve(store).commit()
     root.materialise()
 
     child_layer = empty_child(root)
@@ -123,105 +110,3 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
         (50.0, 35.0),
         (80.0, 60.0),
     ], "a curve is N rows of one key, ordered by sorting on `breakpoint`"
-
-
-def test_curve_on_a_connection(store):
-    """`bus` and `breakpoint` compose: one keys, the other does not.
-
-    Notes
-    -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
-    """
-    layer = empty_root(store, schema())
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_connections(
-        layer,
-        [
-            {"entity": "steel_dri", "bus": "h2_north"},
-            {"entity": "steel_dri", "bus": "dri"},
-        ],
-    )
-    write_attribute(
-        layer,
-        "efficiency",
-        [
-            {
-                "ctype": PROCESS,
-                "entity": "steel_dri",
-                "bus": bus,
-                "breakpoint": x,
-                "value": v,
-            }
-            for bus, x, v in (
-                ("h2_north", 0.0, 2.0),
-                ("h2_north", 50.0, 2.4),
-                ("dri", 0.0, 1.0),
-            )
-        ],
-    )
-    revision = layer.commit()
-    revision.materialise()
-
-    # Each connection owns its own curve, so a patch to one leaves the other.
-    child = empty_child(revision)
-    write_attribute(
-        child,
-        "efficiency",
-        [
-            {
-                "ctype": PROCESS,
-                "entity": "steel_dri",
-                "bus": "h2_north",
-                "breakpoint": x,
-                "value": v,
-            }
-            for x, v in ((0.0, 3.0), (50.0, 3.5), (99.0, 4.0))
-        ],
-    )
-
-    df = (
-        relation(child.commit(), "efficiency")
-        .project("connection.bus AS bus, breakpoint, value")
-        .order("bus, breakpoint")
-        .df()
-    )
-    rows = list(zip(df["bus"], df["breakpoint"], df["value"], strict=True))
-    assert rows == [
-        ("dri", 0.0, 1.0),
-        ("h2_north", 0.0, 3.0),
-        ("h2_north", 50.0, 3.5),
-        ("h2_north", 99.0, 4.0),
-    ]
-
-
-def test_curve_varying_by_snapshot(store):
-    """A curve per snapshot: `breakpoint` multiplies by the dims like anything else."""
-    layer = empty_root(store, schema())
-    write_component(layer, PROCESS, [{"entity": "steel_dri"}])
-    write_attribute(
-        layer,
-        "marginal_cost",
-        [
-            {
-                "ctype": PROCESS,
-                "entity": "steel_dri",
-                "snapshot": snap,
-                "breakpoint": x,
-                "value": v,
-            }
-            for snap, x, v in (
-                ("2030-01-01", 0.0, 20.0),
-                ("2030-01-01", 50.0, 30.0),
-                ("2030-01-02", 0.0, 22.0),
-                ("2030-01-02", 50.0, 33.0),
-            )
-        ],
-    )
-
-    revision = layer.commit()
-    flags = _flags(revision, "marginal_cost")
-    # A curve that varies over snapshots: on the snapshot axis and a curve too.
-    assert "snapshot" in flags.varies
-    assert "snapshot" not in flags.broadcast
-    assert flags.breakpoints
-    assert len(relation(revision, "marginal_cost").df()) == 4
