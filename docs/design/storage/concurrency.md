@@ -35,14 +35,11 @@ Its [dead labels](../layers/resolution.md#a-label-outside-the-key) are the table
 A last table, `dim_owners_<id>`, has the shape of a node cache's [`dim_owners.parquet`](../layers/resolution.md#materialised-node-caches), a row `(dim, layer_uuid, has_dead)` per folded axis.
 It is created after them, so a reader that finds it finds them all.
 A reader opens `dead_<dim>_<id>` only where `has_dead` is true.
-The [owner map](../layers/resolution.md#owner-map) is `owner_map_<key>_<id>` beside them, where `<key>` is the owner map's key columns joined by commas.
+The [owner map](../layers/resolution.md#owner-map) is `owner_map_<id>` beside them.
 A dim's name is spelled as declared, since the schema [holds every name to a plain identifier](../model/schema.md#names).
 `<id>` is the node whose frozen layers were folded: a revision's id, the base's id for a `WorkingRecord`, or the [id in its manifest](store.md#the-layers) for a standalone directory.
 
-The schema is no part of the key beyond `partial`, so a fold made under an ancestor's schema is read as it is under a descendant's wider one, while one made before a dim joined or left `partial` is folded again.
-A [compatible widening](../model/schema.md#versioning) only adds, and changes no column a table already has.
-The one addition a table can lack is the new dim's field in the [flag structs](../layers/resolution.md#owner-map).
-Each reader of a flag takes a missing field as unset, and decides this from the struct's type when it builds the query.
+The fold reads each layer under [its own schema](../layers/resolution.md#extending-the-map-to-a-wider-schema), so what it folds for a node depends on the node's ancestry alone, and one table per node serves every reader.
 A materialised owner map is cast to the declared types.
 These tables are left as the fold produced them, and each holds what the same fold returns uncached.
 

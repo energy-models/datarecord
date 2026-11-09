@@ -98,7 +98,7 @@ Labels are data, and none of these rules constrain them. Beyond these columns, n
 
 ## One schema per record
 
-A record is read under its last layer's schema, the one that layer's [manifest](../storage/store.md#the-layers) carries. Each layer's `manifest.json` holds the full schema the layer was written under, never a delta, so one file answers a revision's schema without walking its ancestry, and a revision reads every layer of its ancestry under its own. A layer's data files hold no schema, which keeps each a plain parquet file that a tool knowing nothing about layering can read.
+A record is read under its last layer's schema, the one that layer's [manifest](../storage/store.md#the-layers) carries. Each layer's `manifest.json` holds the full schema the layer was written under, never a delta, so one file answers a revision's schema without walking its ancestry. Each layer of the ancestry folds under the schema in its own manifest, while the revision's owner map and reads use the revision's schema, to which the fold [extends the map](../layers/resolution.md#extending-the-map-to-a-wider-schema). A layer's data files hold no schema, which keeps each a plain parquet file that a tool knowing nothing about layering can read.
 
 The schema is not layered data, and nothing folds it. A child's schema must pass `compatible_with` against its parent's, and a root's is free, so a layer cannot change what `p_nom` means, its dtype or the dims it varies over ([versioning](#versioning)). A child may widen its parent's schema. A new attribute then reaches that child and its descendants, and no revision written before, so one branch's experiment leaves its siblings as they were, and two sibling branches may declare one name differently. `schema.meta` is part of the schema and a child inherits it, unlike the revision's own `meta` in the manifest.
 
@@ -115,7 +115,7 @@ A compatible change keeps old layers readable. `version` bumps and nothing else 
 - adding an attribute or a property, since neither changes the key of [the owner map](../layers/resolution.md#owner-map), which only `partial` widens
 - adding a dim that no existing attribute varies over, a multi-dim among them; until a layer writes a new multi-dim, it has no tuples
 - widening an `AttributeSpec.dims`, since an unset dim is NULL and NULL means every label ([the broadcast rule](attributes.md#the-broadcast-rule))
-- adding to `partial`, which makes ownership finer while an existing layer's rows stay owned at the coarser granularity they were written with; a [materialised](../layers/resolution.md#materialised-node-caches) owner map keyed before the change is no cache, and the read folds from the layers again
+- adding to `partial`, which makes ownership finer from the layer that adds it on, while an existing layer reads as it was written; the fold [extends](../layers/resolution.md#extending-the-map-to-a-wider-schema) the map folded so far, [materialised](../layers/resolution.md#materialised-node-caches) or not, to the finer key
 - changing a [`unit` or `description`](#unit-and-description), which decides how no row decodes
 
 An incompatible change makes existing rows decode differently, or not at all:

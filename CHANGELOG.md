@@ -155,6 +155,10 @@ All notable changes to datarecord are documented here. The format follows
   `set("p_nom", {...})` is then open in `entity` and `scenario`; pass the
   labels as `entity=[...]` or as a series indexed by `entity`.
 
+- A workspace validates each distinct schema once. Revisions sharing a schema
+  hand out one `Schema` object, so reading a long lineage no longer re-runs the
+  schema's checks per layer. A `Schema` obtained from a revision is shared:
+  copy it before changing it.
 - A materialised node no longer copies its axes into `resolved/dims/`.
   `resolved/dim_owners.parquet` names, per dim, the layer whose
   `dims/<dim>.parquet` is the deepest at or below the node, and a read opens
@@ -253,13 +257,14 @@ All notable changes to datarecord are documented here. The format follows
   `Schema.input_key` is `Schema.owner_map_key`, `Schema.input_columns` is
   `Schema.owner_map_columns`, and `Requirements.unsupported_keys` reports
   `"owner_map_key"`.
-- A `Record` is constructed from `revision_id`, `sources`, `workspace` and
-  `schema`. A caller reads it through its mappings: `rev.record.sources`,
-  `dims[dim]`, `properties[dim]` and `attributes[name]`.
-  `attributes[name]` raises `KeyError` for an undeclared attribute.
+- A `Record` is constructed from `revision_id`, `sources` and `workspace`, and
+  reads under its last source's schema. A caller reads it through its
+  mappings: `rev.record.sources`, `dims[dim]`, `properties[dim]` and
+  `attributes[name]`. `attributes[name]` raises `KeyError` for an undeclared
+  attribute.
 - `PyPSA.build` raises `TypeError` for a `RecordLike` that is not a `Record`.
-  `Schema.long_columns_for` raises `KeyError` for an attribute that the schema
-  does not declare.
+  `Schema.long_columns_for` and `Schema.coordinates_of` raise `KeyError` for an
+  attribute that the schema does not declare.
 - `LayerData` declares no `frozen`, and its `axes()`, `groups()` and
   `attributes()` return `set[str]`. A whole `Record` reaches the writer
   through the adapter for a `RecordLike`.
@@ -305,12 +310,20 @@ All notable changes to datarecord are documented here. The format follows
   out along the labels a parent row names there. The fold refuses a layer
   written otherwise that leaves such a crossing, naming the layer, the
   attribute, the dim and the key.
+- The writer refuses a `dims/` file of a dim that the schema does not declare,
+  as it refuses an undeclared attribute. A descendant declaring the dim would
+  read its labels.
 - The writer accepts two rows that each name a dim the other leaves NULL
   where a row naming both is there, so `ws.write(w, uri)` writes a record of
   several layers. The read of a `WorkingRecord` refuses two staged rows that
   cross with no staged row naming both.
-- A materialised owner map keyed on another `partial` set than the schema's
-  is ignored, and the read folds that node from its layers.
+- The fold reads each layer under the schema in its own manifest. Where a
+  deeper layer's schema is wider, the map folded so far, materialised or not,
+  is extended to it, so a materialised node keeps counting after a descendant
+  adds a dim to `partial`, and a workspace holds one fold table per node,
+  `owner_map_<id>`. A layer that restates a key along a dim outside `partial`
+  and omits a label its parent held there deletes that value, and a later
+  widening of `partial` no longer brings it back.
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
@@ -399,6 +412,10 @@ All notable changes to datarecord are documented here. The format follows
   a temporary name, so a node reads as materialised only when its cache is
   complete.
 - A map materialised under a parent's schema reads under a child's wider one.
+- An attribute whose `dims` gained a dim reads its earlier rows, NULL along
+  it, where that dim is in `partial` too. `flags()` reports such rows as
+  broadcast along the gained dim, whether it is in `partial` or not, and
+  whether or not the schema declared it before.
 - Reading an attribute over a `partial` dim scales linearly with the length of
   that dim. Folding the owner map no longer compares every row with every
   label of the dim's axis, so the first read of a record with long series is

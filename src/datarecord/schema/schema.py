@@ -525,15 +525,21 @@ class Schema(_Declared):
         column set per attribute, and an all-NULL column of a dim the attribute
         is not addressed by would claim a coordinate the value has none of.
 
+        Raises
+        ------
+        KeyError
+            If the schema does not declare `attribute`.
+
         Notes
         -----
         - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
         - [addressing](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
         - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
-        spec = self.attributes.get(attribute)
-        if spec is None:
-            return ()
+        if attribute not in self.attributes:
+            msg = f"the schema declares no attribute {attribute!r}"
+            raise KeyError(msg)
+        spec = self.attributes[attribute]
         return (
             *self.multi_dims_of(attribute),
             *(d for d in self.dims if d in spec.dims),
@@ -636,9 +642,6 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
         """
-        if attribute not in self.attributes:
-            msg = f"the schema declares no attribute {attribute!r}"
-            raise KeyError(msg)
         return (*self.coordinates_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
