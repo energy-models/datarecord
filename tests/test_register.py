@@ -16,6 +16,7 @@ from uuid import uuid4
 import duckdb
 import pytest
 
+from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
 from tests.fixtures import in_threads
 from tests.test_mutable import _rows, _small
@@ -58,10 +59,11 @@ def _declared(record):
 
 
 def _views(con, name):
-    """`kind -> view names` under the schema `name`, from the catalog."""
+    """`kind -> view names` under the schema `name` of the workspace's database, from the catalog."""
     found = con.sql(
         "SELECT s.parent_schema, s.schema_name, v.view_name"
         " FROM duckdb_views() v JOIN duckdb_schemas() s ON v.schema_oid = s.oid"
+        " WHERE v.database_name = 'datarecord'"
     ).fetchall()
     return {
         kind: sorted(v for parent, s, v in found if parent == name and s == kind)
@@ -69,14 +71,10 @@ def _views(con, name):
     }
 
 
-def _view(con, name, kind, view):
-    return con.sql(f'FROM "{name}"."{kind}"."{view}"')
-
-
-def _read_views(con, name, declared):
-    """Every view of `name` as order-independent rows, keyed `(kind, view)`."""
+def _read_views(con, name, declared, database="datarecord"):
+    """Every view of `name` in `database` as order-independent rows, keyed `(kind, view)`."""
     return {
-        (kind, view): _rows(_view(con, name, kind, view))
+        (kind, view): _rows(con.sql(f'FROM "{database}"."{name}"."{kind}"."{view}"'))
         for kind, views in declared.items()
         for view in views
     }
@@ -195,14 +193,131 @@ def test_register_and_unregister_refuse_an_open_transaction(workspace, small, ca
 
 def test_unregister_leaves_a_schema_no_record_registered(workspace):
     con = workspace.con
-    con.execute("CREATE SCHEMA other")
-    con.execute("CREATE TABLE other.t (a INTEGER)")
+    con.execute("CREATE SCHEMA datarecord.other")
+    con.execute("CREATE TABLE datarecord.other.t (a INTEGER)")
     with pytest.raises(duckdb.CatalogException, match="no record is registered"):
         workspace.unregister("other")
-    assert con.table("other.t").columns == ["a"], "a schema no record registered stays"
+    assert con.table("datarecord.other.t").columns == ["a"], (
+        "a schema no record registered stays"
+    )
 
 
-def test_register_refuses_a_database_name(workspace, small):
-    [(database,)] = workspace.con.sql("SELECT current_database()").fetchall()
-    with pytest.raises(ValueError, match="names a database"):
-        small.record.register(database)
+@pytest.mark.parametrize("name", ["memory", "datarecord", "temp"])
+def test_a_record_registers_under_a_database_name(workspace, small, name):
+    """The workspace's database is always named, so a name that is also a database's is no catalog."""
+    con = workspace.con
+    con.execute("CREATE SCHEMA memory.dims")
+    con.execute("CREATE TABLE memory.dims.bus AS SELECT 'decoy' AS bus")
+    small.record.register(name)
+    declared = _declared(small.record)
+    assert _views(con, name) == declared
+    assert _read_views(con, name, declared) == _read_relations(small.record)
+    workspace.unregister(name)
+    assert _views(con, name) == dict.fromkeys(KINDS, [])
+    assert con.table("memory.dims.bus").fetchall() == [("decoy",)], (
+        "unregister drops the schema in the workspace's database alone"
+    )
+
+
+def test_views_read_from_a_client_attaching_the_database_under_another_name(
+    tmp_path, small
+):
+    """A client attaching the workspace's file as `r` reads every view as its relation.
+
+    Its own default database, and a database it calls `datarecord`, hold an
+    empty table of each name the views read, so a view binding a table by a
+    name the client resolves reads no rows.
+    """
+    ws = Workspace(str(tmp_path / "workspace.duckdb"))
+    w = WorkingRecord(ws.store(small.store.uri).revision(small.id).record)
+    EDITS[0](w)
+    w.register("edit")
+    declared = _declared(w)
+    want = _read_relations(w)
+    ws.close()
+
+    client = duckdb.connect()
+    client.execute(f"ATTACH '{tmp_path / 'workspace.duckdb'}' AS r")
+    client.execute("ATTACH ':memory:' AS datarecord")
+    tables = client.sql(
+        "SELECT table_name FROM duckdb_tables() WHERE database_name = 'r'"
+    ).fetchall()
+    for (table,) in tables:
+        for database in ("memory", "datarecord"):
+            client.execute(
+                f'CREATE TABLE {database}.main."{table}" AS FROM r.main."{table}" LIMIT 0'
+            )
+    assert _read_views(client, "edit", declared, "r") == want, (
+        "every view reads its own database's tables, whatever the client names alike"
+    )
+    client.close()
+
+
+def test_a_workspace_on_a_callers_connection(tmp_path):
+    """A server's connection keeps its default database; the workspace's cursors do the work."""
+    caller = duckdb.connect(str(tmp_path / "server.duckdb"))
+    caller.execute("CREATE TABLE served AS SELECT 1 AS a")
+    ws = Workspace(con=caller, name="dr")
+    small = _small(ws.store(str(tmp_path / "store")))
+
+    in_threads(2, lambda i: WorkingRecord(small.record).register(f"edit_{i}"))
+    assert sorted(ws.registered().project("name").fetchall()) == [
+        ("edit_0",),
+        ("edit_1",),
+    ], "each thread registers through a cursor of the caller's connection"
+    assert caller.sql("SELECT current_database()").fetchall() == [("server",)]
+    assert caller.sql(
+        "SELECT table_name FROM duckdb_tables() WHERE database_name = 'server'"
+    ).fetchall() == [("served",)], "the caller's own database holds its tables alone"
+    assert _rows(caller.sql("FROM dr.edit_0.attributes.p_nom")) == _rows(
+        small.record.attributes["p_nom"]
+    ), "the caller reads the views by the workspace's name"
+
+    ws.close()
+    assert caller.table("served").fetchall() == [(1,)], (
+        "the caller's connection stays open"
+    )
+    assert ("dr",) not in caller.sql(
+        "SELECT database_name FROM duckdb_databases()"
+    ).fetchall(), "close detaches the workspace's database"
+    with pytest.raises(duckdb.ConnectionException):
+        ws.con.sql("SELECT 1")
+    caller.close()
+
+
+def test_a_callers_tables_never_stand_in_for_datarecords_relations(
+    caller_workspace, small
+):
+    """Edits and a commit read alike whether or not the default database holds `DECOYS`."""
+    theirs = WorkingRecord(
+        caller_workspace.store(small.store.uri).revision(small.id).record
+    )
+    ours = WorkingRecord(small.record)
+    for step, edit in enumerate(EDITS[:-1]):
+        edit(theirs)
+        edit(ours)
+        assert _read_relations(theirs) == _read_relations(ours), (
+            f"after edit {step} no relation reads a caller's table"
+        )
+    committed = caller_workspace.store(small.store.uri).commit(theirs)
+    assert _read_relations(committed.record) == _read_relations(
+        small.store.commit(ours).record
+    ), "the commit writes no caller's table"
+
+
+def test_use_lets_a_cursor_read_by_short_names(workspace, working):
+    """`USE datarecord` on a cursor of its own, so no other cursor's default changes."""
+    declared = _declared(working)
+    with workspace.con.cursor() as cur:
+        cur.execute("USE datarecord")
+        short = {
+            (kind, view): _rows(cur.sql(f'FROM edit."{kind}"."{view}"'))
+            for kind, views in declared.items()
+            for view in views
+        }
+        assert short == _read_views(cur, "edit", declared), (
+            "`edit.dims.bus` reads as `datarecord.edit.dims.bus`"
+        )
+        assert cur.sql("SELECT name, revision FROM registered").fetchall() == (
+            workspace.registered().project("name, revision").fetchall()
+        ), "`registered` reads as `datarecord.main.registered`"

@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Workspaces and stores
 
-A `Workspace` holds the DuckDB database and the means to read and write files.
+A `Workspace` holds a DuckDB database and the means to read and write files.
 A `Store` holds one location and its layers, and each layer carries the manifest that makes it a revision.
 The location holds the record, and the database holds caches.
 Every claim and manifest is written once, create-only, so two writers never take or commit one id.
@@ -39,6 +39,32 @@ Deleting a workspace's `database` loses at most uncommitted edits.
 A file-backed database keeps staged edits across a crash and the `revisions` cache across runs, and it gives DuckDB room to spill.
 Every cache keyed by id assumes that an id always names the same content.
 A fresh UUID, claimed once, over write-once files guarantees this, and a location wiped and written again breaks it.
+
+### The workspace's database
+
+The workspace attaches its `database` under a `name`, `datarecord` by default, and never makes it a cursor's default database.
+It attaches it on a fresh in-memory connection that it opens, or on a connection passed as `con`, such as a server's, whose own default database stays as it was:
+
+```python
+ws = Workspace("workspace.duckdb")  # on a connection of its own
+ws = Workspace(con=server, name="datarecord")  # on the server's connection
+```
+
+Every table datarecord shares between cursors lives in the `main` schema of that database: the `schemas`, `revisions` and `registered` tables, the tables a fold [shares between threads](concurrency.md#a-cursor-per-thread) and the [staging tables](../use/editing.md#staging).
+So does every schema a record [registers](views.md).
+A user's own file opened as a workspace receives these tables beside its own.
+SQL names them in full, `datarecord.main.revisions` or `datarecord.edit.dims.bus`, because a name without its database resolves in the cursor's default database, which is another one.
+datarecord's own SQL always does and never runs `USE`, so a name it forgot to qualify fails in the suite.
+A relation or frame its SQL reads goes by a Python local named `_dr_<role>`, such as `_dr_rel`, since a table or view of the same name in the cursor's temp schema or default database binds first, which on a passed connection is the caller's.
+So tables and views whose names start with `_dr_` must not be created in a database a workspace's connection uses, its default database and temp schema.
+A user is recommended to run `USE datarecord` on their own connection and write short names ([registered views](views.md#the-layout)).
+
+One database is also what lets [`register`](views.md#the-registered-table) create its schemas, its views and its row in one transaction, since a DuckDB transaction writes to one attached database.
+The cursors of a passed connection share its instance, so they see the attached database, and their transactions are their own, not the caller's.
+
+`ws.close()` closes every thread's cursor and detaches the database.
+It closes the connection too only where the workspace opened it, and a connection passed in stays open for its owner.
+A passed connection that ran `USE datarecord` runs `USE` on its own database again before `ws.close()`, `USE memory` for an in-memory one, since every statement fails on a connection whose default database was detached.
 
 ### The layers
 
@@ -131,7 +157,7 @@ SeaweedFS checks it atomically from 4.18, and AWS S3 since November 2024.
 
 The configuration is the AWS environment and config files, and datarecord adds no settings of its own.
 boto3 reads them itself.
-DuckDB gets `CREATE SECRET (TYPE s3, PROVIDER credential_chain)`.
+DuckDB gets `CREATE OR REPLACE SECRET datarecord_s3 (TYPE s3, PROVIDER credential_chain)`, named so that on a connection shared with its caller it replaces none of the caller's secrets.
 When `AWS_ENDPOINT_URL` is set, the secret adds its `ENDPOINT`, `URL_STYLE 'path'`, `USE_SSL` per its scheme and `CHAIN 'env;config'`, because a self-hosted server has no bucket-subdomain DNS and no instance-metadata service to probe.
 The workspace sets both up on the first `s3://` URI it receives, so a purely local workspace pays for neither.
 

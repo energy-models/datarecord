@@ -13,6 +13,7 @@ import pandas as pd
 import pytest
 
 from datarecord.tools.pypsa import PyPSA
+from tests.fixtures import export_network
 
 
 def _has_export_to_parquet() -> bool:
@@ -102,6 +103,12 @@ def test_roundtrip_matches_pypsa_reader(tmp_path, built, ac_dc):
 def test_roundtrip_matches_original(built, ac_dc):
     """Genuine data loss surfaces here even if it is shared with upstream."""
     assert_networks_equal(built, ac_dc)
+
+
+def test_roundtrip_on_a_callers_connection(tmp_path, caller_workspace, ac_dc):
+    """No export or build reads a caller's table named as one of `DECOYS`."""
+    revision = export_network(ac_dc, caller_workspace.store(str(tmp_path)))
+    assert_networks_equal(PyPSA.build(revision.record), ac_dc)
 
 
 def test_static_series_split_preserved(built):

@@ -12,17 +12,24 @@ Over a `WorkingRecord` the views are live: every edit shows in them once it comm
 
 ## The layout
 
-`name` is a schema in the workspace's own database, with three nested schemas and a view per relation:
+`name` is a schema in [the workspace's database](store.md#the-workspaces-database), `datarecord` by default, with three nested schemas and a view per relation:
 
-| view                  | one per                                                                 | reads as                                           |
-| --------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
-| `name.dims.<dim>`     | dim, a [dim with `one_of`](../model/dims.md#a-dim-with-one_of) included | `record.dims[dim]`                                 |
-| `name.properties.<d>` | dim that declares properties                                            | `record.properties[d]`                             |
-| `name.attributes.<a>` | attribute the schema declares                                           | `record.attributes[a]`, empty where it has no rows |
+| view                             | one per                                                                 | reads as                                           |
+| -------------------------------- | ----------------------------------------------------------------------- | -------------------------------------------------- |
+| `datarecord.name.dims.<dim>`     | dim, a [dim with `one_of`](../model/dims.md#a-dim-with-one_of) included | `record.dims[dim]`                                 |
+| `datarecord.name.properties.<d>` | dim that declares properties                                            | `record.properties[d]`                             |
+| `datarecord.name.attributes.<a>` | attribute the schema declares                                           | `record.attributes[a]`, empty where it has no rows |
 
 Every record lists every dim and attribute its schema declares, so two records under one schema register the same views.
-`name` is a top-level schema, so its views are visible to every cursor and every connection to the database, and they read the workspace's tables without naming a catalog.
+`name` is a top-level schema of that database, so its views are visible to every cursor and every connection that attaches it.
+A view reads the tables of its own database whatever a client attaches it as, so a client that attaches the workspace's file as `r` reads `r.name.dims.<dim>`, and a table of its own with the same name is never read in place of the workspace's.
+Since the database is always named, `name` may be any name, that of an attached database included.
 Nested schemas keep each kind's names apart without a naming convention such as `dim_` or `attr_`.
+
+A user, a SQL client or a server's connection is best served by running `USE datarecord` once and then writing short names, `edit.dims.bus` and `registered`.
+The qualified name, `datarecord.edit.dims.bus`, works without it, and a client that attached the file under another name runs `USE` with that name.
+`USE` holds only for the connection or cursor that runs it, so a SQL client runs it once per session, and `ws.con`, the calling thread's cursor, keeps it in that thread alone.
+datarecord itself never runs `USE` on its cursors and names everything in full, so a name it forgot to qualify fails rather than finds the workspace's table by luck.
 
 The views are raw, as the relations are.
 A NULL coordinate means every label ([the broadcast rule](../model/attributes.md#the-broadcast-rule)), two rows can cover one coordinate, and no property default is applied.
@@ -44,8 +51,8 @@ Every registration is a row of the workspace's `registered` table:
 A table tells a registration from any other schema in the database, so a server that crashed leaves names that can be found again.
 DuckDB has no comments on schemas to mark them by, and a marker view in each schema would be found only by a reserved name.
 
-`register` creates the schemas, the views and the row in one transaction, and raises if `name` exists.
-It refuses the name of a database attached to the workspace, which DuckDB would read as the catalog of `name.dims`.
+`register` creates the schemas, the views and the row in one transaction, which the one database they share allows, and raises if `name` exists.
+Two cursors registering one `name` at once conflict, and the later one raises.
 `Workspace.unregister(name)` drops the schema with its views and its row, in one transaction.
 It refuses a name with no row, so a schema no record registered is never dropped.
 DuckDB nests no transaction, so both refuse a cursor that already holds one open, as [an edit](../use/editing.md#edits) does.
@@ -76,7 +83,9 @@ The tables the frozen layers fold to are built when the `WorkingRecord` is opene
 A view's SQL is its relation rendered with its literals inline, so it reads no Python object by name and outlives the relation that made it.
 `DuckDBPyRelation.sql_query()` gives SQL that reads such objects, which are gone by the next read, and breaks on a relation with parameters.
 The rendering is DuckDB's own, the one `DuckDBPyRelation.create_view` makes, but that method takes a single identifier and no nested path.
-So `register` calls the private `_render` and `_create_view` with the path `(name, kind, view)`, DuckDB is capped at the newest release the suite passed on, and a test reads a view from another thread's cursor after its relation is collected.
+So `register` calls the private `_render` and `_create_view` with the path `(database, name, kind, view)`, DuckDB is capped at the newest release the suite passed on, and a test reads a view from another thread's cursor after its relation is collected.
+A relation names each table it reads with its database, and DuckDB stores a view's tables of its own database without one, so the view binds them in its database whatever name a client gives it.
+A test reads every view from a client that attaches the workspace's file under another name and holds same-named tables of its own, and another reads them by their short names on a cursor of its own that ran `USE datarecord`.
 
 `register` builds every relation before it creates any view.
 Each view changes the catalog, and DuckDB re-binds a relation built before that change, node by node, the next time something derives from it.

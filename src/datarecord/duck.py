@@ -11,11 +11,20 @@ Nothing here knows about a modelling framework: every column is typed as the
 *schema* declares it, whatever a tool's registry holds, so a record whose labels
 no tool recognises still reads and it is a tool's `verify` that reports them.
 
+SQL that reads a Python relation or frame reads it by a replacement scan of a
+local named `_dr_<role>`, say `_dr_rel`, bound in the function that calls
+`.sql` or `.execute`: DuckDB scans only that calling frame. A table or view of
+the same name in the cursor's temp schema or default database wins over the
+local, so datarecord reserves the prefix `_dr_`, where a bare name such as
+`rel` would read a caller's table. One leading underscore, since two would have
+Python mangle the name inside a class.
+
 Notes
 -----
 - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 - [module layout](https://energy-models.github.io/datarecord/design/package/)
+- [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
 """
 
 import sys
@@ -73,7 +82,8 @@ def write_parquet(
     which spills tens of GB for a series melted into hundreds of millions of rows.
     """
     order = "" if ordered else ", PRESERVE_ORDER false"
-    con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
+    _dr_rel = rel
+    con.execute(f"COPY (FROM _dr_rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
 
 
 @contextmanager
@@ -183,10 +193,10 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
-    # `FROM frame` is a replacement scan, binding the local `frame` by name.
     if isinstance(frame, DuckDBPyRelation):
+        name = f"_frame_{uuid4().hex}"
         try:
-            con.sql("FROM frame")
+            con.register(name, frame)
         except duckdb.InvalidInputException as e:
             msg = (
                 "this relation was built on another connection or thread; build "
@@ -194,9 +204,12 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
                 "polars or arrow frame to land"
             )
             raise ValueError(msg) from e
+        con.unregister(name)
         rel = frame
     elif is_frame(frame):
-        rel = con.sql("FROM frame")
+        pandas = sys.modules.get("pandas")
+        pandas_frame = pandas is not None and isinstance(frame, pandas.DataFrame)
+        rel = con.from_df(frame) if pandas_frame else con.from_arrow(frame)
     else:
         msg = (
             f"a {type(frame).__name__} is no frame; hand over a DuckDB relation, "
@@ -328,14 +341,23 @@ def shared_table(
 
 @contextmanager
 def scratch_table(
-    con: DuckDBPyConnection, rel: DuckDBPyRelation
+    con: DuckDBPyConnection,
+    rel: DuckDBPyRelation,
+    qualified: Callable[[str], str] = str,
 ) -> Iterator[DuckDBPyRelation]:
     """`rel` collected into a table of its own, read as one, and dropped on exit.
 
     A table both pins what `rel` reads, where a later write would change it,
     and stops each step over it from binding `rel`'s whole tree again.
+
+    Parameters
+    ----------
+    qualified
+        Names the table in the database it goes to, `Workspace.qualified` for
+        the workspace's, which a transaction that writes there needs; the
+        cursor's default database by default.
     """
-    name = f"_scratch_{uuid4().hex}"
+    name = qualified(f"_scratch_{uuid4().hex}")
     rel.create(name)
     try:
         yield con.table(name)

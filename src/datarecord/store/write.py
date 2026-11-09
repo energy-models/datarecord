@@ -621,7 +621,7 @@ class _RecordLikeAsLayerData:
         values = [c for c in props.columns if c not in axis.columns]
         if not values:
             return axis
-        joined = (
+        _dr_joined = (
             axis.project(star(), sql("row_number() OVER ()").alias("_row"))
             .set_alias("a")
             .join(
@@ -635,7 +635,7 @@ class _RecordLikeAsLayerData:
                 *(col("p", c) for c in values),
             )
         )
-        return joined.query("j", "SELECT * EXCLUDE (_row) FROM j ORDER BY _row")
+        return self._con.sql("SELECT * EXCLUDE (_row) FROM _dr_joined ORDER BY _row")
 
     def attributes(self) -> set[str]:
         return set(self._attributes)

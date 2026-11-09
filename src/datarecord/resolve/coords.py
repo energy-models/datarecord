@@ -31,22 +31,23 @@ from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
 
 if TYPE_CHECKING:
     from datarecord.resolve.sources import LayerSource
+    from datarecord.store.store import Workspace
 
 
-def _table_name(revision_id: UUID) -> str:
-    return f"owner_map_{revision_id.hex}"
+def _table_name(workspace: Workspace, revision_id: UUID) -> str:
+    return workspace.qualified(f"owner_map_{revision_id.hex}")
 
 
-def _coord_table(kind: str, name: str, revision_id: UUID) -> str:
+def _coord_table(workspace: Workspace, kind: str, name: str, revision_id: UUID) -> str:
     """The shared table one folded axis, dead label set or owner map is kept in.
 
     `name` is spelled as declared, which `Schema` holds to a plain identifier.
     """
-    return f"{kind}_{name}_{revision_id.hex}"
+    return workspace.qualified(f"{kind}_{name}_{revision_id.hex}")
 
 
-def _dim_owners_table(revision_id: UUID) -> str:
-    return f"dim_owners_{revision_id.hex}"
+def _dim_owners_table(workspace: Workspace, revision_id: UUID) -> str:
+    return workspace.qualified(f"dim_owners_{revision_id.hex}")
 
 
 def _fold_axis(
@@ -473,7 +474,7 @@ class Coords:
         revision_id: UUID,
         schema: Schema,
         rows: Sequence[tuple[str, UUID, bool]],
-        con: DuckDBPyConnection,
+        workspace: Workspace,
     ) -> Coords:
         """The coords `revision_id`'s shared tables hold, given its `dim_owners` rows.
 
@@ -483,11 +484,12 @@ class Coords:
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         """
+        con = workspace.con
         return cls.from_rows(
             schema,
             rows,
-            lambda d, _: con.table(_coord_table("dims", d, revision_id)),
-            lambda d: con.table(_coord_table("dead", d, revision_id)),
+            lambda d, _: con.table(_coord_table(workspace, "dims", d, revision_id)),
+            lambda d: con.table(_coord_table(workspace, "dead", d, revision_id)),
         )
 
     @classmethod
@@ -498,12 +500,12 @@ class Coords:
         its whole ancestry, so they stand for the source only as the last of its
         own ancestry - as every proper ancestor in a source list is.
         """
-        rid, con = source.layer_id, source.con
+        rid, ws = source.layer_id, source.workspace
         try:
-            rows = con.table(_dim_owners_table(rid)).fetchall()
+            rows = ws.con.table(_dim_owners_table(ws, rid)).fetchall()
         except duckdb.CatalogException:
             return None
-        return cls.tabled(rid, source.schema, rows, con)
+        return cls.tabled(rid, source.schema, rows, ws)
 
     @classmethod
     def shared(cls, revision_id: UUID, sources: Sequence[LayerSource]) -> Coords:
@@ -520,7 +522,8 @@ class Coords:
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
-        schema, con = sources[-1].schema, sources[-1].con
+        schema, ws = sources[-1].schema, sources[-1].workspace
+        con = ws.con
 
         def build() -> DuckDBPyRelation:
             coords = cls.resolve(sources)
@@ -529,13 +532,13 @@ class Coords:
                 *(("dead", name, rel) for name, rel in coords.dead.items()),
             ]
             for kind, name, rel in made:
-                table = _coord_table(kind, name, revision_id)
+                table = _coord_table(ws, kind, name, revision_id)
                 shared_table(con, table, lambda: nullcontext(rel))  # noqa: B023 - called before `rel` moves on
             return coords.owners(con)
 
-        index = _dim_owners_table(revision_id)
+        index = _dim_owners_table(ws, revision_id)
         rows = shared_table(con, index, lambda: nullcontext(build())).fetchall()
-        tabled = cls.tabled(revision_id, schema, rows, con)
+        tabled = cls.tabled(revision_id, schema, rows, ws)
         axes = tabled.axes | {
             n: one_of_axis(schema, n, con) for n in schema.one_of_dims
         }

@@ -76,6 +76,16 @@ class LayerSource(Protocol):
     def frozen(self) -> bool: ...
 
     @property
+    def workspace(self) -> Workspace:
+        """The workspace this layer is read through, whose database holds its fold's shared tables.
+
+        Notes
+        -----
+        - [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
+        """
+        ...
+
+    @property
     def con(self) -> DuckDBPyConnection:
         """The calling thread's cursor, which this layer's relations are planned on.
 
@@ -300,6 +310,10 @@ class ParquetLayer(_FileLayer):
     @property
     def layer_id(self) -> UUID:
         return self.manifest.id
+
+    @property
+    def workspace(self) -> Workspace:
+        return self.store.workspace
 
     @property
     def con(self) -> DuckDBPyConnection:

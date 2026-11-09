@@ -29,6 +29,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from uuid import UUID, uuid4
 
+import duckdb
 import pandas as pd
 import pytest
 
@@ -87,6 +88,20 @@ def test_a_standalone_directory_writes_and_reads_its_manifest(workspace, bucket)
         assert rows["value"].tolist() == [1.0]
     finally:
         elsewhere.close()
+
+
+def test_a_workspace_on_a_callers_connection_keeps_its_unnamed_secret(bucket):
+    caller = duckdb.connect()
+    caller.execute("INSTALL httpfs; LOAD httpfs;")
+    caller.execute("CREATE SECRET (TYPE s3, KEY_ID 'caller', SECRET 'caller')")
+    ws = Workspace(con=caller)
+    ws.store(f"{bucket}/record")
+    names = {n for (n,) in caller.sql("SELECT name FROM duckdb_secrets()").fetchall()}
+    assert len(names) == 2 and "datarecord_s3" in names, (
+        "the workspace's secret sits beside the caller's, not in its place"
+    )
+    ws.close()
+    caller.close()
 
 
 def test_a_claim_and_a_manifest_are_written_once(workspace, bucket):

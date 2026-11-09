@@ -20,6 +20,10 @@ store = ws.store("/data/my-record")  # absolute; never empty
 record = ws.at("out/")  # a standalone directory
 ```
 
+The workspace attaches its database as `datarecord`, never the connection's default, so SQL names its tables and views in full, `datarecord.main.revisions`.
+`Workspace(con=server)` attaches it on a connection of the caller's, such as a server's, and leaves that connection's own database as it was; `ws.close()` detaches it and closes only a connection the workspace opened ([design](../design/storage/store.md#the-workspaces-database)).
+The prefix `_dr_` is datarecord's: create no table or view whose name starts with it in a database the workspace's connection uses, its default database and temp schema.
+
 A layer's manifest is written after its data, so a write that fails leaves a pending layer, which no read reaches, and no revision ([design](../design/storage/store.md#the-store)).
 
 ## A standalone directory

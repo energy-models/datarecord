@@ -401,54 +401,49 @@ class Record:
         return self._fold.flags(**categories)
 
     def register(self, name: str) -> None:
-        """Create the DuckDB schema `name` with a view per dim, property subject and attribute.
+        """Create the schema `name` in the workspace's database with a view per dim, property subject and attribute.
 
-        The views sit in `name.dims`, `name.properties` and `name.attributes`,
-        each reading as its relation here; over a `WorkingRecord` they follow
-        every edit. `name` is listed in the workspace's `registered()` table.
+        The views sit in `name.dims`, `name.properties` and `name.attributes`
+        there, `datarecord.name.dims.bus` by default, each reading as its
+        relation here; over a `WorkingRecord` they follow every edit. `name` is
+        listed in the workspace's `registered()` table.
 
         Raises
         ------
         duckdb.CatalogException
-            If the schema `name` exists.
-        ValueError
-            If `name` is a database attached to the workspace, which DuckDB
-            would read as the catalog of the nested schemas.
+            If the schema `name` exists in the workspace's database.
         duckdb.TransactionException
-            Where the cursor already holds an open transaction.
+            Where the cursor already holds an open transaction, or another
+            cursor registers `name` at the same time.
 
         Notes
         -----
         - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
         """
-        con = self.con
-        if (name,) in con.sql(
-            "SELECT database_name FROM duckdb_databases()"
-        ).fetchall():
-            msg = f"`{name}` names a database attached to the workspace; register under another name"
-            raise ValueError(msg)
+        ws = self.workspace
         kinds = {
             "dims": self.dims,
             "properties": self.properties,
             "attributes": self.attributes,
         }
         rendered = {
-            (name, kind, view): _render(rel, literals=True, wrap_text=True)[0]
+            (ws.name, name, kind, view): _render(rel, literals=True, wrap_text=True)[0]
             for kind, relations in kinds.items()
             for view, rel in relations.items()
         }
+        con = self.con
         with transaction(
             con,
             "register",
             "https://energy-models.github.io/datarecord/design/storage/views/",
         ):
-            con.execute(f"CREATE SCHEMA {col(name)}")
+            con.execute(f"CREATE SCHEMA {col(ws.name, name)}")
             for kind in kinds:
-                con.execute(f"CREATE SCHEMA {col(name, kind)}")
+                con.execute(f"CREATE SCHEMA {col(ws.name, name, kind)}")
             for path, query in rendered.items():
                 con._create_view(path, query)
             con.execute(
-                "INSERT INTO registered (name, revision, working) VALUES (?, ?, ?)",
+                f"INSERT INTO {ws.qualified('registered')} (name, revision, working) VALUES (?, ?, ?)",
                 [name, self.revision_id, not self.frozen],
             )
 

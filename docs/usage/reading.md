@@ -164,7 +164,7 @@ record/
 
 ## Reading from SQL
 
-`register` names a record's relations as views in the workspace's database, so a client that speaks only SQL reads it, over a DuckDB server too ([design](../design/storage/views.md)).
+`register` names a record's relations as views in the workspace's database, `datarecord` by default, so a client that speaks only SQL reads it, over a DuckDB server too ([design](../design/storage/views.md)).
 Over a `WorkingRecord` the views follow every edit:
 
 ```python
@@ -175,9 +175,14 @@ w.register("edit_3f2a")
 ```
 
 ```sql
+USE datarecord;
 SELECT entity, value FROM edit_3f2a.attributes.p_nom;
 SELECT * FROM edit_3f2a.properties.bus WHERE carrier = 'AC';
 ```
+
+`USE datarecord` lets a session write the short names, and the qualified name, `datarecord.edit_3f2a.attributes.p_nom`, works without it.
+A client that attached the workspace's file under another name runs `USE` with that name instead.
+`USE` holds only for the connection or cursor that runs it: a SQL client runs it once per session, and on `ws.con`, the calling thread's cursor, it holds in that thread alone.
 
 ```python
 w.set("p_nom", 150.0, entity="wind1")  # the next SELECT reads 150.0
@@ -195,11 +200,11 @@ WorkingRecord(child.record).register("edit_8c01")
 ws.registered()  # name | revision | working | created
 ```
 
-`registered()` reads the table `registered`, which a SQL client queries directly.
+`registered()` reads the table `datarecord.main.registered`, which a SQL client queries directly, as `registered` after `USE datarecord`.
 One registration's views are listed by DuckDB's catalog, where `duckdb_views().schema_name` holds only the last part of a nested schema's path, so join the schemas for the rest:
 
 ```sql
 SELECT s.parent_schema, s.schema_name, v.view_name
 FROM duckdb_views() v JOIN duckdb_schemas() s ON v.schema_oid = s.oid
-WHERE s.parent_schema = 'edit_8c01';
+WHERE v.database_name = 'datarecord' AND s.parent_schema = 'edit_8c01';
 ```

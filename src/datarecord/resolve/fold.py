@@ -291,7 +291,7 @@ class Fold:
         looked up (`Coords.held`).
         """
         try:
-            owner_map = source.con.table(_table_name(source.layer_id))
+            owner_map = source.con.table(_table_name(source.workspace, source.layer_id))
         except duckdb.CatalogException:
             return None
         coords = Coords.held(source)

@@ -661,10 +661,13 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
 
 
 def _checkpoint(
-    rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
+    rel: DuckDBPyRelation,
+    made: list[str],
+    con: DuckDBPyConnection,
+    qualified: Callable[[str], str],
 ) -> DuckDBPyRelation:
-    """`rel` as a table, its name appended to `made`."""
-    name = f"_fold_{uuid4().hex}"
+    """`rel` as a table of the database `qualified` names it in, its name appended to `made`."""
+    name = qualified(f"_fold_{uuid4().hex}")
     rel.create(name)
     made.append(name)
     return con.table(name)
@@ -740,7 +743,11 @@ def _fold_onto(
         return source_for(sources, layer)
 
     def keep(rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        return rel if made is None else _checkpoint(rel, made, con)
+        return (
+            rel
+            if made is None
+            else _checkpoint(rel, made, con, sources[-1].workspace.qualified)
+        )
 
     for source in sources:
         if rel is not None:
@@ -760,7 +767,7 @@ def _fold_onto(
         refuse = source.layer_id if source.frozen else None
         rel = fold_layer(rel, own, removed, keyed, attribute, refuse=refuse, keep=keep)
         if made is not None and rel is not None:
-            rel = _checkpoint(rel, made, con)
+            rel = _checkpoint(rel, made, con, sources[-1].workspace.qualified)
             _drop_but_last(made, con)
     if rel is None:
         return _empty_relation(keyed, con, *keyed.owner_map_columns)
@@ -908,6 +915,6 @@ def _frozen_table(
             return cast_declared(last.schema, rel)
     return shared_table(
         con,
-        _table_name(revision_id),
+        _table_name(last.workspace, revision_id),
         lambda: _checkpointed(sources),
     )
