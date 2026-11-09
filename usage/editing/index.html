@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -1210,26 +1210,36 @@ A tuple with a coordinate missing or NULL is refused, as is one naming a label i
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># discard everything staged</span>
 </code></pre></div>
 <p>You read what you staged from the record itself, which answers with the edits applied (<a href="../../design/use/editing/#reading-with-pending-edits">design</a>).
+A relation you took before an edit reads it too:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">rel</span> <span class="o">=</span> <span class="n">w</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">rel</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>  <span class="c1"># holds 150.0</span>
+</code></pre></div>
+<p>Each edit runs in its own transaction, so a refused edit leaves nothing staged, and an edit is refused while you hold a transaction open on the same cursor.
 Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk (<a href="../../design/use/editing/#staging">design</a>).</p>
 <h2 id="writing-the-edits">Writing the edits<a class="headerlink" href="#writing-the-edits" title="Permanent link">&para;</a></h2>
 <p>A <code>WorkingRecord</code> does not write.
 The record stays unchanged until you hand its edits to a writer (<a href="../../design/use/editing/#edits">design</a>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">new</span> <span class="o">=</span> <span class="n">root</span><span class="o">.</span><span class="n">child</span><span class="p">(</span><span class="n">w</span><span class="o">.</span><span class="n">edits</span><span class="p">)</span>  <span class="c1"># a patch layer under a new child of the base</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone record, flattened</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># clear the staging area, if you are done</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">new</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>  <span class="c1"># a patch layer under a new child of the base</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">w</span><span class="p">,</span> <span class="s2">"out/"</span><span class="p">)</span>  <span class="c1"># a standalone record, flattened</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>  <span class="c1"># clear the staging area, if you are done</span>
 </code></pre></div>
 <p><code>w.edits</code> holds only the edits: the attribute rows set, and each axis changed, restated whole.
 The fold resolves the rest from the parent.
 <code>w</code> itself is the resolved result, what is staged plus what the record already reads.
 A standalone directory needs that, since it has no parent to resolve against.</p>
-<p>The edits are a delta against the revision <code>w</code> was built over, so <code>child</code> raises if you write them under another one.
+<p>The edits are a delta against the revision <code>w</code> was built over, so <code>claim.commit(w)</code> raises if the claim's parent is another one.
 Layers are write-once, so the layer lands in the new child (<a href="../../design/layers/tree/#a-layers-data-is-write-once">design</a>).
 The returned revision reads the edits back:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">new</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">new</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
 <p>Writing clears nothing: a <code>WorkingRecord</code> that still holds its edits reads exactly what it did before, until <code>rollback()</code>.</p>
 <p>An edit replaces the rows it names, so restating a coordinate overwrites it and the last write stands.
-A <code>remove</code> after a <code>set</code> wins regardless of order, since a removed label has no values.
+Two edits that cross also leave the later one standing where they meet (<a href="../../design/use/editing/#set">design</a>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="n">scenario</span><span class="o">=</span><span class="s2">"high"</span><span class="p">)</span>  <span class="c1"># wind1 under high reads 0.7</span>
+</code></pre></div>
+<p>A <code>remove</code> after a <code>set</code> wins regardless of order, since a removed label has no values.
 An <code>add</code> after a <code>remove</code> brings the label back with its parent's values and without the multi-dim tuples that named it.</p>
 <p>A base's results are attributes and carry like any other.
 A child written from <code>edits</code> inherits them, though an edited input may no longer support them.

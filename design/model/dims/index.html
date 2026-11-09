@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -1274,6 +1274,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1540,7 +1546,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>A dim with <code>one_of: [labels]</code> has exactly those labels, as a mathspec dimension does. Its <code>dtype</code> is <code>str</code>, the default. A <code>one_of</code> on any other dtype is refused at load. So is an empty list, a label listed twice, a label that is no string, and a dim name in place of the list. The dim's column is an <code>ENUM</code> of the labels (<a href="../schema/#dtypes">dtypes</a>).</p>
 <p>The axis is the list, in list order. Its labels are the schema's, not data:</p>
 <ul>
-<li><strong>No layer file.</strong> No <code>dims/&lt;dim&gt;.parquet</code> is written or read for it, nor a <code>resolved/dims/</code> cache. Every read derives the axis from the schema, so <code>record.dims["ctype"]</code> is the list. The writer refuses a layer that hands over such a file, and the read refuses a layer that holds one (<a href="../../storage/format/#axis-files">axis files</a>). A <code>RecordLike</code> answers the axis among its <code>dims</code>, so the writer drops it where it is the list, the same labels in the same order, and refuses any other, naming the dim and the difference.</li>
+<li><strong>No layer file.</strong> No <code>dims/&lt;dim&gt;.parquet</code> is written or read for it, nor named in a node cache's <code>dim_owners.parquet</code>. Every read derives the axis from the schema, so <code>record.dims["ctype"]</code> is the list. The writer refuses a layer that hands over such a file, and the read refuses a layer that holds one (<a href="../../storage/format/#axis-files">axis files</a>). A <code>RecordLike</code> answers the axis among its <code>dims</code>, so the writer drops it where it is the list, the same labels in the same order, and refuses any other, naming the dim and the difference.</li>
 <li><strong>No properties.</strong> With no file there is no column to hold one, so a property declared on the dim is refused at load.</li>
 <li><strong>No edits.</strong> <a href="../../use/editing/#add-remove"><code>add</code> and <code>remove</code></a> on it are refused; a new label is a schema change.</li>
 <li><strong>Otherwise a dim.</strong> An attribute may range over it, a multi-dim's coordinate may draw on it, and a property may refer to it. A value naming a label the list does not hold is refused where a dangling label is. The dim has no dead labels, so nothing cascades from it (<a href="../../layers/removal/">deletion</a>).</li>

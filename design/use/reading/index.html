@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -1240,6 +1240,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1530,21 +1536,23 @@ DuckDB is the one engine from fold to consumer.</p>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="nd">@property</span>
 <a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">schema</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Schema</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># dims, properties, attributes, partial</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dims</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># axis key columns, keyed by dim</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="nd">@property</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">con</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyConnection</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># what its relations are planned on</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">properties</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># stored property values, keyed by subject</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">dims</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># axis key columns, keyed by dim</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>    <span class="nd">@property</span>
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># long relations, keyed by attribute</span>
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">properties</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># stored property values, keyed by subject</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>    <span class="nd">@property</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Relations</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># long relations, keyed by attribute</span>
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">flags</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="o">**</span><span class="n">categories</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="n">Sequence</span><span class="p">[</span><span class="nb">str</span><span class="p">])</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Flags</span><span class="p">]:</span> <span class="o">...</span>
 </code></pre></div>
 <p>A signature annotates against <code>RecordLike</code>, and a framework object satisfies it without depending on this package.
 <code>Record</code> is the interface over <a href="../../layers/resolution/#one-record-over-one-fold">one fold</a>, and <code>Revision.record</code> and <code>Workspace.at(uri)</code> both return one.
 The class has the short name because a caller constructs and holds it.
 The protocol is read-only.
-<a href="../writing/">Writing</a> goes through <code>store.root(source)</code>, <code>rev.child(source)</code> or <code>ws.write(source, uri)</code>, and <a href="../../storage/format/">the record format</a> is how a record is stored.</p>
+<a href="../writing/">Writing</a> goes through <code>store.commit(source, parent=...)</code>, <code>store.claim(...)</code> and <code>claim.commit(source)</code>, or <code>ws.write(source, uri)</code>, and <a href="../../storage/format/">the record format</a> is how a record is stored.</p>
 <p>Each accessor holds one section of <a href="../../model/schema/">the schema</a>: <code>dims</code> the labels, <code>properties</code> the metadata of those labels, and <code>attributes</code> the data.
 What a name is declared as decides where its values are read.</p>
 <p>A <a href="../../model/multi-dims/">multi-dim</a> reads as any dim does.
@@ -1566,6 +1574,8 @@ A label whose category changes keeps what it held, and a per-category read judge
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">Relations</span> <span class="o">=</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">DuckDBPyRelation</span><span class="p">]</span>
 </code></pre></div>
 <p>A <code>Record</code> hands back bare DuckDB relations, each a plan on the record's connection.
+Each mapping lists every name the schema declares in its section, whatever the layers hold.
+A dim or attribute that no layer holds reads an empty relation with its declared columns and types, so a consumer plans on the schema alone.
 Every record is DuckDB underneath, so a value handed over as itself costs no wrapping per read, and a caller who wants SQL needs no unwrapping.
 A consumer filters, joins and aggregates with relation calls or SQL, and fetches with <code>.df()</code>, <code>.pl()</code> or <code>.to_arrow_table()</code>.</p>
 <p>An attribute's relation holds its rows as written, in no promised order.
@@ -1626,6 +1636,7 @@ Elsewhere every row names the same coordinates, one row per key, and <code>settl
 <h2 id="one-engine">One engine<a class="headerlink" href="#one-engine" title="Permanent link">&para;</a></h2>
 <p>The protocol names DuckDB: a <code>RecordLike</code> answers <code>DuckDBPyRelation</code>s.
 A tool's record builds them on the caller's connection, as the PyPSA tool scans its pandas frames with <code>con.from_df</code>.
+<code>con</code> names that connection, the calling thread's cursor for a <code>Record</code>, so a consumer can plan its own frames and SQL beside the record's relations.
 A <code>RecordLike</code> therefore needs DuckDB, which is the cost of one representation from fold to consumer.</p>
 <p>The resolution engine has no abstraction layer either.
 The <a href="../../layers/resolution/#owner-map">owner-map fold</a> is relational algebra of real complexity, and an engine interface with one implementation behind it costs effort for a second engine that does not exist.</p>

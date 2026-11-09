@@ -23,7 +23,7 @@
       
       
       <link rel="icon" href="../../../assets/images/favicon.png">
-      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
@@ -1229,6 +1229,12 @@
       
         
       
+        
+      
+        
+      
+        
+      
     
     
     
@@ -1511,7 +1517,7 @@ An axis loses a label or tuple only where its own file omits it.</p>
 <h2 id="what-a-removal-reaches">What a removal reaches<a class="headerlink" href="#what-a-removal-reaches" title="Permanent link">&para;</a></h2>
 <p>Removing the entity <code>e1</code> removes its <code>p_nom</code>, its <code>p_max_pu</code> at every snapshot and scenario, and its value in every other attribute.</p>
 <p>The fold removes the values.
-<a href="../resolution/#owner-map"><code>fold_attributes</code></a> drops the parent's owner-map rows that name a label or tuple the layer removes.
+<a href="../resolution/#owner-map"><code>fold_layer</code></a> drops the parent's owner-map rows that name a label or tuple the layer removes.
 A key whose label or tuple was removed is then absent from the resolved map.
 A row that leaves the coordinate NULL names no label and stays.
 A dim outside <code>partial</code>, multi or not, is in no key, so its rows are <a href="../resolution/#a-label-outside-the-key">dropped at read</a> against that coordinate's dead labels.</p>
@@ -1521,8 +1527,7 @@ The labels it names keep their other rows, so removing a connection leaves the e
 <a href="../../use/editing/#add-remove"><code>remove(dim, labels)</code></a> restates the axis without the labels, and every multi-dim with a coordinate over <code>dim</code> without the tuples that name one, in one layer.
 The tuples' values go with them.
 Re-adding a label or tuple in <code>partial</code> brings back the label and no value that named it below the removal.
-Every broadcast covering it, written before or after the removal, <a href="../resolution/#what-a-row-reaches">reaches it</a> again.
-Re-adding one outside <code>partial</code> brings back its values, since the read only hid them.</p>
+Every broadcast covering it, written before or after the removal, <a href="../resolution/#what-a-row-reaches">reaches it</a> again.</p>
 <h2 id="what-the-writer-checks">What the writer checks<a class="headerlink" href="#what-the-writer-checks" title="Permanent link">&para;</a></h2>
 <p>The writer refuses a layer that adds a tuple naming a dead label.
 It refuses a layer that stores a dead label in a <a href="../../model/properties/#properties">property that refers to</a> a dim.
