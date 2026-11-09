@@ -13,7 +13,7 @@ Reading an attribute joins the owning layers' files to the map with one hash joi
 The read then drops rows that name a removed label outside the key.
 A consumer settles each coordinate by [the broadcast rule](../model/attributes.md#the-broadcast-rule).
 A single directory folds as a tree with one layer.
-A revision can materialise its owner map and resolved axes under `resolved/`, and a read then stops at that revision.
+A revision can materialise its owner map, and pointers to the layers holding its resolved axes, under `resolved/`, and a read then stops at that revision.
 
 ## Owner map
 
@@ -47,7 +47,7 @@ An attribute over such a multi-dim and no other `partial` coordinate has the key
 
 The map holds one row per layer and per distinct key the layer wrote, a NULL key column left NULL, and the overlap rows of [crossing rows](#crossing-rows).
 The fold builds it along the path from the root: the parent's map minus removals and the rows the layer covers, union the layer's own keys and its overlap rows.
-A revision whose caches are [materialised](#materialised-node-caches) persists the map and its resolved axes.
+A revision whose caches are [materialised](#materialised-node-caches) persists the map and pointers to the layers holding its resolved axes.
 A read then needs the ancestry only back to the nearest materialised revision, which is what lets a deep tree scale.
 
 The fold applies removals to every key column.
@@ -302,21 +302,23 @@ A directory copied out of any tree, with no revision file, reads identically.
 
 ## Materialised node caches
 
-A revision's owner map and resolved axes may be materialised under `layers/<id>/resolved/`.
+A revision's owner map, the layers holding its resolved axes and its dead labels may be materialised under `layers/<id>/resolved/`.
 The schema is not, since there is [one for the whole record](../model/schema.md#one-schema-per-record) and nothing per revision to resolve.
 
 Where a materialised map exists, a read stops there.
 The map is already folded over everything above it, so a read walks the ancestry back to the nearest materialised revision and no further.
 That truncation keeps a deep chain cheap.
-The same rule decides where resolved axes come from: a revision's own `resolved/dims/` where materialised, and its raw `dims/` otherwise.
+The same rule decides where resolved axes come from: the layers a revision's own `resolved/dim_owners.parquet` names where materialised, and its raw `dims/` otherwise.
 The presence of the cache answers this, and no recorded state is involved.
 A map whose key columns are not those the schema's [`partial`](tree.md#partial-the-granularity-of-an-override) gives is no cache: one persisted before a dim joined `partial` holds NULL there for a row varying along it, so the read folds from the layers as if nothing were materialised.
 The two are distinct paths within one directory, so a record read as an ancestor and the same record read as itself never alias.
-`resolved/dims/` holds copies of the deepest layer file for each axis, a multi-dim's included, at or below the revision, so a read of an axis stops there too. A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) has none, its axis being the schema's list.
+`resolved/dim_owners.parquet` holds a row `(dim, layer_uuid, has_dead)` per axis, a multi-dim's included: the layer whose `dims/<dim>.parquet` is the deepest at or below the revision, and whether the dim has dead labels. A read of an axis stops there too, and opens that layer's file. A dim it does not name has no axis. A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) is never named, its axis being the schema's list.
+The file points into ancestor layers by UUID, as the owner map does, rather than copying their files. A layer is write-once, so the pointer never goes stale, and on object storage it is one read where a directory of copies is a listing.
 
 Beside them, `resolved/dead/<coord>.parquet` holds the [dead labels](#a-label-outside-the-key) of each coordinate outside the owner-map key, and of each dim that a multi-dim's coordinate draws on or a property refers to.
-It is written only where there are any.
-A read above the revision seeds its dead labels from these files, since the copied axis files hold only live labels.
+It is written only where there are any, and `has_dead` in `dim_owners.parquet` says which are written, so a read opens each by name rather than listing the directory.
+A coordinate with dead labels always has an axis, so `dim_owners.parquet` names every one.
+A read above the revision seeds its dead labels from these files, since the axis files hold only live labels.
 `resolved/dead/` and `owner_map.parquet` are folds, since no layer file holds either.
 
 Materialising is a policy: every N layers, at a branch point, or on demand.

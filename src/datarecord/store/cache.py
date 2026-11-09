@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Materialised node caches: a node's folded axes, dead labels and owner map, on disk.
+"""Materialised node caches: a node's dim owners, dead labels and owner map, on disk.
 
 Notes
 -----
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
 def materialised(revision_id: UUID, store: Store, schema: Schema) -> bool:
     """Whether `revision_id`'s node caches are materialised under `schema`.
 
-    A node's caches are written together (`materialise`), so one map answers
-    for all three, and for the resolved dims and schema beside them. A map
+    A node's caches are written together (`materialise`), the map last, so
+    one map answers for the dim owners and dead labels beside it. A map
     keyed otherwise than `schema` keys one is no cache (`read_owner_map`).
 
     This is a filesystem question rather than recorded state: layers are
@@ -93,7 +93,7 @@ def sources_to_read(
 def materialise(
     revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
-    """Write `revision_id`'s node caches: owner map and resolved dims.
+    """Write `revision_id`'s node caches: owner map, dim owners and dead labels.
 
     Purely additive. It changes no answer a read would give, only how many
     layers a read touches to reach it: once these files exist, a descendant's
@@ -134,47 +134,22 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection) -> Non
     os.replace(tmp, uri)
 
 
-def _to_parquet_unless_empty(
-    rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection
-) -> None:
-    """`_to_parquet`, writing nothing where `rel` has no row.
-
-    `rel` is evaluated once, into a temporary table, rather than once to
-    probe and again to write.
-    """
-    table = f"_unless_empty_{uuid4().hex}"
-    rel.create(table)
-    try:
-        rows = con.table(table)
-        if rows.limit(1).fetchall():
-            _to_parquet(rows, uri, con)
-    finally:
-        con.execute(f"DROP TABLE {table}")
-
-
 def _materialise_dims(
     revision_id: UUID,
     sources: Sequence[LayerSource],
     store: Store,
     schema: Schema,
 ) -> None:
-    """Fold this node's resolved axes into its node cache, not its layer.
-
-    A dim with `one_of` is left out: every read derives its axis from the
-    schema.
+    """Write this node's dim owners and dead labels into its node cache, not its layer.
 
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     """
     con = store.workspace.con
-    dims = resolve_coords(schema, sources, con)
-    base = store.resolved_dir(revision_id) + "dims/"
-    ensure_local_dir(base)
-    for dim, rel in dims.axes.items():
-        if dim not in schema.one_of_dims:
-            _to_parquet(rel, f"{base}{dim}.parquet", con)
-    dead = store.resolved_dir(revision_id) + "dead/"
-    ensure_local_dir(dead)
-    for name, rel in dims.dead.items():
-        _to_parquet_unless_empty(rel, f"{dead}{name}.parquet", con)
+    coords = resolve_coords(schema, sources, con)
+    dead = f"{store.resolved_dir(revision_id)}dead/"
+    ensure_local_dir(dead if coords.dead else store.resolved_dir(revision_id))
+    for name, rel in coords.dead.items():
+        _to_parquet(rel, f"{dead}{name}.parquet", con)
+    _to_parquet(coords.owners(con), store.dim_owners_uri(revision_id), con)
