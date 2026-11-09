@@ -19,10 +19,13 @@ Notes
 """
 
 import sys
-from collections.abc import Callable, Iterable, Mapping, Sequence
+import time
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from contextlib import AbstractContextManager, contextmanager
 from functools import partial, reduce
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 import duckdb
 from duckdb import ColumnExpression as col
@@ -72,29 +75,15 @@ def write_parquet(
     con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
 
 
-def union_all_by_name(
-    rels: Sequence[DuckDBPyRelation], con: DuckDBPyConnection
-) -> DuckDBPyRelation:
-    """Fold relations pairwise through `UNION ALL BY NAME`.
-
-    The local names `u` and `rel` are load-bearing: DuckDB's replacement scan
-    binds them by *name* out of this frame's locals, so the SQL below reads
-    them despite them looking unused. Renaming either silently returns a short
-    union; `test_union_all_by_name_folds_every_relation` pins it.
-
-    Not `con.register`: measured at 2.2-2.6x slower here, widening with layer
-    count (the deep-overlay case materialised caches exist to make cheap), and it leaves a
-    named view per call on a connection that outlives the fold.
+def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
+    """Fold relations pairwise through `UNION ALL BY NAME`, an arm lacking a column reading NULL there.
 
     Notes
     -----
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
     """
-    u = rels[0]
-    for rel in rels[1:]:  # noqa: F841 - bound by name in the SQL below
-        u = con.sql("FROM u UNION ALL BY NAME FROM rel")
-    return u
+    return reduce(DuckDBPyRelation.union_by_name, rels)
 
 
 def ex_all(exprs: Iterable[Expression]) -> Expression:
@@ -120,21 +109,6 @@ def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
         sql(f"{col(alias_a, c)} IS NOT DISTINCT FROM {col(alias_b, c)}")
         for c in columns
     )
-
-
-def distinct_values(
-    rel: DuckDBPyRelation, column: str, *, order: bool = True
-) -> tuple[Any, ...]:
-    """`rel`'s distinct values of `column`, as a tuple.
-
-    What keys a `LazyRelations` built over a relation: the values are read from a
-    column rather than from a directory listing, so one code path serves a local
-    directory and a remote prefix alike.
-    """
-    projected = rel.project(column).distinct()
-    if order:
-        projected = projected.order(column)
-    return tuple(r[0] for r in projected.fetchall())
 
 
 def is_frame(value: Any) -> bool:
@@ -278,3 +252,58 @@ def empty_relation(
     """
     nulls = [lit(None).cast(t) for t in columns.values()]
     return values_relation(con, list(columns), [nulls]).limit(0)
+
+
+def shared_table(
+    con: DuckDBPyConnection,
+    name: str,
+    build: Callable[[], AbstractContextManager[DuckDBPyRelation]],
+) -> DuckDBPyRelation:
+    """Table `name`, built by whichever cursor misses it first.
+
+    `build` enters the relation the table is made of, and exits once the
+    table holds it, releasing whatever the relation read. Two cursors missing
+    at once both build, and DuckDB fails the second `create` with a
+    write-write conflict rather than a name clash; what it would have created
+    is the winner's table, so that is read instead. The conflict can come
+    before the winner commits, when its table is not yet visible, so the
+    `create` is retried until it either lands or meets the committed table.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    """
+    try:
+        return con.table(name)
+    except duckdb.CatalogException:
+        pass
+    with build() as rel:
+        while True:
+            try:
+                rel.create(name)
+            except duckdb.TransactionException as e:
+                if "conflict" not in str(e).lower():
+                    raise
+                time.sleep(0.001)
+                continue
+            except duckdb.CatalogException:
+                pass
+            break
+    return con.table(name)
+
+
+@contextmanager
+def scratch_table(
+    con: DuckDBPyConnection, rel: DuckDBPyRelation
+) -> Iterator[DuckDBPyRelation]:
+    """`rel` collected into a table of its own, read as one, and dropped on exit.
+
+    A table both pins what `rel` reads, where a later write would change it,
+    and stops each step over it from binding `rel`'s whole tree again.
+    """
+    name = f"_scratch_{uuid4().hex}"
+    rel.create(name)
+    try:
+        yield con.table(name)
+    finally:
+        con.execute(f"DROP TABLE {name}")

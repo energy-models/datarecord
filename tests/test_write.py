@@ -12,6 +12,7 @@ Notes
 import json
 import re
 import shutil
+from itertools import permutations
 from pathlib import Path
 
 import duckdb
@@ -58,6 +59,7 @@ class _Source:
         properties=None,
     ):
         self._schema = schema
+        self._con = duckdb.connect()
         self.built: list[str] = []
         self._attributes = attributes or {}
         connections = (
@@ -73,6 +75,10 @@ class _Source:
     @property
     def schema(self):
         return self._schema
+
+    @property
+    def con(self):
+        return self._con
 
     def _frames(self, mapping, tag):
         def build(key):
@@ -268,7 +274,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
         store.commit(ParquetLayer(forged.manifest, store), parent=None)
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
-        forged.record.dims  # noqa: B018
+        forged.record.dims["ctype"]
 
 
 @pytest.mark.parametrize(
@@ -323,16 +329,31 @@ def test_a_directory_target_carries_its_own_schema(workspace, tmp_path):
         elsewhere.close()
 
 
-def test_a_cold_read_refuses_a_misspelt_schema_key(store, tmp_path):
-    revision = store.commit(
-        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
-    )
-    raw = json.loads(Path(store.manifest_uri(revision.id)).read_text())
-    raw["schema"]["misspelt"] = 1
-    uri = tmp_path / "manifest.json"
-    uri.write_text(json.dumps(raw))
-    with pytest.raises(ValidationError, match="misspelt"):
-        Manifest.read(store.files, str(uri), {})
+@pytest.mark.parametrize(
+    ("spoil", "match"),
+    [
+        pytest.param(
+            lambda raw: raw["schema"].update(misspelt=1),
+            "misspelt",
+            id="a-misspelt-schema-key",
+        ),
+        pytest.param(lambda raw: raw.pop("id"), "id\n  Field required", id="no-id"),
+    ],
+)
+def test_a_cold_read_refuses_a_spoilt_manifest(workspace, tmp_path, spoil, match):
+    """A manifest without an id leaves the record's folds nothing to be keyed by.
+
+    Notes
+    -----
+    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    """
+    out = tmp_path / "standalone"
+    workspace.write(_p_nom(1.0), str(out))
+    raw = json.loads((out / "manifest.json").read_text())
+    spoil(raw)
+    (out / "manifest.json").write_text(json.dumps(raw))
+    with pytest.raises(ValidationError, match=match):
+        workspace.at(str(out))
 
 
 def test_a_manifest_carries_its_layers_id(store, tmp_path):
@@ -1088,7 +1109,6 @@ def test_a_later_layer_overrides_a_layer_holding_both_rows(axes):
 _ENTITY_SCENARIO = [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.0}]
 
 
-@pytest.mark.parametrize("via", ["set", "write_layer"])
 @pytest.mark.parametrize(
     ("rows", "coordinate"),
     [
@@ -1105,9 +1125,7 @@ _ENTITY_SCENARIO = [{"entity": "a", "value": 1.0}, {"scenario": "x", "value": 2.
     ],
     ids=["entity-scenario", "settled-elsewhere"],
 )
-def test_a_layer_with_two_rows_neither_more_specific_is_refused(
-    axes, via, rows, coordinate
-):
+def test_a_layer_with_two_rows_neither_more_specific_is_refused(axes, rows, coordinate):
     """Each row names a dim the other leaves NULL, so no rule picks one where both meet.
 
     Notes
@@ -1115,7 +1133,83 @@ def test_a_layer_with_two_rows_neither_more_specific_is_refused(
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
     with pytest.raises(ValueError, match=rf"p_nom\.parquet.*{coordinate}"):
-        _rows_layer(axes, rows, via)
+        _rows_layer(axes, rows, "write_layer")
+
+
+@pytest.mark.parametrize(
+    ("rows", "dims", "meet"),
+    [
+        (_ENTITY_SCENARIO, ("entity", "scenario"), ("a", "x")),
+        (
+            [{"entity": "a", "value": 1.0}, {"snapshot": _T, "value": 2.0}],
+            ("entity", "snapshot"),
+            ("a", _T),
+        ),
+    ],
+    ids=["entity-scenario", "entity-snapshot"],
+)
+def test_a_set_crossing_a_staged_row_wins_where_the_two_meet(axes, rows, dims, meet):
+    """Two `set`s whose rows cross: the later stages the row naming both, with its value.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    record = _rows_layer(axes, rows, "set").record
+    assert broadcast(record, "p_nom", *dims)[meet] == 2.0, "the later edit wins"
+
+
+def test_a_set_crossing_a_later_staged_row_keeps_its_value_elsewhere(axes):
+    """Whichever of two crossing `set`s comes last wins where they meet, and only there.
+
+    Notes
+    -----
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    rows = [{"scenario": "x", "value": 2.0}, {"entity": "a", "value": 1.0}]
+    assert _read(_rows_layer(axes, rows, "set")) == {
+        ("a", "x"): 1.0,
+        ("a", "y"): 1.0,
+        ("b", "x"): 2.0,
+    }, "the entity row, staged last, wins at (a, x)"
+
+
+_THREE_DIMS = {
+    "entity": {"entity": "a", "value": 1.0},
+    "scenario": {"scenario": "x", "value": 2.0},
+    "snapshot": {"snapshot": _T, "value": 3.0},
+}
+
+
+@pytest.mark.parametrize(
+    "order",
+    list(permutations(_THREE_DIMS)),
+    ids=lambda order: "-".join(order),
+)
+def test_the_last_of_three_crossing_sets_wins_where_they_meet(axes, order):
+    """Three `set`s, each naming one `partial` dim: the last covering a coordinate wins there.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    """
+    rows = [_THREE_DIMS[d] for d in order]
+    dims = tuple(_THREE_DIMS)
+    expected = {
+        (e, s, _T): next(
+            r["value"]
+            for r in reversed(rows)
+            if all(r.get(d, c) == c for d, c in zip(dims, (e, s, _T), strict=True))
+        )
+        for e in _ENTITIES
+        for s in _SCENARIOS
+    }
+    staged = _rows_staged(axes, rows, "p_nom")
+    assert broadcast(staged, "p_nom", *dims) == expected, "staged, the last set wins"
+    committed = axes.store.commit(staged).record
+    assert broadcast(committed, "p_nom", *dims) == expected, "committed, it still does"
 
 
 def test_two_rows_crossing_where_a_row_names_both_are_written(axes):
@@ -1132,16 +1226,24 @@ def test_two_rows_crossing_where_a_row_names_both_are_written(axes):
     )
 
 
-def test_a_staged_pair_neither_more_specific_fails_the_read(axes):
-    """A layer not written by `write_layer` is held to the rule when it is read.
+def test_a_frame_staging_two_rows_neither_more_specific_is_refused(axes):
+    """One `set` staging two crossing rows, with none naming both, has no later edit to win.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
     """
-    staged = _rows_staged(axes, _ENTITY_SCENARIO, "p_nom")
-    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*scenario=x"):
-        staged.attributes["p_nom"].df()
+    staged = _rows_staged(axes, [], "p_nom")
+    frame = pd.DataFrame(
+        {"entity": ["a", None], "scenario": [None, "x"], "value": [1.0, 2.0]}
+    )
+    with pytest.raises(
+        ValueError, match=r"'p_nom'.*\{'entity': 'a', 'scenario': 'x'\}"
+    ):
+        staged.set("p_nom", frame)
+    assert staged.attributes["p_nom"].fetchall() == [], (
+        "the refused edit stages nothing"
+    )
 
 
 _ONE_LABEL = [{"entity": "a", "value": 1.0}, {"entity": "a", "value": 2.0}]

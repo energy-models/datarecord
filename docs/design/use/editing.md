@@ -36,7 +36,8 @@ class WorkingRecord(Record):
 
 `WorkingRecord(revision.record)` stages on the base's connection, `record.con`.
 The base must be a `Record`.
-Any other `RecordLike` is refused, since a framework object has no layer layout to fold the edits over.
+Any other `RecordLike` is written first, `WorkingRecord(ws.write(source, uri))`, so its rows are checked once and folded as a layer like any other.
+A base so written has no parent in a store, and `ws.write(w, uri)` writes it with the edits.
 
 `WorkingRecord` is a subclass of `Record`.
 Its sources are the base's sources plus one [staged source](#staging), so it reads as a record one layer deeper than its base.
@@ -48,7 +49,7 @@ Edits accumulate and are written at once:
 
 - An edit costs a row in a staging table.
   A hundred edits to one attribute are a hundred rows, collapsed once when written.
-  The first edit of an axis copies the base's resolved one into its table.
+  Every staging table exists from the start, an axis holding a copy of the base's resolved one.
 - Nothing touches the record until [`edits`](#edits) is written as a child.
   A caller that fails halfway leaves no layer, and a caller that changes its mind calls `rollback()`.
 
@@ -101,6 +102,19 @@ A new row covers an old one when, at every coordinate, it names the same label o
 So `set("p_nom", 0.9, entity=["a"])` followed by `set("p_nom", 0.95)` stages one row, and `a` reads 0.95.
 The other order keeps both rows, and `a` reads 0.9, since within one layer [the more specific row wins](../model/attributes.md#the-broadcast-rule).
 A default set first keeps the exceptions set after it.
+
+Where two edits cross, the later one wins.
+A `set` whose row crosses a staged row of the same attribute, each naming a dim the other leaves NULL and no staged row naming both, also stages the row naming both, with its own value:
+
+```python
+w.set("p_max_pu", 0.5, entity="wind1")
+w.set("p_max_pu", 0.7, scenario="high")  # wind1 under high reads 0.7
+```
+
+A staged row that already names both keeps its value, being the more specific.
+So the staged rows never hold a crossing that [the read](../layers/resolution.md#resolving-a-relation) could not settle, and the order of two edits decides a value, never whether an edit succeeds.
+Last writer wins is what `set` does where two rows name the same key, and what the user of an editor expects.
+A `set` whose own rows cross each other with no row naming both is refused, and the edit rolls back; a frame that stages them stages a row naming both beside them.
 
 `set` packs a multi-dim's coordinates into its [struct column](../model/multi-dims.md#one-struct-column), so `entity="dc", bus="north"` stages `connection = {entity: dc, bus: north}`.
 A multi-dim's value is [a whole tuple or NULL](../model/attributes.md#the-broadcast-rule), so every coordinate must be given or none.
@@ -252,12 +266,19 @@ The destination chooses the rows: a store takes `w.edits`, and a standalone dire
 `rollback()` clears the staging area.
 A write clears nothing, so a `WorkingRecord` that still holds its edits reads exactly what it did before.
 
+Each edit runs in one transaction on the record's cursor.
+A refused edit rolls back whole, so the staging tables read as they did before it, and a reader on another cursor sees an edit whole or not at all.
+The transaction also refreshes the [staged owner-map rows](#staging) of each attribute the edit touched.
+DuckDB nests no transaction and has no savepoint, so an edit is refused while the caller holds a transaction open on the same cursor.
+
 Edits written as a child of any other revision would be a delta computed against the wrong parent, since an axis edit restates its base's whole axis, so a commit [refuses them](../storage/store.md#a-revision-exists-only-by-its-file).
 
 An edited axis, a multi-dim's included, is restated whole, whatever [`partial`](../layers/tree.md#partial-the-granularity-of-an-override) says.
 The layer holds every label the axis has with the edits applied, with its properties, in [axis order](../model/dims.md#axis-order).
 A layer's axis file then says what the axis is there, and reads without its parent ([removing labels](../layers/removal.md)).
-A standalone write of `w` writes the resolved axis whole as well, and an axis nothing touched is written by neither.
+A standalone write of `w` writes the resolved axis whole as well.
+`edits` holds a staged axis only where it differs from the base's, as rows in position order, and an attribute only where its table holds rows.
+So an `add` undone by a `remove` writes nothing, and nothing tracks which axes an edit touched.
 
 An edit replaces the rows it names.
 It deletes the rows at the coordinate it writes and inserts the new ones, so a staging table holds one row per coordinate and reads without a fold.
@@ -332,18 +353,29 @@ Every table is shaped like the file it becomes.
 An axis table adds only a position column, since a DuckDB table keeps no row order.
 No table unions columns that the format keeps apart, so a column the schema does not declare has no table to go in, and [`add`](#add-remove) refuses it.
 
-There is one table per staged attribute, since that is the file it becomes.
+There is one table per declared attribute, since that is the file it becomes.
 Its columns are [the attribute's own coordinates](../storage/format.md#the-long-schema), and `value` has the attribute's declared type.
 A shared table would have to widen `value` to text and carry every declared dim.
 The value would then need casting back on the way out.
 A NULL in a dim column would also be ambiguous between an attribute without that axis and [the broadcast rule](../model/attributes.md#the-broadcast-rule)'s every value.
 Per attribute, the table's shape answers both questions.
 
-There is one table per staged axis, a [multi-dim](../model/multi-dims.md)'s keyed by its struct column, holding it whole as a layer restates it: its key, its properties and a position column.
-The first edit copies the base's resolved axis into it in base order.
+There is one table per axis, a [multi-dim](../model/multi-dims.md)'s keyed by its struct column, holding it whole as a layer restates it: its key, its properties and a position column.
+A [dim with `one_of`](../model/dims.md#a-dim-with-one_of) has none, its axis being the schema's list.
+The table starts as a copy of the base's resolved axis in base order.
 `add` appends a new label at the next position and puts a label of the base back at its base position.
 `remove` deletes the label's row, and a property `set` patches one column in place.
 The writer and the reads take each table in position order.
+
+A `WorkingRecord` creates every table when it is created, and an attribute's starts empty.
+Creation then takes about half a second for a schema of 150 attributes, and every axis is held twice.
+In exchange the staged layer owns every axis from the start, and which tables exist never depends on what was staged.
+`rollback()` empties the attribute tables and refills each axis from the base, and drops no table.
+
+Beside each attribute's table, a second table holds the staged layer's owner-map rows of that attribute.
+Every edit refreshes it, inside its transaction, for each attribute it touched, an attribute over an axis the edit changed included.
+The fold, `flags()` and the write read these rows rather than aggregating the staged rows on every use.
+A large `set` costs a few percent more for it.
 
 These tables are the only place a staged row exists, and [the reads](#reading-with-pending-edits) fold them directly.
 
@@ -371,14 +403,32 @@ resolved = fold(parent layers..., staged rows)
 
 This is one more fold step over the same [owner-map machinery](../layers/resolution.md#owner-map), with the staging tables in place of a layer directory.
 A broadcast of the base reaches a label staged here, since the fold keeps it NULL ([what a row reaches](../layers/resolution.md#what-a-row-reaches)).
-A staged layer has met no writer, so the read refuses two staged rows that cross with no staged row naming both, as the write of `edits` would.
+A staged layer has met no writer, but [`set`](#set) leaves no two staged rows that cross with no staged row naming both, so the read settles the staged layer as it settles a written one.
 It works over a layered base and a plain directory alike, since a directory is a layer laid out like any other.
 It costs what one more layer costs, on every read.
 A written layer is folded once and cached, and the staged layer cannot be, since it is the only one that can still change.
 So the fold is materialised up to the last layer that cannot change under the reader, and the staged step on top stays a relation.
 An edit then needs no invalidation, since nothing that depends on it is cached.
 
-`flags` come from the map rows the staged layer folds to, as for any layer.
+The plan of a relation of a `WorkingRecord` never depends on the staged rows; it may depend on the rows of the frozen layers, which do not change while the `WorkingRecord` lives. So a relation built before an edit reads it:
+
+```python
+rel = w.attributes["p_nom"]
+w.set("p_nom", 150.0, entity="wind1")
+rel.fetchall()  # holds 150.0
+```
+
+The staged step is planned that way throughout.
+The staged layer owns every axis, so [`dim_owners`](../layers/resolution.md#materialised-node-caches) names it for every dim.
+It is a possible owner of every attribute, whether or not it holds rows, and the dead labels of its restatements are always an anti-join, empty or not.
+The [ranking of contested rows](../layers/resolution.md#resolving-a-relation) is planned for every attribute and restricted to the rows that need it as data.
+The staged layer folds onto the frozen map one attribute at a time, against the parent's rows of that attribute.
+A fold of every attribute at once would bind every staging table into every relation, which for a schema of 150 attributes costs seconds per relation.
+
+A relation that stays valid across edits still pays for each of them.
+DuckDB re-binds every Python relation on a connection after any committed write, to any table, so a consumer holds few relations across an edit.
+
+`flags` come from the map rows the staged layer folds to, as for any layer, read from its owner-map tables.
 A staged row that sets a dim adds it to `varies`, one that leaves it NULL adds it to `broadcast`, and a staged curve sets `breakpoints`.
 Properties are read from `properties`, staged edits included.
 

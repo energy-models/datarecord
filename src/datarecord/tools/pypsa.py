@@ -22,10 +22,10 @@ import math
 import re
 import warnings
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
+from contextlib import ExitStack
 from dataclasses import dataclass
 from functools import cache, cached_property
 from typing import TYPE_CHECKING, Any, ClassVar
-from uuid import uuid4
 
 import numpy as np
 import pandas as pd
@@ -40,10 +40,17 @@ from duckdb import (
 )
 from duckdb import StarExpression as star
 
-from datarecord.duck import empty_relation, ex_all, fn, null_safe, struct_of
+from datarecord.duck import (
+    empty_relation,
+    ex_all,
+    fn,
+    null_safe,
+    scratch_table,
+    struct_of,
+)
 from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
-from datarecord.resolve.owner_map import cast_declared
-from datarecord.resolve.record import Record
+from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_keys import cast_declared
 from datarecord.schema.categories import matching, with_defaults
 from datarecord.schema.schema import Schema as RecordSchema
 from datarecord.schema.specs import (
@@ -291,32 +298,6 @@ class NetworkShape:
         return [SCENARIO, "entity"] if self.stochastic else ["entity"]
 
 
-def _connection(record: RecordLike) -> DuckDBPyConnection:
-    """Return the DuckDB connection the relations of `record` belong to.
-
-    Off the concrete backing, since the protocol names no connection. Needed
-    because a relation exposes no reachable reference to its connection, and
-    this tool's `PIVOT` - which `relation.query` refuses as a `MULTI`
-    statement - needs one.
-
-    Raises
-    ------
-    TypeError
-        If `record` is not a `Record`.
-
-    Notes
-    -----
-    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
-    """
-    if not isinstance(record, Record):
-        msg = (
-            f"the PyPSA tool builds from a Record, not a {type(record).__name__}: "
-            "it runs DuckDB SQL on the record's connection"
-        )
-        raise TypeError(msg)
-    return record.con
-
-
 def _snapshot_frame(snapshots: pd.Index) -> pd.DataFrame:
     """`n.snapshots` as the `snapshot` axis with its properties, in PyPSA's order.
 
@@ -501,20 +482,16 @@ def _left_join_values(
         Names in `values` addressed by `snapshot`, of whose rows only the
         NULL-snapshot ones are static.
     """
-    tag = uuid4().hex
-    tables = [f"_pypsa_static_{tag}"]
-    static.create(tables[0])
-    try:
-        joined = con.table(tables[0]).set_alias("s")
+    with ExitStack() as tables:
+        joined = tables.enter_context(scratch_table(con, static)).set_alias("s")
         exprs = {}
         for i, (name, long) in enumerate(values.items()):
             rows = (
                 long.filter(col(SNAPSHOT).isnull()) if name in over_snapshots else long
             )
-            tables.append(f"_pypsa_value_{tag}_{i}")
-            rows.project(*(col(k) for k in keys), col("value")).create(tables[-1])
             alias = f"a{i}"
-            picked = con.table(tables[-1]).set_alias(alias)
+            held = rows.project(*(col(k) for k in keys), col("value"))
+            picked = tables.enter_context(scratch_table(con, held)).set_alias(alias)
             joined = joined.join(
                 picked, ex_all(col("s", k) == col(alias, k) for k in keys), how="left"
             )
@@ -531,9 +508,6 @@ def _left_join_values(
             .project(star(exclude=["_pos"]))
             .df()
         )
-    finally:
-        for table in tables:
-            con.execute(f"DROP TABLE IF EXISTS {table}")
 
 
 def _series_frame(
@@ -1449,7 +1423,7 @@ class PyPSATool(Tool):
         if missing:
             raise UnsupportedRecordError(self.name, missing)
 
-        con = _connection(record)
+        con = record.con
         schema = record.schema
         shape = NetworkShape(record.dims, record.properties)
         n = _new_network(record, shape, con)
@@ -1995,7 +1969,7 @@ class _NetworkSource:
                 )
         return RecordSchema(
             **{
-                **dict(base),
+                **base.model_dump(),
                 "dimensions": dimensions,
                 "properties": properties,
                 "attributes": attributes,
@@ -2056,7 +2030,7 @@ class _NetworkSource:
         def axis(dim: str) -> DuckDBPyRelation:
             if dim == CONNECTION:
                 return self._connection_frame().project(col(CONNECTION))
-            return self.con.from_df(axes[dim]())
+            return cast_declared(self.schema, self.con.from_df(axes[dim]()), dim)
 
         return LazyRelations((*present, ENTITY, CONNECTION), axis)
 
@@ -2431,24 +2405,23 @@ class _NetworkSource:
         def frame(subject: str) -> DuckDBPyRelation:
             rel = frames[subject]()
             declared = {subject, *self.schema.properties[subject]}
-            return rel.project(*(col(c) for c in rel.columns if c in declared))
+            kept = rel.project(*(col(c) for c in rel.columns if c in declared))
+            return cast_declared(self.schema, kept, subject)
 
         return LazyRelations(subjects, frame)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Never consulted: `write_layer` persists frames, not flags.
-
-        A network-backed source exists to be written, and the write path reads
-        only the frame mappings. Answering properly is easy - `c.static` and
-        `c.dynamic` are PyPSA's own split on the snapshot axis, so it needs no
-        scan - but an implementation no caller reaches is one no test pins, so
-        the honest answer is the empty one.
+        """The flags of this network's rows read as one layer, as a record written from it answers.
 
         Notes
         -----
-        - [writing a whole record](https://energy-models.github.io/datarecord/design/use/writing/)
+        - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
         """
-        return {}
+        return self._fold.flags(**categories)
+
+    @cached_property
+    def _fold(self) -> Fold:
+        return Fold.as_one_layer(self)
 
     # -- key sets -----------------------------------------------------------
 
@@ -2757,7 +2730,10 @@ class _ResultsSource(_NetworkSource):
         A solve without SubNetworks over a `base` with a `sub_network` axis
         restates it empty, so the record lists none of `base`'s.
         """
-        held = len(self._sub_networks) > 0 or SUB_NETWORK in self.base.dims
+        axis = self.base.dims.get(SUB_NETWORK)
+        held = len(self._sub_networks) > 0 or (
+            axis is not None and bool(axis.limit(1).fetchall())
+        )
         return (SUB_NETWORK,) if held else ()
 
     def _sub_network_rel(self) -> DuckDBPyRelation:
@@ -3113,7 +3089,7 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
         return None
     rel = matching(record.properties[ENTITY], {CTYPE: (ctype,)})
     names = _taken(schema, ctype, schema.properties[ENTITY])
-    defaulted = with_defaults(schema, ENTITY, rel, names, _connection(record))
+    defaulted = with_defaults(schema, ENTITY, rel, names, record.con)
     return _empty_for_none(defaulted.project(star(exclude=[CTYPE])))
 
 

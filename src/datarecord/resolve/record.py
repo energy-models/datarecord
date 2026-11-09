@@ -17,13 +17,12 @@ Notes
 
 from __future__ import annotations
 
-import dataclasses
-import operator
+import threading
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from functools import cached_property, reduce, wraps
+from functools import cached_property, wraps
 from typing import TYPE_CHECKING, cast
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import duckdb
 from duckdb import CoalesceOperator as coalesce
@@ -34,23 +33,23 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
+    empty_relation,
     fn,
     null_safe,
     struct_of,
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
-from datarecord.resolve.coords import Coords, one_of_axis, resolve_coords
+from datarecord.resolve.coords import Coords
 from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_keys import with_columns
 from datarecord.resolve.owner_map import (
-    _coord_table,
-    _frozen_coords,
+    _frozen_table,
+    _mask,
     _table,
-    frozen_prefix,
     owned_rows,
     source_for,
-    unsettled,
-    with_columns,
+    split_frozen,
 )
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties
@@ -142,15 +141,45 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     return {a: (layers, bool(c)) for a, layers, c in rows}
 
 
-def _named_mask(alias: str, dims: Sequence[str]) -> Expression:
-    """Return a bitmask with one bit per dim in `dims`, set where the row under `alias` names a label of that dim."""
-    return reduce(
-        operator.add,
-        (
-            col(alias, d).isnotnull().cast(sqltypes.INTEGER) * lit(1 << i)
-            for i, d in enumerate(dims)
-        ),
-        lit(0),
+def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
+    """`stored` with `_contested` set on each row of a layer whose keys name different sets of `dims`.
+
+    `stored` is one attribute's map rows as `_as_stored` gives them. Only a
+    value row of such a layer can meet another at one coordinate, so only
+    those rows need `_most_specific`: as data, so the plan stays fixed.
+    """
+    named = str(_mask(dims))
+    over = f"OVER (PARTITION BY {col(LAYER_COLUMN)})"
+    contested = f"min({named}) {over} <> max({named}) {over}"
+    return stored.project(star(), sql(contested).alias("_contested"))
+
+
+def _empty_long(
+    schema: Schema, attribute: str, con: DuckDBPyConnection
+) -> DuckDBPyRelation:
+    """A row-less relation shaped like `attribute`'s long file, typed as declared.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    """
+    types = {
+        c: schema.value_type(attribute) if c == "value" else schema.column_type(c)
+        for c in schema.long_columns_for(attribute)
+    }
+    return empty_relation(con, **{c: t or sqltypes.VARCHAR for c, t in types.items()})
+
+
+def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
+    """A row-less relation shaped like `dims/<dim>.parquet`: its key and its properties.
+
+    Notes
+    -----
+    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    """
+    names = (dim, *schema.properties.get(dim, {}))
+    return empty_relation(
+        con, **{n: schema.column_type(n, dim) or sqltypes.VARCHAR for n in names}
     )
 
 
@@ -161,7 +190,7 @@ def _most_specific(
 
     One layer may hold a row naming a label of a `partial` dim beside a row
     leaving that dim NULL, and both join the key that label names. The column
-    `_named` holds the `_named_mask` of the `partial` dims, so the row kept is
+    `_named` holds the `_mask` of the `partial` dims, so the row kept is
     the one whose mask is the union of all masks at its coordinate. Where no
     row has that mask, two rows each name a dim the other leaves NULL; where
     two rows at one breakpoint have that mask, they name the same dims.
@@ -224,27 +253,6 @@ def _refusal(attribute: str, coordinates: Sequence[str], why: str) -> Expression
     )
 
 
-def _crossings(
-    rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
-) -> DuckDBPyRelation | None:
-    """Rows failing the read at each key two rows of `rel` cover and neither names every dim of, unless a third names both.
-
-    `rel` is one layer's rows as written. `None` where no two named sets are
-    incomparable, sparing the read the joins.
-
-    Notes
-    -----
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-    """
-    crossed = [meets for _, _, meets in unsettled(rel, coordinates)]
-    if not crossed:
-        return None
-    return reduce(DuckDBPyRelation.union, crossed).filter(
-        _refusal(attribute, coordinates, _INCOMPARABLE).isnull()
-    )
-
-
 def _stable_cache(method: Callable[[Record], LazyRelations]) -> property:
     """Cache a `Record` member only while the fold behind it cannot go stale.
 
@@ -277,6 +285,13 @@ def _stable_cache(method: Callable[[Record], LazyRelations]) -> property:
             return value
 
     return property(get)
+
+
+class _PerCursor(threading.local):
+    """What a `Record` keeps per thread, so per cursor: relations are planned on one."""
+
+    def __init__(self) -> None:
+        self.frozen_coords: Coords | None = None
 
 
 @dataclass(frozen=True)
@@ -342,21 +357,36 @@ class Record:
         -----
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
         """
-        return frozen_prefix(self.sources) == len(self.sources)
+        _, above = split_frozen(self.sources)
+        return not above
+
+    @property
+    def _fixed(self) -> bool:
+        """Whether this record's relations are planned without reading a row above its frozen layers.
+
+        True where a source above them can still change, so a relation
+        built before an edit reads it.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+        """
+        return not self.frozen
 
     @_stable_cache
     def dims(self) -> LazyRelations:
-        return LazyRelations(tuple(self._coords.axes), self._axis_frame)
+        """Every dim the schema declares, an empty axis where no layer holds one."""
+        return LazyRelations(tuple(self.schema.dimensions), self._axis_frame)
 
     @_stable_cache
     def properties(self) -> LazyRelations:
-        coords = self._coords
-        subjects = tuple(s for s in self.schema.properties if s in coords.axes)
-        return LazyRelations(subjects, self._property_frame)
+        """Every subject the schema declares properties of, an empty axis where no layer holds one."""
+        return LazyRelations(tuple(self.schema.properties), self._property_frame)
 
     @_stable_cache
     def attributes(self) -> LazyRelations:
-        return LazyRelations(tuple(self._fold.attributes()), self._relation)
+        """Every attribute the schema declares, an empty relation where no layer holds a row."""
+        return LazyRelations(tuple(self.schema.attributes), self._relation)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
         """Straight off the owner map, which folded these in for free.
@@ -369,11 +399,15 @@ class Record:
 
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 
+    def _axis(self, dim: str) -> DuckDBPyRelation:
+        axis = self._coords.axes.get(dim)
+        return _empty_axis(self.schema, dim, self.con) if axis is None else axis
+
     def _axis_frame(self, dim: str) -> DuckDBPyRelation:
-        return self._coords.axes[dim].project(col(dim))
+        return self._axis(dim).project(col(dim))
 
     def _property_frame(self, subject: str) -> DuckDBPyRelation:
-        rel = with_properties(self.schema, self._coords.axes[subject], subject)
+        rel = with_properties(self.schema, self._axis(subject), subject)
         names = (subject, *self.schema.properties[subject])
         return rel.project(*(col(n) for n in names))
 
@@ -383,7 +417,7 @@ class Record:
     def _coords(self) -> Coords:
         """Return every declared dim's folded relation, and the dead labels.
 
-        The frozen prefix's fold is a set of shared tables (`_frozen_coords`),
+        The frozen layers' fold is a set of shared tables (`Coords.shared`),
         read on the calling thread's cursor. The sources after it are folded
         per call onto those tables, so a read with staged edits opens no file.
 
@@ -392,48 +426,33 @@ class Record:
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
         """
-        prefix = self._prefix
-        if self.frozen:
-            return prefix
-        above = self.sources[frozen_prefix(self.sources) :]
-        return resolve_coords(self.sources, self.con, (prefix, above))
+        frozen = self._frozen_coords
+        _, above = split_frozen(self.sources)
+        if not above:
+            return frozen
+        return Coords.resolve(self.sources, (frozen, above))
 
     @property
-    def _prefix(self) -> Coords:
-        """Return the frozen prefix's coords, its shared tables read on the calling thread's cursor.
+    def _frozen_coords(self) -> Coords:
+        """Return the frozen layers' coords, their shared tables read on the calling thread's cursor.
 
-        A `one_of` dim's axis is the schema's, so it is not among the tables.
+        Built once per thread: the tables are write-once, and a relation over
+        a table reads it as it is when collected.
 
         Notes
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
-        con = self.con
-        rows = self._dim_owners
-        axes = {
-            d: con.table(_coord_table("dims", d, self.revision_id)) for d, _, _ in rows
-        }
-        axes |= {n: one_of_axis(self.schema, n, con) for n in self.schema.one_of_dims}
-        return Coords(
-            schema=self.schema,
-            axes={n: axes[n] for n in self.schema.dimensions if n in axes},
-            dim_owners={d: layer for d, layer, _ in rows},
-            dead={
-                d: con.table(_coord_table("dead", d, self.revision_id))
-                for d, _, has_dead in rows
-                if has_dead
-            },
-        )
+        cache = self._per_cursor
+        if cache.frozen_coords is None:
+            frozen, _ = split_frozen(self.sources)
+            cache.frozen_coords = Coords.shared(self.revision_id, frozen)
+        return cache.frozen_coords
 
     @cached_property
-    def _dim_owners(self) -> list[tuple[str, UUID, bool]]:
-        """Return the frozen prefix's `(dim, layer_uuid, has_dead)` rows.
-
-        Plain data, which any thread computes the same.
-        """
-        prefix = self.sources[: frozen_prefix(self.sources)]
-        return _frozen_coords(self.revision_id, prefix, self.con)
+    def _per_cursor(self) -> _PerCursor:
+        return _PerCursor()
 
     @property
     def _fold(self) -> Fold:
@@ -443,14 +462,8 @@ class Record:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
         """
-        coords = self._coords
-        return Fold(
-            schema=self.schema,
-            axes=coords.axes,
-            dim_owners=coords.dim_owners,
-            owner_map=_table(self.revision_id, self.sources, self.con, self._prefix),
-            dead=coords.dead,
-        )
+        owner_map = _table(self.revision_id, self.sources, self._frozen_coords)
+        return Fold(self._coords, owner_map)
 
     def _source_for(self, layer_uuid: UUID) -> LayerSource:
         """Return the source the fold stamped `layer_uuid` from.
@@ -469,19 +482,19 @@ class Record:
 
         Joins the owning layers' rows to the owner map; a broadcast dim stored
         NULL takes each value it is owned for. Unmaterialised, in the long
-        schema (`schema.long_columns_for`).
+        schema (`schema.long_columns_for`), and empty where no layer owns a
+        row of `attribute`. Above the frozen layers the plan is fixed: the
+        staged layers fold onto their map one attribute at a time, and
+        only the rows of a layer holding keys both ways are ranked
+        (`_contested`).
 
         Raises
         ------
-        KeyError
-            If no layer owns a row of `attribute`. Only a key set read before
-            `rollback()` and used after it asks for such an attribute.
         ValueError
             If a frozen layer the owner map names holds no file of `attribute`.
         duckdb.Error
             When fetched, where one layer holds two rows covering a key and
-            neither is the more specific there (`_most_specific`), or a staged
-            one holds two crossing rows without one naming both (`_crossings`).
+            neither is the more specific there (`_most_specific`).
 
         Notes
         -----
@@ -491,8 +504,13 @@ class Record:
         """
         con = self.con
         schema = self.schema
-        fold = self._fold
-        om = fold.owners(attribute)
+        if self._fixed:
+            om = _table(self.revision_id, self.sources, self._frozen_coords, attribute)
+            dead = self._coords.dead
+        else:
+            fold = self._fold
+            om = fold.owners(attribute)
+            dead = fold.coords.dead
         partial_dims = schema.partial_dims
         # This attribute's own columns, not every declared dim: one file per
         # attribute is one column set per attribute (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema).
@@ -505,33 +523,25 @@ class Record:
         # (https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule).
         coordinates = schema.coordinates_of(attribute)
         broadcast_over = tuple(d for d in partial_dims if d in coordinates)
-        owners, contested = self._owners(attribute, om)
+        owners, contested = self._owners(attribute)
         layers: list[DuckDBPyRelation] = []
-        crossed: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
-            source = self._source_for(layer_uuid)
-            rel = owned_rows(source, attribute)
+            rel = owned_rows(self._source_for(layer_uuid), attribute)
             if rel is None:
                 continue
             rel = with_columns(schema, rel, *columns)
             layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
-            if source.frozen:
-                continue
-            crossing = _crossings(rel, coordinates, attribute)
-            if crossing is not None:
-                crossed.append(crossing)
         if not layers:
-            raise KeyError(attribute)
+            return _empty_long(schema, attribute, con)
         unkeyed = [c for c in columns if c not in partial_dims]
-        named = [_named_mask("l", broadcast_over).alias("_named")] if contested else []
-        resolved = (
-            union_all_by_name(layers, con)
-            .set_alias("l")
-            .join(
-                _as_stored(om, broadcast_over).set_alias("o"),
+        values = union_all_by_name(layers).set_alias("l")
+        stored = _as_stored(om, broadcast_over)
+
+        def joined(keys: DuckDBPyRelation, *named: Expression) -> DuckDBPyRelation:
+            return values.join(
+                keys.set_alias("o"),
                 null_safe("l", "o", (LAYER_COLUMN, *broadcast_over)),
-            )
-            .project(
+            ).project(
                 *(
                     coalesce(col("l", dim), col("o", _owned(dim))).alias(dim)
                     if dim in broadcast_over
@@ -540,33 +550,49 @@ class Record:
                 ),
                 *named,
             )
+
+        if not broadcast_over or not contested:
+            return _living(joined(stored), dead, unkeyed)
+        stored = _contested(stored, broadcast_over)
+        alone = joined(stored.filter(~col("_contested")))
+        ranked = _most_specific(
+            joined(
+                stored.filter(col("_contested")),
+                _mask(broadcast_over, "l").alias("_named"),
+            ),
+            coordinates,
+            attribute,
         )
-        if contested:
-            resolved = _most_specific(resolved, coordinates, attribute)
-        resolved = _living(resolved, fold.dead, unkeyed)
-        if not crossed:
-            return resolved
-        types = dict(zip(resolved.columns, resolved.types, strict=True))
-        failing = [
-            rel.project(*(lit(None).cast(t).alias(c) for c, t in types.items()))
-            for rel in crossed
-        ]
-        return reduce(DuckDBPyRelation.union, failing, resolved)
+        return _living(alone.union(ranked), dead, unkeyed)
 
-    def _owners(self, attribute: str, om: DuckDBPyRelation) -> tuple[list[UUID], bool]:
-        """Return the layers owning a key of `attribute`, and whether one holds keys both ways.
-
-        A layer holds keys both ways where its rows name different sets of
-        `partial` dims. Only then does `_relation` have to pick the more
-        specific row.
+    def _owners(self, attribute: str) -> tuple[list[UUID], bool]:
+        """Return the layers that may own a key of `attribute`, and whether `_relation` ranks rows.
 
         Where every source is frozen, one scan of the map answers every
-        attribute and is kept; otherwise the map may change under the reader,
-        so each call scans `om`, the map's rows of `attribute`.
+        attribute and is kept, and rows are ranked only where a layer holds
+        keys both ways, its rows naming different sets of `partial` dims.
+        Otherwise the layers above the frozen ones may change under the
+        reader, so each is a possible owner and every attribute is planned for
+        ranking, which `_contested` restricts to such layers' rows as data.
         """
-        if self.frozen:
+        if not self._fixed:
             return self._cached_owners.get(attribute, ([], False))
-        return _owners(om, self.schema).get(attribute, ([], False))
+        layers, _ = self._frozen_owners.get(attribute, ([], False))
+        _, above = split_frozen(self.sources)
+        tail = [s.layer_id for s in above]
+        return [*layers, *tail], True
+
+    @cached_property
+    def _frozen_owners(self) -> dict[str, tuple[list[UUID], bool]]:
+        """Return `_owners` for every attribute of the frozen layers' map.
+
+        What the layers above them fold onto. They may drop a frozen
+        layer's every row of an attribute, which then joins nothing, but add
+        no owner other than themselves.
+        """
+        frozen, _ = split_frozen(self.sources)
+        rel = _frozen_table(self.revision_id, frozen)
+        return {} if rel is None else _owners(rel, frozen[-1].schema)
 
     @cached_property
     def _cached_owners(self) -> dict[str, tuple[list[UUID], bool]]:
@@ -580,44 +606,3 @@ class Record:
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         """
         return _owners(self._fold.owner_map, self.schema)
-
-
-@dataclass(frozen=True)
-class PinnedRecord(Record):
-    """A `Record` folding its unfrozen tail once rather than per access.
-
-    For a reader that reads many keys while nothing stages, as `write_layer`
-    does: the folded coords and owner map are built on first access and kept,
-    so each key costs its own join rather than a re-fold. Held correct only
-    while no source changes, and only on the cursor of the thread that built
-    it, the relations kept being planned on that cursor. The owner map is a
-    table in the database from the first access to `_fold` until `release`,
-    which the reader must call.
-
-    Notes
-    -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    """
-
-    @cached_property
-    def _coords(self) -> Coords:  # type: ignore[override]
-        return super()._coords
-
-    @cached_property
-    def _fold(self) -> Fold:  # type: ignore[override]
-        fold = super()._fold
-        fold.owner_map.create(self._table)
-        return dataclasses.replace(fold, owner_map=self.con.table(self._table))
-
-    @cached_property
-    def _table(self) -> str:
-        return f"_pinned_{uuid4().hex}"
-
-    def release(self) -> None:
-        """Drop the table the owner map is held in; nothing reads the fold after."""
-        if "_fold" in self.__dict__:
-            self.con.execute(f"DROP TABLE IF EXISTS {self._table}")
-
-    def _owners(self, attribute: str, om: DuckDBPyRelation) -> tuple[list[UUID], bool]:
-        return self._cached_owners.get(attribute, ([], False))

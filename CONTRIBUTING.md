@@ -68,6 +68,35 @@ Open a GitHub issue to report a bug or request a feature:
   everything framework-specific lives under `datarecord/tools/` behind an
   optional extra.
 
+### Figures
+
+A design-page section that says what the fold or a read does to rows carries a
+figure: tables, one row per key, using the section's own example and words; a
+figure about structure or flow may use labelled boxes and arrows instead.
+
+- The file is `docs/static/<page>-<topic>.svg`: the SPDX header as an XML
+  comment, then `<svg>` with `width`, `height`,
+  `style="max-width: 100%; height: auto"`, `role="img"` and a `<title>` and
+  `<desc>` named by `aria-labelledby`. Every `id` takes the figure's own
+  prefix. Colours are attributes, never a `<style>`, and the file has no blank
+  line, which would end the HTML block.
+- Embed it inline, so `currentColor` follows the theme: a
+  `<figure class="diagram">` holding the line `--8<-- "<the file>"`.
+- Text, outlines and arrows are `currentColor`. A tint fills a header at
+  `fill-opacity="0.2"` and a body at `0.08`. Blue `#0072B2` is the root (or
+  lower) layer, orange `#E69F00` the child (deeper) one, and a stronger tint of
+  the owning layer's colour (`0.35`) or a bracket an overlap row. A vermilion `#D55E00`
+  hatch is a row the fold drops; a dashed outline with no fill is absent: no row.
+- Every coloured table carries a text label ("root layer", "child layer",
+  "owner map"), and the legend lists only the marks the figure uses. An arrow
+  meets its target at a right angle and carries a short label.
+- Look at it in both themes; text over the strongest tint keeps 4.5:1 in both:
+
+  ```bash
+  pixi run -e docs rsvg-convert -w 1520 -b white x.svg -o light.png
+  sed 's/currentColor/#ddd/g' x.svg | pixi run -e docs rsvg-convert -w 1520 -b '#1e2129' -o dark.png
+  ```
+
 ## Design enhancement proposals
 
 A change to the design starts as a design enhancement proposal (DEP): the

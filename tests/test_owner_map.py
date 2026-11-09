@@ -73,14 +73,14 @@ def test_union_all_by_name_folds_every_relation_by_name(store):
     con = store.workspace.con
     rels = [con.sql("SELECT 1 AS x, 'a' AS y"), con.sql("SELECT 2 AS x")]
     rels.append(con.sql("SELECT 'c' AS y, 3 AS x"))
-    got = union_all_by_name(rels, con).fetchall()
+    got = union_all_by_name(rels).fetchall()
     assert sorted(got, key=lambda r: r[0]) == [(1, "a"), (2, None), (3, "c")]
 
 
 def keys(revision):
     """The owner map's keys: `(name, attribute)`, no type.
 
-    The map is pruned in the fold (`fold_attributes` anti-joins each keyed
+    The map is pruned in the fold (`fold_layer` anti-joins each keyed
     membership's removed labels), so a key whose component or multi-dim tuple was
     removed is already gone from it - the read needs no further gating.
 
@@ -141,7 +141,7 @@ def _coords(store, revision):
     try:
         record = workspace.store(store.uri).revision(revision.id).record
         dims = record.dims
-        dead = record._fold.dead
+        dead = record._fold.coords.dead
         return (
             {d: dims[d].df().to_dict("records") for d in dims},
             {d: sorted(rel.fetchall()) for d, rel in dead.items()},
@@ -409,7 +409,7 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
     record = root.store.commit(staged).record
 
     for plan in (
-        _fold_map(record.sources, record.con).explain().upper(),
+        _fold_map(record.sources).explain().upper(),
         record.attributes["weight"].explain().upper(),
     ):
         assert "HASH JOIN" in plan, "it joins at all"
