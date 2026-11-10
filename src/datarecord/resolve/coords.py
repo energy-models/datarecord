@@ -225,10 +225,7 @@ def refuse_unheld(
         if c in taken:
             labels[f"{subject}.{c}"] = (col(c), taken[c])
         elif c in schema.multi_dims:
-            fields |= {
-                f"{c}.{f}": (fn.struct_extract(col(c), lit(f)), d)
-                for f, d in schema.over(c).items()
-            }
+            fields |= {f"{c}.{f}": (col(c)[f], d) for f, d in schema.over(c).items()}
             if c != subject:
                 tuples[c] = (col(c), c)
         elif c in schema.dimensions and c != subject:

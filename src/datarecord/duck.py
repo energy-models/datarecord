@@ -27,7 +27,7 @@ import operator
 import sys
 import time
 import weakref
-from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, suppress
 from functools import partial, reduce
 from pathlib import Path
@@ -41,7 +41,6 @@ from duckdb import (
     DuckDBPyConnection,
     DuckDBPyRelation,
     Expression,
-    FunctionExpression,
     TransactionException,
     sqltypes,
 )
@@ -50,15 +49,16 @@ from duckdb.sqltypes import DuckDBPyType
 
 
 class _Functions:
-    """`fn.bool_or(x)` for `FunctionExpression("bool_or", x)`.
+    """`fn.round(x, precision=1)` for `round(x, precision := 1)`.
 
-    Attribute access reads closer to the SQL it builds than a name-as-string
-    call does, and keeps aggregates out of `SQLExpression` strings, where a
-    column name would have to be quoted by hand.
+    Positional arguments pass in order and keyword arguments as DuckDB named
+    arguments. Attribute access reads closer to the SQL it builds than a
+    name-as-string call does, and keeps calls out of `SQLExpression` strings,
+    where a column name would have to be quoted by hand.
     """
 
     def __getattr__(self, name: str) -> Callable[..., Expression]:
-        return partial(FunctionExpression, name)
+        return partial(duckdb.fn, name)
 
 
 fn = _Functions()
@@ -320,25 +320,6 @@ def ensure_local_dir(uri: str, *, parent: bool = False) -> None:
     (path.parent if parent else path).mkdir(parents=True, exist_ok=True)
 
 
-def struct_of(fields: Mapping[str, Expression]) -> Expression:
-    """A struct expression: field name to the expression for its value.
-
-    A struct rather than a column per field, because it comes back as a dict
-    keyed by name: the caller filters it by name instead of counting columns
-    into a positional slice.
-
-    `struct_pack` is what says this in DuckDB, and the field names are its
-    *keyword* arguments - which `FunctionExpression` cannot pass, being
-    positional-only. So the call is assembled as text here and the values are
-    interpolated as the expressions they already are, keeping SQL text out of
-    every caller.
-
-    Never empty, DuckDB having no empty struct.
-    """
-    packed = ", ".join(f"{col(name)} := {value}" for name, value in fields.items())
-    return sql(f"struct_pack({packed})")
-
-
 def values_relation(
     con: DuckDBPyConnection,
     names: Sequence[str],
@@ -346,8 +327,10 @@ def values_relation(
 ) -> DuckDBPyRelation:
     """Return the literal table `rows`, its columns named `names`.
 
-    A SQL `VALUES` list under a table alias naming its columns; `con.values`
-    has no such alias, so its columns come out `col0`, `col1`, ...
+    A SQL `VALUES` list under a table alias naming its columns, so the rows
+    live in the query text and a registered view can read them. `con.values`
+    holds its rows in the process, which `create_view` refuses, and names its
+    columns `col0`, `col1`, ...
 
     Raises
     ------

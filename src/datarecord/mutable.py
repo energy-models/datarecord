@@ -34,8 +34,7 @@ from uuid import UUID, uuid4
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression, sqltypes
-from duckdb import SQLExpression as sql
+from duckdb import DuckDBPyRelation, Expression, count_all, sqltypes
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 
@@ -53,7 +52,6 @@ from datarecord.duck import (
     null_safe,
     refuse_open_transaction,
     scratch_table,
-    struct_of,
     transaction,
     union_all_by_name,
 )
@@ -122,7 +120,7 @@ def _field_in(multi: str, field: str, labels: Sequence[Any]) -> Expression:
     """
     if not labels:
         return lit(False)
-    return fn.struct_extract(col(multi), lit(field)).isin(*map(lit, labels))
+    return col(multi)[field].isin(*map(lit, labels))
 
 
 def _is_labels(value: Any) -> bool:
@@ -501,7 +499,7 @@ class WorkingRecord(Record):
         if attribute is not None:
             return
         numbered = self._base_rows(kind).project(
-            star(), sql("row_number() OVER ()").alias(_POSITION)
+            star(), fn.row_number().over().alias(_POSITION)
         )
         self._insert(numbered, self._staged[kind, attribute], {})
 
@@ -564,13 +562,13 @@ class WorkingRecord(Record):
         staged = self.con.table(table)
         base = self._base_rows(kind)
         start = max(
-            staged.aggregate(f"coalesce(max({_POSITION}), 0)").fetchall()[0][0],
-            base.count("*").fetchall()[0][0],
+            staged.aggregate([coalesce(col(_POSITION).max(), lit(0))]).fetchall()[0][0],
+            base.aggregate([count_all()]).fetchall()[0][0],
         )
-        numbered = rel.project(star(), sql("row_number() OVER ()").alias("_n"))
+        numbered = rel.project(star(), fn.row_number().over().alias("_n"))
         held = [
             staged.project(col(key), col(_POSITION)),
-            base.project(col(key), sql("row_number() OVER ()").alias(_POSITION)),
+            base.project(col(key), fn.row_number().over().alias(_POSITION)),
         ]
         joined = numbered.set_alias("r")
         for i, positions in enumerate(held):
@@ -1587,10 +1585,9 @@ class WorkingRecord(Record):
         - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
         """
         open_ = [c for c in key if c in broadcast]
-        flags = ", ".join(f"{col(c)} IS NULL" for c in open_)
         _dr_rel = rel
         patterns = (
-            self.con.sql(f"SELECT DISTINCT {flags} FROM _dr_rel").fetchall()
+            rel.project(*(col(c).isnull() for c in open_)).distinct().fetchall()
             if open_
             else [()]
         )
@@ -1848,7 +1845,7 @@ class WorkingRecord(Record):
                 continue
             table = self._ensure(f"{_AXIS_PREFIX}{m}")
             for f in fields:
-                self._delete(table, gone, dim, fn.struct_extract(col("t", m), lit(f)))
+                self._delete(table, gone, dim, col("t", m)[f])
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
         self._delete(table, gone, dim, col("t", dim))
 
@@ -2169,12 +2166,12 @@ class WorkingRecord(Record):
         """Whether the staged axis `kind` differs from the base's, as rows in position order."""
         table = self.con.table(self._staged[kind, None])
         columns = [c for c in table.columns if c != _POSITION]
-        order = sql(f"row_number() OVER (ORDER BY {_POSITION})").alias(_POSITION)
+        order = fn.row_number().over(order_by=[col(_POSITION)]).alias(_POSITION)
         staged = table.project(*map(col, columns), order)
         types = dict(zip(table.columns, table.types, strict=True))
         base = self._base_rows(kind).project(
             *(col(c).cast(types[c]).alias(c) for c in columns),
-            sql("row_number() OVER ()").alias(_POSITION),
+            fn.row_number().over().alias(_POSITION),
         )
         return bool(
             staged.except_(base).limit(1).fetchall()
@@ -2276,8 +2273,8 @@ def _packed(
             f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/design/model/multi-dims/)"
         )
         raise ValueError(msg)
-    return struct_of(
-        {
+    return fn.struct_pack(
+        **{
             c: col(c) if c in present else lit(dims[c]).cast(_column_type(schema, d))
             for c, d in over.items()
         }
@@ -2315,7 +2312,7 @@ def _unpacked(
         )
         raise ValueError(msg)
     return rel.project(
-        *(fn.struct_extract(col(multi), lit(c)).alias(c) for c in over),
+        *(col(multi)[c].alias(c) for c in over),
         *(col(c) for c in rel.columns if c != multi),
     )
 
@@ -2495,12 +2492,9 @@ def _most_named(
     rel: DuckDBPyRelation, by: Sequence[str], columns: Sequence[str]
 ) -> DuckDBPyRelation:
     """`rel`'s `columns`, keeping per `by` the rows whose `_named` is the largest."""
-    # A window stays SQL text: DuckDB's expression API has no window construct.
-    over = ", ".join(str(col(c)) for c in by)
+    over = [col(c) for c in by]
     return (
-        rel.project(
-            star(), sql(f"max(_named) OVER (PARTITION BY {over})").alias("_most")
-        )
+        rel.project(star(), col("_named").max().over(partition_by=over).alias("_most"))
         .filter(col("_named") == col("_most"))
         .project(*(col(c) for c in columns))
     )

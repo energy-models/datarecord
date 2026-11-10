@@ -30,7 +30,6 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
-from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 from duckdb._relation import _render
 
@@ -42,7 +41,6 @@ from datarecord.duck import (
     named_mask,
     nested,
     null_safe,
-    struct_of,
     transaction,
     union_all_by_name,
 )
@@ -114,11 +112,11 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     for d in dims:
         stored = fn.list_concat(
             duckdb.CaseExpression(
-                fn.struct_extract(col("varies"), lit(d)),
+                col("varies")[d],
                 fn.list_value(col(d)),
             ),
             duckdb.CaseExpression(
-                fn.struct_extract(col("broadcast"), lit(d)),
+                col("broadcast")[d],
                 fn.list_value(lit(None).cast(types[d])),
             ),
         )
@@ -140,8 +138,8 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     dims = schema.partial_dims
     contested = "false"
     if dims:
-        named = struct_of({d: fn.struct_extract(col("varies"), lit(d)) for d in dims})
-        ways = struct_of({"l": col(LAYER_COLUMN), "n": named})
+        named = fn.struct_pack(**{d: col("varies")[d] for d in dims})
+        ways = fn.struct_pack(**{"l": col(LAYER_COLUMN), "n": named})
         contested = f"count(DISTINCT {ways}) > count(DISTINCT {LAYER_COLUMN})"
     rows = om.aggregate(
         f"attribute, list(DISTINCT {LAYER_COLUMN}), {contested}", "attribute"
@@ -156,10 +154,10 @@ def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelat
     value row of such a layer can meet another at one coordinate, so only
     those rows need `_most_specific`: as data, so the plan stays fixed.
     """
-    named = str(named_mask(dims))
-    over = f"OVER (PARTITION BY {col(LAYER_COLUMN)})"
-    contested = f"min({named}) {over} <> max({named}) {over}"
-    return stored.project(star(), sql(contested).alias("_contested"))
+    named = named_mask(dims)
+    by = [col(LAYER_COLUMN)]
+    contested = named.min().over(partition_by=by) != named.max().over(partition_by=by)
+    return stored.project(star(), contested.alias("_contested"))
 
 
 def _empty_long(
