@@ -1583,6 +1583,7 @@ Its <code>__init__</code> reruns in each new thread, so the lookup needs no exis
 A dict keyed by thread id would reuse ids, and a <code>ContextVar</code> would be copied into a task runner's workers, which would then share the parent's cursor.</p>
 <p>Tables in the workspace's database are shared between cursors: the <code>revisions</code> cache, the staging tables and the folded caches.
 So are a record's <a href="../views/">registered views</a>, which every cursor reads and which show an edit once its transaction commits.
+A table that lives within one call, such as a fold's checkpoint, is a temporary table of the calling cursor instead, which no other cursor sees (<a href="../store/#the-databases-schemas">the database's schemas</a>).
 A <code>DuckDBPyRelation</code> is bound to the cursor that built it.
 The line between thread-bound and shared objects runs around relations alone.</p>
 <p>A store, a revision, a <code>Record</code> and a layer source hold their workspace and look up <code>workspace.con</code> on each call.

@@ -1324,10 +1324,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#who-drops-an-abandoned-registration" class="md-nav__link">
+  <a href="#who-drops-a-forgotten-registration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Who drops an abandoned registration
+        Who drops a forgotten registration
       
     </span>
   </a>
@@ -2073,10 +2073,10 @@
 </li>
         
           <li class="md-nav__item">
-  <a href="#who-drops-an-abandoned-registration" class="md-nav__link">
+  <a href="#who-drops-a-forgotten-registration" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Who drops an abandoned registration
+        Who drops a forgotten registration
       
     </span>
   </a>
@@ -2338,7 +2338,7 @@ Whatever is chosen, it has to be answerable off the fold, which is where a recor
 One that does would either refuse a change that alters a column or the fold of an existing <a href="../storage/views/">registered view</a> — widening an attribute's <code>dims</code>, adding a property, adding a dim to <code>partial</code> — or replace the views it reaches, which a client's query would then see change under it. Adding an attribute or a dim would add its view (<a href="../proposals/dep-0034-a-record-registers-as-views/#schema-changes">DEP 34</a>).</p>
 <h3 id="how-a-sql-client-settles-rows">How a SQL client settles rows<a class="headerlink" href="#how-a-sql-client-settles-rows" title="Permanent link">&para;</a></h3>
 <p><a href="../storage/views/">Registered views</a> are raw, so a client applies the broadcast rule itself. <a href="../use/reading/#settling-rows"><code>settle</code></a> ported to the frontend, and a page on the raw format for SQL clients, are both still to write (<a href="../proposals/dep-0034-a-record-registers-as-views/#open-issues">DEP 34</a>).</p>
-<h3 id="who-drops-an-abandoned-registration">Who drops an abandoned registration<a class="headerlink" href="#who-drops-an-abandoned-registration" title="Permanent link">&para;</a></h3>
+<h3 id="who-drops-a-forgotten-registration">Who drops a forgotten registration<a class="headerlink" href="#who-drops-a-forgotten-registration" title="Permanent link">&para;</a></h3>
 <p>A server that crashes or forgets leaves its views and the folds they read. The <code>registered</code> table lists every registration with when it was <code>created</code>, but no one unregisters by any rule yet (<a href="../proposals/dep-0034-a-record-registers-as-views/#open-issues">DEP 34</a>). Unregistering frees the staging tables the registration <a href="../storage/store/#the-databases-schemas">holds</a>, so the rule also decides how long they stay. A workspace reopened on a file keeps an earlier run's <code>_staged</code> and <code>_fold</code> schemas, which no record holds; those no registration's <code>held</code> column lists could be swept, and nothing does yet (<a href="../proposals/dep-0035-a-record-holds-the-tables-it-reads/#open-issues">DEP 35</a>).</p>
 <h3 id="a-public-create_view-taking-a-qualified-name">A public <code>create_view</code> taking a qualified name<a class="headerlink" href="#a-public-create_view-taking-a-qualified-name" title="Permanent link">&para;</a></h3>
 <p><code>register</code> calls DuckDB's private <code>_render</code> and <code>_create_view</code>, since <code>DuckDBPyRelation.create_view</code> takes one identifier and no nested path (<a href="../storage/views/#building-the-views">building the views</a>). That caps DuckDB at the newest release the suite passed on until a public method takes a qualified name, which is to be requested upstream.</p>
@@ -2366,7 +2366,7 @@ The alternative, "every connection of this entity", would broadcast over part of
 <h3 id="whether-a-records-relations-can-be-named-views">Whether a record's relations can be named views<a class="headerlink" href="#whether-a-records-relations-can-be-named-views" title="Permanent link">&para;</a></h3>
 <p>They can, in the workspace's own database, one schema per registration with a nested schema per kind (<a href="../storage/views/">registered views</a>). Over a <code>WorkingRecord</code> the views are created once and follow every edit, since a relation's plan never reads a staged row.</p>
 <h3 id="when-a-server-drops-the-folds-it-opened">When a server drops the folds it opened<a class="headerlink" href="#when-a-server-drops-the-folds-it-opened" title="Permanent link">&para;</a></h3>
-<p>When the last open record reading one is closed, unless a registration still holds it. A record collected unclosed leaves its folds to the workspace for its life, so a server closes each record it opens (<a href="../storage/store/#the-databases-schemas">the database's schemas</a>).</p>
+<p>When the last record reading one is closed, or collected with every relation taken from it, unless a registration still holds it. A server closes each record it opens, so it frees them at a point it chooses rather than the collector's (<a href="../storage/store/#the-databases-schemas">the database's schemas</a>).</p>
 <h3 id="when-a-workingrecords-staging-tables-are-dropped">When a <code>WorkingRecord</code>'s staging tables are dropped<a class="headerlink" href="#when-a-workingrecords-staging-tables-are-dropped" title="Permanent link">&para;</a></h3>
 <p>When it is closed or collected, unless a registration of it still holds them; then on that registration's <code>unregister</code>. Its tables sit in a schema of their own, which the workspace drops whole (<a href="../storage/store/#the-databases-schemas">the database's schemas</a>).</p>
 

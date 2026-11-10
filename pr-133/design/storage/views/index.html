@@ -1640,7 +1640,8 @@ A table tells a registration from any other schema in the database, so a server 
 DuckDB has no comments on schemas to mark them by, and a marker view in each schema would be found only by a reserved name.</p>
 <p><code>register</code> creates the schemas, the views and the row in one transaction, which the one database they share allows, and raises if <code>name</code> exists.
 Two cursors registering one <code>name</code> at once conflict, and the later one raises.
-<code>Workspace.unregister(name)</code> drops the schema with its views and its row, in one transaction, and then releases the registration's <a href="../store/#the-databases-schemas">hold</a> on its record's staging tables, which go with their last holder.
+<code>Workspace.unregister(name)</code> drops the schema with its views and its row, in one transaction, and then releases the registration's <a href="../store/#the-databases-schemas">hold</a> on its record's folds and staging tables, which go with their last holder.
+<code>unregister</code> drops the views at once: a statement already running reads on to its end, and any later one, such as a Python relation over the views run again, finds no schema.
 It refuses a name with no row, so a schema no record registered is never dropped.
 DuckDB nests no transaction, so both refuse a cursor that already holds one open, as <a href="../../use/editing/#edits">an edit</a> does.</p>
 <h2 id="live-over-a-workingrecord">Live over a <code>WorkingRecord</code><a class="headerlink" href="#live-over-a-workingrecord" title="Permanent link">&para;</a></h2>
