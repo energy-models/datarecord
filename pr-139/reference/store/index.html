@@ -1751,11 +1751,6 @@ On a passed connection that ran <code>USE datarecord</code>, run <code>USE</code
 <td><code>WorkingRecord(...)</code></td>
 </tr>
 <tr>
-<td><code>_scratch</code></td>
-<td>a call's intermediate tables</td>
-<td>the call, which drops them</td>
-</tr>
-<tr>
 <td><code>&lt;name&gt;</code></td>
 <td>the views of a registration</td>
 <td><code>record.register(name)</code></td>
@@ -1763,12 +1758,20 @@ On a passed connection that ran <code>USE datarecord</code>, run <code>USE</code
 </tbody>
 </table>
 <p><code>&lt;id&gt;</code> is the 32-digit hex of the revision's or layer's UUID, and SQL names each schema in full, <code>datarecord._fold.&lt;id&gt;</code>.
-The PyPSA exporter, which holds a record's connection but no workspace, keeps its joins in temporary tables of its cursor instead.
+The workspace creates <code>_fold</code> and <code>_staged</code> with itself, so <code>register</code> refuses both names.
+A table that lives within one call, such as a fold's checkpoints, an edit's snapshot or the PyPSA exporter's joins, is a temporary table of the calling cursor and in no schema of the database.
+The call creates, reads and drops it on that cursor, the only one that sees it, so a process that dies mid-call leaves nothing of it in a file database.
+Past DuckDB's <code>memory_limit</code>, a temporary table spills to the <code>temp_directory</code>, <code>.tmp</code> by default.
 <code>revisions</code> and <code>schemas</code> cache each manifest whole, and gain rows only, so the cache can be incomplete and never stale.</p>
-<p>The workspace keeps the <code>_fold</code> schemas of the layers a <code>Record</code> folds until <code>record.close()</code>, and a <code>WorkingRecord</code>'s <code>_staged</code> schema until it closes.
+<p>The workspace keeps the <code>_fold</code> schemas of the layers a <code>Record</code> folds, and a <code>WorkingRecord</code>'s <code>_staged</code> schema, until the record is closed or collected.
 It keeps the schemas of a registered record until <code>unregister</code>.
-The workspace drops a schema once no open record or registration reads it.
-A closed record raises <code>ValueError</code> on every read, and a <code>Record</code> collected unclosed leaves its schemas to the workspace until the workspace closes.</p>
+The workspace drops a schema once no record or registration reads it.
+A closed record raises <code>ValueError</code> on every read.</p>
+<p>Each relation that a record hands out keeps the record alive, and a relation derived from it with methods such as <code>filter</code> or <code>join</code> keeps its inputs.
+So a record's tables last while the record or any relation taken from it lives, and <code>store.revision(rid).record.attributes["p_nom"].df()</code> succeeds although no name keeps the record.
+SQL over such a relation, <code>con.sql("FROM rel")</code>, binds it at once and keeps neither the relation nor the record.
+datarecord's own code anchors such a result to the relation it reads, but your own <code>con.sql</code> does not: keep the relation, the record or a <code>with</code> block alive until you have fetched.
+A record forgotten unclosed keeps its tables only until it and its relations are collected, and the next record over the revision folds it again.</p>
 <h3 id="files-local-and-remote">Files, local and remote<a class="headerlink" href="#files-local-and-remote" title="Permanent link">&para;</a></h3>
 <p>Manifests, claims, listing <code>layers/</code> and deleting a pending layer go through the workspace's <code>Files</code>, which datarecord picks by the URI's scheme.
 DuckDB reads and writes the parquet.</p>
@@ -1789,6 +1792,7 @@ The secret is named <code>datarecord_s3</code>, so on a connection shared with i
 <h3 id="threads">Threads<a class="headerlink" href="#threads" title="Permanent link">&para;</a></h3>
 <p><code>ws.con</code> returns the calling thread's cursor, so every thread can share one workspace, one store and one <code>Record</code>.
 Tables, registered views and fold results are shared between cursors.
+A temporary table of one call, such as a fold's checkpoint, belongs to the calling cursor alone (<a href="#the-database">the database</a>).
 A <code>DuckDBPyRelation</code> and a <code>WorkingRecord</code> belong to the thread that built them.
 A write or an edit refuses a relation from another thread or connection:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ValueError: this relation was built on another connection or thread; build it on `record.con` in this thread, or hand over a pandas, polars or arrow frame to land

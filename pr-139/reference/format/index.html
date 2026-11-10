@@ -1808,7 +1808,8 @@ A view reads the tables of its own database under any name a client attaches it 
 datarecord never runs <code>USE</code> on its own cursors.</p>
 <p><code>register</code> raises if <code>name</code> exists in the workspace's database, or if another cursor registers it at the same time.
 The database is always named, so <code>name</code> may be that of another attached database.
-<code>Workspace.unregister(name)</code> drops the schema, its views and its row in the <code>registered</code> table.</p>
+<code>Workspace.unregister(name)</code> drops the schema, its views and its row in the <code>registered</code> table, and releases the record's folds and staging tables that the registration kept, which go once nothing else keeps them.
+The views go at once: a statement already running reads on to its end, and any later one, such as a Python relation over the views run again, finds no schema.</p>
 <h3 id="the-registered-table">The <code>registered</code> table<a class="headerlink" href="#the-registered-table" title="Permanent link">&para;</a></h3>
 <p>Every registration is a row of the workspace's <code>registered</code> table, <code>datarecord.main.registered</code>, which <code>Workspace.registered()</code> returns.</p>
 <table>

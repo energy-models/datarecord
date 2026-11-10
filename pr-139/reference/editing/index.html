@@ -1830,7 +1830,7 @@ A refused edit rolls back whole, so the staged rows are as they were before it.
 DuckDB nests no transaction, so <code>WorkingRecord</code> and each edit raise <code>duckdb.TransactionException</code> while you hold a transaction open on the same cursor.</p>
 <p>The staged rows are in DuckDB tables in the workspace's database, in the schema <code>datarecord._staged.&lt;id&gt;</code> (<a href="../store/#the-database">the database</a>), never in your files.
 On a workspace at <code>:memory:</code> they go when the workspace closes.
-<code>close()</code> drops them, a <code>with</code> block calls it on exit, and so does garbage collection if you never call it.
+<code>close()</code> drops them, a <code>with</code> block calls it on exit, and garbage collection drops them once the record and every relation taken from it are gone, if you never call it.
 After <code>close()</code>, a read, an edit or <code>edits</code> raises <code>ValueError</code>.
 A <code>WorkingRecord</code> over a closed <code>Record</code> keeps working, and one over a closed <code>WorkingRecord</code> refuses its edits.</p>
 <div class="admonition info">

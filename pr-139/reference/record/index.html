@@ -1721,11 +1721,13 @@ Listing the keys reads no file, and building a relation reads the file's footer,
 <p><code>record.select(**labels)</code> returns a <a href="../selecting/">selection</a> of the record, as <code>select(record, **labels)</code> does for any <code>RecordLike</code>.</p>
 <h3 id="close"><code>close</code><a class="headerlink" href="#close" title="Permanent link">&para;</a></h3>
 <p><code>close()</code> releases the tables in which the record's fold is kept, and a <code>with</code> block calls it on exit.
-The workspace drops a table once no open record and no registration reads it.
+The workspace drops a table once no record and no registration reads it.
 Calling <code>close()</code> again does nothing, and <code>closed</code> is <code>True</code> from the first call on.</p>
 <p>After <code>close()</code>, a read raises <code>ValueError</code>, and a relation taken before fails on fetch with DuckDB's missing-table error.
 <code>revision.record</code> returns a new record once the one it cached is closed.
-A record you never close leaves its tables in place for the workspace's life, so a chained read such as <code>store.revision(rid).record.attributes["p_nom"].df()</code> succeeds.</p>
+A record you never close keeps its tables while it or any relation taken from it lives, so a chained read such as <code>store.revision(rid).record.attributes["p_nom"].df()</code> succeeds, and so does one through a relation you derive with <code>filter</code> or <code>join</code>.
+SQL you write over such a relation, <code>con.sql("FROM rel")</code>, does not keep it, so keep the relation, the record or a <code>with</code> block alive until you have fetched (<a href="../store/#the-database">the database</a>).
+The next record over the same revision folds its ancestry again, so a process that reads one revision often keeps one record open.</p>
 <h3 id="register"><code>register</code><a class="headerlink" href="#register" title="Permanent link">&para;</a></h3>
 <p><code>record.register(name)</code> creates a DuckDB view per dim, property subject and attribute, for a SQL client (<a href="../format/">format</a>).</p>
 <h2 id="settle"><code>settle</code><a class="headerlink" href="#settle" title="Permanent link">&para;</a></h2>

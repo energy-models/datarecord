@@ -2359,7 +2359,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tbody>
 </table>
 <h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
-<p>The tables a workspace creates move out of <code>main</code> into three schemas. <code>_fold</code> contains each revision's fold, <code>_staged</code> each <code>WorkingRecord</code>'s staging tables, and <code>_scratch</code> a call's intermediates. A record or a registration that reads a nested schema takes a hold on it. The workspace drops the schema when its last hold is released, at the record's <code>close()</code> or the registration's <code>unregister</code>. A <code>WorkingRecord</code> collected unclosed releases its holds, and a <code>Record</code> collected unclosed passes them to the workspace.</p>
+<p>The tables a workspace keeps move out of <code>main</code> into two schemas. <code>_fold</code> contains each revision's fold, and <code>_staged</code> each <code>WorkingRecord</code>'s staging tables. A call's intermediates become temporary tables of its cursor. A record or a registration that reads a nested schema takes a hold on it. The workspace drops the schema when its last hold is released, at the record's <code>close()</code> or the registration's <code>unregister</code>. A record collected unclosed releases its holds too. Every relation a record hands out keeps the record alive, so its tables live while the record or any relation taken from it lives.</p>
 <h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">&para;</a></h2>
 <p>Before this DEP, a long-lived workspace, such as a server that opens a revision per request, grows without bound. Two kinds of table are never dropped:</p>
 <ul>
@@ -2394,18 +2394,14 @@ SPDX-License-Identifier: CC-BY-4.0
 <td><code>WorkingRecord(...)</code></td>
 </tr>
 <tr>
-<td><code>_scratch</code></td>
-<td>a fold's checkpoints, an edit's snapshot, the PyPSA exporter's joins</td>
-<td>the call using them, which drops them</td>
-</tr>
-<tr>
 <td><code>&lt;name&gt;</code></td>
 <td>the views of a registration (<a href="../dep-0034-a-record-registers-as-views/">DEP 34</a>)</td>
 <td><code>register(name)</code></td>
 </tr>
 </tbody>
 </table>
-<p>The workspace creates <code>_fold</code>, <code>_staged</code> and <code>_scratch</code> with itself, so <code>register</code> refuses them as taken names. The id in a nested schema's name keys its tables, which no longer carry it.</p>
+<p>The workspace creates <code>_fold</code> and <code>_staged</code> with itself, so <code>register</code> refuses them as taken names. The id in a nested schema's name keys its tables, which no longer carry it.</p>
+<p>A table that lives within one call, a fold's checkpoints, an edit's snapshot or the PyPSA exporter's joins, is a <code>TEMP</code> table of the calling cursor, in no schema of the database. The call creates, reads and drops it on that cursor.</p>
 <h3 id="holders">Holders<a class="headerlink" href="#holders" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -2419,7 +2415,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <tr>
 <td>a <code>Record</code></td>
 <td><code>_fold.&lt;id&gt;</code> of each layer it folds</td>
-<td><code>close()</code></td>
+<td><code>close()</code>, or garbage collection</td>
 </tr>
 <tr>
 <td>a <code>WorkingRecord</code></td>
@@ -2431,11 +2427,6 @@ SPDX-License-Identifier: CC-BY-4.0
 <td>every schema the registering record has a hold on</td>
 <td><code>Workspace.unregister(name)</code></td>
 </tr>
-<tr>
-<td>the workspace</td>
-<td>every schema of a <code>Record</code> collected unclosed</td>
-<td>never</td>
-</tr>
 </tbody>
 </table>
 <p>A record takes its holds at construction, whether the schemas exist yet or not. A <code>Record</code> over <code>rid</code> folds the layers down to the deepest materialised ancestor, and reads <code>_fold.&lt;rid&gt;</code> and any ancestor's <code>_fold.&lt;id&gt;</code> it has a hold on. When the last hold on a schema is released, the workspace drops the schema with every table in it. A registration takes its hold inside the transaction that creates its views, so no <code>unregister</code> finds the schema without a hold.</p>
@@ -2444,45 +2435,65 @@ SPDX-License-Identifier: CC-BY-4.0
 <ul>
 <li><code>Record.close() -&gt; None</code> releases the record's holds. A second call does nothing.</li>
 <li><code>Record</code> is a context manager, which closes it on exit.</li>
-<li>Garbage collection closes a <code>WorkingRecord</code> that is still open. A <code>Record</code> collected unclosed passes its holds to the workspace.</li>
+<li>Garbage collection closes a record that is still open.</li>
+<li>Every relation a record hands out, through <code>dims</code>, <code>properties</code> and <code>attributes</code>, keeps the record alive while it lives: a <code>weakref.finalize</code> on the relation holds the record as its argument.</li>
+<li>A relation datarecord builds by SQL over another relation, a Python variable its SQL scans, keeps that relation alive the same way.</li>
 <li>A closed record refuses every read and edit with an error that states it is closed.</li>
 <li><code>Revision.record</code> builds a new record once the one it caches is closed.</li>
 <li><code>WorkingRecord(...)</code> is refused while its cursor has an open transaction, because the workspace's own cursor could not see the staging tables to drop them.</li>
 </ul>
 <h3 id="lifetime-of-a-relation">Lifetime of a relation<a class="headerlink" href="#lifetime-of-a-relation" title="Permanent link">&para;</a></h3>
-<p>A relation taken from a record, such as <code>record.attributes["p_nom"]</code>, is valid while the record is open. Once the record is closed and no other hold covers its tables, reading the relation fails with DuckDB's missing-table error. A <code>WorkingRecord</code>'s relation fails the same way once it is collected. A relation of a <code>Record</code> collected unclosed stays valid. A registered view stays valid until it is unregistered, whatever happens to the record.</p>
+<p>A relation taken from a record, such as <code>record.attributes["p_nom"]</code>, keeps the record, and so its tables, alive. A relation derived from it by its methods, <code>filter</code>, <code>join</code> or <code>aggregate</code>, keeps its inputs, so it keeps the record too. A record's tables therefore live while the record or any relation taken from it lives, unless it is closed. Once the record is closed and no other hold covers its tables, reading the relation fails with DuckDB's missing-table error.</p>
+<p>SQL run over such a relation by a replacement scan, <code>con.sql("FROM rel")</code>, binds it at once and keeps neither the relation nor the record. Wherever datarecord's own code does so, in the writer or the PyPSA exporter, it anchors the result to the relation it reads, so the chain from the result back to the record holds. Only a caller's own <code>con.sql</code> over a record's relation breaks it, and the caller mends it the same way: by keeping the relation it reads, or the record, or a <code>with</code> block, alive until it has fetched. A registered view stays valid until it is unregistered, whatever happens to the record.</p>
 <h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
-<p><code>close()</code> frees a workspace when the caller chooses, as a server answering a request needs. The finaliser covers a forgotten <code>WorkingRecord</code>. One <code>weakref.finalize</code> serves both: <code>close()</code> detaches it and releases, so the release runs at most once.</p>
-<p>A <code>Record</code>'s finaliser passes its holds on rather than releasing them. In <code>store.revision(rid).record.attributes["p_nom"].df()</code>, nothing keeps a name for the record, so the collector may take it before <code>.df()</code> runs. A release there would drop the fold that <code>.df()</code> reads, and the read would fail at random. The workspace keeps a forgotten <code>Record</code>'s tables as it did before this DEP. A closed <code>Record</code> has no holds left. Nobody reads a <code>WorkingRecord</code> that way, and its staging tables are worth dropping.</p>
-<p>A <code>Record</code> takes a hold on every layer's fold it reads, because the workspace would otherwise drop an ancestor's fold with the ancestor's last record.</p>
-<p>A schema per revision and per record is the unit of a hold. One <code>DROP SCHEMA … CASCADE</code> drops a <code>WorkingRecord</code>'s staging tables, and the holds list a handful of schemas, not hundreds of tables. Nesting keeps the top level that a SQL client sees to <code>main</code>, the three schemas and the registrations.</p>
+<p><code>close()</code> frees a workspace when the caller chooses, as a server answering a request needs. The finaliser covers a forgotten record. One <code>weakref.finalize</code> serves both: <code>close()</code> detaches it and releases, so the release runs at most once.</p>
+<p>In <code>store.revision(rid).record.attributes["p_nom"].df()</code>, nothing keeps a name for the record, so with a bare finaliser the collector may take it before <code>.df()</code> runs. The release would drop the fold that <code>.df()</code> reads, and the read would fail at random with the collector's timing. So the relation keeps the record. DuckDB's relations are slotted objects that take no attribute, but they take a weak reference, and a <code>weakref.finalize</code> on one holds its arguments until the relation is collected. Passing the record as an argument to a finaliser that does nothing keeps it exactly that long. A relation derived from another keeps its inputs, so the chain <code>attributes["p_nom"].filter(...).aggregate(...)</code> keeps the record from its first link. A finaliser costs about 0.6 µs per relation handed out.</p>
+<p>A first draft had a <code>Record</code> collected unclosed pass its folds to the workspace, which kept them for its life. It pinned every revision ever read by an unclosed record, and <code>store.revision(rid).record.register(name)</code> never freed the fold on <code>unregister</code>, since the collected record had passed its hold to the workspace. Tying the record's life to its relations makes a collected <code>Record</code> release as a <code>WorkingRecord</code> does. A one-liner read then folds its revision again each time, since nothing keeps the fold between reads, so a process that reads one revision often keeps one record open instead.</p>
+<p>Only what a record hands out is anchored. A relation the record caches for itself would keep it alive for good.</p>
+<p>A <code>Record</code> takes a hold on every layer's fold it reads. Its relations read an ancestor's fold where the workspace has one (<a href="../../../reference/resolution/#materialised-revisions">the nearest fold at hand</a>), and the workspace would otherwise drop that fold with the ancestor's last record.</p>
+<p>A schema per revision and per record is the unit of a hold. One <code>DROP SCHEMA … CASCADE</code> drops a <code>WorkingRecord</code>'s staging tables, and the holds list a handful of schemas, not hundreds of tables. Nesting keeps the top level that a SQL client sees to <code>main</code>, the two schemas and the registrations.</p>
+<p>A call's intermediate table is created, read and dropped by one call on one cursor, so no other cursor needs to see it and no holder needs to keep it: a <code>TEMP</code> table, visible to that cursor alone, fits. It leaves nothing behind in a file database when the process dies mid-call, where a table of a shared schema would stay until something swept it. A transaction that writes to the workspace's database can still create one, since DuckDB does not count the temporary catalog as a second database written. Past DuckDB's <code>memory_limit</code> it spills to the <code>temp_directory</code>, <code>.tmp</code> by default, as a table of an in-memory database does. The tables other cursors read, the fold's and the staging tables, stay in the database.</p>
 <p>A registration takes holds on the schemas of its record rather than on the tables its SQL reads. The two sets cover the same tables, and by taking the record's set, datarecord need not parse the views.</p>
 <p>The holds are in a Python mapping on the <code>Workspace</code>, behind one lock. A record cannot outlive the process, and a registration, the one holder that can, is a row of <code>registered</code>, which a reopened workspace lists.</p>
 <p>A finaliser can run in any thread at any allocation, even inside a transaction on that thread's cursor. The workspace therefore drops schemas on a cursor of its own, under the lock. The lock also stops a lookup on another thread finding a schema between its last release and its drop.</p>
-<p>It costs a contract: a relation is valid only while its record is open, or while its <code>WorkingRecord</code> is uncollected.</p>
+<p>It costs a contract: a relation lives no longer than its closed record, and a caller's own SQL over it keeps nothing. The relation that SQL reads, or the record, must be kept, or the result fetched while it is held.</p>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">with</span> <span class="n">Record</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="n">uri</span><span class="p">)</span> <span class="k">as</span> <span class="n">r</span><span class="p">:</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">df</span> <span class="o">=</span> <span class="n">r</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">layer_uuid</span><span class="p">)</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">w</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"edit_3f2a"</span><span class="p">)</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">w</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1"># the views still read: the workspace keeps their tables for the registration</span>
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">unregister</span><span class="p">(</span><span class="s2">"edit_3f2a"</span><span class="p">)</span>  <span class="c1"># the staging tables are dropped</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">df</span> <span class="o">=</span> <span class="p">(</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>    <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">filter</span><span class="p">(</span><span class="s2">"value &gt; 0"</span><span class="p">)</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="p">)</span>  <span class="c1"># the relation keeps the record</span>
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="n">rel</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span>
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span><span class="s2">"FROM rel WHERE value &gt; 0"</span><span class="p">)</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>  <span class="c1"># `rel` keeps the record while the SQL runs</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rid</span><span class="p">)</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"plain"</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">ws</span><span class="o">.</span><span class="n">unregister</span><span class="p">(</span><span class="s2">"plain"</span><span class="p">)</span>  <span class="c1"># the fold goes once the collected record released it too</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">layer_uuid</span><span class="p">)</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="n">w</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"edit_3f2a"</span><span class="p">)</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">w</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>  <span class="c1"># the views still read: the workspace keeps their tables for the registration</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">unregister</span><span class="p">(</span><span class="s2">"edit_3f2a"</span><span class="p">)</span>  <span class="c1"># the staging tables are dropped</span>
 </code></pre></div>
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
 <li>The holder registry on <code>Workspace</code>, under one lock.</li>
 <li><code>WorkingRecord</code>: <code>close()</code>, the finaliser, the refusal after close, and the registration's holds.</li>
-<li>The layout, with every table moved into <code>_fold</code>, <code>_staged</code> and <code>_scratch</code>.</li>
-<li><code>Record</code>: its holds, <code>close()</code>, the finaliser that passes holds on, and the refusal after close. A <code>WorkingRecord</code> reads a <code>Record</code> base through its own open copy, so closing the caller's base leaves its edits working.</li>
+<li>The layout, with every shared table moved into <code>_fold</code> and <code>_staged</code>, and a call's intermediates made <code>TEMP</code> tables of its cursor.</li>
+<li><code>Record</code>: its holds, <code>close()</code>, the finaliser, the refusal after close, and <code>Revision.record</code> replacing a closed record. A <code>WorkingRecord</code> reads a <code>Record</code> base through its own open copy, so closing the caller's base leaves its edits working.</li>
+<li>Anchoring: each relation of <code>dims</code>, <code>properties</code> and <code>attributes</code> keeps its record through a <code>weakref.finalize</code>, and a collected <code>Record</code> releases.</li>
 </ol>
-<p>Once built, a workspace that opens and closes records, edits and registrations in a loop ends with only <code>main</code>'s tables and three empty schemas. A view registered on a closed record reads until it is unregistered. A read after <code>close()</code> raises the closed error, and a relation of a <code>Record</code> collected unclosed still reads.</p>
+<p>Once built, a workspace that opens and closes records, edits and registrations in a loop ends with only <code>main</code>'s tables and two empty schemas, and no temporary table on its cursor. A view registered on a closed record reads until it is unregistered. A read after <code>close()</code> raises the closed error. A relation, or one derived from it, of a record collected unclosed reads after a collection, and the record's fold and staging tables go once the relation does. A registration of a collected record frees its fold on <code>unregister</code>.</p>
 <h2 id="rejected-ideas">Rejected ideas<a class="headerlink" href="#rejected-ideas" title="Permanent link">&para;</a></h2>
 <ul>
 <li>Only a finaliser: the caller cannot choose when to free a workspace, and a record in a reference cycle waits for the cycle collector.</li>
-<li>A <code>Record</code>'s finaliser releasing, as a <code>WorkingRecord</code>'s does: a chained read would fail whenever the collector runs between taking the relation and fetching it.</li>
+<li>A <code>Record</code>'s finaliser releasing with nothing keeping it: a chained read would fail whenever the collector runs between taking the relation and fetching it.</li>
+<li>A <code>Record</code> collected unclosed passing its folds to the workspace: it pins every revision an unclosed record read for the workspace's life, and a registration of such a record never frees its fold.</li>
+<li>Wrapping each relation in a proxy holding the record: a proxy is no <code>DuckDBPyRelation</code>, which every consumer takes, and a relation derived from it would drop the proxy.</li>
 <li>Only <code>close()</code>: every forgotten record leaks.</li>
 <li>Holds kept in a DuckDB table: the Python holders do not survive a reopen, and a registration, which does, is a row of <code>registered</code>.</li>
+<li>A <code>_scratch</code> schema of the database for a call's intermediates: each call drops its own, but a process that dies mid-call leaves them in a file database, and they are named in a catalog every cursor sees for tables only one reads.</li>
 <li>A top-level schema per revision and per record: the top level fills with ids.</li>
 <li>A table prefix per kind in <code>main</code>: the workspace drops a record's tables one by one, and a SQL client sees them all.</li>
 <li>Evicting shared tables by age or size: it breaks a live record's relations silently.</li>
@@ -2491,8 +2502,9 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h2 id="open-issues">Open issues<a class="headerlink" href="#open-issues" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Who unregisters an abandoned registration, and by what rule. Unregistering frees its tables, so the rule sets how long they stay.</li>
-<li>Whether a record's planned relations form a reference cycle with it, which would delay its finaliser to the cycle collector.</li>
+<li>Who unregisters a forgotten registration, and by what rule. Unregistering frees its tables, so the rule sets how long they stay.</li>
+<li>A record's cached <code>dims</code>, <code>properties</code> and <code>attributes</code> name the record, a reference cycle, so a forgotten record releases at the cycle collector's pace, not at its last reference.</li>
+<li>A caller's own SQL over a record's relation keeps nothing. DuckDB binds such SQL at once and offers no hook to keep a Python object with the result, and <code>anchored</code>, which datarecord's own code uses for this, is not public.</li>
 <li>A workspace reopened on a file keeps an earlier run's <code>_staged</code> and <code>_fold</code> schemas, which its registrations may read and no record has a hold on. Nothing sweeps those that no <code>held</code> column lists.</li>
 </ul>
 
