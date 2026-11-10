@@ -1997,6 +1997,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#the-workspaces-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workspace's database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2304,6 +2315,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#the-workspaces-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workspace's database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#api" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2458,7 +2480,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tbody>
 </table>
 <h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
-<p><code>record.register(name)</code> creates a DuckDB schema <code>name</code> in the workspace's database, with one view per dim, per property subject and per declared attribute, in the nested schemas <code>name.dims</code>, <code>name.properties</code> and <code>name.attributes</code>. Any client of that database, a SQL client over a DuckDB server included, reads the record without Python. Over a <code>WorkingRecord</code> the views are created once and stay live: every edit shows in them as soon as it commits, since <a href="../dep-0033-the-fold-is-a-fixed-plan/">DEP 33</a> makes each relation a fixed plan.</p>
+<p><code>record.register(name)</code> creates a DuckDB schema <code>name</code> in the workspace's database, with one view per dim, per property subject and per declared attribute, in the nested schemas <code>name.dims</code>, <code>name.properties</code> and <code>name.attributes</code>. The workspace attaches that database as <code>datarecord</code>, on a connection of its own or on a caller's, such as a server's, and never as the connection's default. Every table and view datarecord builds lives in that one database, so a server keeps its own default database, and a SQL client reads the views under any name it attaches the file as. Any client of that database, a SQL client over a DuckDB server included, reads the record without Python. Over a <code>WorkingRecord</code> the views are created once and stay live: every edit shows in them as soon as it commits, since <a href="../dep-0033-the-fold-is-a-fixed-plan/">DEP 33</a> makes each relation a fixed plan.</p>
 <h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">&para;</a></h2>
 <p>A frontend reads a revision and edits it through a server. The server holds a <code>Workspace</code>, opens a revision, wraps it in a <code>WorkingRecord</code>, and hands the frontend a name it can query over a DuckDB server. The frontend then sends edits, reads them back, and finally asks for a commit.</p>
 <p>Each server builds these views itself today. A prototype wraps each relation's <code>sql_query()</code> in <code>CREATE VIEW</code>, one catalog per revision with three schemas inside. It works for a frozen record and fails for an edited one:</p>
@@ -2466,6 +2488,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>A view holds the plan its relation had when it was created. Today that plan depends on the staged rows, so an edit that changes the plan never reaches the view. DEP 33 removes this.</li>
 <li>The SQL of a staged relation reads Python objects by name, which are gone when the view is next read.</li>
 </ul>
+<p>A server's connection has a default database of its own, which datarecord's tables should not fill. A SQL client attaches the workspace's file under a name of its own choosing, so a view must read its tables whatever that name is.</p>
 <h2 id="specification">Specification<a class="headerlink" href="#specification" title="Permanent link">&para;</a></h2>
 <h3 id="layout">Layout<a class="headerlink" href="#layout" title="Permanent link">&para;</a></h3>
 <table>
@@ -2478,28 +2501,36 @@ SPDX-License-Identifier: CC-BY-4.0
 </thead>
 <tbody>
 <tr>
-<td><code>name.dims.&lt;dim&gt;</code></td>
+<td><code>&lt;db&gt;.&lt;name&gt;.dims.&lt;dim&gt;</code></td>
 <td>dim, a <a href="../../model/dims/#a-dim-with-one_of"><code>one_of</code> dim</a> included</td>
 <td>the axis, as <code>record.dims[dim]</code></td>
 </tr>
 <tr>
-<td><code>name.properties.&lt;d&gt;</code></td>
+<td><code>&lt;db&gt;.&lt;name&gt;.properties.&lt;d&gt;</code></td>
 <td>dim that declares properties</td>
 <td>as <code>record.properties[d]</code></td>
 </tr>
 <tr>
-<td><code>name.attributes.&lt;a&gt;</code></td>
+<td><code>&lt;db&gt;.&lt;name&gt;.attributes.&lt;a&gt;</code></td>
 <td>attribute the schema declares</td>
 <td>as <code>record.attributes[a]</code>, empty where it has no rows</td>
 </tr>
 </tbody>
 </table>
+<p><code>&lt;db&gt;</code> is the workspace's database, <code>datarecord</code> by default.</p>
 <p>Two records under one schema register the same views, since every record lists every declared dim and attribute (DEP 33).</p>
-<p><code>name</code> is a top-level schema in the workspace's database, so the views are visible to every cursor and every connection to it. The views are raw: a NULL coordinate means every label (<a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>), two rows can cover one coordinate, and no property default is applied. <a href="../../use/reading/#settling-rows">Settling</a> is the client's.</p>
+<p><code>name</code> is a top-level schema in the workspace's database, so the views are visible to every cursor and every connection that attaches it. The views are raw: a NULL coordinate means every label (<a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>), two rows can cover one coordinate, and no property default is applied. <a href="../../use/reading/#settling-rows">Settling</a> is the client's.</p>
+<h3 id="the-workspaces-database">The workspace's database<a class="headerlink" href="#the-workspaces-database" title="Permanent link">&para;</a></h3>
+<p><code>Workspace(database: str = ":memory:", *, con: DuckDBPyConnection | None = None, name: str = "datarecord")</code> always attaches <code>database</code> as <code>name</code>. It attaches it on <code>con</code> when one is given, and otherwise on a fresh <code>duckdb.connect()</code> that it owns. The database is never a cursor's default. The passed connection itself does no work: each thread works on its own <code>con.cursor()</code>.</p>
+<p>Every table datarecord shares is <code>&lt;name&gt;.main.&lt;table&gt;</code>, named by one helper, <code>Workspace.qualified(table)</code>. A view's SQL names the schema of each table it reads, and DuckDB keeps a table of the view's own database without the database's name, so the view resolves in its own database under any name a client attaches it as. A Python relation or frame that datarecord's SQL reads goes by a local with the reserved prefix <code>_dr_</code>, since a bare name binds a same-named table of the default database first. A caller creates no table or view whose name starts with <code>_dr_</code> in the default database or temp schema of the workspace's connection.</p>
+<p>The schemas, the views and the <code>registered</code> row all live in this one database, so <code>register</code> and <code>unregister</code> each stay one transaction.</p>
+<p><code>Workspace.close()</code> closes the workspace's cursors and detaches its database. It closes the connection only where it opened it, so a passed connection stays open with its default database as it was. The S3 secret is named <code>datarecord_s3</code>, so on a passed connection it replaces none of the caller's secrets.</p>
+<p>Users are recommended to run <code>USE datarecord</code> on their own connection and then write short names, <code>edit.dims.bus</code> and <code>registered</code>. <code>USE</code> holds only for the connection or cursor that runs it. datarecord never runs it on its own cursors.</p>
 <h3 id="api">API<a class="headerlink" href="#api" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>Record.register(name: str) -&gt; None</code> creates <code>name</code> and its views, and adds a row for <code>name</code> to the workspace's <code>registered</code> table, in one transaction. It raises if <code>name</code> exists.</li>
-<li><code>Workspace.unregister(name: str) -&gt; None</code> drops <code>name</code> with its views and its row, in one transaction.</li>
+<li><code>Workspace(database, *, con=None, name="datarecord")</code> attaches <code>database</code> as <code>&lt;db&gt;</code>, as above. <code>Workspace.close()</code> closes its cursors, detaches <code>&lt;db&gt;</code>, and closes the connection only where it opened it.</li>
+<li><code>Record.register(name: str) -&gt; None</code> creates the schemas <code>&lt;db&gt;.&lt;name&gt;</code> and <code>&lt;db&gt;.&lt;name&gt;.dims</code>, <code>.properties</code> and <code>.attributes</code>, a view <code>&lt;db&gt;.&lt;name&gt;.&lt;kind&gt;.&lt;view&gt;</code> per relation, and a row for <code>name</code> in <code>&lt;db&gt;.main.registered</code>, in one transaction. It raises if <code>&lt;db&gt;.&lt;name&gt;</code> exists, or if another cursor registers <code>name</code> at the same time.</li>
+<li><code>Workspace.unregister(name: str) -&gt; None</code> drops <code>&lt;db&gt;.&lt;name&gt;</code> with its views, <code>CASCADE</code>, and its row, in one transaction.</li>
 <li><code>Workspace.registered() -&gt; DuckDBPyRelation</code> reads the <code>registered</code> table: <code>name</code>, <code>revision</code>, <code>working</code> and <code>created</code>. For a <code>WorkingRecord</code>, <code>revision</code> is the revision it was opened on. A SQL client reads the table itself.</li>
 <li><code>WorkingRecord.rollback()</code> leaves the views valid, since it refills the staging tables rather than dropping them (DEP 33).</li>
 <li><code>store.commit(w)</code> leaves the views on <code>w</code> as they are. A server drops them and registers a <code>WorkingRecord</code> on the new revision.</li>
@@ -2511,12 +2542,14 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
 <p>Views created once and never replaced keep a client's queries valid through any edit, with no notification between server and client. The alternative is replacing a view whenever an edit creates something new, which couples the record to its registrations and lets a client's query fail between two edits.</p>
 <p>Raw views keep the record's lazy, NULL-means-every-label model. Settled views would have to materialise every broadcast.</p>
+<p>The workspace always attaches its database, its own <code>:memory:</code> one included, rather than keeping a file as the default database. The suite then runs with the database never the default, so a name datarecord forgot to qualify fails in CI rather than resolving by luck. The name is fixed, <code>datarecord</code> unless given, rather than the file's stem, so SQL and the docs name one database whatever file a workspace opens.</p>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">layer_uuid</span><span class="p">)</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">w</span><span class="o">.</span><span class="n">register</span><span class="p">(</span><span class="s2">"edit_3f2a"</span><span class="p">)</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">entity</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">edit_3f2a</span><span class="p">.</span><span class="n">attributes</span><span class="p">.</span><span class="n">p_nom</span><span class="p">;</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">edit_3f2a</span><span class="p">.</span><span class="n">properties</span><span class="p">.</span><span class="n">bus</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">carrier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'AC'</span><span class="p">;</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">USE</span><span class="w"> </span><span class="n">datarecord</span><span class="p">;</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">entity</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">edit_3f2a</span><span class="p">.</span><span class="n">attributes</span><span class="p">.</span><span class="n">p_nom</span><span class="p">;</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="k">SELECT</span><span class="w"> </span><span class="o">*</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">edit_3f2a</span><span class="p">.</span><span class="n">properties</span><span class="p">.</span><span class="n">bus</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">carrier</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">'AC'</span><span class="p">;</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">150.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"wind1"</span><span class="p">)</span>  <span class="c1"># the next SELECT reads 150.0</span>
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
@@ -2526,13 +2559,19 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
 <li>Edits leave only consistent states: one transaction per edit, with the frozen fold tables built before the first edit.</li>
-<li><code>register</code> and <code>unregister</code>. A view is created by the connection's <code>_create_view</code> with the path <code>(name, kind, view)</code> and the SQL of <code>_render(rel, literals=True, wrap_text=True)</code>, the call <code>DuckDBPyRelation.create_view</code> makes with a plain name, which keeps alive the Python objects a relation reads. The public method takes one identifier only, so DuckDB is capped at the newest release the suite passed on, and a test reads a view from another cursor after the relation is collected.</li>
+<li><code>register</code> and <code>unregister</code>. A view is created by the connection's <code>_create_view</code> with the 4-part path <code>(db, name, kind, view)</code> and the SQL of <code>_render(rel, literals=True, wrap_text=True)</code>, the call <code>DuckDBPyRelation.create_view</code> makes with a plain name, which keeps alive the Python objects a relation reads. A 3-part path fails when the database is not the default. The public method takes one identifier only, so DuckDB is capped at the newest release the suite passed on, and a test reads a view from another cursor after the relation is collected.</li>
 <li><code>register</code> builds every relation before it creates any view. Each view it creates changes the catalog, and DuckDB re-binds a relation built before that change, node by node, the next time it derives from it. The pieces every relation of a record shares, its coords, the fold of its frozen layers and the staged layer's base, are built once per record, and a union of relations is <code>rel.union_by_name</code> rather than <code>con.sql</code> over the captured relations, which binds the whole captured text again. In a prototype on a PyPSA record with 168 views, this took registering from 20–25 s to about 9.5 s; a single transaction around all creates showed no clear gain.</li>
+<li>The database is written out in every path. That removes both the refusal of a <code>name</code> equal to an attached database and the ambiguity of a 4-part <code>DROP SCHEMA</code>: registering under <code>other</code>, <code>datarecord</code>, <code>memory</code> and <code>temp</code>, and <code>DROP SCHEMA "datarecord"."&lt;name&gt;" CASCADE</code>, touched only the workspace's schema. <code>main</code> fails as any existing schema does.</li>
+<li>SQL over a Python relation or frame reads it by a replacement scan of a local named <code>_dr_&lt;role&gt;</code>, bound in the function that runs the SQL, since DuckDB scans only the calling frame. A bare name such as <code>rel</code> or <code>gone</code> read a caller's same-named table, which made a removal a silent no-op. <code>rel.query</code> under a fresh name avoids the prefix but took 6–7 times as long to build on DuckDB 2.0.0, growing faster than the relation's depth: 276 ms against 38 ms for a 30-step chain. A check of the catalog before each statement cost 0.5–1.5 ms for a collision a reserved prefix makes unlikely.</li>
 </ol>
-<p>The check: views registered on a fresh <code>WorkingRecord</code>, then <code>set</code>, <code>add</code> and <code>remove</code> on attributes, properties, plain dims and multi-dims, and after each step every view equals the relation built afresh. On the 168-view PyPSA record of note 3, <code>register</code> takes at most 10 s. A second thread reading after every committed statement observes no inconsistent state.</p>
+<p>The check: views registered on a fresh <code>WorkingRecord</code>, then <code>set</code>, <code>add</code> and <code>remove</code> on attributes, properties, plain dims and multi-dims, and after each step every view equals the relation built afresh. On the 168-view PyPSA record of note 3, <code>register</code> takes at most 10 s. A second thread reading after every committed statement observes no inconsistent state. A client that attaches the workspace's file under another name, beside same-named tables of its own, reads every view as its relation. A cursor that ran <code>USE datarecord</code> reads the views by their short names.</p>
 <h2 id="rejected-ideas">Rejected Ideas<a class="headerlink" href="#rejected-ideas" title="Permanent link">&para;</a></h2>
 <ul>
-<li>One catalog per revision, attached as <code>:memory:</code>, with three schemas inside. DuckDB 2.0 nests schemas, so the workspace's database suffices, and the views read its tables without qualifying the catalog.</li>
+<li>One catalog per revision, attached as <code>:memory:</code>, with three schemas inside. DuckDB 2.0 nests schemas, so one database per workspace suffices, and one transaction may write only one attached database, which <code>register</code> needs for its schemas, views and row.</li>
+<li>Registering into a separate target database, <code>register(name, database=...)</code>. DuckDB writes one database per transaction, so the row and the views could not commit together. A view in another database must name the workspace's database, whose name each client chooses.</li>
+<li>The file as the default database, attached only when a connection is passed. That is two setups, and the default one hides a name without its database.</li>
+<li>Table names without their database in views. They bind in the reader's default database, where they fail, or silently read the reader's own table of the same name.</li>
+<li>datarecord running <code>USE datarecord</code> on its own cursors. A name without its database then resolves again, and a missing qualifier is masked once more.</li>
 <li>One flat schema with prefixed names, <code>dim_bus</code> and <code>attr_p_nom</code>. Nested schemas keep each kind's names apart without inventing a convention.</li>
 <li><code>CREATE VIEW … AS rel.sql_query()</code>. The text reads Python objects that are released with the relation, and breaks on a relation with parameters.</li>
 <li>A two-step registration through a helper view in <code>main</code>. It works with public API only, and clutters <code>main</code> with one view per relation.</li>

@@ -1561,7 +1561,7 @@ SPDX-License-Identifier: CC-BY-4.0
 Any client of that database reads the record through them in SQL, a client over a DuckDB server included, with no Python on its side.
 Over a <code>WorkingRecord</code> the views are live: every edit shows in them once it commits.</p>
 <h2 id="the-layout">The layout<a class="headerlink" href="#the-layout" title="Permanent link">&para;</a></h2>
-<p><code>name</code> is a schema in the workspace's own database, with three nested schemas and a view per relation:</p>
+<p><code>name</code> is a schema in <a href="../store/#the-workspaces-database">the workspace's database</a>, <code>datarecord</code> by default, with three nested schemas and a view per relation:</p>
 <table>
 <thead>
 <tr>
@@ -1572,25 +1572,31 @@ Over a <code>WorkingRecord</code> the views are live: every edit shows in them o
 </thead>
 <tbody>
 <tr>
-<td><code>name.dims.&lt;dim&gt;</code></td>
+<td><code>datarecord.name.dims.&lt;dim&gt;</code></td>
 <td>dim, a <a href="../../model/dims/#a-dim-with-one_of">dim with <code>one_of</code></a> included</td>
 <td><code>record.dims[dim]</code></td>
 </tr>
 <tr>
-<td><code>name.properties.&lt;d&gt;</code></td>
+<td><code>datarecord.name.properties.&lt;d&gt;</code></td>
 <td>dim that declares properties</td>
 <td><code>record.properties[d]</code></td>
 </tr>
 <tr>
-<td><code>name.attributes.&lt;a&gt;</code></td>
+<td><code>datarecord.name.attributes.&lt;a&gt;</code></td>
 <td>attribute the schema declares</td>
 <td><code>record.attributes[a]</code>, empty where it has no rows</td>
 </tr>
 </tbody>
 </table>
 <p>Every record lists every dim and attribute its schema declares, so two records under one schema register the same views.
-<code>name</code> is a top-level schema, so its views are visible to every cursor and every connection to the database, and they read the workspace's tables without naming a catalog.
+<code>name</code> is a top-level schema of that database, so its views are visible to every cursor and every connection that attaches it.
+A view reads the tables of its own database whatever a client attaches it as, so a client that attaches the workspace's file as <code>r</code> reads <code>r.name.dims.&lt;dim&gt;</code>, and a table of its own with the same name is never read in place of the workspace's.
+Since the database is always named, <code>name</code> may be any name, that of an attached database included.
 Nested schemas keep each kind's names apart without a naming convention such as <code>dim_</code> or <code>attr_</code>.</p>
+<p>A user, a SQL client or a server's connection is best served by running <code>USE datarecord</code> once and then writing short names, <code>edit.dims.bus</code> and <code>registered</code>.
+The qualified name, <code>datarecord.edit.dims.bus</code>, works without it, and a client that attached the file under another name runs <code>USE</code> with that name.
+<code>USE</code> holds only for the connection or cursor that runs it, so a SQL client runs it once per session, and <code>ws.con</code>, the calling thread's cursor, keeps it in that thread alone.
+datarecord itself never runs <code>USE</code> on its cursors and names everything in full, so a name it forgot to qualify fails rather than finds the workspace's table by luck.</p>
 <p>The views are raw, as the relations are.
 A NULL coordinate means every label (<a href="../../model/attributes/#the-broadcast-rule">the broadcast rule</a>), two rows can cover one coordinate, and no property default is applied.
 <a href="../../use/reading/#settling-rows">Settling</a> is the client's.
@@ -1626,8 +1632,8 @@ Settled views would have to materialise every broadcast, and raw ones keep the r
 <p><code>Workspace.registered()</code> reads it, and a SQL client reads the table itself.
 A table tells a registration from any other schema in the database, so a server that crashed leaves names that can be found again.
 DuckDB has no comments on schemas to mark them by, and a marker view in each schema would be found only by a reserved name.</p>
-<p><code>register</code> creates the schemas, the views and the row in one transaction, and raises if <code>name</code> exists.
-It refuses the name of a database attached to the workspace, which DuckDB would read as the catalog of <code>name.dims</code>.
+<p><code>register</code> creates the schemas, the views and the row in one transaction, which the one database they share allows, and raises if <code>name</code> exists.
+Two cursors registering one <code>name</code> at once conflict, and the later one raises.
 <code>Workspace.unregister(name)</code> drops the schema with its views and its row, in one transaction.
 It refuses a name with no row, so a schema no record registered is never dropped.
 DuckDB nests no transaction, so both refuse a cursor that already holds one open, as <a href="../../use/editing/#edits">an edit</a> does.</p>
@@ -1650,7 +1656,9 @@ The tables the frozen layers fold to are built when the <code>WorkingRecord</cod
 <p>A view's SQL is its relation rendered with its literals inline, so it reads no Python object by name and outlives the relation that made it.
 <code>DuckDBPyRelation.sql_query()</code> gives SQL that reads such objects, which are gone by the next read, and breaks on a relation with parameters.
 The rendering is DuckDB's own, the one <code>DuckDBPyRelation.create_view</code> makes, but that method takes a single identifier and no nested path.
-So <code>register</code> calls the private <code>_render</code> and <code>_create_view</code> with the path <code>(name, kind, view)</code>, DuckDB is capped at the newest release the suite passed on, and a test reads a view from another thread's cursor after its relation is collected.</p>
+So <code>register</code> calls the private <code>_render</code> and <code>_create_view</code> with the path <code>(database, name, kind, view)</code>, DuckDB is capped at the newest release the suite passed on, and a test reads a view from another thread's cursor after its relation is collected.
+A relation names each table it reads with its database, and DuckDB stores a view's tables of its own database without one, so the view binds them in its database whatever name a client gives it.
+A test reads every view from a client that attaches the workspace's file under another name and holds same-named tables of its own, and another reads them by their short names on a cursor of its own that ran <code>USE datarecord</code>.</p>
 <p><code>register</code> builds every relation before it creates any view.
 Each view changes the catalog, and DuckDB re-binds a relation built before that change, node by node, the next time something derives from it.
 Building first keeps a record of a hundred and more views to seconds.</p>

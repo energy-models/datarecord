@@ -980,6 +980,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#the-workspaces-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workspace's database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1494,6 +1505,17 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
+  <a href="#the-workspaces-database" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The workspace's database
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#the-layers" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1569,7 +1591,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="workspaces-and-stores">Workspaces and stores<a class="headerlink" href="#workspaces-and-stores" title="Permanent link">&para;</a></h1>
-<p>A <code>Workspace</code> holds the DuckDB database and the means to read and write files.
+<p>A <code>Workspace</code> holds a DuckDB database and the means to read and write files.
 A <code>Store</code> holds one location and its layers, and each layer carries the manifest that makes it a revision.
 The location holds the record, and the database holds caches.
 Every claim and manifest is written once, create-only, so two writers never take or commit one id.
@@ -1595,24 +1617,43 @@ Deleting a workspace's <code>database</code> loses at most uncommitted edits.
 A file-backed database keeps staged edits across a crash and the <code>revisions</code> cache across runs, and it gives DuckDB room to spill.
 Every cache keyed by id assumes that an id always names the same content.
 A fresh UUID, claimed once, over write-once files guarantees this, and a location wiped and written again breaks it.</p>
+<h3 id="the-workspaces-database">The workspace's database<a class="headerlink" href="#the-workspaces-database" title="Permanent link">&para;</a></h3>
+<p>The workspace attaches its <code>database</code> under a <code>name</code>, <code>datarecord</code> by default, and never makes it a cursor's default database.
+It attaches it on a fresh in-memory connection that it opens, or on a connection passed as <code>con</code>, such as a server's, whose own default database stays as it was:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">(</span><span class="s2">"workspace.duckdb"</span><span class="p">)</span>  <span class="c1"># on a connection of its own</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">(</span><span class="n">con</span><span class="o">=</span><span class="n">server</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"datarecord"</span><span class="p">)</span>  <span class="c1"># on the server's connection</span>
+</code></pre></div>
+<p>Every table datarecord shares between cursors lives in the <code>main</code> schema of that database: the <code>schemas</code>, <code>revisions</code> and <code>registered</code> tables, the tables a fold <a href="../concurrency/#a-cursor-per-thread">shares between threads</a> and the <a href="../../use/editing/#staging">staging tables</a>.
+So does every schema a record <a href="../views/">registers</a>.
+A user's own file opened as a workspace receives these tables beside its own.
+SQL names them in full, <code>datarecord.main.revisions</code> or <code>datarecord.edit.dims.bus</code>, because a name without its database resolves in the cursor's default database, which is another one.
+datarecord's own SQL always does and never runs <code>USE</code>, so a name it forgot to qualify fails in the suite.
+A relation or frame its SQL reads goes by a Python local named <code>_dr_&lt;role&gt;</code>, such as <code>_dr_rel</code>, since a table or view of the same name in the cursor's temp schema or default database binds first, which on a passed connection is the caller's.
+So tables and views whose names start with <code>_dr_</code> must not be created in a database a workspace's connection uses, its default database and temp schema.
+A user is recommended to run <code>USE datarecord</code> on their own connection and write short names (<a href="../views/#the-layout">registered views</a>).</p>
+<p>One database is also what lets <a href="../views/#the-registered-table"><code>register</code></a> create its schemas, its views and its row in one transaction, since a DuckDB transaction writes to one attached database.
+The cursors of a passed connection share its instance, so they see the attached database, and their transactions are their own, not the caller's.</p>
+<p><code>ws.close()</code> closes every thread's cursor and detaches the database.
+It closes the connection too only where the workspace opened it, and a connection passed in stays open for its owner.
+A passed connection that ran <code>USE datarecord</code> runs <code>USE</code> on its own database again before <code>ws.close()</code>, <code>USE memory</code> for an in-memory one, since every statement fails on a connection whose default database was detached.</p>
 <h3 id="the-layers">The layers<a class="headerlink" href="#the-layers" title="Permanent link">&para;</a></h3>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>&lt;location&gt;/
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>└── layers/&lt;id&gt;/
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>    ├── claim.json          # written when the id is handed out, and kept
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>    ├── manifest.json       # written last: makes the revision exist
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>    ├── dims/&lt;dim&gt;.parquet
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>    ├── attributes/&lt;attr&gt;.parquet
-<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>    └── resolved/           # node caches
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>&lt;location&gt;/
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>└── layers/&lt;id&gt;/
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    ├── claim.json          # written when the id is handed out, and kept
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    ├── manifest.json       # written last: makes the revision exist
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    ├── dims/&lt;dim&gt;.parquet
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    ├── attributes/&lt;attr&gt;.parquet
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    └── resolved/           # node caches
 </code></pre></div>
 <p>A layer directory holds everything about its revision, so the tree has no file of its own and listing it is one listing of <code>layers/</code>.
 A <a href="../concurrency/#a-standalone-directory">standalone directory</a> is one layer at its own URI: <code>manifest.json</code> with no parent, beside <code>dims/</code> and <code>attributes/</code>.</p>
 <p>The manifest is the layer's description and its commit:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Manifest</span><span class="p">:</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">parent</span><span class="p">:</span> <span class="n">UUID</span> <span class="o">|</span> <span class="kc">None</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span>  <span class="c1"># full, not a delta</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">files</span><span class="p">:</span> <span class="n">LayerFiles</span>  <span class="c1"># {"dims": [...], "attributes": [...]}</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="n">meta</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Manifest</span><span class="p">:</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="nb">id</span><span class="p">:</span> <span class="n">UUID</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">parent</span><span class="p">:</span> <span class="n">UUID</span> <span class="o">|</span> <span class="kc">None</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span>  <span class="c1"># full, not a delta</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">files</span><span class="p">:</span> <span class="n">LayerFiles</span>  <span class="c1"># {"dims": [...], "attributes": [...]}</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="n">meta</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span> <span class="o">|</span> <span class="nb">int</span> <span class="o">|</span> <span class="nb">float</span> <span class="o">|</span> <span class="nb">bool</span><span class="p">]</span> <span class="o">=</span> <span class="p">{}</span>
 </code></pre></div>
 <p><code>schema</code> is the full <a href="../../model/schema/#one-schema-per-record">schema</a> the layer was written under, so one file answers a revision's schema without walking its ancestry.
 <code>files</code> lists what the layer wrote, by declared name.
@@ -1623,10 +1664,10 @@ It says how one layer was made, such as a run's id.
 <code>schema.meta</code> says something about the record, such as a framework's network attributes, and a child inherits it with the rest of the schema.</p>
 <p><code>claim.json</code> holds the id, the parent, the claimed <code>meta</code> and when the id was handed out.</p>
 <p>The workspace caches each committed manifest whole, since none ever changes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">revisions</span><span class="p">(</span><span class="k">location</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">UUID</span><span class="p">,</span><span class="w"> </span><span class="n">parent</span><span class="w"> </span><span class="n">UUID</span><span class="p">,</span><span class="w"> </span><span class="n">meta</span><span class="w"> </span><span class="n">JSON</span><span class="p">,</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">          </span><span class="n">files</span><span class="w"> </span><span class="n">STRUCT</span><span class="p">(</span><span class="n">dims</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">[],</span><span class="w"> </span><span class="n">attributes</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">[]),</span><span class="w"> </span><span class="k">schema</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">,</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">          </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="k">location</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">))</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="n">schemas</span><span class="p">(</span><span class="n">hash</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span><span class="w"> </span><span class="k">schema</span><span class="w"> </span><span class="n">JSON</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">revisions</span><span class="p">(</span><span class="k">location</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="w"> </span><span class="n">UUID</span><span class="p">,</span><span class="w"> </span><span class="n">parent</span><span class="w"> </span><span class="n">UUID</span><span class="p">,</span><span class="w"> </span><span class="n">meta</span><span class="w"> </span><span class="n">JSON</span><span class="p">,</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">          </span><span class="n">files</span><span class="w"> </span><span class="n">STRUCT</span><span class="p">(</span><span class="n">dims</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">[],</span><span class="w"> </span><span class="n">attributes</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">[]),</span><span class="w"> </span><span class="k">schema</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="p">,</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">          </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="p">(</span><span class="k">location</span><span class="p">,</span><span class="w"> </span><span class="n">id</span><span class="p">))</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">schemas</span><span class="p">(</span><span class="n">hash</span><span class="w"> </span><span class="nb">VARCHAR</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span><span class="w"> </span><span class="k">schema</span><span class="w"> </span><span class="n">JSON</span><span class="p">)</span>
 </code></pre></div>
 <p>A revision's <code>schema</code> is the SHA-256 of its schema's JSON, and <code>schemas</code> holds each distinct schema once, so a chain that repeats its parent's schema stores it once.
 The workspace also keeps one parsed <code>Schema</code> per hash, which every revision sharing it hands out, so a manifest read from its file or the table validates its schema only where the hash is new to the workspace.
@@ -1646,12 +1687,12 @@ A conflict before the winner's row is visible is retried, for ten seconds at mos
 <p>Tables go through DuckDB.
 Manifests, claims, listing <code>layers/</code> and deleting a pending layer go through the workspace's <code>Files</code>, which the URI's scheme selects.
 A URI without <code>://</code> is local, an <code>s3://</code> URI is remote, and any other scheme raises.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Files</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># None on a miss</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># only where nothing is</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>  <span class="c1"># names directly under prefix</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># everything under prefix</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Files</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># None on a miss</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># only where nothing is</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>  <span class="c1"># names directly under prefix</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>  <span class="c1"># everything under prefix</span>
 </code></pre></div>
 <p><code>create</code> writes only where nothing is yet, and raises <code>PreconditionFailedError</code> otherwise.
 Every claim and manifest is written by it.</p>
@@ -1664,7 +1705,7 @@ The condition holds only as far as the server honours it.
 SeaweedFS checks it atomically from 4.18, and AWS S3 since November 2024.</p>
 <p>The configuration is the AWS environment and config files, and datarecord adds no settings of its own.
 boto3 reads them itself.
-DuckDB gets <code>CREATE SECRET (TYPE s3, PROVIDER credential_chain)</code>.
+DuckDB gets <code>CREATE OR REPLACE SECRET datarecord_s3 (TYPE s3, PROVIDER credential_chain)</code>, named so that on a connection shared with its caller it replaces none of the caller's secrets.
 When <code>AWS_ENDPOINT_URL</code> is set, the secret adds its <code>ENDPOINT</code>, <code>URL_STYLE 'path'</code>, <code>USE_SSL</code> per its scheme and <code>CHAIN 'env;config'</code>, because a self-hosted server has no bucket-subdomain DNS and no instance-metadata service to probe.
 The workspace sets both up on the first <code>s3://</code> URI it receives, so a purely local workspace pays for neither.</p>
 <h2 id="a-revision-exists-only-by-its-file">A revision exists only by its file<a class="headerlink" href="#a-revision-exists-only-by-its-file" title="Permanent link">&para;</a></h2>
@@ -1720,9 +1761,9 @@ A claim has one committer at a time, since two commits of one claim at once writ
 <p>A standalone directory has no claim and orders its write by its manifest alone (<a href="../concurrency/#a-standalone-directory">a standalone directory</a>).</p>
 <h2 id="cleanup">Cleanup<a class="headerlink" href="#cleanup" title="Permanent link">&para;</a></h2>
 <p>Only an explicit call deletes, and only a pending layer:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">store</span><span class="o">.</span><span class="n">claims</span><span class="p">()</span>  <span class="c1"># the pending layers, oldest first, with their meta</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">])</span>  <span class="c1"># these pending layers</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">older_than</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>  <span class="c1"># pending, claimed at least this long ago</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">store</span><span class="o">.</span><span class="n">claims</span><span class="p">()</span>  <span class="c1"># the pending layers, oldest first, with their meta</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">])</span>  <span class="c1"># these pending layers</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">older_than</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>  <span class="c1"># pending, claimed at least this long ago</span>
 </code></pre></div>
 <p><code>cleanup</code> takes exactly one of <code>ids</code> and <code>older_than</code>, deletes each layer directory through <code>Files.delete</code>, and returns the ids it deleted.
 A layer with a manifest is not deleted, and each is checked for one again right before its delete.
