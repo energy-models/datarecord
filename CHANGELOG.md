@@ -125,9 +125,9 @@ All notable changes to datarecord are documented here. The format follows
   `bus` and a carrier a label of `carrier`. The properties of `bus` are
   `carrier`, `type`, `x`, `y`, `unit` and `location`, and those of `carrier`
   are `color` and `nice_name`. `v_nom`, `v_mag_pu_*`, `co2_emissions`,
-  `max_growth`, `max_relative_growth` and custom bus or carrier columns are
-  attributes over their dim. `marginal_price`, `v_mag_pu` and `v_ang` are
-  results over `bus`, and `build` sets them back. `to_datarecord` adds every
+  `max_growth` and `max_relative_growth` are attributes over their dim.
+  `marginal_price`, `v_mag_pu` and `v_ang` are results over `bus`, and
+  `build` sets them back. `to_datarecord` adds every
   carrier that a component names and `carrier` does not list, and stores `""`
   as NULL. `verify` reports an entity attached to no bus.
 - The PyPSA tool declares the dims `ctype` and `role` with `one_of`, and
@@ -137,7 +137,17 @@ All notable changes to datarecord are documented here. The format follows
   `sub_network.carrier` refers to `carrier`, and `slack_bus` is a
   property over `sub_network`. A solve that has SubNetworks restates the
   `sub_network` axis, and a solve without them restates it empty where the
-  record has SubNetworks.
+  record has SubNetworks. `SubNetwork.obj` is not written, and `build`
+  gives each SubNetwork a fresh one, so a built network passes PyPSA's
+  topology code and optimises.
+- A static column that PyPSA's registry lacks is a property of its type's
+  subject if it holds text, such as pypsa-eur's `Bus.country` as
+  `bus.country`, or if as an attribute its name would hold two shapes, such as
+  a custom `Generator.v_nom`. Any other, such as `Bus.nom_max_onwind_2050`, is
+  an attribute over its type's dim. `build` sets either back on the types
+  that carried it. `to_datarecord` refuses a custom property that types of
+  one dim carry with different dtypes. `Requirements.columns` is gone, as no
+  custom column clashes any more.
 - The PyPSA tool stores per-port results on connections like per-port inputs.
   `p0`, `p1`, `p2` and a one-port type's `p` are one result `p` over the
   `connection` group, with a row per `(entity, bus)` that keeps the port's
@@ -147,20 +157,29 @@ All notable changes to datarecord are documented here. The format follows
   `rate` over `connection`, static or per snapshot, and `build` puts each row
   back in its port's column. `rate` declares no default, so its ports default
   to `-1` and `1`.
-- The PyPSA tool round-trips multi-period networks. `snapshot` is one flat dim
-  next to `period`, and each snapshot has a property `snapshot.period` with
-  `one_of: period`, so `period=2030` selects the snapshots of one period. A
-  snapshot is labelled by its timestep where no timestep repeats across
-  periods, and by its position otherwise, with the timestep in
-  `snapshot.timestep`. `build` restores snapshots, investment periods, time
-  series and both weightings.
+- The PyPSA tool round-trips multi-period networks. `snapshot` is a multi-dim
+  over `(period, timestep)`, PyPSA's own index, so a snapshot keeps its tuple
+  whether or not a timestep repeats across periods, and a single-period
+  network keeps a `snapshot` dim of timestamps. `build` restores snapshots,
+  investment periods, time series and both weightings.
 - The PyPSA tool round-trips snapshot and period weightings:
   `snapshot_weighting_objective`, `_stores` and `_generators` over `snapshot`,
   `period_weighting_objective` and `_years` over `period`, and
   `scenario_weight`.
-- The PyPSA tool round-trips a network's shapes. A geometry is stored as WKT
-  in `attributes/geometry.parquet`, the CRS is `crs` in the schema's `meta`,
-  and `build` restores `n.shapes` as a GeoDataFrame in that CRS.
+- The PyPSA tool round-trips a network's shapes. A shape is the property
+  `shape_{type}` of the label it outlines, its geometry as WKT: a `Bus` shape
+  is `bus.shape_onshore`, and a `component` that is no PyPSA type, such as
+  pypsa-eur's `country`, is a dim of its own whose labels are the shapes'
+  `idx`. Such a dim is no dim of the record's own, and a network is built
+  from no selection squeezing it. A custom text column named like a dim
+  refers to it, so pypsa-eur's `bus.country` is `{one_of: country}`. The CRS
+  is `crs` in the schema's `meta`, and `build` restores `n.shapes` in that
+  CRS.
+  `to_datarecord` refuses a shape without a `component`, `idx` or `type`, two
+  sharing `(component, idx, type)`, one naming no member of its PyPSA type, a
+  custom column named `shape_...` or like a key dim (`scenario`, `entity`,
+  ...) and a custom value naming no label of the dim it refers to. `build`
+  names each shape `"{component} {idx} {type}"`.
 - `PyPSA.to_datarecord(n, con, results_only=True, base=record)` writes a solve
   as a thin layer. The layer restates the SubNetworks of `base` and sets
   NULL on the results of `base` that it does not write again. A NULL series
@@ -192,6 +211,52 @@ All notable changes to datarecord are documented here. The format follows
   closed record raises `ValueError` on every read, and `Revision.record` builds a new one once its
   cached record is closed. `Workspace.registered()` lists the schemas each
   registration `held`, which a reopened workspace holds for it again.
+- `PyPSACollection`, a tool wrapping `PyPSA`, writes and builds a
+  `pypsa.NetworkCollection`, each member through `PyPSA`, as a full export or
+  as results over `base`. The collection's dim is the name of its one index
+  level. Over `period` it is a myopic solve, written as the one network
+  holding every member's period, whose static values must agree among the
+  members holding the entity active, and `build` gives one multi-period
+  network per period, `record.select(period=[p])`. An asset a later member
+  lacks retires there, its `lifetime` ending at the first period lacking it,
+  and one held again after a gap is refused. Over any other name, a dim of
+  the record's own, that dim is added to the schema and to `partial`, an
+  attribute whose values differ across the members varies over it, and one
+  whose values agree is written once, as declared; `build` gives one network
+  per label, `record.select(dim=label)`.
+  A dim the PyPSA schema declares, `scenario` included, is refused: a
+  stochastic network is written by `PyPSA`. Members hold one set of
+  snapshots, components and custom columns per type, their axes are one
+  union in one order, checked with their properties, which must agree,
+  before any attribute, and every check runs when `to_datarecord` is
+  called. `build` takes the record's dim of its own, else `period`, and
+  `verify` reports what any member, narrowed on its own, lacks, and each
+  dim of its own of a record declaring more than one in
+  `Requirements.unsupported_dims`, a new field for dims a tool has no place
+  for; `Requirements` merge with `|`. A record has at most one dim of its
+  own: a collection over another is refused over a `base` that has one.
+  `PyPSA` builds no record with a dim of its own, `verify` reporting it in
+  `unsupported_dims`, and refuses to write results over one.
+- A collection's results over a `base` holding labels of its dim the
+  collection lacks write every result at each member's label and leave the
+  dim's axis and the SubNetworks to `base`. Over a `base` holding the dim,
+  each member restates its series at its own label alone. A network built
+  from the selection at one label of the dim,
+  `record.select(weather_year=2013)`, writes its results over that selection
+  as that member.
+- `PyPSA.build` and `PyPSA.verify` take a selection, `record.select(...)`, as
+  any `RecordLike`. One label of `period`, `scenario` or a dim of the record's
+  own squeezes the dim: a single-period network indexed by its timesteps
+  holding the entities active in that period, a global constraint for
+  another period dropped, a deterministic network, or the member of a
+  collection at that label. A list keeps the dim, renormalising the kept
+  scenarios' weights, and a list of periods holds the entities active in at
+  least one of them. On top of the selection, a period left without
+  snapshots goes, and an entity attached to a dropped bus. A selection
+  squeezing any other dim, such as `snapshot`, `timestep` or `bus`, or
+  holding no snapshot, is refused. A network's results are written over the
+  selection it was built from, `base=view`, and lifted back to the labels it
+  squeezes.
 
 ### Changed
 
@@ -241,6 +306,17 @@ All notable changes to datarecord are documented here. The format follows
   to 406 MB. Attribute files are written without keeping row order, so writing
   a long series no longer spills tens of GB; dims files keep theirs, which is
   the axis order.
+
+- The `pypsa` extra requires PyPSA 1.4.
+- `PyPSA.to_datarecord` takes `base` on a full export too, and drops the
+  `ValueError` for `base` without `results_only`. Over `base` a static value
+  is left out only where it repeats `base`'s value, else the default, so a
+  value set back to PyPSA's default over a parent holding another is written
+  and no longer lets the parent's show through. A series, a weighting among
+  them, repeating `base`'s at every snapshot is left out too, one differing
+  anywhere written whole, and an input at a port or a custom column is
+  compared with `base`'s, so the layer holds what changed rather than every
+  series.
 
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are
@@ -465,6 +541,61 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- `PyPSA.build` refuses a record whose rows of an attribute name several
+  labels of a dim PyPSA's registry declares it without, such as a generator's
+  `marginal_cost` over `period` in a multi-period record, rather than keeping
+  one label's value, and `PyPSA.verify` reports the attribute in
+  `Requirements.unsupported_values`. The view at one label,
+  `record.select(period=[2030])`, builds, as `PyPSACollection` builds each
+  period. `Requirements.describe` lists the field as unsupported values.
+- `PyPSA.build` settles an attribute's rows over every dim but `snapshot` that
+  the record holds one label of, not only over `entity`, `scenario` and
+  `connection`. In `record.select(period=[2030])`, a generator with a row at
+  2030 and one leaving `period` NULL holds the 2030 value once, rather than
+  both.
+- Reading a property's default keeps the rows in their order. A relation
+  filtered by several `IN (SELECT …)` subqueries no longer comes back
+  reordered.
+- The PyPSA tool keeps a network's own line and transformer types. A
+  `LineType` or `TransformerType` that PyPSA's standard library does not name
+  is a label of the dim `line_type` or `transformer_type`, every column of it
+  a property, and `build` adds it to the library. A
+  PyPSA-Earth network, whose lines use its own `ZM_330kV_bison_2bundle`, no
+  longer builds back with lines that reference a missing type. As in PyPSA's
+  netCDF export, a library row the network has changed is not written.
+- A results layer writes a series at the network's snapshots alone,
+  restating `base`'s values at the others, and over a multi-period `base` a
+  result over no snapshot, such as `p_nom_opt`, for the entities active in
+  the network's periods alone, so `base`'s results stand at every period,
+  snapshot and entity the network does not hold. Writing one period's solve
+  after another's no longer zeroes the earlier period's dispatch and
+  capacities, and the write no longer builds `base` first. The network may
+  carry any of `base`'s investment periods, or none where it is written over
+  the selection at one period it was built from; one carrying fewer than all
+  is written with `results_only=True`, and one holding a snapshot, bus or
+  entity `base` lacks is refused at the call.
+- The PyPSA tool declares a custom column of dtype `object` by its non-null
+  values, so a column of bools, ints or floats holding a NaN, numpy scalars
+  among them, is written as `bool`, `int` or `float` rather than failing as
+  `str`, and one of mixed types is written as text.
+- A results layer restates as NULL only `base`'s results at the scenarios,
+  buses, entities and connections the network holds, so a re-solve of a
+  selection keeps every other label's results. A result over no `scenario`,
+  such as `p_nom_opt`, is one value across every scenario, so a re-solve of
+  fewer scenarios than the record holds is refused rather than written for
+  every scenario beside the others' joint solve. A re-solve of fewer buses
+  or entities than `base` leaves `base`'s SubNetworks, since it numbers its
+  own over the selection alone. The results of a deterministic network over
+  a `base` holding scenarios are refused rather than written over every
+  scenario.
+- `PyPSA.build` of a stochastic record indexes `n.shapes` by
+  `(scenario, name)`, as PyPSA indexes every other component.
+- A results layer writing a result equal in every scenario once, with a NULL
+  `scenario`, no longer restates `base`'s rows of it at each scenario as
+  NULL, which hid the new value at every scenario.
+- `PyPSA.to_datarecord` refuses a stochastic network whose scenarios hold
+  different values of a property, such as a custom text column, rather than
+  writing the first scenario's.
 - The writer's check that no coordinate of a file is held twice groups 64-bit
   hashes in passes of at most 100 million rows, so a file of hundreds of
   millions of rows is checked in bounded memory and spill.

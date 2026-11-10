@@ -22,6 +22,7 @@ from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression
+from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import ex_all, join_on, null_safe, values_relation
@@ -29,6 +30,9 @@ from datarecord.schema.schema import Schema
 
 Categories = Mapping[str, "str | Sequence[str]"]
 """Per categorizing property, the one category or the categories to select."""
+
+#: The column `with_defaults` numbers `rel`'s rows in, to restore their order after its join.
+_ROW = "_defaults_row"
 
 
 def categorized_dim(schema: Schema, categories: Categories) -> str:
@@ -92,7 +96,12 @@ def with_defaults(
     names: Sequence[str],
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
-    """`rel` projected to `subject` and `names`, an unset name read as its default."""
+    """`rel` projected to `subject` and `names`, an unset name read as its default, in `rel`'s order.
+
+    Notes
+    -----
+    - [axis order](https://energy-models.github.io/datarecord/design/model/dims/#axis-order)
+    """
     if not names:
         return rel.project(col(subject))
 
@@ -104,10 +113,13 @@ def with_defaults(
             for n in names
         }
 
-    return _per_combination(schema, subject, rel, columns, con).project(
+    numbered = rel.project(star(), sql("row_number() OVER ()").alias(_ROW))
+    defaulted = _per_combination(schema, subject, numbered, columns, con).project(
         col("r", subject),
         *(coalesce(col("r", n), col("t", f"_default_{n}")).alias(n) for n in names),
+        col("r", _ROW),
     )
+    return defaulted.order(_ROW).project(star(exclude=[_ROW]))
 
 
 def with_properties(

@@ -16,7 +16,7 @@ Notes
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
@@ -51,17 +51,17 @@ class Requirements:
         `key` is `"owner_map_key"`, the fold's unit of ownership. The record layer
         trusts every declared key, so this is a tool's verdict on the record it
         was handed, not a schema rejection.
+    unsupported_dims : frozenset of str
+        Dims the record declares that this tool has no place for in the model
+        it builds.
     unsupported_values : frozenset of tuple of (str, str)
         `(category, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
-        piecewise-linear attribute where the tool takes a scalar.
+        piecewise-linear attribute where the tool takes a scalar, or one
+        whose rows differ along a dim the tool holds it without.
     names : frozenset of str
         Labels the framework scopes per category and two of its categories
         claim, where a record has one axis row per label.
-    columns : frozenset of tuple of (str, str)
-        `(category, column)` pairs of a framework's own column whose name the
-        record declares with another shape, so it has nowhere to be stored:
-        one name is one spec record-wide.
     ignored : frozenset of tuple of (str, str)
         `(category, attribute)` pairs the record stores a value for that the
         tool's category does not take, so the build leaves it out. A report,
@@ -78,9 +78,9 @@ class Requirements:
     categories: frozenset[str] = frozenset()
     attributes: frozenset[tuple[str, str]] = frozenset()
     unsupported_keys: frozenset[tuple[str, str]] = frozenset()
+    unsupported_dims: frozenset[str] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
-    columns: frozenset[tuple[str, str]] = frozenset()
     ignored: frozenset[tuple[str, str]] = frozenset()
 
     def __bool__(self) -> bool:
@@ -90,10 +90,15 @@ class Requirements:
             or self.categories
             or self.attributes
             or self.unsupported_keys
+            or self.unsupported_dims
             or self.unsupported_values
             or self.names
-            or self.columns
         )
+
+    def __or__(self, other: Requirements) -> Requirements:
+        """Everything either requires, or either fails to supply: each field's union."""
+        theirs = asdict(other)
+        return Requirements(**{k: v | theirs[k] for k, v in asdict(self).items()})
 
     def describe(self) -> str:
         """A one-line summary, for an error message or a log line."""
@@ -109,19 +114,14 @@ class Requirements:
                 f"{dim} as {key}" for key, dim in sorted(self.unsupported_keys)
             )
             parts.append(f"unsupported keys ({unsupported})")
+        if self.unsupported_dims:
+            parts.append(f"unsupported dims {sorted(self.unsupported_dims)}")
         if self.unsupported_values:
-            parts.append(
-                f"piecewise-linear attributes {sorted(self.unsupported_values)}"
-            )
+            parts.append(f"unsupported values {sorted(self.unsupported_values)}")
         if self.names:
             parts.append(
                 f"labels claimed by more than one category "
                 f"{sorted(self.names)} (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)"
-            )
-        if self.columns:
-            parts.append(
-                f"columns whose name is declared with another shape "
-                f"{sorted(self.columns)}"
             )
         return ", ".join(parts) if parts else "nothing"
 
@@ -317,13 +317,13 @@ class Tool(Protocol):
             intermediates they need - as a thin layer to write as a child of
             `base`.
         base
-            The record `model` was built from: required with `results_only`,
-            refused without it.
+            The record the layer is written over as a child: required with
+            `results_only`.
 
         Raises
         ------
         ValueError
-            If `base` is given without `results_only`, or missing with it.
+            If `base` is missing with `results_only`.
 
         Notes
         -----

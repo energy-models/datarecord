@@ -21,3 +21,5 @@ SPDX-License-Identifier: CC-BY-4.0
 The PyPSA tool needs the optional extra: `pip install datarecord[pypsa]`.
 
 ::: datarecord.tools.pypsa.PyPSA
+
+::: datarecord.tools.pypsa.PyPSACollection

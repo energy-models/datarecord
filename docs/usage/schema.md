@@ -69,7 +69,7 @@ schema = Schema(
 
 A `Dimension` declares one axis. Its `dtype` is a mathspec dtype: `"float"`, `"int"`, `"str"` or `"datetime"`. A `"str"` dim may take `one_of=[...]`, its labels: the axis is then that list, in order, with no file and no properties, and `add` and `remove` refuse it ([design](../design/model/dims.md#a-dim-with-one_of)).
 
-A multi-period snapshot is a label of `snapshot` with a property that refers to its period, `snapshot.period: {"one_of": "period"}` ([design](../design/model/dims.md#mapping-labels-to-another-dim)).
+A dim's labels map to another dim's by a property that refers to it, such as each bus to its country by `bus.country: {"one_of": "country"}` above ([design](../design/model/dims.md#mapping-labels-to-another-dim)).
 
 ## Multi-dims
 

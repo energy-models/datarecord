@@ -10,9 +10,11 @@ Notes
 - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
 """
 
+import pandas as pd
 import pytest
 
 from datarecord.mutable import WorkingRecord
+from datarecord.schema.categories import with_defaults
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 from tests.fixtures import broadcast, empty_child, empty_root
@@ -271,3 +273,26 @@ def test_a_one_of_dim_a_child_declares_is_on_its_record(root, categorized):
     ).commit()
     assert child.record.dims["sector"].df()["sector"].tolist() == ["power"]
     assert "sector" not in root.record.dims, "the parent keeps its own schema"
+
+
+def test_with_defaults_keeps_the_order_of_a_relation_filtered_by_subqueries(
+    workspace, categorized
+):
+    """Two `IN (SELECT …)` filters estimate ~0 rows, so DuckDB builds the defaults join on `rel`."""
+    con = workspace.con
+    names = [f"e{i:02d}" for i in range(24)]
+    entities = pd.DataFrame(
+        {"entity": names, "ctype": "Generator", "carrier": ["gas", "wind"] * 12}
+    )
+    carriers = con.from_df(pd.DataFrame({"carrier": ["gas"]}))  # noqa: F841 - bound by name for the query below
+    labels = con.from_df(pd.DataFrame({"entity": names}))  # noqa: F841 - bound by name for the query below
+    rel = (
+        con.from_df(entities)
+        .project("*, row_number() OVER () AS _row")
+        .filter("carrier IN (SELECT carrier FROM carriers)")
+        .filter("entity IN (SELECT entity FROM labels)")
+        .order("_row")
+        .project("* EXCLUDE (_row)")
+    )
+    defaulted = with_defaults(categorized, "entity", rel, ["ctype", "carrier"], con)
+    assert defaulted.df()["entity"].tolist() == names[::2], "rows keep `rel`'s order"

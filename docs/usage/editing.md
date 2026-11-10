@@ -46,19 +46,14 @@ A keyword is bare: it names a coordinate of the attribute first, else any proper
 A label added later is not reached, and a plain NULL is how a value reaches such labels.
 A name that several reached dims declare a property of is refused, so set it per dim.
 
-A multi-period snapshot carries its period as `snapshot.period`, which names a label of `period`.
-It carries its timestep as `snapshot.timestep`, which names a label of the `datetime` dim `timestep` ([design](../design/model/dims.md#mapping-labels-to-another-dim)).
+A property that refers to a dim selects by its labels, such as `bus.country` by a label of `country` ([design](../design/model/dims.md#mapping-labels-to-another-dim)).
 
 ```python
-w.add("period", [2030, 2040])
-w.add("timestep", [t0, t1])
-w.add(
-    "snapshot", [0, 1, 2, 3], period=[2030, 2030, 2040, 2040], timestep=[t0, t1, t0, t1]
-)
-w.set("p_max_pu", 0.8, entity="g1", period=2030)  # snapshots 0 and 1
-w.set("p_max_pu", 0.5, entity="g1", timestep=t0)  # snapshots 0 and 2
-w.set("snapshot.period", {3: 2030})
-w.remove("period", [2040])  # refused while a snapshot.period names it
+w.add("country", ["DE", "FR"])
+w.add("bus", ["north", "south"], country=["DE", "FR"])
+w.set("efficiency", 0.95, entity="dc", country="DE")  # dc's connection at north
+w.remove("country", ["FR"])  # refused while a bus.country names it
+w.set("bus.country", {"south": "DE"})
 ```
 
 A mapping's keys or a series' index are labels of the one coordinate that no keyword names, unless the series' index is named after a coordinate.
