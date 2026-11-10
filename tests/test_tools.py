@@ -839,6 +839,40 @@ class TestPyPSA:
         assert "p_max_pu" not in n.c.Load.static
         assert "p_max_pu" not in n.c.Load.dynamic
 
+    @pytest.mark.parametrize("series", [False, True], ids=["static", "series"])
+    @pytest.mark.parametrize(
+        ("port", "ignored"), [(0, True), (1, False)], ids=["port-0", "port-1"]
+    )
+    def test_a_value_at_a_port_without_its_column_is_reported_and_left_out(
+        self, store, series, port, ignored
+    ):
+        """A Link has no `efficiency0`, so `build` leaves a value at port 0 out and `verify` lists it.
+
+        Notes
+        -----
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        """
+        from datarecord.mutable import WorkingRecord
+
+        n = _north()
+        n.add("Bus", "south")
+        n.add("Link", "in_south", bus0="south", bus1="north")
+        w = WorkingRecord(export_network(n, store).record)
+        at = {"snapshot": list(n.snapshots)} if series else {}
+        value = [0.7, 0.7] if series else 0.7
+        w.set("efficiency", value, entity="in_south", port=port, **at)
+
+        report = PyPSA.verify(w)
+        assert not report, "a value PyPSA has no column for fails no build"
+        assert (("Link", "efficiency") in report.ignored) == ignored
+        built = PyPSA.build(w).c.Link
+        efficiency = (
+            built.dynamic["efficiency"]["in_south"].tolist()
+            if series and not ignored
+            else [built.static.at["in_south", "efficiency"]]
+        )
+        assert set(efficiency) == {1.0 if ignored else 0.7}
+
     @pytest.mark.parametrize(
         ("layers", "built"),
         [

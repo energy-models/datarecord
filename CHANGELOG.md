@@ -266,7 +266,10 @@ All notable changes to datarecord are documented here. The format follows
   property `connection.role` are gone. A Link with `bus0` and `bus1` at one bus
   keeps both ports and their efficiencies, where it lost one silently (#95).
   `remove("bus", ...)` refuses a bus that a connection is at, so remove those
-  connections first. Export a network again to rewrite a record that the
+  connections first. `verify` lists in `ignored` a per-port value at a port
+  PyPSA has no column of it for, such as a Link's `efficiency` at port 0,
+  which `build` leaves out, and reports a one-port type's `bus` at a port
+  but 0 in `unsupported_values`. Export a network again to rewrite a record that the
   PyPSA tool wrote before.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`

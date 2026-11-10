@@ -1929,8 +1929,9 @@ class PyPSATool(Tool):
         types PyPSA does not know, required attributes (by source) with no
         row, property or declared default, a port's bus where a member has no
         connection there, curves and values a network would hold one of
-        (`_unheld`), a one-port type's `bus` at a port but `0`, and in `ignored` stored attributes a type does not take,
-        which `build` leaves out.
+        (`_unheld`), a one-port type's `bus` at a port but `0`, and in
+        `ignored` stored attributes a type does not take, or has at a port
+        PyPSA has no column of them for, which `build` leaves out.
 
         Raises
         ------
@@ -1991,6 +1992,14 @@ class PyPSATool(Tool):
             read[ctype] = _TypeMembers.of(record, ctype, connection_frame)
             if read[ctype].beyond_one_port(ctype):
                 unsupported_values.add((ctype, BUS))
+            ignored |= {
+                (ctype, attr)
+                for attr in taken
+                if CONNECTION in declared.attributes[attr].dims
+                and read[ctype].uncarried(
+                    ctype, attr, record.attributes[attr], record.con
+                )
+            }
             static_cols = read[ctype].columns
             from_connections = read[ctype].port_attributes(ctype)
             for attr in _required_attributes(ctype):
@@ -4154,6 +4163,40 @@ class _TypeMembers:
             for port, rows in self.connections.groupby(PORT)
             if members <= set(rows[ENTITY])
         )
+
+    def uncarried(
+        self, ctype: str, attr: str, rows: DuckDBPyRelation, con: DuckDBPyConnection
+    ) -> bool:
+        """Whether `rows` of the per-port `attr` set a member's connection at a port where PyPSA has no `attr` column (`_carries`).
+
+        `build` drops such a row (`_port_columns`). A row with `connection`
+        NULL sets no port and is not counted.
+
+        Notes
+        -----
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        """
+        if self.connections is None:
+            return False
+        registered = _registered(ctype)
+        at = self.connections[[ENTITY, PORT]]
+        _dr_uncarried = at[[not _carries(attr, p, registered) for p in at[PORT]]]
+        if _dr_uncarried.empty:
+            return False
+        pairs = con.sql("FROM _dr_uncarried").set_alias("u")
+        hit = (
+            rows.filter(col(CONNECTION).isnotnull())
+            .set_alias("r")
+            .join(
+                pairs,
+                ex_all(
+                    fn.struct_extract(col("r", CONNECTION), lit(c)) == col("u", c)
+                    for c in (ENTITY, PORT)
+                ),
+                how="semi",
+            )
+        )
+        return bool(hit.limit(1).fetchall())
 
     def beyond_one_port(self, ctype: str) -> bool:
         """Whether `ctype` is a one-port type, which registers no `bus0`, with a connection at a port but `0`.

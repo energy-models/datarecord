@@ -60,12 +60,12 @@ What it costs:
 
 ## Usage
 
-`port=` names one port, and `bus=` selects the connections at a bus through the property:
+`port=` names one port. `bus=` selects connections through the property, every port of every type at that bus, and `entity=` narrows them:
 
 ```python
 w.add("connection", [{"entity": "wind1", "port": 0}], bus="north")
 w.set("efficiency", 0.9, entity="link1", port=1)
-w.set("efficiency", 0.7, bus="south")
+w.set("efficiency", 0.7, entity="out_south", bus="south")
 
 at_north = w.properties["connection"].filter("bus = 'north'")
 w.remove("connection", at_north.project("connection"))
