@@ -1577,11 +1577,11 @@ A revision or a claim serialises as its location and id, so it resolves again in
 Two writers to one store never write the same file, and each checks its schema against its parent's manifest, which never changes, so they have no race to settle.</p>
 <h2 id="a-cursor-per-thread">A cursor per thread<a class="headerlink" href="#a-cursor-per-thread" title="Permanent link">&para;</a></h2>
 <p>A DuckDB connection is unsafe to use from two threads at once, and DuckDB's answer is a cursor per thread.
-The workspace's <code>con</code> is the calling thread's cursor on the workspace's one database.
+The workspace's <code>con</code> is the calling thread's cursor on the connection that <a href="../store/#the-workspaces-database">the workspace's database</a> is attached to.
 A <code>threading.local</code> subclass makes it on first use in each thread.
 Its <code>__init__</code> reruns in each new thread, so the lookup needs no existence check and no lock, and a cursor goes away with its thread.
 A dict keyed by thread id would reuse ids, and a <code>ContextVar</code> would be copied into a task runner's workers, which would then share the parent's cursor.</p>
-<p>Tables are shared between cursors: the <code>revisions</code> cache, the staging tables and the folded caches.
+<p>Tables in the workspace's database are shared between cursors: the <code>revisions</code> cache, the staging tables and the folded caches.
 So are a record's <a href="../views/">registered views</a>, which every cursor reads and which show an edit once its transaction commits.
 A <code>DuckDBPyRelation</code> is bound to the cursor that built it.
 The line between thread-bound and shared objects runs around relations alone.</p>
@@ -1590,7 +1590,7 @@ Every relation they build lands on the calling thread's cursor, so one <code>Rec
 Anything else they cache is plain data that every thread computes the same way.
 A relation and a <code>WorkingRecord</code> belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as <a href="#a-relation-from-another-connection-is-rejected">a relation from another connection</a> is.</p>
-<p>A fold caches its results as shared tables in the schema <code>_fold.&lt;id&gt;</code> (<a href="../store/#the-databases-schemas">the database's schemas</a>).
+<p>A fold caches its results as shared tables in the schema <code>_fold.&lt;id&gt;</code> of the workspace's database (<a href="../store/#the-databases-schemas">the database's schemas</a>).
 The frozen layers' folded axes are the tables <code>dims_&lt;dim&gt;</code>, a <a href="../../model/multi-dims/">multi-dim</a>'s like any other.
 Its <a href="../../layers/resolution/#a-label-outside-the-key">dead labels</a> are the tables <code>dead_&lt;dim&gt;</code>, one per coordinate that has any.
 A last table, <code>dim_owners</code>, has the shape of a node cache's <a href="../../layers/resolution/#materialised-node-caches"><code>dim_owners.parquet</code></a>, a row <code>(dim, layer_uuid, has_dead)</code> per folded axis.
