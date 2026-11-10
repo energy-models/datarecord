@@ -1,0 +1,2582 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-142/reference/tools/">
+      
+      
+        <link rel="prev" href="../store/">
+      
+      
+        <link rel="next" href="../glossary/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Tools - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../static/extras.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#tools" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Tools
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../howto/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  How-to guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../about/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../tutorials/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../howto/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../selecting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Selecting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../editing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-tool-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Tool protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Tool protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-tools-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tool's schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pypsa-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The PyPSA tool
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The PyPSA tool">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#buses-and-carriers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Buses and carriers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standard types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ports
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#results-on-connections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results on connections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-value-its-type-does-not-take" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A value its type does not take
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snapshots-and-weightings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snapshots and weightings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selecting-before-a-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting before a build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing results
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-collection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A collection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="A collection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#over-period" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Over period
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#over-a-dim-of-its-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Over a dim of its own
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../about/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../development/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#the-tool-protocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The Tool protocol
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The Tool protocol">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#requirements" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Requirements
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#the-tools-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tool's schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-pypsa-tool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The PyPSA tool
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="The PyPSA tool">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The schema
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#verify" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        verify
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#entities" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Entities
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#buses-and-carriers" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Buses and carriers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#standard-types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Standard types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#ports" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ports
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#results-on-connections" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Results on connections
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#custom-columns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Custom columns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-value-its-type-does-not-take" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A value its type does not take
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#snapshots-and-weightings" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Snapshots and weightings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#geometry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Geometry
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#selecting-before-a-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Selecting before a build
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#writing-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Writing results
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-collection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A collection
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="A collection">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#over-period" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Over period
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#over-a-dim-of-its-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Over a dim of its own
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="tools">Tools<a class="headerlink" href="#tools" title="Permanent link">&para;</a></h1>
+<p>This page describes the <code>Tool</code> protocol, then the rules of the PyPSA tool in the order the tool reads a record and then writes one.
+A tool is a module under <code>datarecord.tools</code> that translates between a <a href="../record/">record</a> and one modelling framework.</p>
+<h2 id="the-tool-protocol">The <code>Tool</code> protocol<a class="headerlink" href="#the-tool-protocol" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Tool</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>    <span class="n">schema</span><span class="p">:</span> <span class="n">Schema</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">requires</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">verify</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Requirements</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">build</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">record</span><span class="p">:</span> <span class="n">RecordLike</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Any</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">to_datarecord</span><span class="p">(</span>
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>        <span class="bp">self</span><span class="p">,</span>
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>        <span class="n">model</span><span class="p">:</span> <span class="n">Any</span><span class="p">,</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>        <span class="n">con</span><span class="p">:</span> <span class="n">DuckDBPyConnection</span><span class="p">,</span>
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>        <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>        <span class="n">results_only</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>        <span class="n">base</span><span class="p">:</span> <span class="n">RecordLike</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>    <span class="p">)</span> <span class="o">-&gt;</span> <span class="n">RecordLike</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>is the framework's name, which error messages quote</td>
+</tr>
+<tr>
+<td><code>schema</code></td>
+<td>is the map from the tool's attribute names to the record's (<a href="#the-tools-schema">below</a>)</td>
+</tr>
+<tr>
+<td><code>requires</code></td>
+<td>returns what the tool needs from this record: dims, categories and attributes</td>
+</tr>
+<tr>
+<td><code>verify</code></td>
+<td>returns what the record fails to supply, falsy when the tool can build it</td>
+</tr>
+<tr>
+<td><code>build</code></td>
+<td>returns the framework's own object, built from any <code>RecordLike</code></td>
+</tr>
+<tr>
+<td><code>to_datarecord</code></td>
+<td>presents a framework object as a <code>RecordLike</code> whose relations are planned on <code>con</code></td>
+</tr>
+</tbody>
+</table>
+<p>Each tool's module defines the tool as a module-level object, such as <code>PyPSA</code>, and nothing outside <code>datarecord.tools</code> imports a tool.
+<code>build</code> reads <code>record.con</code> for its queries, so it builds from a standalone directory as it does from a revision.
+<code>build</code> raises <code>UnsupportedRecordError</code> for a record that <code>verify</code> finds unusable.</p>
+<p><code>to_datarecord</code> plans its relations on the connection it receives, which is <code>ws.con</code> of the <a href="../store/">workspace</a> that writes them.
+Its result goes straight to <code>store.commit</code> or <code>ws.write</code>.
+<code>base</code> is the record the layer is committed over as a child, and the record the model was built from.
+With <code>results_only=True</code> it presents only what a solve produced, as a layer over <code>base</code>.
+It raises <code>ValueError</code> where <code>results_only</code> comes without <code>base</code>.</p>
+<h3 id="requirements"><code>Requirements</code><a class="headerlink" href="#requirements" title="Permanent link">&para;</a></h3>
+<p><code>Requirements</code> is what <code>requires</code> and <code>verify</code> return, with one set per kind of fault.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Contains</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dims</code></td>
+<td>dims the tool needs and the schema does not declare</td>
+</tr>
+<tr>
+<td><code>categories</code></td>
+<td>categories the framework has no counterpart for</td>
+</tr>
+<tr>
+<td><code>attributes</code></td>
+<td><code>(category, attribute)</code> pairs with no value, named in the record's words</td>
+</tr>
+<tr>
+<td><code>unsupported_keys</code></td>
+<td><code>(key, dim)</code> pairs of a <code>partial</code> the framework cannot take</td>
+</tr>
+<tr>
+<td><code>unsupported_dims</code></td>
+<td>dims the record declares that the framework's model has no place for</td>
+</tr>
+<tr>
+<td><code>unsupported_values</code></td>
+<td><code>(category, attribute)</code> pairs stored as a curve, or varying along a dim the framework holds the attribute without</td>
+</tr>
+<tr>
+<td><code>names</code></td>
+<td>labels that two of the framework's categories share</td>
+</tr>
+<tr>
+<td><code>ignored</code></td>
+<td><code>(category, attribute)</code> pairs that the record stores and the category does not take</td>
+</tr>
+</tbody>
+</table>
+<p>A <code>Requirements</code> is truthy when any field but <code>ignored</code> has an entry.
+<code>a | b</code> returns a <code>Requirements</code> with the union of each field.
+<code>describe()</code> returns a one-line summary, which <code>UnsupportedRecordError</code> quotes.</p>
+<h3 id="the-tools-schema">The tool's schema<a class="headerlink" href="#the-tools-schema" title="Permanent link">&para;</a></h3>
+<p>A tool's <code>Schema</code> lists, per category, the tool attributes that are renamed or computed, each an <code>Attr</code> that lists its source attributes.
+An attribute with no entry keeps its name, so an empty <code>Schema</code> maps every name to itself.
+<code>Attr.resolve</code> <a href="../record/">settles</a> each source attribute before it renames or computes, so a computed attribute combines one row per point of each source.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../../howto/present-a-framework-object/">Present a framework object as a record</a> shows a tool author's <code>to_datarecord</code>.</p>
+</div>
+<h2 id="the-pypsa-tool">The PyPSA tool<a class="headerlink" href="#the-pypsa-tool" title="Permanent link">&para;</a></h2>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord.tools.pypsa</span><span class="w"> </span><span class="kn">import</span> <span class="n">PyPSA</span><span class="p">,</span> <span class="n">PyPSACollection</span>
+</code></pre></div>
+<p>The PyPSA tool needs the optional extra <code>datarecord[pypsa]</code>.
+<code>PyPSA</code> builds and writes a <code>pypsa.Network</code>, and <code>PyPSACollection</code> a <code>pypsa.NetworkCollection</code>.
+Their <code>schema</code> is empty, because the record's names are PyPSA's.</p>
+<h3 id="the-schema">The schema<a class="headerlink" href="#the-schema" title="Permanent link">&para;</a></h3>
+<p><code>to_datarecord</code> writes every network under one schema, declared from PyPSA's component registry:</p>
+<table>
+<thead>
+<tr>
+<th>Dim</th>
+<th>Is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>entity</code></td>
+<td>a component of any type but <code>Shape</code> and those with a dim of their own</td>
+</tr>
+<tr>
+<td><code>ctype</code></td>
+<td>a dim with <code>one_of</code>: the component types</td>
+</tr>
+<tr>
+<td><code>bus</code>, <code>carrier</code>, <code>sub_network</code></td>
+<td>a bus, a carrier, a SubNetwork as PyPSA numbers it</td>
+</tr>
+<tr>
+<td><code>line_type</code>, <code>transformer_type</code></td>
+<td>a standard type</td>
+</tr>
+<tr>
+<td><code>port</code></td>
+<td>a port's number, as in PyPSA's <code>bus0</code>, <code>bus1</code>, …</td>
+</tr>
+<tr>
+<td><code>connection</code></td>
+<td>a multi-dim over <code>(entity, port)</code>: one port of a component</td>
+</tr>
+<tr>
+<td><code>snapshot</code></td>
+<td>a timestamp, or a multi-dim over <code>(period, timestep)</code> if multi-period</td>
+</tr>
+<tr>
+<td><code>timestep</code>, <code>period</code>, <code>scenario</code></td>
+<td>a timestep, an investment period by its year, a scenario</td>
+</tr>
+</tbody>
+</table>
+<table>
+<thead>
+<tr>
+<th>Subject</th>
+<th>Properties</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>entity</code></td>
+<td><code>ctype</code>, <code>carrier</code>, <code>sign</code>, <code>type</code></td>
+</tr>
+<tr>
+<td><code>bus</code></td>
+<td><code>carrier</code>, <code>type</code>, <code>x</code>, <code>y</code>, <code>unit</code>, <code>location</code></td>
+</tr>
+<tr>
+<td><code>carrier</code></td>
+<td><code>color</code>, <code>nice_name</code></td>
+</tr>
+<tr>
+<td><code>sub_network</code></td>
+<td><code>carrier</code></td>
+</tr>
+<tr>
+<td><code>line_type</code>, <code>transformer_type</code></td>
+<td>every registry input of the type</td>
+</tr>
+<tr>
+<td><code>connection</code></td>
+<td><code>bus</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>partial</code> is <code>{"entity", "bus", "port", "scenario", "connection"}</code>.
+<code>to_datarecord</code> writes no axis of <code>ctype</code>, since a dim with <code>one_of</code> lists its labels.
+Its <code>port</code> axis lists ports 0 and 1, which PyPSA's registry declares, and any further port a connection has, in ascending order.
+So you can add a component's connections at ports 0 and 1 without adding a port first.
+Every other registry input is an attribute, <code>p_nom</code> among them.
+Every component attribute is over <code>scenario</code>, except those PyPSA keeps the same in every scenario.
+These are <code>active</code>, <code>build_year</code>, <code>committable</code>, <code>lifetime</code>, <code>weight</code>, <code>*_nom_extendable</code>, <code>*_nom_mod</code> and the results <code>*_nom_opt</code>.</p>
+<h3 id="verify"><code>verify</code><a class="headerlink" href="#verify" title="Permanent link">&para;</a></h3>
+<p><code>verify</code> takes a record or a <a href="#selecting-before-a-build">selection</a>, and reports in a <code>Requirements</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Entries</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>dims</code></td>
+<td><code>snapshot</code>, <code>period</code> or <code>scenario</code>, where the schema lacks it and no selection squeezes it</td>
+</tr>
+<tr>
+<td><code>unsupported_keys</code></td>
+<td><code>snapshot</code>, where it is in <code>partial</code></td>
+</tr>
+<tr>
+<td><code>unsupported_dims</code></td>
+<td>each dim of the record's own (<a href="#a-collection">a collection</a>)</td>
+</tr>
+<tr>
+<td><code>categories</code></td>
+<td>each <code>ctype</code> that PyPSA's registry lacks</td>
+</tr>
+<tr>
+<td><code>attributes</code></td>
+<td>each required attribute with no row, property or declared default, a port's <code>bus</code> among them</td>
+</tr>
+<tr>
+<td><code>unsupported_values</code></td>
+<td>each attribute stored as a curve, or varying along a dim PyPSA holds it without, such as a <code>bus</code> at a port its type lacks, a one-port type's at a port but 0</td>
+</tr>
+<tr>
+<td><code>ignored</code></td>
+<td>each attribute a type has a value for and does not take</td>
+</tr>
+</tbody>
+</table>
+<p>When <code>verify</code> finds an unsupported key or dim, it reports nothing else.
+It raises <code>ValueError</code> for a selection that <code>build</code> refuses.</p>
+<h3 id="entities">Entities<a class="headerlink" href="#entities" title="Permanent link">&para;</a></h3>
+<p><code>build</code> builds each type's static frame from its entities, their properties and the rows of attributes over <code>entity</code> alone.
+A default that differs per type, such as <code>sign</code> or <code>p_set</code>, is a <a href="../schema/#default_by"><code>default_by</code></a> on <code>entity.ctype</code>.
+A row with <code>entity</code> NULL applies to each member of the type <code>build</code> builds.</p>
+<h3 id="buses-and-carriers">Buses and carriers<a class="headerlink" href="#buses-and-carriers" title="Permanent link">&para;</a></h3>
+<p>A bus is a label of <code>bus</code>, and a carrier is a label of <code>carrier</code>:</p>
+<table>
+<thead>
+<tr>
+<th>PyPSA</th>
+<th>Record</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>Bus.type</code>, <code>carrier</code>, <code>x</code>, <code>y</code>, <code>unit</code>, <code>location</code></td>
+<td>properties of <code>bus</code></td>
+</tr>
+<tr>
+<td><code>Bus.v_nom</code>, <code>v_mag_pu_min</code>, <code>v_mag_pu_max</code>, <code>v_mag_pu_set</code></td>
+<td>attributes over <code>bus</code></td>
+</tr>
+<tr>
+<td><code>Bus.marginal_price</code>, <code>v_mag_pu</code>, <code>v_ang</code></td>
+<td>result attributes over <code>bus</code></td>
+</tr>
+<tr>
+<td><code>Bus.p</code>, <code>q</code>, <code>control</code>, <code>generator</code>, <code>sub_network</code></td>
+<td>not written</td>
+</tr>
+<tr>
+<td><code>Line.v_nom</code>, <code>ShuntImpedance.v_nom</code></td>
+<td>not written</td>
+</tr>
+<tr>
+<td><code>SubNetwork.obj</code></td>
+<td>not written</td>
+</tr>
+<tr>
+<td><code>Carrier.color</code>, <code>nice_name</code></td>
+<td>properties of <code>carrier</code></td>
+</tr>
+<tr>
+<td><code>Carrier.co2_emissions</code>, <code>max_growth</code>, <code>max_relative_growth</code></td>
+<td>attributes over <code>carrier</code></td>
+</tr>
+<tr>
+<td>a component's <code>carrier</code></td>
+<td><code>entity.carrier</code>, which refers to <code>carrier</code></td>
+</tr>
+<tr>
+<td>a custom column</td>
+<td>see <a href="#custom-columns">custom columns</a></td>
+</tr>
+</tbody>
+</table>
+<p><code>bus.x</code> is a bus's x position, and <code>x</code> a line's reactance.
+<code>bus.carrier</code> defaults to <code>AC</code>.</p>
+<h3 id="standard-types">Standard types<a class="headerlink" href="#standard-types" title="Permanent link">&para;</a></h3>
+<p>A line type is a label of <code>line_type</code>, and a transformer type a label of <code>transformer_type</code>.
+Every registry column of a type is a property of its dim, so <code>transformer_type.s_nom</code> is apart from a transformer's attribute <code>s_nom</code>.
+<code>entity.type</code> is text that refers to no dim.
+<code>to_datarecord</code> writes only the types that PyPSA's library lacks, and <code>build</code> adds them to the new network's library.
+A library type has the library's values in the built network.</p>
+<h3 id="ports">Ports<a class="headerlink" href="#ports" title="Permanent link">&para;</a></h3>
+<p>Each port of a component is a <code>connection</code> tuple <code>(entity, port)</code>, and the property <code>connection.bus</code> is the bus the port attaches to.
+The port is PyPSA's number in <code>bus0</code>, <code>bus1</code>, …, and a one-port component has its <code>bus</code> at port 0.
+A per-port input or result is an attribute over <code>connection</code>.
+<code>build</code> turns the tuples of a component back into PyPSA's numbered columns:</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 210" width="780" height="210" style="max-width: 100%; height: auto" role="img" aria-labelledby="tp-t tp-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="tp-t">build places a component's ports by their number</title>
+  <desc id="tp-d">The record contains the connection tuples link1 0, at bus north, and link1 1, at bus south, and efficiency 0.9 on link1 1. build writes n.links with bus0 north, bus1 south and efficiency 0.9.</desc>
+  <defs>
+    <marker id="tp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="tp-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H219 A3,3 0 0 1 222,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="206" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H222 V91 A3,3 0 0 1 219,94 H19 A3,3 0 0 1 16,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,152 V133 A3,3 0 0 1 19,130 H219 A3,3 0 0 1 222,133 V152 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,152 H222 V171 A3,3 0 0 1 219,174 H19 A3,3 0 0 1 16,171 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M470,54 V35 A3,3 0 0 1 473,32 H747 A3,3 0 0 1 750,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <path d="M470,54 H750 V73 A3,3 0 0 1 747,76 H473 A3,3 0 0 1 470,73 Z" fill="#009E73" fill-opacity="0.08"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">record</text>
+    <text x="78" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/connection</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
+    <text x="164" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">bus</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 0)</text>
+    <text x="164" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">north</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 1)</text>
+    <text x="164" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">south</text>
+    <text x="16" y="120" font-weight="bold"></text>
+    <text x="16" y="120" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attributes/efficiency</text>
+    <text x="24" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
+    <text x="164" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 1)</text>
+    <text x="164" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="470" y="22" font-weight="bold">n.links</text>
+    <text x="478" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">name</text>
+    <text x="538" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">bus0</text>
+    <text x="598" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">bus1</text>
+    <text x="658" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">efficiency</text>
+    <text x="478" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">link1</text>
+    <text x="538" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">north</text>
+    <text x="598" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">south</text>
+    <text x="658" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="310" y="56" font-weight="bold" font-size="12">build</text>
+    <text x="310" y="82" fill-opacity="0.7" font-size="12">port 0 to bus0,</text>
+    <text x="310" y="97" fill-opacity="0.7" font-size="12">port 1 to bus1</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="206" height="62" rx="3"/>
+    <line x1="16" y1="54" x2="222" y2="54"/>
+    <rect x="16" y="130" width="206" height="44" rx="3"/>
+    <line x1="16" y1="152" x2="222" y2="152"/>
+    <rect x="470" y="32" width="280" height="44" rx="3"/>
+    <line x1="470" y1="54" x2="750" y2="54"/>
+    <path d="M228,72 H300 V161 H228"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#tp-arrow)">
+    <path d="M300,64 L462,64"/>
+  </g>
+</svg>
+
+</figure>
+
+<p><code>build</code> names a column by the component type: port 0 of a Generator is <code>bus</code>, and port 2 of a Link is <code>bus2</code>.
+Two ports at one bus are two tuples, so a Link from <code>north</code> to <code>north</code> keeps both ports.
+The <code>efficiency</code> row at port 1 is PyPSA's <code>efficiency</code>, and at port 2 it is <code>efficiency2</code>.
+A Process's <code>rate0</code>, <code>rate1</code>, … are the one attribute <code>rate</code>.
+<code>rate</code> declares no default, and a port with no row keeps PyPSA's default for that port.
+<code>delay</code> and <code>cyclic_delay</code> are over <code>connection</code>.</p>
+<h3 id="results-on-connections">Results on connections<a class="headerlink" href="#results-on-connections" title="Permanent link">&para;</a></h3>
+<p><code>p0</code>, <code>p1</code>, … of a Line, Transformer, Link or Process are the attribute <code>p</code> over <code>connection</code>.
+So is the one-port <code>p</code> of a Generator, Load, Store, StorageUnit or ShuntImpedance.
+Each row has PyPSA's sign for its port, and <code>q0</code>, <code>q1</code> and <code>q</code> are <code>q</code>.
+A Link's and a Process's own <code>p</code> is <code>p_internal</code> over <code>entity</code>.</p>
+<h3 id="custom-columns">Custom columns<a class="headerlink" href="#custom-columns" title="Permanent link">&para;</a></h3>
+<p>A custom column is a static column that PyPSA's registry lacks, placed on its type's dim:</p>
+<table>
+<thead>
+<tr>
+<th>Custom column</th>
+<th>Placed as</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a text column, such as <code>Bus.country</code></td>
+<td>a property, <code>bus.country</code></td>
+</tr>
+<tr>
+<td>a column of a standard type</td>
+<td>a property</td>
+</tr>
+<tr>
+<td>a column that types of two dims have, or that the registry declares over other dims</td>
+<td>a property</td>
+</tr>
+<tr>
+<td>any other column, such as <code>Bus.nom_max_onwind_2050</code></td>
+<td>an attribute over the dim</td>
+</tr>
+</tbody>
+</table>
+<p>A custom property takes its dtype from its values, and has no default.
+A text property named like a dim refers to that dim.
+<code>meta["custom_columns"]</code> lists each entity type's custom columns.
+<code>to_datarecord</code> raises <code>ValueError</code> for a custom property that two types of one dim have with two dtypes.
+It also raises for a value of a referring property that names no label.
+It raises for a custom column on a Shape, or named <code>shape_…</code>, <code>snapshot</code>, <code>timestep</code>, <code>period</code>, <code>scenario</code>, <code>entity</code> or <code>connection</code>.</p>
+<h3 id="a-value-its-type-does-not-take">A value its type does not take<a class="headerlink" href="#a-value-its-type-does-not-take" title="Permanent link">&para;</a></h3>
+<p>A row with <code>entity</code> NULL applies to every entity, so <code>set("p_max_pu", 0.9)</code> applies to a load too.
+<code>build</code> gives each type only its registry inputs and results, its custom columns, and the names that no type takes.
+<code>verify</code> lists each left-out <code>(type, attribute)</code> in <code>ignored</code>.
+<code>build</code> also leaves out an <code>entity</code> property that a type does not take, and <code>verify</code> does not list it.</p>
+<h3 id="snapshots-and-weightings">Snapshots and weightings<a class="headerlink" href="#snapshots-and-weightings" title="Permanent link">&para;</a></h3>
+<p>A single-period <code>snapshot</code> is a <code>datetime</code> dim.
+A multi-period <code>snapshot</code> is a multi-dim over <code>(period, timestep)</code>, where <code>timestep</code> has each timestep once.
+<code>build</code> rebuilds PyPSA's index from the tuples in axis order.
+<a href="../editing/#set"><code>set</code></a> takes a multi-period snapshot by <code>period</code> and <code>timestep</code> together, and refuses one alone.</p>
+<table>
+<thead>
+<tr>
+<th>Attribute</th>
+<th>Over</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>scenario_weight</code></td>
+<td><code>scenario</code></td>
+</tr>
+<tr>
+<td><code>snapshot_weighting_objective</code>, <code>snapshot_weighting_stores</code>, <code>snapshot_weighting_generators</code></td>
+<td><code>snapshot</code></td>
+</tr>
+<tr>
+<td><code>period_weighting_objective</code>, <code>period_weighting_years</code></td>
+<td><code>period</code></td>
+</tr>
+</tbody>
+</table>
+<p>A label that no weighting row applies to keeps PyPSA's default, which for a scenario is an equal share.</p>
+<h3 id="geometry">Geometry<a class="headerlink" href="#geometry" title="Permanent link">&para;</a></h3>
+<p>A shape is the property <code>shape_{type}</code> of the label <code>idx</code> it outlines, as well-known text (WKT) of dtype <code>str</code>.
+A <code>Bus</code> shape is a property of <code>bus</code>, and an entity type's of <code>entity</code>.
+Any other <code>component</code>, such as <code>country</code>, is a dim of that name, outside <code>partial</code>, with the shapes' <code>idx</code> as labels.
+Such a dim is no dim of the record's own.
+So Germany's offshore waters are <code>country.shape_offshore</code> at label <code>DE</code>.</p>
+<p><code>to_datarecord</code> raises <code>ValueError</code> for a shape without a <code>component</code>, an <code>idx</code> or a <code>type</code>, and for two shapes with one <code>(component, idx, type)</code>.
+It also raises for an <code>idx</code> that names no label its type writes, and for a <code>component</code> that names a dim of the PyPSA schema.
+<code>meta["crs"]</code> is the network's coordinate reference system, such as <code>EPSG:3035</code>.
+<code>to_datarecord</code> does not write PyPSA's <code>srid</code>.
+<code>build</code> sets the CRS before it adds a component, and uses <code>EPSG:4326</code> where <code>meta</code> has no <code>crs</code>.
+<code>build</code> names each shape <code>"{component} {idx} {type}"</code>, such as <code>"Bus DE onshore"</code>.</p>
+<h3 id="selecting-before-a-build">Selecting before a build<a class="headerlink" href="#selecting-before-a-build" title="Permanent link">&para;</a></h3>
+<p><code>build</code> and <code>verify</code> take a <a href="../selecting/">selection</a> as they take a record:</p>
+<table>
+<thead>
+<tr>
+<th>Selected</th>
+<th>One label</th>
+<th>A list, a slice or a partial date</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>period</code></td>
+<td>a single-period network, without <code>investment_period</code></td>
+<td>a multi-period network</td>
+</tr>
+<tr>
+<td><code>scenario</code></td>
+<td>a deterministic network</td>
+<td>a stochastic network, weights renormalised to 1</td>
+</tr>
+<tr>
+<td>a dim of the record's own</td>
+<td>the member at that label</td>
+<td>a <code>PyPSACollection</code> build</td>
+</tr>
+<tr>
+<td>another dim, such as <code>snapshot</code> or <code>bus</code></td>
+<td>refused</td>
+<td>the network at those labels</td>
+</tr>
+</tbody>
+</table>
+<p><code>build</code> then drops each period left without snapshots, and each entity attached to a dropped bus.
+Over fewer periods than the record has, it drops each entity active in none, where <code>build_year &lt;= period &lt; build_year + lifetime</code>.
+An entity without a row of <code>build_year</code> or <code>lifetime</code> takes the declared default, else <code>0</code> or infinity.
+<code>build</code> also drops each <code>GlobalConstraint</code> whose <code>investment_period</code> names a dropped period, and keeps one with <code>investment_period</code> NULL.
+A kept scenario that no <code>scenario_weight</code> row applies to takes its equal share of the record's scenarios before the renormalisation.
+<code>build</code> raises <code>ValueError</code> for a selection with no snapshot, and for kept scenarios whose weights sum to 0.
+It raises for an attribute whose rows name several labels of a dim PyPSA holds it without, such as <code>marginal_cost</code> over <code>period</code>.
+Over fewer periods, it raises where <code>build_year</code>, <code>lifetime</code> or <code>investment_period</code> varies along a dim the selection keeps.</p>
+<h3 id="writing-results">Writing results<a class="headerlink" href="#writing-results" title="Permanent link">&para;</a></h3>
+<p><code>to_datarecord(n, con)</code> writes the whole network, its frames in PyPSA's order.
+It adds each carrier that <code>n.carriers</code> lacks, writes PyPSA's <code>""</code> carrier as NULL, and writes a value shared by every scenario with <code>scenario</code> NULL.
+It leaves out a static value at its default, so an unsolved network has no result.
+It writes each input at a port, at its default too, and each custom column placed as an attribute.
+It raises <code>UnsupportedRecordError</code> for two types with one name, and <code>ValueError</code> for a property that differs between scenarios.</p>
+<p><code>to_datarecord(n, con, base=record)</code> writes only what changed from <code>base</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Written where</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>a static value</td>
+<td>it differs from <code>base</code>'s resolved value, or from the default where <code>base</code> has none</td>
+</tr>
+<tr>
+<td>a series</td>
+<td>whole, where it differs from <code>base</code>'s at one snapshot or more</td>
+</tr>
+<tr>
+<td>an axis</td>
+<td>whole, always</td>
+</tr>
+</tbody>
+</table>
+<p>A value with <code>scenario</code> NULL is left out only where <code>base</code> resolves the same value at each scenario.
+An input at a port or a custom column placed as an attribute is written wherever <code>base</code> has no value for it.
+A value set back to its default over a <code>base</code> with another is written.
+Values compare exactly, and NULL equals NULL.
+<code>to_datarecord</code> raises <code>ValueError</code> where <code>base</code> is a selection, has a dim of its own, or has other investment periods than the network.</p>
+<p><code>to_datarecord(n, con, results_only=True, base=record)</code> presents only the solve's results:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">,</span> <span class="n">results_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">base</span><span class="o">=</span><span class="n">inputs</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">solved</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">results</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="n">inputs</span><span class="p">)</span>
+</code></pre></div>
+<ul>
+<li>The layer has the results and the intermediate results they need, at their defaults too. It has no input, shape or standard type.</li>
+<li>A result of <code>base</code> that the solve does not write again is NULL, at the scenarios, buses, entities and connections the network has.</li>
+<li>A series is written at the network's snapshots, and <code>base</code>'s values stand at the others.</li>
+<li>Over a multi-period <code>base</code>, a result such as <code>p_nom_opt</code> is written for the entities active in the network's periods.</li>
+<li>Over a selection, <a href="../selecting/#lift"><code>lift</code></a> puts each row back at the squeezed labels.</li>
+<li>The layer restates the <code>sub_network</code> axis with the solve's SubNetworks, empty where the solve has none. It writes no such axis where neither the solve nor <code>base</code> has one.</li>
+<li>Over a network with fewer buses or entities than <code>base</code>, the layer leaves the <code>sub_network</code> axis to <code>base</code>. It also leaves to <code>base</code> the results that name a SubNetwork, such as <code>slack_bus</code> and a line's <code>sub_network</code>.</li>
+</ul>
+<p>With <code>results_only=True</code>, <code>to_datarecord</code> raises <code>ValueError</code> for:</p>
+<ul>
+<li>a missing <code>base</code>.</li>
+<li>a network with a snapshot, bus or entity that <code>base</code> lacks.</li>
+<li>a deterministic network over a <code>base</code> with scenarios, rather than over the selection at one scenario.</li>
+<li>a result over no <code>scenario</code> from fewer scenarios than the record has.</li>
+<li>a multi-period network over a single-period <code>base</code>, or a single-period one over a multi-period <code>base</code> that squeezes no period.</li>
+<li>a network over a record with a dim of its own, rather than over the selection at one label.</li>
+</ul>
+<h3 id="a-collection">A collection<a class="headerlink" href="#a-collection" title="Permanent link">&para;</a></h3>
+<p><code>PyPSACollection</code> writes and builds a <code>pypsa.NetworkCollection</code>, each member through <code>PyPSA</code>.
+Its dim is the name of the collection's one index level, either <code>period</code> or a dim of the record's own.
+A record has at most one dim of its own.
+<code>to_datarecord</code> checks every member before it returns, and raises <code>ValueError</code> for:</p>
+<ul>
+<li><code>base</code> without <code>results_only=True</code>.</li>
+<li>an index of more than one level, or one named for a dim of the PyPSA schema but <code>period</code>.</li>
+<li>an index named for a dim that the members' shapes make.</li>
+<li>a <code>base</code> with another dim of its own.</li>
+<li>members that differ where they must agree.</li>
+<li>a member that orders shared labels otherwise than the members before it.</li>
+</ul>
+<p>Two floats agree within <code>numpy.isclose</code>'s default tolerance, and other values agree where equal.
+The record's <code>meta</code> and <code>crs</code> are the first member's.
+<code>verify</code> checks each member as <code>PyPSA.verify</code> checks a selection, and reports what any member lacks.
+<code>build</code> raises <code>ValueError</code> for a single-period record without a dim of its own.
+<code>verify</code> reports each dim of its own of a record with several in <code>unsupported_dims</code>, and <code>build</code> raises <code>UnsupportedRecordError</code> for it.</p>
+<h4 id="over-period">Over <code>period</code><a class="headerlink" href="#over-period" title="Permanent link">&para;</a></h4>
+<p><code>to_datarecord</code> writes a myopic solve as one multi-period network with every member's period.
+Each member is deterministic and has its own period alone.
+Two members that hold an entity active and give it different static values are refused.
+An asset that a later member lacks is retired, its <code>lifetime</code> ending at the first period without it.
+An asset held again after a gap is refused.
+<code>to_datarecord</code> numbers the SubNetworks once for the whole network.
+<code>build</code> gives member <code>p</code> as <code>PyPSA.build(record.select(period=[p]))</code>.</p>
+<h4 id="over-a-dim-of-its-own">Over a dim of its own<a class="headerlink" href="#over-a-dim-of-its-own" title="Permanent link">&para;</a></h4>
+<p><code>to_datarecord</code> adds the dim to the schema and to <code>partial</code>.
+An attribute whose values agree across the members is written once, as declared, and one whose values differ varies over the dim.
+A later layer whose values differ widens the attribute's <code>dims</code> by the dim.
+Members must have the same snapshots, components, schema and custom columns.
+Their axes are one union in the first member's order, and a label's properties agree across them.
+<code>build</code> gives member <code>label</code> as <code>PyPSA.build(record.select(dim=label))</code>.
+Results of a collection of fewer labels than <code>base</code> has are at each member's label, even where the members agree.
+They leave the other labels, the dim's axis and the SubNetworks to <code>base</code>.
+<code>to_datarecord</code> raises <code>ValueError</code> for a member's label that <code>base</code>'s axis of the dim lacks.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../../howto/use-the-pypsa-tool/">Use the PyPSA tool</a> shows a build, a solve, a selection, a change-only export and a collection.
+<a href="../api/tools/">The API reference</a> lists every signature.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../store/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Store">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Store
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../glossary/" class="md-footer__link md-footer__link--next" aria-label="Next: Glossary">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Glossary
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
