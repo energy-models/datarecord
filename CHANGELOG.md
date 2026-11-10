@@ -541,6 +541,10 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- `PyPSA.to_datarecord` refuses a time series whose column names no
+  component of its own type, naming the type, the attribute and the columns.
+  A column named like another type's component was written onto that
+  component, and one naming nothing failed only at the write.
 - `PyPSA.build` refuses a record whose rows of an attribute name several
   labels of a dim PyPSA's registry declares it without, such as a generator's
   `marginal_cost` over `period` in a multi-period record, rather than keeping

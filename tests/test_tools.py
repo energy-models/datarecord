@@ -1625,6 +1625,21 @@ class TestPyPSA:
 
         assert not _colliding_names(n)
 
+    @pytest.mark.parametrize("name", ["load", "atlantis"], ids=["other-type", "none"])
+    @pytest.mark.parametrize("stochastic", [False, True], ids=["one", "scenarios"])
+    def test_a_series_naming_no_component_of_its_type_is_refused(
+        self, workspace, name, stochastic
+    ):
+        """A `p_max_pu` series named like a Load, or like nothing, is refused at the call, before a row lands on the Load."""
+        n = _north()
+        n.add("Load", "load", bus="north")
+        if stochastic:
+            n.set_scenarios(["a", "b"])
+        n.c.Generator.dynamic["p_max_pu"][("a", name) if stochastic else name] = 0.5
+
+        with pytest.raises(ValueError, match=rf"Generator `p_max_pu`.*'{name}'"):
+            PyPSA.to_datarecord(n, workspace.con)
+
     def test_a_solved_network_exports_its_results_long_form(
         self, single_revision, solved
     ):
