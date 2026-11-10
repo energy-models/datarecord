@@ -1,0 +1,2855 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-143/reference/resolution/">
+      
+      
+        <link rel="prev" href="../layers/">
+      
+      
+        <link rel="next" href="../format/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Resolution - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../static/extras.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#resolution" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Resolution
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../howto/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  How-to guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../about/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../tutorials/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../howto/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../selecting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Selecting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../editing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolution
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#axes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Axes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-owner-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The owner map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#folding-a-layer-onto-its-parent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Folding a layer onto its parent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#crossing-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-a-row-applies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where a row applies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-an-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading an attribute
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels-outside-the-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels outside the key
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-dim-outside-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A dim outside partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-wider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A wider schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#materialised-revisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialised revisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A directory
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../about/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../development/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#axes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Axes
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-owner-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The owner map
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#folding-a-layer-onto-its-parent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Folding a layer onto its parent
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#crossing-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Crossing rows
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#where-a-row-applies" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Where a row applies
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#reading-an-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Reading an attribute
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#labels-outside-the-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels outside the key
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-dim-outside-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A dim outside partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-wider-schema" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A wider schema
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#flags" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Flags
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#materialised-revisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Materialised revisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#a-directory" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A directory
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="resolution">Resolution<a class="headerlink" href="#resolution" title="Permanent link">&para;</a></h1>
+<p>This page describes how datarecord reads the layers of a revision as one record.
+It covers axes, the owner map, crossing rows, what a read returns, flags, materialised revisions and a directory.</p>
+<p>A read returns one row at each point, by two rules.
+Within one layer, datarecord keeps the more specific row, by <a href="../data-model/">the broadcast rule</a>.
+Across layers, a read returns the deeper layer's row where rows of two layers meet.</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 190" width="760" height="190" style="max-width: 100%; height: auto" role="img" aria-labelledby="ro-t ro-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="ro-t">A read takes the layers through the fold to the owner map</title>
+  <desc id="ro-d">The root layer and the child layer feed the fold, which builds the owner map: the layer it assigns each key to. A fold at hand, materialised on disk or kept by the workspace, seeds the fold so that it starts partway. The read joins to the map the files of the layers it lists, and returns each attribute's rows as written. A reader settles each point by the broadcast rule.</desc>
+  <defs>
+    <marker id="ro-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="ro-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <rect x="16" y="30" width="130" height="44" rx="3" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="100" width="130" height="44" rx="3" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="250" y="64" width="140" height="44" rx="3" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="250" y="140" width="140" height="36" rx="3" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="500" y="64" width="120" height="44" rx="3" fill="#009E73" fill-opacity="0.2"/>
+  </g>
+  <g fill="currentColor">
+    <text x="24" y="49.0" font-weight="bold">root layer</text>
+    <text x="24" y="65.0" fill-opacity="0.7" font-size="12">layers/&lt;root&gt;/</text>
+    <text x="24" y="119.0" font-weight="bold">child layer</text>
+    <text x="24" y="135.0" fill-opacity="0.7" font-size="12">layers/&lt;child&gt;/</text>
+    <text x="258" y="83.0" font-weight="bold">owner map</text>
+    <text x="258" y="99.0" fill-opacity="0.7" font-size="12">a layer per key</text>
+    <text x="258" y="162.0" font-weight="bold">fold at hand</text>
+    <text x="508" y="83.0" font-weight="bold">rows as written</text>
+    <text x="508" y="99.0" fill-opacity="0.7" font-size="12">per attribute</text>
+    <text x="668" y="83.0" font-weight="bold">reader</text>
+    <text x="668" y="99.0" fill-opacity="0.7" font-size="12">settles</text>
+    <text x="200" y="78" font-weight="bold" font-size="12">fold</text>
+    <text x="330" y="132" fill-opacity="0.7" font-size="12">seeds</text>
+    <text x="400" y="78" font-weight="bold" font-size="12">read</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="30" width="130" height="44" rx="3"/>
+    <rect x="16" y="100" width="130" height="44" rx="3"/>
+    <rect x="250" y="64" width="140" height="44" rx="3"/>
+    <rect x="250" y="140" width="140" height="36" rx="3"/>
+    <rect x="500" y="64" width="120" height="44" rx="3"/>
+    <rect x="660" y="64" width="84" height="44" rx="3"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#ro-arrow)">
+    <path d="M146,52 L190,52 L190,86 L242,86"/>
+    <path d="M146,122 L190,122 L190,86 L242,86"/>
+    <path d="M320,140 L320,116"/>
+    <path d="M390,86 L492,86"/>
+    <path d="M620,86 L652,86"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>The step that folds a revision's <a href="../layers/">layers</a> one at a time, root first (the fold), builds the owner map.
+The map lists, for each attribute, each key a layer wrote and the layer it assigns the key to.
+A read of an attribute joins to the map the files of the layers it lists, and returns the rows as written.
+A <a href="../record/">reader</a> settles each point by the broadcast rule.</p>
+<h2 id="axes">Axes<a class="headerlink" href="#axes" title="Permanent link">&para;</a></h2>
+<p>A layer that changes an axis restates it whole, so a revision's axis is the deepest <code>dims/&lt;dim&gt;.parquet</code> on its path from the root.
+A layer with no file for a dim leaves its parent's axis as it is.</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 236" width="760" height="236" style="max-width: 100%; height: auto" role="img" aria-labelledby="ra-t ra-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="ra-t">Each axis resolves to the deepest file for it</title>
+  <desc id="ra-d">The root layer contains dims/entity.parquet with gas and wind, and dims/scenario.parquet with low and high. The child layer restates the entity axis as gas, wind and solar, and has no scenario file. The resolved entity axis is the child's file and the resolved scenario axis is the root's.</desc>
+  <defs>
+    <marker id="ra-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="ra-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H183 A3,3 0 0 1 186,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="170" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H186 V91 A3,3 0 0 1 183,94 H19 A3,3 0 0 1 16,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,170 V151 A3,3 0 0 1 19,148 H183 A3,3 0 0 1 186,151 V170 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="170" width="170" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,188 H186 V207 A3,3 0 0 1 183,210 H19 A3,3 0 0 1 16,207 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M290,54 V35 A3,3 0 0 1 293,32 H457 A3,3 0 0 1 460,35 V54 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="290" y="54" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="290" y="72" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M290,90 H460 V109 A3,3 0 0 1 457,112 H293 A3,3 0 0 1 290,109 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M290,170 V151 A3,3 0 0 1 293,148 H457 A3,3 0 0 1 460,151 V170 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M564,54 V35 A3,3 0 0 1 567,32 H731 A3,3 0 0 1 734,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="564" y="54" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="564" y="72" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M564,90 H734 V109 A3,3 0 0 1 731,112 H567 A3,3 0 0 1 564,109 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M564,170 V151 A3,3 0 0 1 567,148 H731 A3,3 0 0 1 734,151 V170 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="564" y="170" width="170" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M564,188 H734 V207 A3,3 0 0 1 731,210 H567 A3,3 0 0 1 564,207 Z" fill="#0072B2" fill-opacity="0.08"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity.parquet</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="94" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="94" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="94" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="16" y="138" font-weight="bold"></text>
+    <text x="16" y="138" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/scenario.parquet</text>
+    <text x="24" y="163" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="24" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
+    <text x="24" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="290" y="22" font-weight="bold">child layer</text>
+    <text x="392" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity.parquet</text>
+    <text x="298" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="368" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
+    <text x="298" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="368" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="298" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="368" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="298" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">solar</text>
+    <text x="368" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="290" y="138" font-weight="bold"></text>
+    <text x="298" y="163" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="302" y="184" font-style="italic" font-size="12">no file: axis unchanged</text>
+    <text x="564" y="22" font-weight="bold">resolved</text>
+    <text x="642" y="22" fill-opacity="0.7">entity</text>
+    <text x="572" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="642" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
+    <text x="572" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="642" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="572" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="642" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="572" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">solar</text>
+    <text x="642" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="564" y="138" font-weight="bold"></text>
+    <text x="564" y="138" fill-opacity="0.7">scenario</text>
+    <text x="572" y="163" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="572" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
+    <text x="572" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="470" y="64" fill-opacity="0.7" font-size="12">deepest</text>
+    <text x="250" y="234" font-size="12"></text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="170" height="62" rx="3"/>
+    <line x1="16" y1="54" x2="186" y2="54"/>
+    <rect x="16" y="148" width="170" height="62" rx="3"/>
+    <line x1="16" y1="170" x2="186" y2="170"/>
+    <rect x="290" y="32" width="170" height="80" rx="3"/>
+    <line x1="290" y1="54" x2="460" y2="54"/>
+    <rect x="294" y="172" width="162" height="15" rx="3" stroke-dasharray="4 3"/>
+    <rect x="290" y="148" width="170" height="44" rx="3"/>
+    <line x1="290" y1="170" x2="460" y2="170"/>
+    <rect x="564" y="32" width="170" height="80" rx="3"/>
+    <line x1="564" y1="54" x2="734" y2="54"/>
+    <rect x="564" y="148" width="170" height="62" rx="3"/>
+    <line x1="564" y1="170" x2="734" y2="170"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#ra-arrow)">
+    <path d="M460,72 L556,72"/>
+    <path d="M186,192 L240,192 L240,222 L520,222 L520,188 L556,188"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>The child's entity file is the resolved entity axis, and the root's scenario file is the resolved scenario axis.</p>
+<ul>
+<li>A multi-dim's axis resolves the same way, from its file keyed by its struct column.</li>
+<li>The labels of an axis come in the deepest file's row order, the axis order. A label added again after its removal sits where the file that adds it puts it.</li>
+<li>A property is a column of its subject's axis file, so its values change only when a layer restates the axis.</li>
+<li>A <a href="../data-model/">dim with <code>one_of</code></a> has no file, and its axis is the schema's list at every revision.</li>
+</ul>
+<h2 id="the-owner-map">The owner map<a class="headerlink" href="#the-owner-map" title="Permanent link">&para;</a></h2>
+<p>The owner map is the fold's result: per attribute, each key a layer wrote and the layer the map assigns it to.
+A key is the attribute's dims in <a href="../layers/#partial"><code>partial</code></a> and the attribute's name.
+The map contains no values, so its size does not depend on the length of a series or a curve.</p>
+<table>
+<thead>
+<tr>
+<th>Column</th>
+<th>Contains</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>one per dim in <code>partial</code></td>
+<td>the key's label, or NULL where the row leaves the dim NULL. A multi-dim is one struct column</td>
+</tr>
+<tr>
+<td><code>attribute</code></td>
+<td>the attribute's name</td>
+</tr>
+<tr>
+<td><code>layer_uuid</code></td>
+<td>the layer the map assigns the key to</td>
+</tr>
+<tr>
+<td><code>varies</code></td>
+<td>a struct with a boolean per dim: whether the layer's rows of this key set the dim</td>
+</tr>
+<tr>
+<td><code>broadcast</code></td>
+<td>a struct with a boolean per dim: whether the layer's rows of this key leave the dim NULL</td>
+</tr>
+<tr>
+<td><code>breakpoints</code></td>
+<td>whether the layer's rows of this key form a curve</td>
+</tr>
+</tbody>
+</table>
+<p>The map has each key as its layer wrote it, a NULL included.
+It has one row per layer and distinct key, and one overlap row for each pair of rows that <a href="#crossing-rows">cross</a>.</p>
+<h2 id="folding-a-layer-onto-its-parent">Folding a layer onto its parent<a class="headerlink" href="#folding-a-layer-onto-its-parent" title="Permanent link">&para;</a></h2>
+<p>The fold takes the parent's map and the layer's own keys, and returns the layer's map.
+Three terms describe how the rows of two layers meet:</p>
+<table>
+<thead>
+<tr>
+<th>Term</th>
+<th>Of two rows, means</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>sets</td>
+<td>a row sets a dim in <code>partial</code> where its key has a label, and any other dim of the attribute where its rows vary along it</td>
+</tr>
+<tr>
+<td>covers</td>
+<td>on each dim in <code>partial</code>, the two rows have the same label, or one of them has NULL</td>
+</tr>
+<tr>
+<td>crosses</td>
+<td>the two rows cover a common point, and each row leaves NULL a dim that the other row sets</td>
+</tr>
+</tbody>
+</table>
+<p>The fold runs three steps, in this order:</p>
+<ol>
+<li>It drops each parent row that has a label or tuple that the layer <a href="../layers/#removing-labels">removes</a>, on a dim in <code>partial</code>. A row that leaves the dim NULL stays.</li>
+<li>It drops each parent row that a row of the layer covers, where the layer's row sets every dim that the parent row sets.</li>
+<li>It adds the layer's rows, and one overlap row for each parent row that a row of the layer crosses.</li>
+</ol>
+<p>Take <code>partial = {"entity", "scenario"}</code> and a root that sets <code>p_nom</code> for gas, wind and coal.
+Its child removes coal, sets gas to 60 and then sets 999 for the scenario high:</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="rf-t rf-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rf-t">One layer folds onto its parent's owner map</title>
+  <desc id="rf-d">With partial dims entity and scenario, the parent's owner map contains the root's rows gas NULL, wind NULL and coal NULL. The child removes coal and writes gas NULL 60, NULL high 999 and gas high 999. The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas NULL covers. It adds the child's three rows and one overlap row, wind high, which the owner map assigns to the child, where the root's wind NULL crosses the child's NULL high.</desc>
+  <defs>
+    <marker id="rf-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rf-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H223 A3,3 0 0 1 226,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="210" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="54" width="210" height="18" fill="url(#rf-hatch)"/>
+    <rect x="16" y="72" width="210" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H226 V109 A3,3 0 0 1 223,112 H19 A3,3 0 0 1 16,109 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H226 V109 A3,3 0 0 1 223,112 H19 A3,3 0 0 1 16,109 Z" fill="url(#rf-hatch)"/>
+    <path d="M16,190 V171 A3,3 0 0 1 19,168 H223 A3,3 0 0 1 226,171 V190 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="16" y="190" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="16" y="208" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M16,226 H226 V245 A3,3 0 0 1 223,248 H19 A3,3 0 0 1 16,245 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M500,54 V35 A3,3 0 0 1 503,32 H707 A3,3 0 0 1 710,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="500" y="54" width="210" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="500" y="72" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="500" y="90" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="500" y="108" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M500,126 H710 V145 A3,3 0 0 1 707,148 H503 A3,3 0 0 1 500,145 Z" fill="#E69F00" fill-opacity="0.35"/>
+    <rect x="500" y="186" width="14" height="14" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="500" y="210" width="14" height="14" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="500" y="234" width="14" height="14" fill="#E69F00" fill-opacity="0.35"/>
+    <rect x="500" y="258" width="14" height="14" fill="url(#rf-hatch)"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">parent map</text>
+    <text x="110" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="90" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="176" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">layer</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="90" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="234" y="68" fill-opacity="0.7" font-size="12">covered</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="90" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">coal</text>
+    <text x="90" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="234" y="104" fill-opacity="0.7" font-size="12">removed</text>
+    <text x="16" y="158" font-weight="bold">child layer</text>
+    <text x="118" y="158" fill-opacity="0.7">p_nom, removes coal</text>
+    <text x="24" y="183" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="90" y="183" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="176" y="183" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="90" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">60</text>
+    <text x="24" y="222" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="90" y="222" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="176" y="222" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
+    <text x="24" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="90" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="176" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
+    <text x="500" y="22" font-weight="bold">owner map</text>
+    <text x="586" y="22" fill-opacity="0.7">after the fold</text>
+    <text x="508" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="574" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="660" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">layer</text>
+    <text x="508" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="574" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="660" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="508" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="574" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="660" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="508" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="574" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="660" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="508" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="574" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="660" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="508" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="574" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="660" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="728" y="140" font-size="12">overlap</text>
+    <text x="350" y="100" font-weight="bold" font-size="12">fold</text>
+    <text x="350" y="126" fill-opacity="0.7" font-size="12">drop removed, drop covered,</text>
+    <text x="350" y="141" fill-opacity="0.7" font-size="12">add rows and overlaps</text>
+    <text x="520" y="197" font-size="12">root layer</text>
+    <text x="520" y="221" font-size="12">child layer</text>
+    <text x="520" y="245" font-size="12">overlap row</text>
+    <text x="520" y="269" font-size="12">dropped by the fold</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="210" height="80" rx="3"/>
+    <line x1="16" y1="54" x2="226" y2="54"/>
+    <rect x="16" y="168" width="210" height="80" rx="3"/>
+    <line x1="16" y1="190" x2="226" y2="190"/>
+    <path d="M716,129 H722 V141 H716"/>
+    <rect x="500" y="32" width="210" height="116" rx="3"/>
+    <line x1="500" y1="54" x2="710" y2="54"/>
+    <path d="M226,43 H340 V179 H226"/>
+    <rect x="500" y="186" width="14" height="14"/>
+    <rect x="500" y="210" width="14" height="14"/>
+    <rect x="500" y="234" width="14" height="14"/>
+    <rect x="500" y="258" width="14" height="14"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rf-arrow)">
+    <path d="M340,108 L492,108"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas row covers.
+It keeps the root's wind row and adds the overlap row <code>(wind, high)</code>, which the owner map assigns to the child.
+The child's own <code>(gas, high)</code> is a row that its <a href="../editing/"><code>WorkingRecord</code></a> staged, because the second <code>set</code> crosses the first.</p>
+<p>A parent row that sets fewer dims than a covering row of the layer stays as written.
+A child that writes only <code>(gas, high) = 70</code> leaves the root's <code>(gas, NULL)</code> in the map. By the broadcast rule, a read takes <code>(gas, high)</code> from the child.</p>
+<h2 id="crossing-rows">Crossing rows<a class="headerlink" href="#crossing-rows" title="Permanent link">&para;</a></h2>
+<p>Two rows of two layers cross where they cover a common point and each row leaves NULL a dim that the other row sets.
+At such a point neither row is more specific, so the broadcast rule alone does not settle it.
+The fold therefore adds an overlap row, which the owner map assigns to the deeper layer, with every label that either row sets.</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" width="800" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="rc-t rc-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rc-t">The fold adds an overlap row where rows of two layers cross</title>
+  <desc id="rc-d">With partial dims entity and scenario, the root writes p_nom for gas and wind with scenario NULL, and the child writes p_nom 999 for scenario high with entity NULL. The owner map has these three rows and two overlap rows that it assigns to the child, gas high and wind high. The read returns five rows: gas NULL 50, wind NULL 100, NULL high 999, gas high 999 and wind high 999.</desc>
+  <defs>
+    <marker id="rc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rc-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H211 A3,3 0 0 1 214,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H214 V91 A3,3 0 0 1 211,94 H19 A3,3 0 0 1 16,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,172 V153 A3,3 0 0 1 19,150 H211 A3,3 0 0 1 214,153 V172 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M16,172 H214 V191 A3,3 0 0 1 211,194 H19 A3,3 0 0 1 16,191 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M290,54 V35 A3,3 0 0 1 293,32 H485 A3,3 0 0 1 488,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="290" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="290" y="72" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="290" y="90" width="198" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="290" y="108" width="198" height="18" fill="#E69F00" fill-opacity="0.35"/>
+    <path d="M290,126 H488 V145 A3,3 0 0 1 485,148 H293 A3,3 0 0 1 290,145 Z" fill="#E69F00" fill-opacity="0.35"/>
+    <path d="M586,54 V35 A3,3 0 0 1 589,32 H781 A3,3 0 0 1 784,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="586" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="586" y="72" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="586" y="90" width="198" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="586" y="108" width="198" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M586,126 H784 V145 A3,3 0 0 1 781,148 H589 A3,3 0 0 1 586,145 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="16" y="214" width="14" height="14" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="166" y="214" width="14" height="14" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="316" y="214" width="14" height="14" fill="#E69F00" fill-opacity="0.35"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="168" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="86" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="168" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">50</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="86" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="168" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">100</text>
+    <text x="16" y="140" font-weight="bold">child layer</text>
+    <text x="118" y="140" fill-opacity="0.7">p_nom</text>
+    <text x="24" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="168" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="86" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="168" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
+    <text x="290" y="22" font-weight="bold">owner map</text>
+    <text x="298" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="360" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="442" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">layer</text>
+    <text x="298" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="360" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="442" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="298" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="360" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="442" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="298" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="360" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="442" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="298" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="360" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="442" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="506" y="122" font-size="12">overlap</text>
+    <text x="298" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="360" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="442" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="506" y="140" font-size="12">overlap</text>
+    <text x="586" y="22" font-weight="bold">read</text>
+    <text x="632" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="594" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="656" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="738" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="594" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="656" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="738" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">50</text>
+    <text x="594" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="656" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="738" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">100</text>
+    <text x="594" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="656" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="738" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
+    <text x="594" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="656" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="738" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
+    <text x="594" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="656" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="738" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
+    <text x="250" y="92" font-weight="bold" font-size="12">fold</text>
+    <text x="542" y="92" font-weight="bold" font-size="12">read</text>
+    <text x="36" y="225" font-size="12">root layer</text>
+    <text x="186" y="225" font-size="12">child layer</text>
+    <text x="336" y="225" font-size="12">overlap row</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="198" height="62" rx="3"/>
+    <line x1="16" y1="54" x2="214" y2="54"/>
+    <rect x="16" y="150" width="198" height="44" rx="3"/>
+    <line x1="16" y1="172" x2="214" y2="172"/>
+    <path d="M494,111 H500 V123 H494"/>
+    <path d="M494,129 H500 V141 H494"/>
+    <rect x="290" y="32" width="198" height="116" rx="3"/>
+    <line x1="290" y1="54" x2="488" y2="54"/>
+    <rect x="586" y="32" width="198" height="116" rx="3"/>
+    <line x1="586" y1="54" x2="784" y2="54"/>
+    <path d="M214,65 H240 V172 H214"/>
+    <rect x="16" y="214" width="14" height="14"/>
+    <rect x="166" y="214" width="14" height="14"/>
+    <rect x="316" y="214" width="14" height="14"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rc-arrow)">
+    <path d="M240,100 L282,100"/>
+    <path d="M540,100 L578,100"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>The child's <code>(NULL, high)</code> crosses both root rows, so the map gains <code>(gas, high)</code> and <code>(wind, high)</code>, which it assigns to the child.
+At <code>(wind, high)</code> the overlap row sets both dims, so by the broadcast rule the value there is 999.
+The crossed parent rows stay as written, and <code>(wind, low)</code> is 100.</p>
+<p>A later fold treats an overlap row as any other row, which it may drop, cross or remove.</p>
+<h2 id="where-a-row-applies">Where a row applies<a class="headerlink" href="#where-a-row-applies" title="Permanent link">&para;</a></h2>
+<p>A NULL on a dim in <code>partial</code> means every label of that dim's axis as resolved at the revision read.
+A row therefore applies to a label added below the revision that wrote it, or one staged in a <code>WorkingRecord</code>.
+In the example above, a child that adds the scenario <code>mid</code> has <code>(gas, mid)</code> at 50.</p>
+<p>A row applies at every point that no more specific row covers, whichever layer wrote it.
+So a read returns a deeper layer's value only at the points its rows apply to.
+With <code>p_max_pu</code> over <code>entity</code>, <code>scenario</code> and <code>snapshot</code>, a root row <code>(gas, NULL, 1) = 1.0</code> and a child row <code>(NULL, high, 0) = 2.0</code> leave <code>(gas, high, 1)</code> at 1.0, from the root.</p>
+<h2 id="reading-an-attribute">Reading an attribute<a class="headerlink" href="#reading-an-attribute" title="Permanent link">&para;</a></h2>
+<p><code>record.attributes[name]</code> returns the attribute's rows from the layers that the map assigns a key to, as written.
+A key left NULL stays NULL.
+Where the map has an overlap row, the read also returns a value at the overlap row's labels. That value comes from the layer the map assigns the overlap row to.
+The read expands no NULL, settles no point, and returns rows in no fixed order.
+An attribute that no layer wrote is an empty relation, typed as declared, and the reader applies the schema's <code>default</code>.</p>
+<p>A layer may contain rows of one attribute that set different dims in <code>partial</code>.
+The child above is one: its <code>(gas, NULL)</code>, <code>(NULL, high)</code> and <code>(gas, high)</code> all apply at <code>(gas, high)</code>.
+At such a point the read keeps the layer's row that leaves no dim NULL that another row there sets.
+Where no row does, the read fails, naming the attribute and the point.
+A curve is kept or dropped whole.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../record/">The record page</a> describes <code>RecordLike</code> and settling rows.
+<a href="../../about/layers/#why-the-owner-map-contains-keys-as-written">Why the owner map contains keys as written</a> gives the reasons for the map's shape.</p>
+</div>
+<h2 id="labels-outside-the-key">Labels outside the key<a class="headerlink" href="#labels-outside-the-key" title="Permanent link">&para;</a></h2>
+<p>A dim outside <code>partial</code> is in no key, so the fold reads none of its labels.
+The read drops each row that has a removed label on such a dim, or a removed tuple of such a multi-dim.
+A removed label is one that a layer's restatement dropped and the revision's axis lacks.</p>
+<p>Take <code>partial = {"entity"}</code>, a root with <code>p_max_pu</code> for wind at snapshots 0, 1 and 2, and a child that removes snapshot 2:</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 260" width="780" height="260" style="max-width: 100%; height: auto" role="img" aria-labelledby="rx-t rx-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rx-t">A read drops a row with a removed label on a dim outside partial</title>
+  <desc id="rx-d">With partial entity alone, the root writes p_max_pu for wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and the snapshot axis 0, 1, 2. The child restates the snapshot axis as 0 and 1, which removes snapshot 2, and writes no p_max_pu file. snapshot is in no key, so the owner map assigns wind to the root. The read returns the root's rows at snapshots 0 and 1 and drops the row at snapshot 2.</desc>
+  <defs>
+    <marker id="rx-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rx-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H213 A3,3 0 0 1 216,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,54 H216 V72 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H216 V90 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H216 V105 A3,3 0 0 1 213,108 H19 A3,3 0 0 1 16,105 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H216 V105 A3,3 0 0 1 213,108 H19 A3,3 0 0 1 16,105 Z" fill="url(#rx-hatch)"/>
+    <path d="M560,54 V35 A3,3 0 0 1 563,32 H757 A3,3 0 0 1 760,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <path d="M560,54 H760 V72 H560 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M560,72 H760 V87 A3,3 0 0 1 757,90 H563 A3,3 0 0 1 560,87 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,172 V153 A3,3 0 0 1 19,150 H105 A3,3 0 0 1 108,153 V172 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,172 H108 V190 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,190 H108 V208 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,208 H108 V223 A3,3 0 0 1 105,226 H19 A3,3 0 0 1 16,223 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,208 H108 V223 A3,3 0 0 1 105,226 H19 A3,3 0 0 1 16,223 Z" fill="url(#rx-hatch)"/>
+    <path d="M290,172 V153 A3,3 0 0 1 293,150 H379 A3,3 0 0 1 382,153 V172 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M290,172 H382 V190 H290 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M290,190 H382 V205 A3,3 0 0 1 379,208 H293 A3,3 0 0 1 290,205 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="560" y="150" width="14" height="14" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="560" y="174" width="14" height="14" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="560" y="198" width="14" height="14" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="560" y="222" width="14" height="14" fill="url(#rx-hatch)"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.75">p_max_pu</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="24" y="47" font-weight="bold">entity</text>
+    <text x="88" y="47" font-weight="bold">snapshot</text>
+    <text x="166" y="47" font-weight="bold">value</text>
+    <text x="24" y="67">wind</text>
+    <text x="88" y="67">0</text>
+    <text x="166" y="67">0.3</text>
+    <text x="24" y="85">wind</text>
+    <text x="88" y="85">1</text>
+    <text x="166" y="85">0.8</text>
+    <text x="24" y="103">wind</text>
+    <text x="88" y="103">2</text>
+    <text x="166" y="103">0.5</text>
+    </g>
+    <text x="560" y="22" font-weight="bold">read</text>
+    <text x="600" y="22" fill-opacity="0.75">p_max_pu</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="568" y="47" font-weight="bold">entity</text>
+    <text x="632" y="47" font-weight="bold">snapshot</text>
+    <text x="710" y="47" font-weight="bold">value</text>
+    <text x="568" y="67">wind</text>
+    <text x="632" y="67">0</text>
+    <text x="710" y="67">0.3</text>
+    <text x="568" y="85">wind</text>
+    <text x="632" y="85">1</text>
+    <text x="710" y="85">0.8</text>
+    </g>
+    <text x="16" y="140" font-weight="bold">root layer</text>
+    <text x="110" y="140" fill-opacity="0.75">snapshot axis</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="24" y="165" font-weight="bold">snapshot</text>
+    <text x="24" y="185">0</text>
+    <text x="24" y="203">1</text>
+    <text x="24" y="221">2</text>
+    </g>
+    <text x="290" y="140" font-weight="bold">child layer</text>
+    <text x="384" y="140" fill-opacity="0.75">snapshot axis</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="298" y="165" font-weight="bold">snapshot</text>
+    <text x="298" y="185">0</text>
+    <text x="298" y="203">1</text>
+    </g>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="200" height="76" rx="3"/>
+    <line x1="16" y1="54" x2="216" y2="54"/>
+    <rect x="560" y="32" width="200" height="58" rx="3"/>
+    <line x1="560" y1="54" x2="760" y2="54"/>
+    <rect x="16" y="150" width="92" height="76" rx="3"/>
+    <line x1="16" y1="172" x2="108" y2="172"/>
+    <rect x="290" y="150" width="92" height="58" rx="3"/>
+    <line x1="290" y1="172" x2="382" y2="172"/>
+    <rect x="560" y="150" width="14" height="14"/>
+    <rect x="560" y="174" width="14" height="14"/>
+    <rect x="560" y="198" width="14" height="14"/>
+    <rect x="560" y="222" width="14" height="14"/>
+    <rect x="290" y="222" width="150" height="22" rx="3" stroke-dasharray="4 3"/>
+    <path d="M382,181 H500 V72"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rx-arrow)">
+    <path d="M216,72 H552"/>
+    <path d="M108,190 H282"/>
+  </g>
+  <g fill="currentColor">
+    <text x="240" y="30" font-size="12" font-weight="bold">read</text>
+    <text x="240" y="46" font-size="12" fill-opacity="0.75">keeps the root's rows,</text>
+    <text x="240" y="62" font-size="12" fill-opacity="0.75">drops snapshot 2</text>
+    <text x="124" y="166" font-size="12" font-weight="bold">restate</text>
+    <text x="124" y="182" font-size="12" fill-opacity="0.75">without 2</text>
+    <text x="298" y="237" font-size="12">no p_max_pu file</text>
+    <text x="580" y="161" font-size="12">root layer</text>
+    <text x="580" y="185" font-size="12">child layer</text>
+    <text x="580" y="209" font-size="12">read</text>
+    <text x="580" y="233" font-size="12">removed label, dropped row</text>
+  </g>
+</svg>
+
+</figure>
+
+<p>The child writes no <code>p_max_pu</code> file, yet the read drops the root's row at snapshot 2 and returns its other two rows.</p>
+<p>With <code>connection</code> outside <code>partial</code>, a connection attribute's key is the attribute's name alone.
+Removing a tuple then removes its values at read, as it does for a multi-dim in <code>partial</code> at the fold.</p>
+<h2 id="a-dim-outside-partial">A dim outside <code>partial</code><a class="headerlink" href="#a-dim-outside-partial" title="Permanent link">&para;</a></h2>
+<p>A crossing along a dim outside <code>partial</code> has no key column for an overlap row to set.
+A <code>WorkingRecord</code> settles such a crossing as it stages.
+Where a staged row leaves the dim NULL over a parent row that sets it, the commit also writes the value along the parent's labels.</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 196" width="780" height="196" style="max-width: 100%; height: auto" role="img" aria-labelledby="ru-t ru-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="ru-t">A child that leaves a dim outside partial NULL is written along the parent's labels</title>
+  <desc id="ru-d">With partial dims entity alone, the root writes p_max_pu over snapshot for every entity: NULL 0 0.2 and NULL 1 0.5. The edit sets wind to 0.9 with snapshot NULL. store.commit writes the child layer as wind NULL, wind 0 and wind 1, all 0.9, so the child's rows set every dim that the root's rows set. The fold refuses a layer with the first row alone.</desc>
+  <defs>
+    <marker id="ru-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="ru-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H211 A3,3 0 0 1 214,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H214 V91 A3,3 0 0 1 211,94 H19 A3,3 0 0 1 16,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,172 V153 A3,3 0 0 1 19,150 H211 A3,3 0 0 1 214,153 V172 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M16,172 H214 V191 A3,3 0 0 1 211,194 H19 A3,3 0 0 1 16,191 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M330,54 V35 A3,3 0 0 1 333,32 H525 A3,3 0 0 1 528,35 V54 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="330" y="54" width="198" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="330" y="72" width="198" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M330,90 H528 V109 A3,3 0 0 1 525,112 H333 A3,3 0 0 1 330,109 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M570,54 V35 A3,3 0 0 1 573,32 H713 A3,3 0 0 1 716,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="570" y="54" width="146" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M570,72 H716 V91 A3,3 0 0 1 713,94 H573 A3,3 0 0 1 570,91 Z" fill="#E69F00" fill-opacity="0.08"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.7">p_max_pu</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="168" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="86" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="168" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.2</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="86" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="168" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.5</text>
+    <text x="16" y="140" font-weight="bold">edit</text>
+    <text x="62" y="140" fill-opacity="0.7">set(..., entity="wind")</text>
+    <text x="24" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="168" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="86" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="168" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="330" y="22" font-weight="bold">child layer</text>
+    <text x="432" y="22" fill-opacity="0.7">as written</text>
+    <text x="338" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="400" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="482" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="338" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="400" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="482" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="338" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="400" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="482" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="338" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="400" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="482" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="570" y="22" font-weight="bold">read</text>
+    <text x="616" y="22" fill-opacity="0.7">wind</text>
+    <text x="578" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="660" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="578" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="660" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="578" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="660" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="280" y="74" font-weight="bold" font-size="12">commit</text>
+    <text x="330" y="150" font-size="12">A layer with the first row alone:</text>
+    <text x="330" y="166" font-size="12">the fold refuses it.</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="198" height="62" rx="3"/>
+    <line x1="16" y1="54" x2="214" y2="54"/>
+    <rect x="16" y="150" width="198" height="44" rx="3"/>
+    <line x1="16" y1="172" x2="214" y2="172"/>
+    <rect x="330" y="32" width="198" height="80" rx="3"/>
+    <line x1="330" y1="54" x2="528" y2="54"/>
+    <rect x="570" y="32" width="146" height="62" rx="3"/>
+    <line x1="570" y1="54" x2="716" y2="54"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#ru-arrow)">
+    <path d="M214,172 L270,172 L270,82 L322,82"/>
+    <path d="M528,82 L562,82"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>With <code>partial = {"entity"}</code>, the child's rows at wind set every dim that the root's rows set.
+Nothing crosses, and wind is 0.9 at each snapshot.
+The fold refuses a layer written another way that leaves such a crossing.
+It checks the layer when a workspace first folds it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ValueError: layer 0f74b479-422a-4364-b29f-36758ea3105c leaves 'snapshot' NULL for 'p_max_pu' at {'entity': 'wind'} where a parent row names it; write it along the parent's 'snapshot' labels there, as `WorkingRecord.set` does
+</code></pre></div>
+<h2 id="a-wider-schema">A wider schema<a class="headerlink" href="#a-wider-schema" title="Permanent link">&para;</a></h2>
+<p>The fold reads each layer under the schema in its own manifest.
+A child's schema may be wider than its parent's where the change passes <a href="../schema/"><code>compatible_with</code></a>.
+The fold then extends the parent's map to the child's schema before it folds the child.</p>
+<ul>
+<li>Where a dim is added to an attribute's <code>dims</code>, the parent's rows of that attribute broadcast along it.</li>
+<li>Where a dim is added to <code>partial</code>, the fold splits each parent row that varies along it by the labels that its layer wrote there.</li>
+</ul>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 220" width="820" height="220" style="max-width: 100%; height: auto" role="img" aria-labelledby="rw-t rw-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rw-t">The fold splits the parent's rows by their labels when a dim joins partial</title>
+  <desc id="rw-d">The root, under partial entity, writes gas low 1 and gas high 2. The child, under partial entity and scenario, writes gas high 3. The fold splits the root's map row by the scenarios the root wrote: gas low and gas high, both assigned to the root. The child's gas high covers the second, which the fold drops. The read gives gas low 1 and gas high 3.</desc>
+  <defs>
+    <marker id="rw-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rw-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H211 A3,3 0 0 1 214,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H214 V91 A3,3 0 0 1 211,94 H19 A3,3 0 0 1 16,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,162 V143 A3,3 0 0 1 19,140 H211 A3,3 0 0 1 214,143 V162 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M16,162 H214 V181 A3,3 0 0 1 211,184 H19 A3,3 0 0 1 16,181 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M320,54 V35 A3,3 0 0 1 323,32 H515 A3,3 0 0 1 518,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="320" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M320,72 H518 V91 A3,3 0 0 1 515,94 H323 A3,3 0 0 1 320,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M320,72 H518 V91 A3,3 0 0 1 515,94 H323 A3,3 0 0 1 320,91 Z" fill="url(#rw-hatch)"/>
+    <path d="M620,54 V35 A3,3 0 0 1 623,32 H815 A3,3 0 0 1 818,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="620" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M620,72 H818 V91 A3,3 0 0 1 815,94 H623 A3,3 0 0 1 620,91 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="320" y="120" width="14" height="14" fill="url(#rw-hatch)"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.7">partial {entity}</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="168" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="86" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
+    <text x="168" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="86" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="168" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">2</text>
+    <text x="16" y="130" font-weight="bold">child layer</text>
+    <text x="118" y="130" fill-opacity="0.7">partial {entity, scenario}</text>
+    <text x="24" y="155" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="155" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="168" y="155" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="86" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="168" y="176" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">3</text>
+    <text x="320" y="22" font-weight="bold">parent map, split</text>
+    <text x="328" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="390" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="472" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">layer</text>
+    <text x="328" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="390" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
+    <text x="472" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="328" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="390" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="472" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="526" y="86" fill-opacity="0.7" font-size="12">covered</text>
+    <text x="620" y="22" font-weight="bold">read</text>
+    <text x="666" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="628" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="690" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="772" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="628" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="690" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
+    <text x="772" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="628" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="690" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="772" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">3</text>
+    <text x="224" y="56" font-weight="bold" font-size="12">split</text>
+    <text x="560" y="56" font-weight="bold" font-size="12">fold</text>
+    <text x="340" y="131" font-size="12">dropped by the fold</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="198" height="62" rx="3"/>
+    <line x1="16" y1="54" x2="214" y2="54"/>
+    <rect x="16" y="140" width="198" height="44" rx="3"/>
+    <line x1="16" y1="162" x2="214" y2="162"/>
+    <rect x="320" y="32" width="198" height="62" rx="3"/>
+    <line x1="320" y1="54" x2="518" y2="54"/>
+    <rect x="620" y="32" width="198" height="62" rx="3"/>
+    <line x1="620" y1="54" x2="818" y2="54"/>
+    <path d="M214,162 H596 V64"/>
+    <rect x="320" y="120" width="14" height="14"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rw-arrow)">
+    <path d="M214,64 L312,64"/>
+    <path d="M518,64 L612,64"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>Under <code>partial = {"entity"}</code>, the owner map assigns gas's scenarios whole to the root.
+Under the child's <code>partial = {"entity", "scenario"}</code>, the fold splits the root's row into <code>(gas, low)</code> and <code>(gas, high)</code>, and the child's <code>(gas, high)</code> covers the second.
+The read gives <code>(gas, low) 1</code> and <code>(gas, high) 3</code>.</p>
+<h2 id="flags">Flags<a class="headerlink" href="#flags" title="Permanent link">&para;</a></h2>
+<p>The fold computes <code>varies</code>, <code>broadcast</code> and <code>breakpoints</code> for each row of the map from the layer's rows of that key.
+An overlap row takes the flags of the layer row it comes from.
+<code>record.flags()</code> unions them per attribute:</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 460 250" width="460" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="rg-t rg-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rg-t">flags() unions the owner map's flag fields per attribute</title>
+  <desc id="rg-d">The owner map contains p_max_pu for wind, which sets snapshot, p_max_pu for gas, constant over snapshot, and p_nom with entity NULL. flags() takes the union per attribute: p_max_pu varies along entity and snapshot and broadcasts along snapshot, and p_nom broadcasts along entity and scenario.</desc>
+  <defs>
+    <marker id="rg-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rg-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H435 A3,3 0 0 1 438,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="422" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="72" width="422" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H438 V109 A3,3 0 0 1 435,112 H19 A3,3 0 0 1 16,109 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,188 V169 A3,3 0 0 1 19,166 H435 A3,3 0 0 1 438,169 V188 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="16" y="188" width="422" height="18" fill="#009E73" fill-opacity="0.08"/>
+    <path d="M16,206 H438 V225 A3,3 0 0 1 435,228 H19 A3,3 0 0 1 16,225 Z" fill="#009E73" fill-opacity="0.08"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">owner map</text>
+    <text x="102" y="22" fill-opacity="0.7">flag fields set to true</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attribute</text>
+    <text x="110" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="166" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">varies</text>
+    <text x="306" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">broadcast</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_max_pu</text>
+    <text x="110" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="166" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity snapshot</text>
+    <text x="306" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">-</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_max_pu</text>
+    <text x="110" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="166" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="306" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_nom</text>
+    <text x="110" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="166" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">-</text>
+    <text x="306" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity scenario</text>
+    <text x="16" y="156" font-weight="bold">flags()</text>
+    <text x="24" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attribute</text>
+    <text x="110" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12"></text>
+    <text x="166" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">varies</text>
+    <text x="306" y="181" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">broadcast</text>
+    <text x="24" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_max_pu</text>
+    <text x="110" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12"></text>
+    <text x="166" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity snapshot</text>
+    <text x="306" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="24" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">p_nom</text>
+    <text x="110" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12"></text>
+    <text x="166" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">-</text>
+    <text x="306" y="220" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity scenario</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="422" height="80" rx="3"/>
+    <line x1="16" y1="54" x2="438" y2="54"/>
+    <rect x="16" y="166" width="422" height="62" rx="3"/>
+    <line x1="16" y1="188" x2="438" y2="188"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rg-arrow)">
+    <path d="M60,114 L60,148"/>
+  </g>
+</svg>
+
+</figure>
+
+<p><code>p_max_pu</code> has <code>snapshot</code> in both sets, because wind's rows set it and gas's row leaves it NULL.
+<code>p_nom</code> broadcasts along <code>entity</code> and <code>scenario</code>, the two dims it is over.</p>
+<ul>
+<li><code>flags(**categories)</code> unions the flags of the rows that apply to the labels of those categories. A row NULL on the dim applies to every label.</li>
+<li>Each struct has a field for every dim the schema declares. A dim that a multi-dim draws on has its own field, so <code>flags()</code> reports <code>bus</code> as broadcast for a <code>marginal_price</code> constant over buses.</li>
+<li>The flags describe the rows in the map. So a NULL row that deeper rows cover at every label still puts its dim in <code>broadcast</code>.</li>
+</ul>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../record/">The record page</a> describes what a reader does with <code>flags</code>.</p>
+</div>
+<h2 id="materialised-revisions">Materialised revisions<a class="headerlink" href="#materialised-revisions" title="Permanent link">&para;</a></h2>
+<p>To materialise a revision is to write its owner map, pointers to the files of its axes and its removed labels under <code>layers/&lt;id&gt;/resolved/</code>, with <code>Revision.materialise()</code>.
+A read of a descendant then stops at that revision and reads no layer above it.</p>
+<p>A fold starts from the deepest proper ancestor whose fold is at hand, either materialised on disk or kept as tables by the workspace.</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 170" width="780" height="170" style="max-width: 100%; height: auto" role="img" aria-labelledby="rn-t rn-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rn-t">A fold starts from the nearest fold at hand</title>
+  <desc id="rn-d">The ancestry runs root, a, b, c, d, child. Revision a is materialised on disk, and the workspace keeps the fold of c as tables. For a record opened on child, the fold starts from c, the deepest fold at hand, and folds d and then child onto it. Root, a and b are not read.</desc>
+  <defs>
+    <marker id="rn-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rn-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <rect x="136" y="50" width="100" height="44" rx="3" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="376" y="50" width="120" height="44" rx="3" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="516" y="50" width="110" height="44" rx="3" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="646" y="50" width="110" height="44" rx="3" fill="#E69F00" fill-opacity="0.2"/>
+  </g>
+  <g fill="currentColor">
+    <text x="24" y="69.0" fill-opacity="0.7">root</text>
+    <text x="24" y="85.0" fill-opacity="0.7" font-size="12">not read</text>
+    <text x="144" y="69.0" font-weight="bold">a</text>
+    <text x="144" y="85.0" fill-opacity="0.7" font-size="12">materialised</text>
+    <text x="264" y="69.0" fill-opacity="0.7">b</text>
+    <text x="264" y="85.0" fill-opacity="0.7" font-size="12">not read</text>
+    <text x="384" y="69.0" font-weight="bold">c</text>
+    <text x="384" y="85.0" fill-opacity="0.7" font-size="12">fold held</text>
+    <text x="524" y="69.0" font-weight="bold">d</text>
+    <text x="524" y="85.0" fill-opacity="0.7" font-size="12">parent layer</text>
+    <text x="654" y="69.0" font-weight="bold">child</text>
+    <text x="654" y="85.0" fill-opacity="0.7" font-size="12">child layer</text>
+    <text x="376" y="136" font-size="12">the fold: seeded from c, then folds d, then child</text>
+    <text x="16" y="30" fill-opacity="0.7" font-size="12">parent to child</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="50" width="100" height="44" rx="3" stroke-opacity="0.5"/>
+    <rect x="136" y="50" width="100" height="44" rx="3"/>
+    <rect x="256" y="50" width="100" height="44" rx="3" stroke-opacity="0.5"/>
+    <rect x="376" y="50" width="120" height="44" rx="3"/>
+    <rect x="516" y="50" width="110" height="44" rx="3"/>
+    <rect x="646" y="50" width="110" height="44" rx="3"/>
+    <path d="M376,108 V116 H756 V108"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rn-arrow)">
+    <path d="M116,72 L134,72"/>
+    <path d="M236,72 L254,72"/>
+    <path d="M356,72 L374,72"/>
+    <path d="M496,72 L514,72"/>
+    <path d="M626,72 L644,72"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>For a record opened on <code>child</code>, the fold starts from <code>c</code>, the deepest fold at hand, and folds <code>d</code> and then <code>child</code> onto it.
+It reads nothing of <code>root</code>, <code>a</code> or <code>b</code>.</p>
+<ul>
+<li>A read gives the same answers after you materialise, and opens fewer layers.</li>
+<li>datarecord never starts a revision's fold from that revision's own cache.</li>
+<li>A materialised map has keys as written, so a NULL in it applies to a label that a descendant adds.</li>
+<li>A read under a wider schema extends a materialised map as it extends one folded live.</li>
+</ul>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../format/#resolved">The format page</a> lists the files under <code>resolved/</code>.
+<a href="../../howto/branch-and-materialise/">Branch and materialise</a> shows when to call <code>materialise()</code>.</p>
+</div>
+<h2 id="a-directory">A directory<a class="headerlink" href="#a-directory" title="Permanent link">&para;</a></h2>
+<p><code>Workspace.at(uri)</code> reads a standalone directory as a fold over one layer, whose layout is a layer's.</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 150" width="700" height="150" style="max-width: 100%; height: auto" role="img" aria-labelledby="rd-t rd-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rd-t">Reading a directory as a fold over one layer</title>
+  <desc id="rd-d">The directory out contains manifest.json, dims and attributes, the layout of one layer. Read with ws.at, it is a fold over that one layer, so the owner map assigns every key to that layer.</desc>
+  <defs>
+    <marker id="rd-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rd-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <rect x="16" y="40" width="170" height="64" rx="3" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M400,62 V43 A3,3 0 0 1 403,40 H595 A3,3 0 0 1 598,43 V62 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="400" y="62" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M400,80 H598 V99 A3,3 0 0 1 595,102 H403 A3,3 0 0 1 400,99 Z" fill="#0072B2" fill-opacity="0.08"/>
+  </g>
+  <g fill="currentColor">
+    <text x="24" y="69.0" font-weight="bold">out/</text>
+    <text x="24" y="85.0" fill-opacity="0.7" font-size="12">manifest.json, dims/,</text>
+    <text x="24" y="96" fill-opacity="0.7" font-size="12">attributes/</text>
+    <text x="400" y="30" font-weight="bold">owner map</text>
+    <text x="408" y="55" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="470" y="55" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="552" y="55" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">layer</text>
+    <text x="408" y="76" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="470" y="76" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="552" y="76" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">out</text>
+    <text x="408" y="94" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="470" y="94" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="552" y="94" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">out</text>
+    <text x="196" y="64" font-weight="bold" font-size="12">ws.at("out/")</text>
+    <text x="196" y="90" fill-opacity="0.7" font-size="12">a fold over one layer</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="40" width="170" height="64" rx="3"/>
+    <rect x="400" y="40" width="198" height="62" rx="3"/>
+    <line x1="400" y1="62" x2="598" y2="62"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rd-arrow)">
+    <path d="M186,72 L392,72"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>The owner map assigns every key to the one layer, the axis order is each file's row order, and <code>partial</code> has no effect.
+One <code>Record</code> reads both a directory and a revision, so a reader cannot tell them apart.
+<code>store.layer(id)</code> reads one layer of a store alone in the same way.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../../about/one-record/#one-interface-over-a-directory-and-a-tree">One interface over a directory and a tree</a> gives the reasons for one <code>Record</code>.
+<a href="../store/">The store page</a> describes <code>Workspace.at</code> and <code>Workspace.write</code>.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../layers/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Layers">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Layers
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../format/" class="md-footer__link md-footer__link--next" aria-label="Next: Format">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Format
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
