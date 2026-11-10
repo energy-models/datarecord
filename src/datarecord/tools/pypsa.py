@@ -1825,6 +1825,10 @@ class _PortTable:
         """`c`'s ports the type takes as `port` labels, a one-port type's `""` as `0`."""
         return [port for port in (int(p or 0) for p in c.ports) if self.takes(port)]
 
+    def buses(self, c: pypsa.Components) -> dict[int, str]:
+        """`c`'s bus column at each of its ports (`ports_of`)."""
+        return {port: self.column(BUS, port) for port in self.ports_of(c)}
+
 
 @cache
 def _port_table(ctype: str) -> _PortTable:
@@ -2637,6 +2641,26 @@ class _NetworkSource:
         return self._own_statics[c.name]
 
     @cached_property
+    def _members(self) -> dict[str, pd.DataFrame]:
+        """Each `_AXIS_TYPES` and entity type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with the properties of that dim it has columns for and its bus columns, by type, entity types in PyPSA's order.
+
+        Raises
+        ------
+        ValueError
+            If a member's properties or buses differ by scenario (`_unscoped`).
+        """
+        members = {}
+        entities = [c.name for c in self.n.components if _as_entities(c)]
+        for ctype in [*_AXIS_TYPES, *entities]:
+            c, dim = self.n.c[ctype], _dim_of(ctype)
+            static = self._own(c)
+            columns = [p for p in self.schema.properties[dim] if p in static.columns]
+            frame = static[[*columns, *_port_table(ctype).buses(c).values()]]
+            frame = frame.rename_axis(index={"name": dim}).reset_index()
+            members[ctype] = _unscoped(_none_for_empty(frame), [dim], ctype, self.con)
+        return members
+
+    @cached_property
     def custom(self) -> _Custom:
         """The network's custom static columns, placed (`_Custom.of`)."""
         return _Custom.of(self.n)
@@ -2664,7 +2688,7 @@ class _NetworkSource:
         -----
         - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
         """
-        _ = self._axes, self._entity_frame  # forced, so `_unscoped` refuses at the call
+        _ = self._axes, self._entity_frame  # forced, so `_members` refuses at the call
         schema = self.schema
         for subject, typed in self.custom.properties.items():
             for name in typed:
@@ -2837,14 +2861,8 @@ class _NetworkSource:
         return LazyRelations((*present, ENTITY, CONNECTION), axis)
 
     def _labels(self, ctype: str) -> pd.DataFrame:
-        """One `_AXIS_TYPES` type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with their properties."""
-        dim = _AXIS_TYPES[ctype]
-        static = self._own(self.n.c[ctype])
-        columns = [p for p in self.schema.properties[dim] if p in static.columns]
-        frame = static[columns].rename_axis(index={"name": dim}).reset_index()
-        return self._with_shapes(
-            _unscoped(_none_for_empty(frame), [dim], ctype, self.con), dim
-        )
+        """One `_AXIS_TYPES` type's `_members`, with the geometries of the shapes outlining them."""
+        return self._with_shapes(self._members[ctype], _AXIS_TYPES[ctype])
 
     def _with_shapes(self, frame: pd.DataFrame, dim: str) -> pd.DataFrame:
         """`frame`, labels of `dim` in order, with the geometries of those shapes outline (`_outlined`)."""
@@ -2860,14 +2878,15 @@ class _NetworkSource:
         - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
         """
         frames = [
-            self._static_frame(c.name).assign(**{CTYPE: c.name})
+            self._members[c.name]
+            .drop(columns=[*_port_table(c.name).buses(c).values()])
+            .assign(**{CTYPE: c.name})
             for c in self.n.components
             if _as_entities(c)
         ]
         if not frames:
             return pd.DataFrame(columns=[ENTITY, CTYPE])
-        merged = _none_for_empty(pd.concat(frames, ignore_index=True))
-        merged = self._with_shapes(merged, ENTITY)
+        merged = self._with_shapes(pd.concat(frames, ignore_index=True), ENTITY)
         lead = [ENTITY, CTYPE]
         return merged[[*lead, *(c for c in merged.columns if c not in lead)]]
 
@@ -2880,24 +2899,14 @@ class _NetworkSource:
         - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
         frames = []
-        for c in self.n.components:
-            if not _as_entities(c):
-                continue
-            static = c.static
-            table = _port_table(c.name)
-            for port in table.ports_of(c):
-                column = table.column(BUS, port)
-                attached = static[static[column].astype(str) != ""]
-                rows = attached[[column]].rename(columns={column: BUS})
-                rows = rows.reset_index().rename(columns={"name": ENTITY})
-                rows.insert(rows.columns.get_loc(ENTITY) + 1, PORT, port)
-                frames.append(rows)
-        rows = (
-            pd.concat(frames, ignore_index=True)
-            if frames
-            else pd.DataFrame(columns=[ENTITY, PORT, BUS])
-        )
-        return _unscoped(rows, [ENTITY, PORT], CONNECTION, self.con)
+        for ctype, members in self._members.items():
+            for port, column in _port_table(ctype).buses(self.n.c[ctype]).items():
+                attached = members[members[column].astype(str) != ""]
+                rows = attached[[ENTITY, column]].rename(columns={column: BUS})
+                frames.append(rows.assign(**{PORT: port})[[ENTITY, PORT, BUS]])
+        if not frames:
+            return pd.DataFrame(columns=[ENTITY, PORT, BUS])
+        return pd.concat(frames, ignore_index=True)
 
     @cached_property
     def _connection_frame(self) -> DuckDBPyRelation:
@@ -3328,13 +3337,6 @@ class _NetworkSource:
         return stems
 
     # -- frames -------------------------------------------------------------
-
-    def _static_frame(self, ctype: str) -> pd.DataFrame:
-        """Members of one type with the properties of `entity` it has columns for."""
-        static = self._own(self.n.c[ctype])
-        columns = [p for p in self.schema.properties[ENTITY] if p in static.columns]
-        frame = static[columns].reset_index().rename(columns={"name": "entity"})
-        return _unscoped(frame, [ENTITY], ctype, self.con)
 
     def _tagged_long_rel(
         self,
