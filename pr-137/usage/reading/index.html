@@ -1371,14 +1371,15 @@ So is a squeeze that would hand a label with no category the default <code>defau
 </code></pre></div>
 <h2 id="closing">Closing<a class="headerlink" href="#closing" title="Permanent link">&para;</a></h2>
 <p>A record holds the tables its fold is kept in until you <code>close()</code> it, and a <code>with</code> block closes it on exit.
-Then the workspace drops them, unless another open record, a <a href="../../design/storage/views/">registration</a> or a record collected without closing holds them.
+Then the workspace drops them, unless another open record or a <a href="../../design/storage/views/">registration</a> holds them.
 The next record over the same revision folds its ancestry again, so a process reading one revision often keeps one record open rather than one per read.
 A closed record raises <code>ValueError</code> on any read, and a relation taken from it before fails with DuckDB's missing-table error, so fetch what you need first.
 <code>revision.record</code> hands out a new record once the one it cached is closed.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">with</span> <span class="n">store</span><span class="o">.</span><span class="n">revision</span><span class="p">(</span><span class="n">rev_id</span><span class="p">)</span><span class="o">.</span><span class="n">record</span> <span class="k">as</span> <span class="n">record</span><span class="p">:</span>
 <a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>    <span class="n">p_nom</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">()</span>
 </code></pre></div>
-<p>A record you never close keeps its tables for the workspace's life, so a chained read stays safe (<a href="../../design/storage/store/#the-databases-schemas">design</a>).</p>
+<p>A record you never close keeps its tables while it or any relation taken from it lives, so a chained read, <code>store.revision(rev_id).record.attributes["p_nom"].df()</code>, stays safe, and so does a relation you derive with <code>filter</code> or <code>join</code>.
+SQL you write over such a relation, <code>con.sql("FROM rel")</code>, does not keep it, so keep the relation, the record or a <code>with</code> block alive until you have fetched (<a href="../../design/storage/store/#the-databases-schemas">design</a>).</p>
 <h2 id="reading-a-directory">Reading a directory<a class="headerlink" href="#reading-a-directory" title="Permanent link">&para;</a></h2>
 <p>A parquet directory is a record, and reading one involves no layers:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Workspace</span>
