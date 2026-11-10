@@ -36,6 +36,7 @@ from datarecord.schema import (
     PropertySpec,
     Schema,
 )
+from datarecord.select import Selection, select
 from datarecord.settle import settle
 from datarecord.store import Claim, Manifest, Revision, Store, Workspace
 
@@ -52,8 +53,10 @@ __all__ = [
     "Relations",
     "Revision",
     "Schema",
+    "Selection",
     "Store",
     "WorkingRecord",
     "Workspace",
+    "select",
     "settle",
 ]

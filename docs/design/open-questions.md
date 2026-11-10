@@ -24,9 +24,21 @@ If this bites in practice, a `pending`-level warning is the cheap next step.
 
 A [results layer](tools/pypsa.md#writing-results) replaces the SubNetworks of its base, but a child editing the topology keeps its parent's until the next solve. Telling them stale needs provenance of which inputs each came from.
 
-### Filtering a record before `build`
+### Naming a label by a property's value as the dim's own keyword
 
-Selecting one period or chosen outputs is a separate feature. It has no design yet.
+A multi-period record labels its snapshots by position, and [`select`](use/selecting.md#keywords-and-values) matches `snapshot=` against those labels. Taking a timestamp there, matched against `snapshot.timestep`, would need a rule for when a keyword reads a property rather than the label.
+
+### Whether a multi-dim left with one coordinate reads as that dim
+
+[Squeezing](use/selecting.md#squeezing-a-dim) a coordinate's dim projects a multi-dim's tuples on the others. One left with a single coordinate stays a struct of one field rather than reading as the dim it draws on.
+
+### Editing through a selection
+
+A `WorkingRecord` over a `Selection` would stage at the base's coordinates through [`lift`](use/selecting.md#lifting-rows-back-to-the-base). Today an edit goes to the base.
+
+### A selection that follows a `WorkingRecord`'s edits
+
+A selection resolves the axes it narrows at the call ([laziness](use/selecting.md#laziness-and-layers)), so a label a `WorkingRecord` adds later is outside them. Following the edits, and registering a selection as DuckDB [views](storage/views.md), would need the narrowing as a plan rather than as labels.
 
 ### Whether a `WorkingRecord` over an open record stages against a snapshot
 
@@ -68,6 +80,7 @@ mathspec spells it as a mathspec relation, `carrier_of: { key: generator, values
 ### Whether a default must name a live label
 
 `bus.carrier` defaults to `AC` in PyPSA's schema, and a default is [never stored](model/properties.md#default_by-a-default-per-category), so nothing checks that `AC` is a label of `carrier`.
+A [selection](use/selecting.md#what-goes-with-a-dropped-label) applies the default when it propagates, so a bus defaulting to a carrier the selection drops goes, and one defaulting to a label no axis holds stays.
 
 ### Whether `bus` earns its place in the fold key
 
@@ -139,6 +152,10 @@ DuckDB 2.0 lets a reader on another cursor see part of a committed transaction o
 `register`, or the first read of a view, pays the [cold fold](layers/resolution.md#a-fold-starts-from-the-nearest-fold-at-hand) of a deep revision, once per lineage in a workspace. It stays linear in depth until a revision's map is [materialised](#when-a-deep-ancestry-materialises-its-map).
 
 ## Settled
+
+### Filtering a record before `build`
+
+A record selects a view of its labels, `record.select(period=2030)`, which any consumer reads as a `RecordLike` ([selecting](use/selecting.md)). One label squeezes its dim, and what refers to a dropped label goes with it.
 
 ### What a pointwise `set` leaving one of two dims outside `partial` NULL reaches
 

@@ -342,6 +342,28 @@ def values_relation(
     return con.sql(f"FROM (VALUES {listed}) t({named})")
 
 
+def numbered_relation(
+    con: DuckDBPyConnection,
+    name: str,
+    values: Sequence[Any],
+    dtype: DuckDBPyType,
+    number: str,
+) -> DuckDBPyRelation:
+    """Return `values` as the column `name` of `dtype`, numbered from 0 in their order in `number`.
+
+    Read once, at the call: the values are bound as one parameter rather than
+    rendered as literals, which a relation re-renders and DuckDB re-parses
+    wherever it is composed, at a cost growing with every value. The rows come
+    from `range`, indexing into the parameter, since DuckDB estimates
+    `unnest` of a parameter at about one row and then builds a hash join on
+    whatever it is joined with, however large.
+    """
+    return con.sql(
+        f"SELECT ($1::{dtype}[])[i + 1] AS {col(name)}, i AS {col(number)} FROM range($2) AS r(i)",
+        params=[list(values), len(values)],
+    )
+
+
 def empty_relation(
     con: DuckDBPyConnection, **columns: DuckDBPyType
 ) -> DuckDBPyRelation:
