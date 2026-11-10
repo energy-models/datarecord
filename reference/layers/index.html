@@ -1,0 +1,2152 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/reference/layers/">
+      
+      
+        <link rel="prev" href="../editing/">
+      
+      
+        <link rel="next" href="../resolution/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Layers - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../static/extras.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#layers" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Layers
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../howto/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  How-to guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../about/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../tutorials/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../howto/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_5" id="__nav_5_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../schema/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Schema
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../selecting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Selecting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../editing/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Editing
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#revisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Revisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tree
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write-once
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-layer-may-contain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a layer may contain
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What a layer may contain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attribute-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribute files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#axis-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Axis files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#layerdata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LayerData
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#removing-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removing labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../resolution/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Resolution
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../format/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../store/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Store
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../glossary/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Glossary
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../api/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../about/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../development/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#revisions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Revisions
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#the-tree" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The tree
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#write-once" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Write-once
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        partial
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-a-layer-may-contain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What a layer may contain
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="What a layer may contain">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#types" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Types
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#attribute-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Attribute files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#axis-files" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Axis files
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Labels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#layerdata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        LayerData
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#removing-labels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Removing labels
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="layers">Layers<a class="headerlink" href="#layers" title="Permanent link">&para;</a></h1>
+<p>This page describes revisions, the tree they form, <code>partial</code>, what a layer may contain and how a layer removes a label.
+How datarecord reads the layers of a revision as one record is on <a href="../resolution/">the resolution page</a>.</p>
+<h2 id="revisions">Revisions<a class="headerlink" href="#revisions" title="Permanent link">&para;</a></h2>
+<p>The data one revision adds on top of its parent (a layer) is a directory under <code>layers/&lt;id&gt;/</code> of a <a href="../store/">store</a>, written once.
+The id of one layer, whose manifest lists its parent, is a revision, which you hold as a <code>Revision</code>.
+A revision with no parent is a root, and a revision exists from the moment the store writes its manifest.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">root</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="kc">None</span><span class="p">)</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">w</span> <span class="o">=</span> <span class="n">WorkingRecord</span><span class="p">(</span><span class="n">root</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_nom"</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"gas"</span><span class="p">)</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">w</span><span class="p">)</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="n">child</span><span class="o">.</span><span class="n">parent</span> <span class="o">==</span> <span class="n">root</span><span class="o">.</span><span class="n">id</span>  <span class="c1"># True</span>
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="n">child</span><span class="o">.</span><span class="n">ancestry</span><span class="p">()</span>  <span class="c1"># [root.id, child.id]</span>
+</code></pre></div>
+<p><code>ancestry()</code> lists the ids from the root to the revision, root first, which is the order in which the fold reads their layers.</p>
+<table>
+<thead>
+<tr>
+<th>Member</th>
+<th>Is</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>the layer's UUID</td>
+</tr>
+<tr>
+<td><code>store</code></td>
+<td>the <code>Store</code> that contains the layer</td>
+</tr>
+<tr>
+<td><code>manifest</code></td>
+<td>the layer's <a href="../format/#manifestjson"><code>Manifest</code></a>: id, parent, schema, files, <code>meta</code></td>
+</tr>
+<tr>
+<td><code>parent</code></td>
+<td>the parent's id, <code>None</code> for a root</td>
+</tr>
+<tr>
+<td><code>meta</code></td>
+<td>the revision's own <code>meta</code>, which a child does not inherit</td>
+</tr>
+<tr>
+<td><code>record</code></td>
+<td>the revision as a <a href="../record/"><code>Record</code></a>: its layer folded over its ancestors'</td>
+</tr>
+<tr>
+<td><code>ancestry()</code></td>
+<td>the ids from the root to this revision</td>
+</tr>
+<tr>
+<td><code>materialise()</code></td>
+<td>writes the revision's fold under <code>resolved/</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../store/">The store page</a> describes claims, commits and serialising a revision.
+<a href="../../howto/branch-and-materialise/">Branch and materialise</a> shows the calls in use.</p>
+</div>
+<h2 id="the-tree">The tree<a class="headerlink" href="#the-tree" title="Permanent link">&para;</a></h2>
+<p>Revisions form a tree.
+Revisions that share one parent are branches, each with its own layer over the same ancestry.
+A branch never reads a sibling's layer.</p>
+<p>Each manifest lists its parent, so datarecord resolves a revision id to its ancestry from the store's location alone.</p>
+<h2 id="write-once">Write-once<a class="headerlink" href="#write-once" title="Permanent link">&para;</a></h2>
+<p>A layer's data is written once.
+<code>Claim.commit</code>, which <code>Store.commit</code> wraps, writes the layer's files and then its manifest, create-only.
+After that, datarecord writes into the layer directory only under <code>resolved/</code>, when you materialise the revision.
+A read gives the same answers with or without those files.</p>
+<p>A read opens exactly the files the manifest lists, and ignores any other file in the directory.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../../about/layers/">Layers and <code>partial</code></a> argues for write-once layers.
+<a href="../format/">The format page</a> lists the files of a layer.</p>
+</div>
+<h2 id="partial"><code>partial</code><a class="headerlink" href="#partial" title="Permanent link">&para;</a></h2>
+<p><code>partial</code> is the set of dims, declared as <code>Schema.partial</code>, along which a layer overrides one value per label.
+Along any other dim, a layer restates the whole extent of each key it touches.
+The owner map assigns an attribute's values to a layer per key. The key is the attribute's dims that are in <code>partial</code>, with the attribute's name:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>key(attribute) = (attribute.dims ∩ partial, attribute)
+</code></pre></div>
+<p>With <code>partial = {"entity"}</code>, <code>p_max_pu</code> over <code>entity</code> and <code>snapshot</code> is keyed per entity. The owner map assigns the snapshot series of each entity whole to one layer:</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 250" width="780" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="lp-t lp-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="lp-t">A layer overrides one label along a dim in partial and restates the series along any other</title>
+  <desc id="lp-d">With partial dims entity, the root writes p_max_pu for gas and wind at snapshots 0 and 1. The child changes wind at snapshot 1 to 0.9. It writes rows for wind alone, since entity is in partial, and restates wind's whole series, 0.5 and 0.9, since snapshot is not. The read takes gas from the root and wind from the child.</desc>
+  <defs>
+    <marker id="lp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="lp-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H211 A3,3 0 0 1 214,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="72" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="90" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,108 H214 V127 A3,3 0 0 1 211,130 H19 A3,3 0 0 1 16,127 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,192 V173 A3,3 0 0 1 19,170 H211 A3,3 0 0 1 214,173 V192 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="16" y="192" width="198" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M16,210 H214 V229 A3,3 0 0 1 211,232 H19 A3,3 0 0 1 16,229 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M560,54 V35 A3,3 0 0 1 563,32 H755 A3,3 0 0 1 758,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="560" y="54" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="560" y="72" width="198" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="560" y="90" width="198" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M560,108 H758 V127 A3,3 0 0 1 755,130 H563 A3,3 0 0 1 560,127 Z" fill="#E69F00" fill-opacity="0.08"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.7">p_max_pu</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="168" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="86" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="168" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.2</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="86" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="168" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.3</text>
+    <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="86" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="168" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.5</text>
+    <text x="24" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="86" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="168" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.6</text>
+    <text x="16" y="160" font-weight="bold">child layer</text>
+    <text x="118" y="160" fill-opacity="0.7">partial {entity}</text>
+    <text x="24" y="185" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="86" y="185" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="168" y="185" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="206" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="86" y="206" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="168" y="206" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.5</text>
+    <text x="24" y="224" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="86" y="224" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="168" y="224" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="560" y="22" font-weight="bold">read</text>
+    <text x="606" y="22" fill-opacity="0.7">p_max_pu</text>
+    <text x="568" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="630" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">snapshot</text>
+    <text x="712" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="568" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="630" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="712" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.2</text>
+    <text x="568" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="630" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="712" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.3</text>
+    <text x="568" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="630" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0</text>
+    <text x="712" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.5</text>
+    <text x="568" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="630" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">1</text>
+    <text x="712" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="310" y="92" font-weight="bold" font-size="12">fold</text>
+    <text x="230" y="222" font-size="12">entity is in partial: the child writes wind alone.</text>
+    <text x="230" y="238" font-size="12">snapshot is not: the child restates wind's whole series.</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="198" height="98" rx="3"/>
+    <line x1="16" y1="54" x2="214" y2="54"/>
+    <rect x="16" y="170" width="198" height="62" rx="3"/>
+    <line x1="16" y1="192" x2="214" y2="192"/>
+    <rect x="560" y="32" width="198" height="98" rx="3"/>
+    <line x1="560" y1="54" x2="758" y2="54"/>
+    <path d="M214,82 H300 V201 H214"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#lp-arrow)">
+    <path d="M300,100 L552,100"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>The child changes wind at snapshot 1 and so writes wind's whole series.
+The read takes gas from the root, since the child writes no gas row, and wind from the child.
+A <a href="../editing/"><code>WorkingRecord</code></a> stages the rest of the series for you: <code>set("p_max_pu", 0.9, entity="wind", snapshot=1)</code> also stages wind's row at snapshot 0.</p>
+<ul>
+<li>A multi-dim in <code>partial</code> is in the key as its struct column, so a layer overrides one tuple's value. With <code>connection</code> outside <code>partial</code>, a layer that changes one connection's <code>efficiency</code> restates every connection's.</li>
+<li>The owner map assigns a curve whole to one layer, because <code>breakpoint</code> is in no key.</li>
+<li><code>partial</code> applies to attribute values alone. A layer that changes an axis restates the whole axis, whatever <code>partial</code> contains (<a href="#removing-labels">removing labels</a>).</li>
+<li>Only a property of a dim in <code>partial</code> can be categorising (<a href="../data-model/">the data model</a>).</li>
+<li>The fold reads each layer under the schema in its own manifest, so a child may add a dim to <code>partial</code> (<a href="../resolution/#a-wider-schema">a wider schema</a>).</li>
+</ul>
+<p>Under the PyPSA schema's <code>partial</code>, a layer overrides one bus's <code>v_nom</code> and restates every carrier's <code>co2_emissions</code>, because <code>carrier</code> is not in <code>partial</code>.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../schema/">The schema page</a> lists the <code>partial</code> key and what it accepts.
+<a href="../../about/layers/">Layers and <code>partial</code></a> argues for putting <code>partial</code> on the dim.</p>
+</div>
+<h2 id="what-a-layer-may-contain">What a layer may contain<a class="headerlink" href="#what-a-layer-may-contain" title="Permanent link">&para;</a></h2>
+<p>The writer checks each file of a layer against the schema in the layer's manifest, as it writes the file.
+A refused layer stays pending, and no read opens it.</p>
+<h3 id="types">Types<a class="headerlink" href="#types" title="Permanent link">&para;</a></h3>
+<p>The writer casts each column to its declared dtype, from a wider type of the same kind or from a column of NULLs alone.
+It refuses any other type, naming the attribute, property or dim and its dtype.</p>
+<h3 id="attribute-files">Attribute files<a class="headerlink" href="#attribute-files" title="Permanent link">&para;</a></h3>
+<ul>
+<li>The writer refuses an attribute that the schema does not declare.</li>
+<li>An attribute file has exactly its attribute's own coordinates, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code> (<a href="../format/#attributesattrparquet">the long schema</a>). The writer refuses a file that lacks a coordinate, or that has a column the attribute is not over.</li>
+<li>A multi-dim's column is a struct with exactly its coordinates as fields, and the writer refuses a tuple with some fields NULL and not all.</li>
+<li>The writer refuses two rows of one attribute at one point that set the same dims. It also refuses two rows there where each row leaves NULL a dim that the other row sets, unless a third row sets both.</li>
+</ul>
+<h3 id="axis-files">Axis files<a class="headerlink" href="#axis-files" title="Permanent link">&para;</a></h3>
+<p>A <code>dims/&lt;dim&gt;.parquet</code> file contains the whole axis at the new revision, in order, with each label's properties.
+The writer refuses a file for an undeclared dim or a <a href="../data-model/">dim with <code>one_of</code></a>, and a file with a label twice.
+It refuses a column other than the key and the subject's declared properties.
+It also refuses a file with its parent's labels in a different order from the parent's, and a new label may sit anywhere:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>ValueError: dims/entity.parquet puts entity 'wind' out of its parent's order; a restatement keeps the order of the labels its parent holds and places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+</code></pre></div>
+<h3 id="labels">Labels<a class="headerlink" href="#labels" title="Permanent link">&para;</a></h3>
+<p>The labels and tuples in every row of a layer are on the layer's final axes.
+The final axis of a dim is the layer's own file, or else the parent's resolved axis.
+The writer refuses an attribute row with a label or tuple outside the final axes.
+It refuses a multi-dim's tuple that contains a label outside its coordinate's final axis the same way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ValueError: attributes/p_max_pu.parquet names 'entity' labels ['coal'], which the layer's dims/entity.parquet does not hold; add them there or drop those rows (https://energy-models.github.io/datarecord/reference/layers/)
+</code></pre></div>
+<h3 id="layerdata"><code>LayerData</code><a class="headerlink" href="#layerdata" title="Permanent link">&para;</a></h3>
+<p><code>LayerData</code> is the protocol the writer reads: the rows of one layer, as pairs of an enumerator and a read.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">LayerData</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    <span class="nd">@property</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">schema</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Schema</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">axis</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">dim</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attributes</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">set</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">attribute</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">DuckDBPyRelation</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p><code>axis</code> returns the rows of one axis file, and <code>attribute</code> the long rows of one attribute file.
+<code>Store.commit</code>, <code>Claim.commit</code> and <code>Workspace.write</code> also take a <a href="../record/"><code>RecordLike</code></a>, such as a framework object that a <a href="../tools/">tool</a> presents, and read its relations through these pairs.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../../howto/store-a-record/">Store a record</a> shows a write from start to end.</p>
+</div>
+<h2 id="removing-labels">Removing labels<a class="headerlink" href="#removing-labels" title="Permanent link">&para;</a></h2>
+<p>To remove a label is to restate its dim's axis without it, which removes its values and the tuples that contain it.
+<code>remove(dim, labels)</code> on a <a href="../editing/"><code>WorkingRecord</code></a> writes one layer that restates the axis without the labels, and every multi-dim over <code>dim</code> without the tuples that contain them:</p>
+<figure class="diagram">
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 370" width="780" height="370" style="max-width: 100%; height: auto" role="img" aria-labelledby="lr-t lr-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="lr-t">Removing a label removes its values and the tuples that contain it</title>
+  <desc id="lr-d">The root contains the entity axis gas, wind, coal, the connection tuples gas north and coal north, and p_nom for all three entities. The child restates the entity axis as gas and wind, and the connection axis as gas north. It writes no p_nom file. The read has no coal label, no coal north tuple and no p_nom row for coal.</desc>
+  <defs>
+    <marker id="lr-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="lr-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H163 A3,3 0 0 1 166,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="150" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="72" width="150" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H166 V109 A3,3 0 0 1 163,112 H19 A3,3 0 0 1 16,109 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H166 V109 A3,3 0 0 1 163,112 H19 A3,3 0 0 1 16,109 Z" fill="url(#lr-hatch)"/>
+    <path d="M16,172 V153 A3,3 0 0 1 19,150 H163 A3,3 0 0 1 166,153 V172 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="172" width="150" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,190 H166 V209 A3,3 0 0 1 163,212 H19 A3,3 0 0 1 16,209 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,190 H166 V209 A3,3 0 0 1 163,212 H19 A3,3 0 0 1 16,209 Z" fill="url(#lr-hatch)"/>
+    <path d="M16,270 V251 A3,3 0 0 1 19,248 H163 A3,3 0 0 1 166,251 V270 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="270" width="150" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="288" width="150" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,306 H166 V325 A3,3 0 0 1 163,328 H19 A3,3 0 0 1 16,325 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,306 H166 V325 A3,3 0 0 1 163,328 H19 A3,3 0 0 1 16,325 Z" fill="url(#lr-hatch)"/>
+    <path d="M300,54 V35 A3,3 0 0 1 303,32 H447 A3,3 0 0 1 450,35 V54 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="300" y="54" width="150" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M300,72 H450 V91 A3,3 0 0 1 447,94 H303 A3,3 0 0 1 300,91 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M300,172 V153 A3,3 0 0 1 303,150 H447 A3,3 0 0 1 450,153 V172 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M300,172 H450 V191 A3,3 0 0 1 447,194 H303 A3,3 0 0 1 300,191 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M300,270 V251 A3,3 0 0 1 303,248 H447 A3,3 0 0 1 450,251 V270 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M584,54 V35 A3,3 0 0 1 587,32 H761 A3,3 0 0 1 764,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="584" y="54" width="180" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="584" y="72" width="180" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M584,172 V153 A3,3 0 0 1 587,150 H761 A3,3 0 0 1 764,153 V172 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="584" y="172" width="180" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M584,270 V251 A3,3 0 0 1 587,248 H761 A3,3 0 0 1 764,251 V270 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="584" y="270" width="180" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="584" y="288" width="180" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="16" y="346" width="14" height="14" fill="#0072B2" fill-opacity="0.08"/>
+    <rect x="166" y="346" width="14" height="14" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="316" y="346" width="14" height="14" fill="url(#lr-hatch)"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">coal</text>
+    <text x="16" y="140" font-weight="bold"></text>
+    <text x="16" y="140" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/connection</text>
+    <text x="24" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
+    <text x="24" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(gas, north)</text>
+    <text x="24" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(coal, north)</text>
+    <text x="16" y="238" font-weight="bold"></text>
+    <text x="16" y="238" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attributes/p_nom</text>
+    <text x="24" y="263" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="104" y="263" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="284" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="104" y="284" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">50</text>
+    <text x="24" y="302" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="104" y="302" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">100</text>
+    <text x="24" y="320" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">coal</text>
+    <text x="104" y="320" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">80</text>
+    <text x="300" y="22" font-weight="bold">child layer</text>
+    <text x="402" y="22" fill-opacity="0.7">remove coal</text>
+    <text x="308" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="308" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="308" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="300" y="140" font-weight="bold"></text>
+    <text x="308" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
+    <text x="308" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(gas, north)</text>
+    <text x="300" y="238" font-weight="bold"></text>
+    <text x="308" y="263" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="388" y="263" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="312" y="284" font-style="italic" font-size="12">no file</text>
+    <text x="584" y="22" font-weight="bold">read</text>
+    <text x="592" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="592" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="592" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="596" y="104" font-style="italic" font-size="12">no row: coal is removed</text>
+    <text x="584" y="140" font-weight="bold"></text>
+    <text x="592" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
+    <text x="592" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(gas, north)</text>
+    <text x="596" y="204" font-style="italic" font-size="12">no row: contains coal</text>
+    <text x="584" y="238" font-weight="bold"></text>
+    <text x="592" y="263" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="672" y="263" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="592" y="284" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="672" y="284" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">50</text>
+    <text x="592" y="302" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="672" y="302" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">100</text>
+    <text x="596" y="320" font-style="italic" font-size="12">no row: coal is removed</text>
+    <text x="468" y="64" font-weight="bold" font-size="12">fold</text>
+    <text x="36" y="357" font-size="12">root layer</text>
+    <text x="186" y="357" font-size="12">child layer</text>
+    <text x="336" y="357" font-size="12">removed</text>
+    <text x="486" y="357" font-size="12">no row or no file</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="150" height="80" rx="3"/>
+    <line x1="16" y1="54" x2="166" y2="54"/>
+    <rect x="16" y="150" width="150" height="62" rx="3"/>
+    <line x1="16" y1="172" x2="166" y2="172"/>
+    <rect x="16" y="248" width="150" height="80" rx="3"/>
+    <line x1="16" y1="270" x2="166" y2="270"/>
+    <rect x="300" y="32" width="150" height="62" rx="3"/>
+    <line x1="300" y1="54" x2="450" y2="54"/>
+    <rect x="300" y="150" width="150" height="44" rx="3"/>
+    <line x1="300" y1="172" x2="450" y2="172"/>
+    <rect x="304" y="272" width="142" height="15" rx="3" stroke-dasharray="4 3"/>
+    <rect x="300" y="248" width="150" height="44" rx="3"/>
+    <line x1="300" y1="270" x2="450" y2="270"/>
+    <rect x="588" y="92" width="172" height="15" rx="3" stroke-dasharray="4 3"/>
+    <rect x="584" y="32" width="180" height="80" rx="3"/>
+    <line x1="584" y1="54" x2="764" y2="54"/>
+    <rect x="588" y="192" width="172" height="15" rx="3" stroke-dasharray="4 3"/>
+    <rect x="584" y="150" width="180" height="62" rx="3"/>
+    <line x1="584" y1="172" x2="764" y2="172"/>
+    <rect x="588" y="308" width="172" height="15" rx="3" stroke-dasharray="4 3"/>
+    <rect x="584" y="248" width="180" height="80" rx="3"/>
+    <line x1="584" y1="270" x2="764" y2="270"/>
+    <rect x="16" y="346" width="14" height="14"/>
+    <rect x="166" y="346" width="14" height="14"/>
+    <rect x="316" y="346" width="14" height="14"/>
+    <rect x="466" y="346" width="14" height="14" rx="2" stroke-dasharray="3 2"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#lr-arrow)">
+    <path d="M458,72 L576,72"/>
+    <path d="M458,180 L576,180"/>
+    <path d="M458,286 L576,286"/>
+  </g>
+</svg>
+
+</figure>
+
+<p>The child writes no <code>p_nom</code> file, and the read still has no <code>p_nom</code> row for coal.
+A removal applies to every attribute.
+On a dim in <code>partial</code> the fold drops each parent row that has the label, and on any other dim <a href="../resolution/#labels-outside-the-key">the read drops it</a>.
+A row that leaves the dim NULL stays, and applies to the labels that remain.</p>
+<ul>
+<li>A removed tuple takes its values. The labels in it keep their other rows, so removing <code>(gas, north)</code> leaves <code>gas</code>.</li>
+<li><code>remove</code> refuses a dim with <code>one_of</code>, whose axis is the schema's list.</li>
+<li>A sibling branch keeps a label that one branch removes.</li>
+<li>A label added again after its removal has none of the values it had below the removal. Every row that leaves its dim NULL applies to it again, whichever layer wrote the row.</li>
+</ul>
+<p>The writer refuses a layer that leaves a removed label in a reference.
+A reference is a multi-dim's tuple, or a property that <a href="../data-model/">refers to a dim</a>.
+The writer checks each subject whose rows contain a label the layer removes.
+It also checks each property of a subject the layer restates against every label removed so far.
+So where an ancestor left such a reference, the writer refuses the next layer that restates its subject.
+<code>remove</code> refuses a label while a property has it as a value.</p>
+<div class="admonition info">
+<p class="admonition-title">See also</p>
+<p><a href="../../howto/edit-a-record/">Edit a record</a> shows <code>add</code> and <code>remove</code>.
+<a href="../../about/layers/">Layers and <code>partial</code></a> argues for removal as restatement.</p>
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../editing/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Editing">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Editing
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../resolution/" class="md-footer__link md-footer__link--next" aria-label="Next: Resolution">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Resolution
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

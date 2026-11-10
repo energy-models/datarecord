@@ -2,69 +2,53 @@
 SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 816 236" width="816" height="236" style="max-width: 100%; height: auto" role="img" aria-labelledby="ro-t ro-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="ro-t">A read takes the layers through the fold and the owner map</title>
-  <desc id="ro-d">The layers, root and child, feed the fold, which builds the owner map: one small relation naming the owning layer of each key. The read joins the owning layers' value files to the map and hands the owned rows to the consumer, which settles each coordinate by the broadcast rule. A fold at hand, materialised on disk or held as shared tables, seeds the fold so that it starts partway.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 190" width="760" height="190" style="max-width: 100%; height: auto" role="img" aria-labelledby="ro-t ro-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="ro-t">A read takes the layers through the fold to the owner map</title>
+  <desc id="ro-d">The root layer and the child layer feed the fold, which builds the owner map: the layer it assigns each key to. A fold at hand, materialised on disk or kept by the workspace, seeds the fold so that it starts partway. The read joins to the map the files of the layers it lists, and returns each attribute's rows as written. A reader settles each point by the broadcast rule.</desc>
   <defs>
     <marker id="ro-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
     </marker>
+    <pattern id="ro-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
   </defs>
   <g stroke="none">
-    <rect x="26" y="96" width="92" height="32" rx="3" fill="#0072B2" fill-opacity="0.2"/>
-    <rect x="26" y="138" width="92" height="32" rx="3" fill="#E69F00" fill-opacity="0.2"/>
-    <rect x="352" y="92" width="112" height="64" rx="3" fill="currentColor" fill-opacity="0.1"/>
-    <rect x="16" y="216" width="14" height="14" fill="#0072B2" fill-opacity="0.2"/>
-    <rect x="136" y="216" width="14" height="14" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="16" y="30" width="130" height="44" rx="3" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="100" width="130" height="44" rx="3" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="250" y="64" width="140" height="44" rx="3" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="250" y="140" width="140" height="36" rx="3" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="500" y="64" width="120" height="44" rx="3" fill="#009E73" fill-opacity="0.2"/>
   </g>
   <g fill="currentColor">
-    <text x="72" y="86" text-anchor="middle" font-weight="bold">layers</text>
-    <text x="72.0" y="116.0" text-anchor="middle" font-size="12" fill-opacity="0.8">root layer</text>
-    <text x="72.0" y="158.0" text-anchor="middle" font-size="12" fill-opacity="0.8">child layer</text>
-    <text x="240.0" y="112.0" text-anchor="middle" font-weight="bold">fold</text>
-    <text x="240.0" y="128.0" text-anchor="middle" font-size="12" fill-opacity="0.8">one layer</text>
-    <text x="240.0" y="144.0" text-anchor="middle" font-size="12" fill-opacity="0.8">at a time</text>
-    <text x="408.0" y="112.0" text-anchor="middle" font-weight="bold">owner map</text>
-    <text x="408.0" y="128.0" text-anchor="middle" font-size="12" fill-opacity="0.8">who owns</text>
-    <text x="408.0" y="144.0" text-anchor="middle" font-size="12" fill-opacity="0.8">each key</text>
-    <text x="576.0" y="112.0" text-anchor="middle" font-weight="bold">read</text>
-    <text x="576.0" y="128.0" text-anchor="middle" font-size="12" fill-opacity="0.8">one hash join</text>
-    <text x="576.0" y="144.0" text-anchor="middle" font-size="12" fill-opacity="0.8">files to map</text>
-    <text x="744.0" y="112.0" text-anchor="middle" font-weight="bold">consumer</text>
-    <text x="744.0" y="128.0" text-anchor="middle" font-size="12" fill-opacity="0.8">settles by the</text>
-    <text x="744.0" y="144.0" text-anchor="middle" font-size="12" fill-opacity="0.8">broadcast rule</text>
-    <text x="240.0" y="28.0" text-anchor="middle" font-weight="bold">fold at hand</text>
-    <text x="240.0" y="44.0" text-anchor="middle" font-size="12" fill-opacity="0.8">materialised or shared tables</text>
+    <text x="24" y="49.0" font-weight="bold">root layer</text>
+    <text x="24" y="65.0" fill-opacity="0.7" font-size="12">layers/&lt;root&gt;/</text>
+    <text x="24" y="119.0" font-weight="bold">child layer</text>
+    <text x="24" y="135.0" fill-opacity="0.7" font-size="12">layers/&lt;child&gt;/</text>
+    <text x="258" y="83.0" font-weight="bold">owner map</text>
+    <text x="258" y="99.0" fill-opacity="0.7" font-size="12">a layer per key</text>
+    <text x="258" y="162.0" font-weight="bold">fold at hand</text>
+    <text x="508" y="83.0" font-weight="bold">rows as written</text>
+    <text x="508" y="99.0" fill-opacity="0.7" font-size="12">per attribute</text>
+    <text x="668" y="83.0" font-weight="bold">reader</text>
+    <text x="668" y="99.0" fill-opacity="0.7" font-size="12">settles</text>
+    <text x="200" y="78" font-weight="bold" font-size="12">fold</text>
+    <text x="330" y="132" fill-opacity="0.7" font-size="12">seeds</text>
+    <text x="400" y="78" font-weight="bold" font-size="12">read</text>
   </g>
   <g fill="none" stroke="currentColor" stroke-width="1">
-    <rect x="16" y="68" width="112" height="112" rx="3"/>
-    <rect x="26" y="96" width="92" height="32" rx="3"/>
-    <rect x="26" y="138" width="92" height="32" rx="3"/>
-    <rect x="184" y="92" width="112" height="64" rx="3"/>
-    <rect x="352" y="92" width="112" height="64" rx="3"/>
-    <rect x="520" y="92" width="112" height="64" rx="3"/>
-    <rect x="688" y="92" width="112" height="64" rx="3"/>
-    <rect x="150" y="12" width="180" height="40" rx="3"/>
-    <rect x="16" y="216" width="14" height="14"/>
-    <rect x="136" y="216" width="14" height="14"/>
+    <rect x="16" y="30" width="130" height="44" rx="3"/>
+    <rect x="16" y="100" width="130" height="44" rx="3"/>
+    <rect x="250" y="64" width="140" height="44" rx="3"/>
+    <rect x="250" y="140" width="140" height="36" rx="3"/>
+    <rect x="500" y="64" width="120" height="44" rx="3"/>
+    <rect x="660" y="64" width="84" height="44" rx="3"/>
   </g>
   <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#ro-arrow)">
-    <path d="M134,124.0 H180"/>
-    <path d="M302,124.0 H348"/>
-    <path d="M470,124.0 H516"/>
-    <path d="M638,124.0 H684"/>
-    <path d="M240,52 V88"/>
-    <path d="M72,180 V206 H576 V160"/>
-  </g>
-  <g fill="currentColor">
-    <text x="156" y="116.0" font-size="12" fill-opacity="0.7" text-anchor="middle">keys</text>
-    <text x="324" y="116.0" font-size="12" fill-opacity="0.7" text-anchor="middle">builds</text>
-    <text x="492" y="116.0" font-size="12" fill-opacity="0.7" text-anchor="middle">owners</text>
-    <text x="660" y="108.0" font-size="12" fill-opacity="0.7" text-anchor="middle">owned</text>
-    <text x="660" y="120.0" font-size="12" fill-opacity="0.7" text-anchor="middle">rows</text>
-    <text x="248" y="74" font-size="12" fill-opacity="0.7">seed</text>
-    <text x="324" y="200" font-size="12" fill-opacity="0.7" text-anchor="middle">value files of the owning layers</text>
-    <text x="36" y="227" font-size="12">root layer</text>
-    <text x="156" y="227" font-size="12">child layer</text>
+    <path d="M146,52 L190,52 L190,86 L242,86"/>
+    <path d="M146,122 L190,122 L190,86 L242,86"/>
+    <path d="M320,140 L320,116"/>
+    <path d="M390,86 L492,86"/>
+    <path d="M620,86 L652,86"/>
   </g>
 </svg>
