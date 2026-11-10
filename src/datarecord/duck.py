@@ -193,10 +193,10 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
+    _dr_frame = frame
     if isinstance(frame, DuckDBPyRelation):
-        name = f"_frame_{uuid4().hex}"
         try:
-            con.register(name, frame)
+            con.sql("FROM _dr_frame")
         except duckdb.InvalidInputException as e:
             msg = (
                 "this relation was built on another connection or thread; build "
@@ -204,12 +204,9 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
                 "polars or arrow frame to land"
             )
             raise ValueError(msg) from e
-        con.unregister(name)
         rel = frame
     elif is_frame(frame):
-        pandas = sys.modules.get("pandas")
-        pandas_frame = pandas is not None and isinstance(frame, pandas.DataFrame)
-        rel = con.from_df(frame) if pandas_frame else con.from_arrow(frame)
+        rel = con.sql("FROM _dr_frame")
     else:
         msg = (
             f"a {type(frame).__name__} is no frame; hand over a DuckDB relation, "
