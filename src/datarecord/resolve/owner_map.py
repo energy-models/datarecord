@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from contextlib import contextmanager
 from functools import reduce
 from itertools import combinations
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import duckdb
 from duckdb import CoalesceOperator as coalesce
@@ -31,19 +31,20 @@ from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
+    FOLD,
     ex_all,
     fn,
     join_on,
     null_safe,
     shared_table,
     struct_of,
+    temp_table,
     union_all_by_name,
 )
 from datarecord.resolve.coords import (
     Coords,
     _base_and_above,
     _dead_keys,
-    _table_name,
     removed_labels,
 )
 from datarecord.resolve.fold import Fold, read_owner_map
@@ -648,7 +649,7 @@ def _fold_at_hand(source: LayerSource) -> Fold | None:
 
 @contextmanager
 def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
-    """`_fold_map` with each source's fold kept in a table, every one dropped on exit.
+    """`_fold_map` with each source's fold kept in a temporary table, every one dropped on exit.
 
     The relation entered reads the last table, so it is read before exit.
     """
@@ -661,14 +662,13 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
 
 
 def _checkpoint(
-    rel: DuckDBPyRelation,
-    made: list[str],
-    con: DuckDBPyConnection,
-    qualified: Callable[[str], str],
+    rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """`rel` as a table of the database `qualified` names it in, its name appended to `made`."""
-    name = qualified(f"_fold_{uuid4().hex}")
-    rel.create(name)
+    """`rel` as a temporary table of `con`, its name appended to `made`.
+
+    `con` alone sees it, so the fold that makes it reads and drops it there.
+    """
+    name = temp_table(con, rel, "fold")
     made.append(name)
     return con.table(name)
 
@@ -743,11 +743,7 @@ def _fold_onto(
         return source_for(sources, layer)
 
     def keep(rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        return (
-            rel
-            if made is None
-            else _checkpoint(rel, made, con, sources[-1].workspace.qualified)
-        )
+        return rel if made is None else _checkpoint(rel, made, con)
 
     for source in sources:
         if rel is not None:
@@ -893,11 +889,11 @@ def _frozen_table(
     `None` over no source, so that the tail folds onto no map.
 
     Keyed by `revision_id` rather than by the layers: they *are* what that
-    node resolves from, a staged source only ever being appended after it. The
-    map is keyed by the last source's schema, which `revision_id` fixes, so
-    the table, `owner_map_<id>`, is shared by every cursor on the workspace and
-    valid for every reader of the node. A persisted map is cast, parquet not
-    carrying the declared types.
+    node resolves from, a staged source only ever being appended after it.
+    The map is keyed by the last source's schema, which `revision_id` fixes,
+    so the table, `_fold."<id>".owner_map` of its database, is shared by every cursor on the
+    workspace and valid for every reader of the node. A persisted map is
+    cast, parquet not carrying the declared types.
 
     Notes
     -----
@@ -915,6 +911,9 @@ def _frozen_table(
             return cast_declared(last.schema, rel)
     return shared_table(
         con,
-        _table_name(last.workspace, revision_id),
+        last.workspace.name,
+        FOLD,
+        revision_id,
+        "owner_map",
         lambda: _checkpointed(sources),
     )

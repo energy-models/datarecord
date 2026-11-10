@@ -18,11 +18,12 @@ Notes
 from __future__ import annotations
 
 import threading
-from collections.abc import Callable, Sequence
-from dataclasses import dataclass
-from functools import cached_property, wraps
-from typing import TYPE_CHECKING, cast
-from uuid import UUID
+import weakref
+from collections.abc import Callable, Hashable, Sequence
+from dataclasses import dataclass, field
+from functools import cached_property, partial, wraps
+from typing import TYPE_CHECKING, ClassVar, Self, cast
+from uuid import UUID, uuid4
 
 import duckdb
 from duckdb import CoalesceOperator as coalesce
@@ -34,8 +35,11 @@ from duckdb import StarExpression as star
 from duckdb._relation import _render
 
 from datarecord.duck import (
+    FOLD,
+    anchored,
     empty_relation,
     fn,
+    nested,
     null_safe,
     struct_of,
     transaction,
@@ -308,7 +312,9 @@ class Record:
 
     Nothing up to the last frozen source can go stale, so the fold over them is
     kept in shared tables. A source after it is folded onto those tables per
-    read, so a staged edit reads back with nothing to invalidate.
+    read, so a staged edit reads back with nothing to invalidate. The record
+    holds those tables from construction until `close()`, or until it and
+    every relation taken from it are collected.
 
     Parameters
     ----------
@@ -322,6 +328,11 @@ class Record:
     workspace
         Where the calling thread's cursor comes from.
 
+    Raises
+    ------
+    ValueError
+        On a read once the record is `closed`.
+
     Notes
     -----
     - [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
@@ -329,11 +340,71 @@ class Record:
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     """
+
+    #: What a read of a closed record raises.
+    _closed_message: ClassVar[str] = (
+        "this `Record` is closed and its folds released; read the revision's "
+        "`record` again "
+        "(https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)"
+    )
 
     revision_id: UUID
     sources: list[LayerSource]
     workspace: Workspace
+    #: Runs once, at collection unless `close()` detaches it first.
+    _release: weakref.finalize[..., None] = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        holds = self.workspace._holds
+        holds.hold(self._holder, self._kept_schemas)
+        release = weakref.finalize(self, holds.release, self._holder)
+        object.__setattr__(self, "_release", release)
+
+    def close(self) -> None:
+        """Release the tables this record reads, each dropped once no other record or registration holds it.
+
+        Closing again does nothing. A closed record refuses every read with a
+        `ValueError`, and a relation taken from it before fails once its
+        tables are dropped.
+
+        Notes
+        -----
+        - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+        """
+        if self._release.detach() is not None:
+            self.workspace._holds.release(self._holder)
+
+    @property
+    def closed(self) -> bool:
+        """Whether `close()` ran, after which the record refuses every read."""
+        return not self._release.alive
+
+    def __enter__(self) -> Self:
+        return self
+
+    def __exit__(self, *exc: object) -> None:
+        self.close()
+
+    @cached_property
+    def _holder(self) -> Hashable:
+        """This record's key among the workspace's holders, one per instance."""
+        return uuid4()
+
+    def _require_open(self) -> None:
+        """Refuse a closed record before DuckDB finds its tables gone.
+
+        Called in `_frozen_coords`, which every read takes: the coords and the
+        owner map both. A subclass says what it lost in `_closed_message`.
+
+        Raises
+        ------
+        ValueError
+            Once `close()` ran.
+        """
+        if self.closed:
+            raise ValueError(self._closed_message)
 
     @property
     def schema(self) -> Schema:
@@ -379,17 +450,37 @@ class Record:
     @_stable_cache
     def dims(self) -> LazyRelations:
         """Every dim the schema declares, an empty axis where no layer holds one."""
-        return LazyRelations(tuple(self.schema.dimensions), self._axis_frame)
+        return LazyRelations(
+            tuple(self.schema.dimensions), partial(self._handed, self._axis_frame)
+        )
 
     @_stable_cache
     def properties(self) -> LazyRelations:
         """Every subject the schema declares properties of, an empty axis where no layer holds one."""
-        return LazyRelations(tuple(self.schema.properties), self._property_frame)
+        return LazyRelations(
+            tuple(self.schema.properties), partial(self._handed, self._property_frame)
+        )
 
     @_stable_cache
     def attributes(self) -> LazyRelations:
         """Every attribute the schema declares, an empty relation where no layer holds a row."""
-        return LazyRelations(tuple(self.schema.attributes), self._relation)
+        return LazyRelations(
+            tuple(self.schema.attributes), partial(self._handed, self._relation)
+        )
+
+    def _handed(
+        self, build: Callable[[str], DuckDBPyRelation], key: str
+    ) -> DuckDBPyRelation:
+        """`build(key)`, keeping this record, and so the tables it holds, alive while the relation lives.
+
+        Only a relation handed to a caller is anchored: one cached on the
+        record would keep it alive for good.
+
+        Notes
+        -----
+        - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+        """
+        return anchored(build(key), self)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
         """Straight off the owner map, which folded these in for free.
@@ -405,13 +496,16 @@ class Record:
 
         The views sit in `name.dims`, `name.properties` and `name.attributes` of
         the workspace's database, as in `datarecord.name.dims.bus`, each reading as
-        its relation here; over a `WorkingRecord` they follow every edit. `name` is
-        listed in `Workspace.registered()`.
+        its relation here; over a `WorkingRecord` they follow every edit. They hold
+        the tables the record reads, its folds and a `WorkingRecord`'s staging
+        tables, until `unregister(name)`, whether the record is closed or not.
+        `name` is listed in `Workspace.registered()`.
 
         Raises
         ------
         duckdb.CatalogException
-            If the schema `name` exists in the workspace's database.
+            If the schema `name` exists in the workspace's database, as
+            `_fold` and `_staged` always do.
         duckdb.TransactionException
             Where the cursor already holds an open transaction, or another
             cursor registers `name` at the same time.
@@ -432,20 +526,39 @@ class Record:
             for view, rel in relations.items()
         }
         con = self.con
+        holds = ws._holds
         with transaction(
             con,
             "register",
             "https://energy-models.github.io/datarecord/design/storage/views/",
-        ):
+        ) as on_rollback:
             con.execute(f"CREATE SCHEMA {col(ws.name, name)}")
+            holds.hold(name, self._kept_schemas)
+            on_rollback(partial(holds.release, name))
             for kind in kinds:
                 con.execute(f"CREATE SCHEMA {col(ws.name, name, kind)}")
             for path, query in rendered.items():
                 con._create_view(path, query)
             con.execute(
-                f"INSERT INTO {ws.qualified('registered')} (name, revision, working) VALUES (?, ?, ?)",
-                [name, self.revision_id, not self.frozen],
+                f"INSERT INTO {ws.qualified('registered')} (name, revision, working, held)"
+                " VALUES (?, ?, ?, ?)",
+                [
+                    name,
+                    self.revision_id,
+                    not self.frozen,
+                    sorted(self._kept_schemas),
+                ],
             )
+
+    @property
+    def _kept_schemas(self) -> frozenset[str]:
+        """The schemas this record keeps, which a registration of it keeps too.
+
+        The fold of each source: `Coords.shared` and `_frozen_table` key the
+        fold by `revision_id`, the last frozen source's id, and `Coords.held`
+        and `Fold.held` an ancestor's by that ancestor's.
+        """
+        return frozenset(nested(FOLD, s.layer_id) for s in self.sources)
 
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis) --
 
@@ -499,6 +612,7 @@ class Record:
         - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
         - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
         """
+        self._require_open()
         cache = self._per_cursor
         if cache.frozen_coords is None:
             frozen, _ = split_frozen(self.sources)

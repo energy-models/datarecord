@@ -21,6 +21,7 @@ A dict keyed by thread id would reuse ids, and a `ContextVar` would be copied in
 
 Tables in the workspace's database are shared between cursors: the `revisions` cache, the staging tables and the folded caches.
 So are a record's [registered views](views.md), which every cursor reads and which show an edit once its transaction commits.
+A table that lives within one call, such as a fold's checkpoint, is a temporary table of the calling cursor instead, which no other cursor sees ([the database's schemas](store.md#the-databases-schemas)).
 A `DuckDBPyRelation` is bound to the cursor that built it.
 The line between thread-bound and shared objects runs around relations alone.
 
@@ -30,13 +31,13 @@ Anything else they cache is plain data that every thread computes the same way.
 A relation and a `WorkingRecord` belong to the thread that built them.
 When one of them reaches another thread's write path, it is rejected as [a relation from another connection](#a-relation-from-another-connection-is-rejected) is.
 
-A fold caches its results as shared tables.
-The frozen layers' folded axes are the tables `dims_<dim>_<id>`, a [multi-dim](../model/multi-dims.md)'s like any other.
-Its [dead labels](../layers/resolution.md#a-label-outside-the-key) are the tables `dead_<dim>_<id>`, one per coordinate that has any.
-A last table, `dim_owners_<id>`, has the shape of a node cache's [`dim_owners.parquet`](../layers/resolution.md#materialised-node-caches), a row `(dim, layer_uuid, has_dead)` per folded axis.
+A fold caches its results as shared tables in the schema `_fold.<id>` of the workspace's database ([the database's schemas](store.md#the-databases-schemas)).
+The frozen layers' folded axes are the tables `dims_<dim>`, a [multi-dim](../model/multi-dims.md)'s like any other.
+Its [dead labels](../layers/resolution.md#a-label-outside-the-key) are the tables `dead_<dim>`, one per coordinate that has any.
+A last table, `dim_owners`, has the shape of a node cache's [`dim_owners.parquet`](../layers/resolution.md#materialised-node-caches), a row `(dim, layer_uuid, has_dead)` per folded axis.
 It is created after them, so a reader that finds it finds them all.
-A reader opens `dead_<dim>_<id>` only where `has_dead` is true.
-The [owner map](../layers/resolution.md#owner-map) is `owner_map_<id>` beside them.
+A reader opens `dead_<dim>` only where `has_dead` is true.
+The [owner map](../layers/resolution.md#owner-map) is `owner_map` beside them.
 A dim's name is spelled as declared, since the schema [holds every name to a plain identifier](../model/schema.md#names).
 `<id>` is the node whose frozen layers were folded: a revision's id, the base's id for a `WorkingRecord`, or the [id in its manifest](store.md#the-layers) for a standalone directory.
 
@@ -45,8 +46,8 @@ A materialised owner map is cast to the declared types.
 These tables are left as the fold produced them, and each holds what the same fold returns uncached.
 
 A fold that one thread builds serves every thread.
-When two threads miss at once, both fold and both create the table.
-DuckDB fails the second with a write-write conflict, and the miss path catches it and reads the winner's table.
+When two threads miss at once, both fold and both create the schema and the table.
+DuckDB fails the second with a write-write conflict, and the miss path retries until it meets the winner's, and reads that.
 The duplicate fold wastes work and gives the same answer.
 
 ### A relation from another connection is rejected

@@ -17,9 +17,10 @@ import duckdb
 import pytest
 
 from datarecord import Workspace
+from datarecord.duck import transaction
 from datarecord.mutable import WorkingRecord
-from tests.fixtures import in_threads
-from tests.test_mutable import _rows, _small
+from tests.fixtures import in_threads, nested_tables, scratch_tables
+from tests.test_mutable import _rows, _small, _staging
 
 KINDS = ("dims", "properties", "attributes")
 
@@ -139,6 +140,47 @@ def test_views_outlive_their_relations(workspace, working):
     assert read == _read_relations(working)
 
 
+def test_registrations_keep_a_closed_working_records_tables(workspace, working):
+    """Closing a registered record drops nothing a view reads; its last unregister does."""
+    con = workspace.con
+    working.set("p_nom", 123.0, entity="Manchester Wind")
+    working.register("again")
+    declared = _declared(working)
+    expected = _read_relations(working)
+    gc.collect()
+    held = _staging(con)
+    working.close()
+    assert _read_views(con, "edit", declared) == expected, (
+        "a view reads on after its record closes"
+    )
+    workspace.unregister("edit")
+    assert _read_views(con, "again", declared) == expected, (
+        "and on while another registration holds the tables"
+    )
+    workspace.unregister("again")
+    assert held, "the record staged into a schema of its own"
+    assert not held & _staging(con), "the last unregister drops it"
+
+
+def test_a_refused_registration_leaves_the_holder_of_its_name(
+    workspace, small, working
+):
+    """A record registered under a taken name takes no hold, nor releases the name's."""
+    con = workspace.con
+    declared = _declared(working)
+    expected = _read_relations(working)
+    held = _staging(con)
+    with WorkingRecord(small.record) as other:
+        with pytest.raises(duckdb.CatalogException):
+            other.register("edit")
+    working.close()
+    assert _read_views(con, "edit", declared) == expected, (
+        "the views read on, held by the registration that took the name"
+    )
+    workspace.unregister("edit")
+    assert not held & _staging(con), "its unregister drops the tables"
+
+
 def test_a_reader_sees_only_whole_edits(workspace, working):
     """A reader in its own transactions sees each edit whole or not at all."""
     declared = _declared(working)
@@ -191,6 +233,29 @@ def test_register_and_unregister_refuse_an_open_transaction(workspace, small, ca
         workspace.con.rollback()
 
 
+@pytest.mark.parametrize("fails", [None, "block", "commit"])
+def test_a_transaction_undoes_its_steps_where_it_fails(fails):
+    """The rollback reaches only the database, so a block's undo steps cover
+    the rest, where the commit fails as much as where the block raises."""
+    db = duckdb.connect()
+    db.execute("CREATE SCHEMA s")
+    con, other = db.cursor(), db.cursor()
+    undone: list[str] = []
+    try:
+        with transaction(con, "test", "https://example.org") as on_rollback:
+            on_rollback(lambda: undone.append("first"))
+            on_rollback(lambda: undone.append("last"))
+            con.execute("CREATE TABLE s.t AS SELECT 1")
+            if fails == "block":
+                raise RuntimeError
+            if fails == "commit":
+                other.execute("DROP SCHEMA s CASCADE")
+    except (RuntimeError, duckdb.TransactionException):
+        assert fails is not None, "a transaction that commits raises nothing"
+    expected = [] if fails is None else ["last", "first"]
+    assert undone == expected, "undo steps run, last first, only where it fails"
+
+
 def test_unregister_leaves_a_schema_no_record_registered(workspace):
     con = workspace.con
     con.execute("CREATE SCHEMA datarecord.other")
@@ -240,12 +305,17 @@ def test_views_read_from_a_client_attaching_the_database_under_another_name(
     client.execute(f"ATTACH '{tmp_path / 'workspace.duckdb'}' AS r")
     client.execute("ATTACH ':memory:' AS datarecord")
     tables = client.sql(
-        "SELECT table_name FROM duckdb_tables() WHERE database_name = 'r'"
+        "SELECT s.parent_schema, s.schema_name, t.table_name FROM duckdb_tables() t"
+        " JOIN duckdb_schemas() s ON t.schema_oid = s.oid WHERE t.database_name = 'r'"
     ).fetchall()
-    for (table,) in tables:
+    for parent, schema, table in tables:
+        path = ".".join(f'"{p}"' for p in (parent, schema) if p is not None)
         for database in ("memory", "datarecord"):
+            if parent is not None:
+                client.execute(f'CREATE SCHEMA IF NOT EXISTS {database}."{parent}"')
+            client.execute(f"CREATE SCHEMA IF NOT EXISTS {database}.{path}")
             client.execute(
-                f'CREATE TABLE {database}.main."{table}" AS FROM r.main."{table}" LIMIT 0'
+                f'CREATE TABLE {database}.{path}."{table}" AS FROM r.{path}."{table}" LIMIT 0'
             )
     assert _read_views(client, "edit", declared, "r") == want, (
         "every view reads its own database's tables, whatever the client names alike"
@@ -321,3 +391,204 @@ def test_use_lets_a_cursor_read_by_short_names(workspace, working):
         assert cur.sql("SELECT name, revision FROM registered").fetchall() == (
             workspace.registered().project("name, revision").fetchall()
         ), "`registered` reads as `datarecord.main.registered`"
+
+
+def test_closing_and_unregistering_everything_leaves_no_staging_schema(
+    workspace, small
+):
+    for name in ("one", "two"):
+        with WorkingRecord(small.record) as w:
+            w.set("p_nom", 1.0, entity="Norway Wind")
+            w.register(name)
+            w.register(f"{name}_again")
+    with WorkingRecord(small.record):
+        pass
+    for (name,) in workspace.registered().project("name").fetchall():
+        workspace.unregister(name)
+    small.record.close()
+    gc.collect()
+    assert _staging(workspace.con) == set()
+    assert _folds(workspace.con) == set(), "every record over a fold is closed"
+    assert workspace.con.sql(
+        "SELECT table_name FROM duckdb_tables()"
+        " WHERE database_name = 'datarecord' AND schema_name = 'main'"
+    ).fetchall() == [("registered",), ("revisions",), ("schemas",)], (
+        "`main` keeps only the workspace's bookkeeping"
+    )
+    assert scratch_tables(workspace.con) == set(), (
+        "every call dropped its scratch tables"
+    )
+
+
+@pytest.mark.parametrize("discard", ["close", "collect"])
+def test_a_working_record_over_another_holds_its_base_staging(
+    workspace, small, discard
+):
+    """A record staged over a `WorkingRecord` reads its base's staging tables, so holds them."""
+    con = workspace.con
+    base = WorkingRecord(small.record)
+    base.set("p_nom", 7.0, entity="Norway Wind")
+    over = WorkingRecord(base)
+    over.set("p_nom", 9.0, entity="Manchester Wind")
+    over.register("over")
+    declared = _declared(over)
+    expected = _read_relations(over)
+    if discard == "close":
+        base.close()
+        assert _read_relations(over) == expected, "the record over it reads on"
+    else:
+        del base, over
+        gc.collect()
+    assert _read_views(con, "over", declared) == expected, "and so does its view"
+    workspace.unregister("over")
+    if discard == "close":
+        over.close()
+    gc.collect()
+    assert _staging(con) == set(), "both schemas go with their last holder"
+
+
+def _folds(con):
+    """The fold schemas in `con`'s catalog, by revision id."""
+    return set(nested_tables(con, "_fold"))
+
+
+def _opened(revision):
+    """`revision`'s record, after a read that folds it."""
+    record = revision.record
+    record.attributes["p_nom"].fetchall()
+    return record
+
+
+@pytest.mark.parametrize("materialised", [False, True])
+@pytest.mark.parametrize("others", [0, 1])
+def test_closing_a_record_drops_its_fold_once_no_other_holds_it(
+    workspace, small, others, materialised
+):
+    kept = [_opened(small) for _ in range(others)]
+    revision = small.store.revision(small.id)
+    _opened(revision)
+    if materialised:
+        revision.materialise()
+    revision.record.close()
+    assert (small.id.hex in _folds(workspace.con)) == bool(kept), (
+        "the fold goes with the last open record over it"
+    )
+
+
+@pytest.mark.parametrize(
+    "record",
+    [
+        pytest.param(lambda small: small.store.revision(small.id).record, id="record"),
+        pytest.param(
+            lambda small: WorkingRecord(small.store.revision(small.id).record),
+            id="working",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "derive",
+    [
+        pytest.param(lambda rel: rel, id="taken"),
+        pytest.param(
+            lambda rel: rel.filter("value > 0").set_alias("d").aggregate("count(*)"),
+            id="derived",
+        ),
+    ],
+)
+def test_a_relation_keeps_its_collected_record_and_its_tables(
+    workspace, small, record, derive
+):
+    """A chained read collects its record before fetching, and the relation keeps what it reads."""
+    rel = derive(record(small).attributes["p_nom"])
+    gc.collect()
+    assert rel.fetchall(), "the relation reads past its record's last name"
+    del rel
+    gc.collect()
+    assert small.id.hex not in _folds(workspace.con), (
+        "the fold goes with the record and the last relation taken from it"
+    )
+    assert _staging(workspace.con) == set(), "and so do the staging tables"
+
+
+@pytest.mark.parametrize(
+    "use",
+    [
+        pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
+        pytest.param(lambda w: w.add("bus", ["Oslo"]), id="add"),
+        pytest.param(lambda w: w.edits.axes(), id="edits"),
+        pytest.param(_read_relations, id="read"),
+    ],
+)
+def test_a_working_record_works_on_past_its_closed_base(workspace, small, use):
+    with small.store.revision(small.id).record as base:
+        w = WorkingRecord(base)
+    assert small.id.hex in _folds(workspace.con), "the working record holds the fold"
+    use(w)
+    w.close()
+    assert small.id.hex not in _folds(workspace.con), "and drops it on close"
+
+
+@pytest.mark.parametrize("discard", ["close", "collect"])
+def test_a_registration_holds_its_records_fold_past_the_record(
+    workspace, small, discard
+):
+    record = _opened(small.store.revision(small.id))
+    declared, expected = _declared(record), _read_relations(record)
+    record.register("plain")
+    if discard == "close":
+        record.close()
+    del record
+    gc.collect()
+    assert _read_views(workspace.con, "plain", declared) == expected
+    workspace.unregister("plain")
+    assert small.id.hex not in _folds(workspace.con), "the fold goes on unregister"
+
+
+def test_unregister_finishes_a_running_statement_and_fails_a_later_one(
+    workspace, small
+):
+    """A statement streaming over the views reads to its end; a relation over them run again finds no schema."""
+    with small.store.revision(small.id).record as record:
+        record.register("live")
+    reader = workspace.con.cursor()
+    query = "FROM datarecord.live.attributes.p_nom, range(100000)"
+    rel = reader.sql(query)
+    running = reader.execute(query)
+    first = running.fetchmany(10)
+    workspace.unregister("live")
+    assert len(first) + len(running.fetchall()) == 200_000, (
+        "the running statement reads on to its end"
+    )
+    with pytest.raises(duckdb.CatalogException, match="live"):
+        rel.fetchall()
+
+
+@pytest.mark.parametrize("name", ["_fold", "_staged"])
+def test_register_refuses_a_schema_of_the_workspace(small, name):
+    with pytest.raises(duckdb.CatalogException, match="already exists"):
+        small.record.register(name)
+
+
+def test_a_reopened_workspace_holds_and_unregisters_an_earlier_registration(
+    tmp_path,
+):
+    """`registered` survives in a file database, with the schemas it holds and the means to unregister."""
+    database, location = str(tmp_path / "workspace.duckdb"), str(tmp_path / "store")
+    ws = Workspace(database)
+    small = _small(ws.store(location))
+    with small.store.revision(small.id).record as record:
+        record.register("edit")
+        declared, expected = _declared(record), _read_relations(record)
+    ws.close()
+    reopened = Workspace(database)
+    try:
+        _opened(reopened.store(location).revision(small.id)).close()
+        assert _read_views(reopened.con, "edit", declared) == expected, (
+            "the registration holds its fold past a later record's close"
+        )
+        reopened.unregister("edit")
+        assert reopened.registered().fetchall() == []
+        assert _views(reopened.con, "edit") == dict.fromkeys(KINDS, [])
+        assert small.id.hex not in _folds(reopened.con), "the fold goes on unregister"
+    finally:
+        reopened.close()

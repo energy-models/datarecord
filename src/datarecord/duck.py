@@ -25,12 +25,13 @@ Notes
 
 import sys
 import time
+import weakref
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
-from contextlib import AbstractContextManager, contextmanager
+from contextlib import AbstractContextManager, contextmanager, suppress
 from functools import partial, reduce
 from pathlib import Path
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import duckdb
 from duckdb import ColumnExpression as col
@@ -60,12 +61,44 @@ class _Functions:
 
 fn = _Functions()
 
+#: The schema each revision's fold is kept in, as a schema of its own inside.
+FOLD = "_fold"
+#: The schema each `WorkingRecord`'s staging tables are kept in, as a schema of its own inside.
+STAGED = "_staged"
+
+
+def nested(parent: str, id: UUID) -> str:
+    """The schema `id` names inside schema `parent`, quoted for SQL, as its database names it."""
+    return str(col(parent, id.hex))
+
+
 #: The options of every parquet file datarecord writes. Format v2 delta-encodes a
 #: series' snapshots and byte-stream-splits its values; the dictionary limit keeps
 #: a row group's few entity names in a dictionary but not 8760 timestamps.
 _PARQUET_OPTIONS = (
     "FORMAT parquet, COMPRESSION zstd, PARQUET_VERSION v2, DICTIONARY_SIZE_LIMIT 4096"
 )
+
+
+def _keep(owner: object) -> None:
+    """Do nothing: a finaliser's arguments live until it runs, so passing `owner` keeps it alive."""
+
+
+def anchored(rel: DuckDBPyRelation, owner: object) -> DuckDBPyRelation:
+    """`rel`, keeping `owner` alive for as long as it or a relation derived from it lives.
+
+    A relation derived by its methods (`filter`, `join`, `aggregate`, ...)
+    keeps its inputs, so keeps `owner` too. SQL run over `rel` by a
+    replacement scan (`con.sql("FROM rel")`) binds it at once and keeps
+    neither, so datarecord anchors such a result to the relation it reads,
+    and the chain from it back to `owner` holds.
+
+    Notes
+    -----
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    """
+    weakref.finalize(rel, _keep, owner)
+    return rel
 
 
 def write_parquet(
@@ -83,8 +116,14 @@ def write_parquet(
 
 
 @contextmanager
-def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[None]:
+def transaction(
+    con: DuckDBPyConnection, operation: str, url: str
+) -> Iterator[Callable[[Callable[[], object]], None]]:
     """Run the block in one transaction on `con`, committed where it returns, rolled back where it raises.
+
+    The block may register undo steps for what it changed outside the
+    database, which the rollback cannot reach: each runs, last first, where
+    the block or the commit fails.
 
     Parameters
     ----------
@@ -92,6 +131,11 @@ def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[N
         What runs, named in the refusal.
     url
         The design page the refusal links to, as a URL.
+
+    Yields
+    ------
+    Callable
+        Registers one undo step.
 
     Raises
     ------
@@ -107,12 +151,30 @@ def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[N
             f"holds one open; commit or roll it back before calling it ({url})"
         )
         raise TransactionException(msg) from e
+    undo: list[Callable[[], object]] = []
     try:
-        yield
+        try:
+            yield undo.append
+        except BaseException:
+            con.rollback()
+            raise
+        con.commit()
     except BaseException:
-        con.rollback()
+        for step in reversed(undo):
+            step()
         raise
-    con.commit()
+
+
+def refuse_open_transaction(con: DuckDBPyConnection, operation: str, url: str) -> None:
+    """Refuse `operation` where `con` holds an open transaction, as `transaction` does.
+
+    Raises
+    ------
+    TransactionException
+        Where `con` already holds an open transaction.
+    """
+    with transaction(con, operation, url):
+        pass
 
 
 def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
@@ -294,57 +356,112 @@ def empty_relation(
     return values_relation(con, list(columns), [nulls]).limit(0)
 
 
+def create_table(con: DuckDBPyConnection, name: str, rel: DuckDBPyRelation) -> None:
+    """Create table `name` holding `rel`'s rows.
+
+    SQL rather than `rel.create`, which cannot address a table in a nested
+    schema, `datarecord._fold."<id>".owner_map`.
+    """
+    _dr_rel = rel
+    con.execute(f"CREATE TABLE {name} AS FROM _dr_rel")
+
+
+def insert_into(con: DuckDBPyConnection, name: str, rel: DuckDBPyRelation) -> None:
+    """Append `rel`'s rows to table `name`, column by position.
+
+    SQL rather than `rel.insert_into`, for the reason `create_table` gives.
+    """
+    _dr_rel = rel
+    con.execute(f"INSERT INTO {name} FROM _dr_rel")
+
+
+def tables_in(
+    con: DuckDBPyConnection, database: str, parent: str, id: UUID
+) -> set[str]:
+    """The tables of schema `id` inside schema `parent` of `database`, none where it does not exist yet.
+
+    Asked of the catalog rather than found by `con.table` failing: on a
+    missing table DuckDB scans the calling frame's Python variable of the
+    table's name instead.
+    """
+    rows = con.execute(
+        "SELECT t.table_name FROM duckdb_tables() t"
+        " JOIN duckdb_schemas() s ON t.schema_oid = s.oid"
+        " WHERE s.database_name = ? AND s.parent_schema = ? AND s.schema_name = ?",
+        [database, parent, id.hex],
+    ).fetchall()
+    return {table for (table,) in rows}
+
+
 def shared_table(
     con: DuckDBPyConnection,
-    name: str,
+    database: str,
+    parent: str,
+    id: UUID,
+    table: str,
     build: Callable[[], AbstractContextManager[DuckDBPyRelation]],
 ) -> DuckDBPyRelation:
-    """Table `name`, built by whichever cursor misses it first.
+    """Table `table` of schema `id` inside `parent` of `database`, it and its schema built by whichever cursor misses them first.
 
     `build` enters the relation the table is made of, and exits once the
     table holds it, releasing whatever the relation read. Two cursors missing
-    at once both build, and DuckDB fails the second `create` with a
-    write-write conflict rather than a name clash; what it would have created
-    is the winner's table, so that is read instead. The conflict can come
-    before the winner commits, when its table is not yet visible, so the
-    `create` is retried until it either lands or meets the committed table.
+    at once both create, and DuckDB fails the second with a write-write
+    conflict rather than a name clash; what it would have created is the
+    winner's, so that is read instead. The conflict can come before the
+    winner commits, when its schema or table is not yet visible, so each
+    `create` is retried until it either lands or meets the committed one.
 
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
-    try:
+    schema = f"{col(database)}.{nested(parent, id)}"
+    name = f"{schema}.{table}"
+    if table in tables_in(con, database, parent, id):
         return con.table(name)
-    except duckdb.CatalogException:
-        pass
-    with build() as rel:
-        while True:
-            try:
-                rel.create(name)
-            except duckdb.TransactionException as e:
-                if "conflict" not in str(e).lower():
-                    raise
-                time.sleep(0.001)
-                continue
-            except duckdb.CatalogException:
-                pass
-            break
+    _past_conflicts(lambda: con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
+    with build() as rel, suppress(duckdb.CatalogException):
+        _past_conflicts(lambda: create_table(con, name, rel))
     return con.table(name)
+
+
+def _past_conflicts(create: Callable[[], object]) -> None:
+    """Run `create` again for as long as DuckDB fails it with a write-write conflict."""
+    while True:
+        try:
+            create()
+        except duckdb.TransactionException as e:
+            if "conflict" not in str(e).lower():
+                raise
+            time.sleep(0.001)
+            continue
+        return
 
 
 @contextmanager
 def scratch_table(
     con: DuckDBPyConnection, rel: DuckDBPyRelation
 ) -> Iterator[DuckDBPyRelation]:
-    """`rel` collected into a temporary table of `con`, read as one, and dropped on exit.
+    """`rel` collected into a temporary table of `con`'s own, read as one, and dropped on exit.
 
     A table both pins what `rel` reads, where a later write would change it,
-    and stops each step over it from binding `rel`'s whole tree again.
+    and stops each step over it from binding `rel`'s whole tree again. Only
+    `con` sees it, so it is read on `con` alone.
+
+    Notes
+    -----
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     """
-    name = f"temp.main._scratch_{uuid4().hex}"
-    _dr_rel = rel
-    con.execute(f"CREATE TEMP TABLE {name} AS FROM _dr_rel")
+    name = temp_table(con, rel, "t")
     try:
         yield con.table(name)
     finally:
         con.execute(f"DROP TABLE {name}")
+
+
+def temp_table(con: DuckDBPyConnection, rel: DuckDBPyRelation, prefix: str) -> str:
+    """`rel` collected into a new temporary table of `con`, its name as SQL reads it."""
+    name = f"temp.main.{prefix}_{uuid4().hex}"
+    _dr_rel = rel
+    con.execute(f"CREATE TEMP TABLE {name} AS FROM _dr_rel")
+    return name

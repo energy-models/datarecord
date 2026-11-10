@@ -144,7 +144,22 @@ rel.df()  # holds 150.0
 ```
 
 Each edit runs in its own transaction, so a refused edit leaves nothing staged, and an edit is refused while you hold a transaction open on the same cursor.
-Staged rows live in DuckDB tables on the record's connection, so they vanish with it and never touch disk ([design](../design/use/editing.md#staging)).
+Staged rows live in DuckDB tables in the workspace's database, never in your files ([design](../design/use/editing.md#staging)).
+
+## Closing
+
+`close()` drops the record's staging tables and releases its base's folds, as [closing a record](reading.md#closing) does; a `with` block closes it on exit, and so does garbage collection, once it and every relation taken from it are gone, if you never do.
+A closed record raises `ValueError` on any read or edit, and a relation taken from it before fails with DuckDB's missing-table error, so fetch what you need first.
+A view [registered](../design/storage/views.md) on the record keeps its tables until it is unregistered.
+Closing the `Record` a `WorkingRecord` was made over leaves the `WorkingRecord` working; closing a `WorkingRecord` it was staged over refuses its edits.
+
+```python
+with WorkingRecord(root.record) as w:
+    w.set("p_nom", 150.0, entity="wind1")
+    df = w.attributes["p_nom"].df()
+```
+
+A `WorkingRecord` is refused while its cursor holds a transaction open, as an edit is.
 
 ## Writing the edits
 

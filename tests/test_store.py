@@ -34,7 +34,9 @@ from tests.fixtures import (
     empty_child,
     empty_root,
     in_threads,
+    nested_tables,
     schema,
+    scratch_tables,
     widened,
     write_attribute,
     write_component,
@@ -575,15 +577,13 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
     cursors = {id(con) for con, _ in results}
     assert len(cursors) == 8, "one cursor per thread"
     assert len({n for _, n in results}) == 1, "every thread reads the same rows"
-    tables = workspace.con.sql(
-        "SELECT table_name FROM duckdb_tables() WHERE table_name LIKE 'owner_map_%'"
-    ).fetchall()
-    assert [t for (t,) in tables if child.id.hex in t], "the map is a shared table"
+    folds = nested_tables(workspace.con, "_fold")
+    assert "owner_map" in folds[child.id.hex], "the map is a shared table"
     child.materialise()
-    steps = workspace.con.sql(
-        "SELECT table_name FROM duckdb_tables() WHERE starts_with(table_name, '_fold_')"
-    ).fetchall()
-    assert steps == [], "the fold keeps no table of its steps"
+    cons = [workspace.con, *(con for con, _ in results)]
+    assert all(scratch_tables(con) == set() for con in cons), (
+        "the fold keeps no table of its steps on any cursor"
+    )
 
 
 @pytest.mark.parametrize("working", [False, True], ids=["frozen", "working"])

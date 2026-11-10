@@ -113,10 +113,6 @@ A cold fold in a fresh workspace stays linear in depth, about 0.1 s per layer ([
 
 An edit runs in [its own transaction](use/editing.md#edits), and DuckDB nests none, so an edit is refused while the caller holds one open on the same cursor. Joining the caller's would lose the edit's own rollback on refusal.
 
-### When a `WorkingRecord`'s staging tables are dropped
-
-A `WorkingRecord` creates every [staging table](use/editing.md#staging) when it is created, one per axis holding a copy of the base's and two per attribute, and `rollback()` empties them rather than dropping them. Nothing drops them when the record is discarded, so a long-lived workspace that opens many records keeps their tables for the life of its connection: about 310 for a PyPSA record. A finaliser or an explicit `close()` would drop them; which one, and whether a view registered on them outlives it, is open.
-
 ### What a schema change on a `WorkingRecord` does to its registered views
 
 A `WorkingRecord` has no method that changes its schema; the schema changes only at commit.
@@ -126,9 +122,9 @@ One that does would either refuse a change that alters a column or the fold of a
 
 [Registered views](storage/views.md) are raw, so a client applies the broadcast rule itself. [`settle`](use/reading.md#settling-rows) ported to the frontend, and a page on the raw format for SQL clients, are both still to write ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)).
 
-### Who drops an abandoned registration
+### Who drops a forgotten registration
 
-A server that crashes or forgets leaves its views and the folds they read. The `registered` table lists every registration with when it was `created`, but no one unregisters by any rule yet ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)).
+A server that crashes or forgets leaves its views and the folds they read. The `registered` table lists every registration with when it was `created`, but no one unregisters by any rule yet ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)). Unregistering frees the staging tables the registration [holds](storage/store.md#the-databases-schemas), so the rule also decides how long they stay. A workspace reopened on a file keeps an earlier run's `_staged` and `_fold` schemas, which no record holds; those no registration's `held` column lists could be swept, and nothing does yet ([DEP 35](proposals/dep-0035-a-record-holds-the-tables-it-reads.md#open-issues)).
 
 ### A public `create_view` taking a qualified name
 
@@ -141,10 +137,6 @@ DuckDB 2.0 lets a reader on another cursor see part of a committed transaction o
 ### Who pays the cold fold of a registered revision
 
 `register`, or the first read of a view, pays the [cold fold](layers/resolution.md#a-fold-starts-from-the-nearest-fold-at-hand) of a deep revision, once per lineage in a workspace. It stays linear in depth until a revision's map is [materialised](#when-a-deep-ancestry-materialises-its-map).
-
-### When a server drops the folds it opened
-
-The fold of every revision a server opens is held in shared tables for the life of its connection. Who drops them, and when, is open, as for [a `WorkingRecord`'s staging tables](#when-a-workingrecords-staging-tables-are-dropped).
 
 ## Settled
 
@@ -181,3 +173,11 @@ The alternative, "every connection of this entity", would broadcast over part of
 ### Whether a record's relations can be named views
 
 They can, in the workspace's own database, one schema per registration with a nested schema per kind ([registered views](storage/views.md)). Over a `WorkingRecord` the views are created once and follow every edit, since a relation's plan never reads a staged row.
+
+### When a server drops the folds it opened
+
+When the last record reading one is closed, or collected with every relation taken from it, unless a registration still holds it. A server closes each record it opens, so it frees them at a point it chooses rather than the collector's ([the database's schemas](storage/store.md#the-databases-schemas)).
+
+### When a `WorkingRecord`'s staging tables are dropped
+
+When it is closed or collected, unless a registration of it still holds them; then on that registration's `unregister`. Its tables sit in a schema of their own, which the workspace drops whole ([the database's schemas](storage/store.md#the-databases-schemas)).

@@ -22,7 +22,8 @@ import json
 import os
 import threading
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Hashable, Iterable, Mapping
+from contextlib import nullcontext
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
@@ -45,7 +46,7 @@ from pydantic import (
     model_validator,
 )
 
-from datarecord.duck import transaction
+from datarecord.duck import FOLD, STAGED, transaction
 from datarecord.mutable import StagedSource, WorkingRecord
 from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
@@ -93,6 +94,7 @@ CREATE TABLE IF NOT EXISTS {registered} (
   name     VARCHAR PRIMARY KEY,
   revision UUID,
   working  BOOLEAN,
+  held     VARCHAR[],
   created  TIMESTAMPTZ DEFAULT now()
 )
 """
@@ -122,6 +124,99 @@ class _Cursors(threading.local):
             workspace._made.add(self.con)
 
 
+class _Holds:
+    """Which holders keep each schema, a schema dropped with its tables once none does.
+
+    A holder is a record, by a key of its own, or a registration, by its
+    name. A schema is named as SQL reads it inside the workspace's database,
+    `"_fold"."<hex>"`, which `registered.held` persists whatever the database
+    is attached as, and may never have been created. A finaliser releases on
+    whichever thread the collector runs, maybe inside that thread's open
+    transaction, so drops run on a cursor of their own under the lock. The lock is re-entrant, and a release fired while one drops
+    leaves its schemas to the outer one, the cursor running one transaction
+    at a time.
+
+    Notes
+    -----
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
+    """
+
+    def __init__(self, db: DuckDBPyConnection, database: str) -> None:
+        self._con: DuckDBPyConnection | None = db.cursor()
+        self._database = database
+        self._lock = threading.RLock()
+        self._holders: dict[str, set[Hashable]] = {}
+        self._held: dict[Hashable, set[str]] = {}
+        self._unheld: list[str] = []
+        self._dropping = False
+
+    def hold(self, holder: Hashable, schemas: Iterable[str]) -> None:
+        """Keep `schemas` until `holder` releases them; a holder of none is known all the same.
+
+        Raises
+        ------
+        KeyError
+            Where `holder` already holds here.
+        """
+        with self._lock:
+            if holder in self._held:
+                msg = f"`{holder}` already holds schemas on this workspace"
+                raise KeyError(msg)
+            held = self._held[holder] = set()
+            for schema in schemas:
+                self._holders.setdefault(schema, set()).add(holder)
+                held.add(schema)
+
+    def release(self, holder: Hashable) -> None:
+        """Release what `holder` holds, dropping each schema no one holds any more.
+
+        Raises
+        ------
+        KeyError
+            Where `holder` never held here.
+        """
+        with self._lock:
+            if holder not in self._held:
+                msg = f"`{holder}` holds no schemas on this workspace"
+                raise KeyError(msg)
+            for schema in self._held.pop(holder):
+                holders = self._holders[schema]
+                holders.discard(holder)
+                if not holders:
+                    del self._holders[schema]
+                    self._unheld.append(schema)
+            if self._dropping:
+                return
+            self._dropping = True
+            try:
+                self._drop()
+            finally:
+                self._dropping = False
+
+    def _drop(self) -> None:
+        while self._unheld:
+            schemas, self._unheld = self._unheld, []
+            if self._con is None:
+                continue
+            with transaction(
+                self._con,
+                "release",
+                "https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas",
+            ):
+                for schema in schemas:
+                    self._con.execute(
+                        f"DROP SCHEMA IF EXISTS {col(self._database)}.{schema} CASCADE"
+                    )
+
+    def close(self) -> None:
+        """Stop dropping and close the cursor: the schemas go with the database."""
+        with self._lock:
+            if self._con is not None:
+                self._con.close()
+            self._con = None
+
+
 class Workspace:
     """A DuckDB database and the files it reaches, shared by every store on it.
 
@@ -148,6 +243,7 @@ class Workspace:
     -----
     - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
     - [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
@@ -165,9 +261,17 @@ class Workspace:
             setup.execute(f"ATTACH {lit(database)} AS {col(name)}")
             for ddl in (_SCHEMAS, _REVISIONS, _REGISTERED):
                 setup.execute(_in(self, ddl))
+            for schema in (FOLD, STAGED):
+                setup.execute(f"CREATE SCHEMA IF NOT EXISTS {col(name, schema)}")
+            registered = setup.execute(
+                _in(self, "SELECT name, held FROM {registered}")
+            ).fetchall()
         self._made: WeakSet[DuckDBPyConnection] = WeakSet()
         self._made_lock = threading.Lock()
         self._cursors = _Cursors(self)
+        self._holds = _Holds(self._db, name)
+        for held_by, held in registered:
+            self._holds.hold(held_by, held)
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
@@ -190,6 +294,8 @@ class Workspace:
 
     def unregister(self, name: str) -> None:
         """Drop the schema `name` a record registered, with its views and its `registered()` row.
+
+        A closed `WorkingRecord`'s staging tables go with its last registration.
 
         Raises
         ------
@@ -217,9 +323,10 @@ class Workspace:
                 msg = f"no record is registered as `{name}` (`Workspace.registered()`)"
                 raise duckdb.CatalogException(msg)
             con.execute(f"DROP SCHEMA {col(self.name, name)} CASCADE")
+        self._holds.release(name)
 
     def registered(self) -> DuckDBPyRelation:
-        """Every registered name, with the `revision` it reads, whether it is `working`, and when it was `created`.
+        """Every registered name, with the `revision` it reads, whether it is `working`, the schemas it `held`, and when it was `created`.
 
         Notes
         -----
@@ -392,6 +499,7 @@ class Workspace:
         The connection is closed with them only where the workspace opened it;
         one passed in stays open for its owner.
         """
+        self._holds.close()
         with self._made_lock:
             for cursor in list(self._made):
                 cursor.close()
@@ -1042,12 +1150,10 @@ class Claim(_OfStore):
                     f"{'; '.join(problems)} (https://energy-models.github.io/datarecord/design/model/schema/#versioning)"
                 )
                 raise ValueError(msg)
-        files = write_layer(
-            data,
-            store.layer_dir(self.id),
-            store.workspace,
-            parent=None if parent is None else parent.record,
-        )
+        with nullcontext() if parent is None else parent.record as base:
+            files = write_layer(
+                data, store.layer_dir(self.id), store.workspace, parent=base
+            )
         manifest = Manifest(
             id=self.id, parent=self.parent, schema=schema, files=files, meta=meta
         )
@@ -1191,9 +1297,10 @@ class Revision(_OfStore):
 
         The ancestry is truncated at the deepest materialised ancestor, so a
         deep tree resolves from few entries. Cached rather than rebuilt per
-        call: layers are write-once, so the only thing that can change
-        the truncation point is `materialise`, which clears this itself. The
-        `Record` holds no cursor, so the cache serves every thread.
+        call: layers are write-once, and a record built before `materialise`
+        reads the same answers over the longer ancestry. The
+        `Record` holds no cursor, so the cache serves every thread. Once it is
+        closed, the next call builds and caches another.
 
         Notes
         -----
@@ -1201,8 +1308,9 @@ class Revision(_OfStore):
         - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+        - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
         """
-        if self._record is None:
+        if self._record is None or self._record.closed:
             manifests = lineage(self.store, self.id)
             sources = sources_to_read(manifests, self.store)
             self._record = Record(self.id, sources, self.store.workspace)
@@ -1250,7 +1358,6 @@ class Revision(_OfStore):
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
         materialise(self.id, self.record.sources, self.store)
-        self._record = None
 
     # -- read ---------------------------------------------------------------
 
