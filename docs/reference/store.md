@@ -65,8 +65,9 @@ The workspace attaches its database as `name`, `datarecord` by default, and neve
 It attaches it on a fresh in-memory connection of its own, or on a connection you pass as `con`, such as a server's, whose own default database stays as it was:
 
 ```python
-ws = Workspace("workspace.duckdb")  # on a connection of its own
-ws = Workspace(con=server)  # on the server's connection, as `datarecord`
+ws = Workspace()  # in memory, on a connection of its own
+ws = Workspace("cache.duckdb")  # a file, kept across runs
+ws = Workspace(con=server, name="dr")  # on the server's connection, attached as dr
 ```
 
 The cursors of a passed connection see the attached database, and their transactions are their own, not the caller's.
@@ -86,17 +87,25 @@ The tables that a workspace creates lie in DuckDB schemas of its database:
 | `main`         | `schemas`, `revisions` and `registered` | the workspace                   |
 | `_fold.<id>`   | the tables of one revision's fold       | the first cursor to fold `<id>` |
 | `_staged.<id>` | a `WorkingRecord`'s staging tables      | `WorkingRecord(...)`            |
-| `_scratch`     | a call's intermediate tables            | the call, which drops them      |
 | `<name>`       | the views of a registration             | `record.register(name)`         |
 
 `<id>` is the 32-digit hex of the revision's or layer's UUID, and SQL names each schema in full, `datarecord._fold.<id>`.
-The PyPSA exporter, which holds a record's connection but no workspace, keeps its joins in temporary tables of its cursor instead.
+The workspace creates `_fold` and `_staged` with itself, so `register` refuses both names.
+A table that lives within one call, such as a fold's checkpoints, an edit's snapshot or the PyPSA exporter's joins, is a temporary table of the calling cursor and in no schema of the database.
+The call creates, reads and drops it on that cursor, the only one that sees it, so a process that dies mid-call leaves nothing of it in a file database.
+Past DuckDB's `memory_limit`, a temporary table spills to the `temp_directory`, `.tmp` by default.
 `revisions` and `schemas` cache each manifest whole, and gain rows only, so the cache can be incomplete and never stale.
 
-The workspace keeps the `_fold` schemas of the layers a `Record` folds until `record.close()`, and a `WorkingRecord`'s `_staged` schema until it closes.
+The workspace keeps the `_fold` schemas of the layers a `Record` folds, and a `WorkingRecord`'s `_staged` schema, until the record is closed or collected.
 It keeps the schemas of a registered record until `unregister`.
-The workspace drops a schema once no open record or registration reads it.
-A closed record raises `ValueError` on every read, and a `Record` collected unclosed leaves its schemas to the workspace until the workspace closes.
+The workspace drops a schema once no record or registration reads it.
+A closed record raises `ValueError` on every read.
+
+Each relation that a record hands out keeps the record alive, and a relation derived from it with methods such as `filter` or `join` keeps its inputs.
+So a record's tables last while the record or any relation taken from it lives, and `store.revision(rid).record.attributes["p_nom"].df()` succeeds although no name keeps the record.
+SQL over such a relation, `con.sql("FROM rel")`, binds it at once and keeps neither the relation nor the record.
+datarecord's own code anchors such a result to the relation it reads, but your own `con.sql` does not: keep the relation, the record or a `with` block alive until you have fetched.
+A record forgotten unclosed keeps its tables only until it and its relations are collected, and the next record over the revision folds it again.
 
 ### Files, local and remote
 
@@ -125,6 +134,7 @@ The secret is named `datarecord_s3`, so on a connection shared with its caller i
 
 `ws.con` returns the calling thread's cursor, so every thread can share one workspace, one store and one `Record`.
 Tables, registered views and fold results are shared between cursors.
+A temporary table of one call, such as a fold's checkpoint, belongs to the calling cursor alone ([the database](#the-database)).
 A `DuckDBPyRelation` and a `WorkingRecord` belong to the thread that built them.
 A write or an edit refuses a relation from another thread or connection:
 

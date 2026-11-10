@@ -102,12 +102,14 @@ A relation is a query plan, and nothing is read until a reader fetches it with `
 ### `close`
 
 `close()` releases the tables in which the record's fold is kept, and a `with` block calls it on exit.
-The workspace drops a table once no open record and no registration reads it.
+The workspace drops a table once no record and no registration reads it.
 Calling `close()` again does nothing, and `closed` is `True` from the first call on.
 
 After `close()`, a read raises `ValueError`, and a relation taken before fails on fetch with DuckDB's missing-table error.
 `revision.record` returns a new record once the one it cached is closed.
-A record you never close leaves its tables in place for the workspace's life, so a chained read such as `store.revision(rid).record.attributes["p_nom"].df()` succeeds.
+A record you never close keeps its tables while it or any relation taken from it lives, so a chained read such as `store.revision(rid).record.attributes["p_nom"].df()` succeeds, and so does one through a relation you derive with `filter` or `join`.
+SQL you write over such a relation, `con.sql("FROM rel")`, does not keep it, so keep the relation, the record or a `with` block alive until you have fetched ([the database](store.md#the-database)).
+The next record over the same revision folds its ancestry again, so a process that reads one revision often keeps one record open.
 
 ### `register`
 

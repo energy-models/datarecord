@@ -226,7 +226,7 @@ DuckDB nests no transaction, so `WorkingRecord` and each edit raise `duckdb.Tran
 
 The staged rows are in DuckDB tables in the workspace's database, in the schema `datarecord._staged.<id>` ([the database](store.md#the-database)), never in your files.
 On a workspace at `:memory:` they go when the workspace closes.
-`close()` drops them, a `with` block calls it on exit, and so does garbage collection if you never call it.
+`close()` drops them, a `with` block calls it on exit, and garbage collection drops them once the record and every relation taken from it are gone, if you never call it.
 After `close()`, a read, an edit or `edits` raises `ValueError`.
 A `WorkingRecord` over a closed `Record` keeps working, and one over a closed `WorkingRecord` refuses its edits.
 

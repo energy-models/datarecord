@@ -153,7 +153,8 @@ datarecord never runs `USE` on its own cursors.
 
 `register` raises if `name` exists in the workspace's database, or if another cursor registers it at the same time.
 The database is always named, so `name` may be that of another attached database.
-`Workspace.unregister(name)` drops the schema, its views and its row in the `registered` table.
+`Workspace.unregister(name)` drops the schema, its views and its row in the `registered` table, and releases the record's folds and staging tables that the registration kept, which go once nothing else keeps them.
+The views go at once: a statement already running reads on to its end, and any later one, such as a Python relation over the views run again, finds no schema.
 
 ### The `registered` table
 
