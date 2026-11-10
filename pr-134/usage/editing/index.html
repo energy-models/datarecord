@@ -1240,7 +1240,7 @@ A relation you took before an edit reads it too:</p>
 <p>Each edit runs in its own transaction, so a refused edit leaves nothing staged, and an edit is refused while you hold a transaction open on the same cursor.
 Staged rows live in DuckDB tables in the workspace's database, never in your files (<a href="../../design/use/editing/#staging">design</a>).</p>
 <h2 id="closing">Closing<a class="headerlink" href="#closing" title="Permanent link">&para;</a></h2>
-<p><code>close()</code> drops the record's staging tables and releases its base's folds, as <a href="../reading/#closing">closing a record</a> does; a <code>with</code> block closes it on exit, and so does garbage collection if you never do.
+<p><code>close()</code> drops the record's staging tables and releases its base's folds, as <a href="../reading/#closing">closing a record</a> does; a <code>with</code> block closes it on exit, and so does garbage collection, once it and every relation taken from it are gone, if you never do.
 A closed record raises <code>ValueError</code> on any read or edit, and a relation taken from it before fails with DuckDB's missing-table error, so fetch what you need first.
 A view <a href="../../design/storage/views/">registered</a> on the record keeps its tables until it is unregistered.
 Closing the <code>Record</code> a <code>WorkingRecord</code> was made over leaves the <code>WorkingRecord</code> working; closing a <code>WorkingRecord</code> it was staged over refuses its edits.</p>
