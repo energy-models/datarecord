@@ -874,6 +874,29 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
     return frozenset(clashing)
 
 
+def _refuse_stray_series(n: pypsa.Network) -> None:
+    """Refuse a dynamic frame with a column its type's static index lacks.
+
+    Only the labels are compared, never the values, through the static
+    index's hash table, which pandas builds once per type. A column's key is
+    `(scenario, name)` on a stochastic network, as is the static index's.
+
+    Raises
+    ------
+    ValueError
+        At the first such frame, naming its type, attribute and columns.
+    """
+    for c in n.components:
+        for attr, wide in c.dynamic.items():
+            stray = wide.columns[c.static.index.get_indexer(wide.columns) < 0]
+            if not stray.empty:
+                msg = (
+                    f"{c.name} `{attr}` has series for {stray.tolist()}, "
+                    f"which are no {c.name} components"
+                )
+                raise ValueError(msg)
+
+
 def _custom_names(c: pypsa.Components) -> list[str]:
     """`c`'s static columns PyPSA's registry has no entry for, but `_DERIVED`."""
     derived = _DERIVED.get(c.name, frozenset())
@@ -2274,8 +2297,10 @@ class PyPSATool(Tool):
         ------
         ValueError
             If `n` is deterministic and written as results over a `base` holding
-            scenarios, or as `check` refuses it.
+            scenarios, has a series naming no component of its type
+            (`_refuse_stray_series`), or as `check` refuses it.
         """
+        _refuse_stray_series(n)
         clashing = _colliding_names(n)
         if clashing:
             raise UnsupportedRecordError(self.name, Requirements(names=clashing))
