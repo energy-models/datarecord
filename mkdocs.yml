@@ -105,6 +105,7 @@ nav:
           - "DEP 33: the fold is a fixed plan": development/proposals/dep-0033-the-fold-is-a-fixed-plan.md
           - "DEP 34: `register` creates one view per relation": development/proposals/dep-0034-a-record-registers-as-views.md
           - "DEP 35: the workspace keeps the tables a record reads": development/proposals/dep-0035-a-record-holds-the-tables-it-reads.md
+          - "DEP 36: a connection is keyed by its port": development/proposals/dep-0036-a-connection-is-keyed-by-its-port.md
   - Changelog: changelog.md
 
 theme:

@@ -130,9 +130,9 @@ All notable changes to datarecord are documented here. The format follows
   `build` sets them back. `to_datarecord` adds every
   carrier that a component names and `carrier` does not list, and stores `""`
   as NULL. `verify` reports an entity attached to no bus.
-- The PyPSA tool declares the dims `ctype` and `role` with `one_of`, and
-  `entity.ctype`, `entity.carrier` and `connection.role` as properties.
-  `partial` is `{"entity", "bus", "scenario", "connection"}`.
+- The PyPSA tool declares the dim `ctype` with `one_of`, and
+  `entity.ctype`, `entity.carrier` and `connection.bus` as properties.
+  `partial` is `{"entity", "bus", "port", "scenario", "connection"}`.
 - PyPSA SubNetworks are labels of the dim `sub_network`, without a suffix.
   `sub_network.carrier` refers to `carrier`, and `slack_bus` is a
   property over `sub_network`. A solve that has SubNetworks restates the
@@ -150,7 +150,7 @@ All notable changes to datarecord are documented here. The format follows
   custom column clashes any more.
 - The PyPSA tool stores per-port results on connections like per-port inputs.
   `p0`, `p1`, `p2` and a one-port type's `p` are one result `p` over the
-  `connection` group, with a row per `(entity, bus)` that keeps the port's
+  `connection` multi-dim, with a row per `(entity, port)` that keeps the port's
   sign. `q` works the same way. `Link.p` and `Process.p` are `p_internal`, and
   a three-port Link's `p2` is a declared result.
 - The PyPSA tool stores a Process's `rate0`, `rate1`, `rate2` as one input
@@ -260,6 +260,17 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- Breaking: the PyPSA tool keys `connection` by `(entity, port)`, where the
+  port is PyPSA's number in `bus0`, `bus1`, ... and a one-port type's `bus` is
+  port 0. The bus is the property `connection.bus`, and the dim `role` and the
+  property `connection.role` are gone. A Link with `bus0` and `bus1` at one bus
+  keeps both ports and their efficiencies, where it lost one silently (#95).
+  `remove("bus", ...)` refuses a bus that a connection is at, so remove those
+  connections first. `build` leaves out a value at a port PyPSA has no column
+  of it for, such as a Link's `efficiency` at port 0, and `verify` reports a
+  `bus` at a port its type lacks, such as a one-port type's at a port but 0,
+  in `unsupported_values`. Export a network again to rewrite a record that the
+  PyPSA tool wrote before.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`
   or `datarecord.edit.dims.bus`, or runs `USE datarecord` once on its own
@@ -324,13 +335,14 @@ All notable changes to datarecord are documented here. The format follows
   Its table is `dims/<multi-dim>.parquet`, keyed by that column with its
   properties beside it; `groups/` and `resolved/groups/` are gone, so every
   record with a group is written again. `record.dims["connection"]` is the
-  struct column alone and `record.properties["connection"]` adds `role`.
+  struct column alone and `record.properties["connection"]` adds its
+  properties, such as the PyPSA tool's `connection.bus`.
   `add` and `remove` take a multi-dim's tuples as a frame holding its struct
   column, so `add("connection", record.dims["connection"])` round-trips, or
   one with a column per coordinate instead, or as a list of mappings from
   coordinate to label.
-  `connection.bus` names a coordinate wherever `subject.name` stands, and
-  `set` refuses it. No property refers to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,
+  Over `(entity, bus)`, `connection.bus` names a coordinate wherever
+  `subject.name` stands, and `set` refuses it. No property refers to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,
   `check_multi_dim_columns` and `coordinate_over`; `dims` lists every dim but
   the multi-dims. The PyPSA tool declares `connection` under `dimensions`.
 - A dim with `one_of` has its axis derived from the list: `record.dims["ctype"]`
@@ -343,15 +355,16 @@ All notable changes to datarecord are documented here. The format follows
   `add` and `remove` on it are refused, and a property declared on it is
   refused at load. A record carrying such a file is written again. New on
   `Schema`: `one_of_dims`; `Schema.require_listed` is `require_one_of`. The
-  PyPSA tool no longer writes the `ctype` and `role` axes.
+  PyPSA tool no longer writes the `ctype` axis.
 - A multi-dim in `partial` is categorized by a property that refers to a dim
-  with `one_of`, as a dim is: `connection.role` categorizes `connection`, so a
-  `default_by` keyed `connection.role` loads, `Schema.categorizing("connection")`
-  lists `role`, and `flags(role="output")`, `default_for(name, role="output")`
-  and the `set` keyword `role="output"` select by it. A role keyword picks the
-  tuples of an attribute over `connection`, narrowed by a coordinate keyword,
-  and of a property of it: `set("connection.note", v, role="output")` patches
-  the output connections, as `set("entity.note", v, ctype="Generator")` does
+  with `one_of`, as a dim is: a property `connection.kind` referring to a dim
+  `kind` categorizes `connection`, so a `default_by` keyed `connection.kind`
+  loads, `Schema.categorizing("connection")` lists `kind`, and
+  `flags(kind="output")`, `default_for(name, kind="output")` and the `set`
+  keyword `kind="output"` select by it. A category keyword picks the tuples of
+  an attribute over `connection`, narrowed by a coordinate keyword, and of a
+  property of it: `set("connection.note", v, kind="output")` patches the
+  output connections, as `set("entity.note", v, ctype="Generator")` does
   the generators, and `ctype="Link"` on it the connections of links.
 - The design pages are grouped by topic: the data model, layers, using a
   record, storage, frameworks and the package. Each old design page URL
@@ -359,9 +372,9 @@ All notable changes to datarecord are documented here. The format follows
   API reference uses the design section names.
 - An attribute over a multi-dim carries it as one struct column named for it,
   with a field per coordinate, such as `connection STRUCT(entity, bus)`. Its
-  table is keyed by that column, and `dims/connection.parquet` is
-  `connection STRUCT(entity, bus) | role`. The PyPSA tool declares no `bus`
-  attribute. A port's bus is the connection tuple.
+  table is keyed by that column, and `dims/connection.parquet` holds it with
+  the multi-dim's properties. The PyPSA tool declares no `bus` attribute: a
+  port's bus is the property `connection.bus`.
 - The dims that a multi-dim draws on broadcast. A per-bus value with
   `bus = NULL` holds for every bus, and `bus` must be in `partial` to patch one
   bus at a time. `WorkingRecord.set` still takes `bus=`. Naming a multi-dim

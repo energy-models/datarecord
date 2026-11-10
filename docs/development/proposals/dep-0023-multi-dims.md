@@ -6,15 +6,16 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # DEP 23: multi-dims replace groups
 
-| DEP      | 23                                                                                                                                                                                                                               |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Title    | multi-dims replace groups                                                                                                                                                                                                        |
-| Author   | Bryn Pickering                                                                                                                                                                                                                   |
-| Status   | Implemented (2026-10-26)                                                                                                                                                                                                         |
-| Requires | [DEP 10](dep-0010-a-group-is-a-struct-column.md), [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md), [DEP 18](dep-0018-drop-narwhals.md), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) |
-| Created  | 2026-10-21                                                                                                                                                                                                                       |
-| Version  | Unreleased                                                                                                                                                                                                                       |
-| Replaces | the groups of [DEP 2](dep-0002-groups.md) and [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                                                                                                   |
+| DEP           | 23                                                                                                                                                                                                                               |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Title         | multi-dims replace groups                                                                                                                                                                                                        |
+| Author        | Bryn Pickering                                                                                                                                                                                                                   |
+| Status        | Implemented (2026-10-26)                                                                                                                                                                                                         |
+| Requires      | [DEP 10](dep-0010-a-group-is-a-struct-column.md), [DEP 12](dep-0012-properties.md), [DEP 13](dep-0013-buses-and-carriers-are-dims.md), [DEP 18](dep-0018-drop-narwhals.md), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) |
+| Created       | 2026-10-21                                                                                                                                                                                                                       |
+| Version       | Unreleased                                                                                                                                                                                                                       |
+| Replaces      | the groups of [DEP 2](dep-0002-groups.md) and [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                                                                                                   |
+| Superseded-By | [DEP 36](dep-0036-a-connection-is-keyed-by-its-port.md) (the PyPSA tool's `connection` over `(entity, bus)` and its `role`)                                                                                                      |
 
 The design landed in [the data model](../../reference/data-model.md), [the schema](../../reference/schema.md), [editing](../../reference/editing.md) and [the record format](../../reference/format.md). Where they and this DEP differ, follow those pages.
 

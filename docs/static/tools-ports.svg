@@ -3,8 +3,8 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 210" width="780" height="210" style="max-width: 100%; height: auto" role="img" aria-labelledby="tp-t tp-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="tp-t">build places a component's ports by connection order</title>
-  <desc id="tp-d">The record contains the connection tuples link1 north, with role input, and link1 south, with role output, and efficiency 0.9 on link1 south. build writes n.links with bus0 north, bus1 south and efficiency 0.9.</desc>
+  <title id="tp-t">build places a component's ports by their number</title>
+  <desc id="tp-d">The record contains the connection tuples link1 0, at bus north, and link1 1, at bus south, and efficiency 0.9 on link1 1. build writes n.links with bus0 north, bus1 south and efficiency 0.9.</desc>
   <defs>
     <marker id="tp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -26,16 +26,16 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="16" y="22" font-weight="bold">record</text>
     <text x="78" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/connection</text>
     <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
-    <text x="164" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">role</text>
-    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, north)</text>
-    <text x="164" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">input</text>
-    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, south)</text>
-    <text x="164" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">output</text>
+    <text x="164" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">bus</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 0)</text>
+    <text x="164" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">north</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 1)</text>
+    <text x="164" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">south</text>
     <text x="16" y="120" font-weight="bold"></text>
     <text x="16" y="120" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attributes/efficiency</text>
     <text x="24" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
     <text x="164" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
-    <text x="24" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, south)</text>
+    <text x="24" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 1)</text>
     <text x="164" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
     <text x="470" y="22" font-weight="bold">n.links</text>
     <text x="478" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">name</text>
@@ -47,8 +47,8 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="598" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">south</text>
     <text x="658" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
     <text x="310" y="56" font-weight="bold" font-size="12">build</text>
-    <text x="310" y="82" fill-opacity="0.7" font-size="12">the input first,</text>
-    <text x="310" y="97" fill-opacity="0.7" font-size="12">then connection order</text>
+    <text x="310" y="82" fill-opacity="0.7" font-size="12">port 0 to bus0,</text>
+    <text x="310" y="97" fill-opacity="0.7" font-size="12">port 1 to bus1</text>
   </g>
   <g fill="none" stroke="currentColor" stroke-width="1">
     <rect x="16" y="32" width="206" height="62" rx="3"/>

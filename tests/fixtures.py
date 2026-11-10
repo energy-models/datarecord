@@ -470,10 +470,9 @@ def schema(
 ) -> Schema:
     """A schema shaped like the PyPSA records most tests build on.
 
-    Defaults match `PyPSA.to_datarecord`: the `entity` axis carrying the
-    `ctype` property, which refers to the dim `ctype` listing `TYPES`, a
-    `connection` multi-dim over
-    `(entity, bus)`, and three declared dims. Override `partial` to pin a
+    Defaults follow `PyPSA.to_datarecord` in the `entity` axis carrying the
+    `ctype` property, which refers to the dim `ctype` listing `TYPES`, and
+    add a `connection` multi-dim over `(entity, bus)` and three declared dims. Override `partial` to pin a
     different layering granularity, `dims` to declare another axis by its
     dtype or as a `Dimension`, `multi_dims` to
     declare a different sparse relation.

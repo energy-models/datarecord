@@ -24,7 +24,7 @@ import re
 import warnings
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from contextlib import ExitStack
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import cache, cached_property, reduce
 from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple
 
@@ -85,6 +85,8 @@ TIMESTEP = "timestep"
 #: and a name holds one spec record-wide.
 SCENARIO_WEIGHT = "scenario_weight"
 ENTITY, BUS, CARRIER, CONNECTION = "entity", "bus", "carrier", "connection"
+#: A coordinate of `connection`: PyPSA's number in `bus0`, `bus1`, ..., and a one-port type's `bus` port `0`.
+PORT = "port"
 SUB_NETWORK = "sub_network"
 LINE_TYPE, TRANSFORMER_TYPE = "line_type", "transformer_type"
 CTYPE = "ctype"
@@ -122,9 +124,6 @@ _SUB_NETWORK_CARRIER = "The carrier of a sub-network's buses."
 #: How a shape's geometry and a dim shapes make are described.
 _GEOMETRY = "A shape outlining the label, as WKT in the CRS `meta` names."
 _SHAPE_DIM = "A label that shapes outline."
-#: A property of the `connection` multi-dim, and the dim with `one_of`
-#: that holds its labels. The port vocabulary is this tool's.
-ROLE = "role"
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
 #: The attributes PyPSA keeps the same in every scenario: mirrors the local
 #: `INVARIANT_ATTRS` of `pypsa.consistency.check_scenario_invariant_attributes`.
@@ -811,6 +810,60 @@ def _union_all(rels: Iterable[DuckDBPyRelation | None]) -> DuckDBPyRelation | No
     """`rels` but each `None` as one positional `UNION ALL`, `None` where there are none."""
     held = [r for r in rels if r is not None]
     return reduce(DuckDBPyRelation.union, held) if held else None
+
+
+def _entity_rows_at(rel: DuckDBPyRelation, port: int) -> DuckDBPyRelation | None:
+    """`rel`'s rows keyed by a connection at `port`, keyed by its entity as `entity` instead; `None` where `rel` has no `connection`."""
+    if CONNECTION not in rel.columns:
+        return None
+    connection = col(CONNECTION)
+    rest = [col(c) for c in rel.columns if c not in (ENTITY, CONNECTION)]
+    return rel.filter(connection[PORT] == lit(port)).project(
+        connection[ENTITY].alias(ENTITY), *rest
+    )
+
+
+@dataclass
+class _BaseRows:
+    """`base`'s rows of one attribute, at a port as plain `entity` rows, which an export compares its own with."""
+
+    rel: DuckDBPyRelation
+    _statics: dict[str, pd.DataFrame | None] = field(default_factory=dict)
+
+    def static(self, dim: str) -> pd.DataFrame | None:
+        """`rel` keyed by `dim`, one `(entity, scenario, value, static)` per entity and scenario; `None` where it has no `dim`.
+
+        A row is static where no key but `dim` and `scenario` is set, and an
+        entity at a scenario where each of its rows is; only then is `value`
+        its one row's. Aggregated in DuckDB once per `dim`: a series' rows
+        never reach pandas.
+        """
+        if dim not in self._statics:
+            self._statics[dim] = self._static(dim)
+        return self._statics[dim]
+
+    def _static(self, dim: str) -> pd.DataFrame | None:
+        rel = self.rel
+        if dim not in rel.columns:
+            return None
+        others = [
+            c for c in rel.columns if c not in (dim, SCENARIO, "attribute", "value")
+        ]
+        scenario = col(SCENARIO) if SCENARIO in rel.columns else lit(None)
+        static = ex_all([lit(True), *(col(c).isnull() for c in others)])
+        keyed = rel.filter(col(dim).isnotnull()).project(
+            col(dim).cast(sqltypes.VARCHAR).alias(ENTITY),
+            scenario.cast(sqltypes.VARCHAR).alias(SCENARIO),
+            col("value"),
+            static.alias("static"),
+        )
+        return keyed.aggregate(
+            [
+                *map(col, [ENTITY, SCENARIO]),
+                fn.any_value(col("value")).alias("value"),
+                fn.bool_and(col("static")).alias("static"),
+            ]
+        ).df()
 
 
 def _dim_of(ctype: str) -> str:
@@ -1727,109 +1780,98 @@ def _retire(
 
 # -- network -> layer ---------------------------------------------------------
 
-#: The `role` of a port: `0` is the input end, every other an output, a one-port type's attached.
-_INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT = "input", "output", "attached"
-_ROLES = (_INPUT_PORT, _OUTPUT_PORT, _SINGLE_PORT)
-
 _PORT_SUFFIX = re.compile(r"(.+?)(\d+)")
-#: The types of any number of ports, the only ones leaving a stem unsuffixed at port `1`.
-_EXTENSIBLE = ("Link", "Process")
+
+
+@dataclass(frozen=True)
+class _PortTable:
+    """How PyPSA names one type's per-port columns, read once from its registry.
+
+    Notes
+    -----
+    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+    """
+
+    #: The type's attribute names in PyPSA's bare registry.
+    registered: frozenset[str]
+    #: Whether the type attaches at one bus, by its category: a Generator, Load, Store, StorageUnit or ShuntImpedance.
+    one_port: bool
+    #: The ports the registry declares a bus at: `0` of a one-port type, `0` and `1` of a branch, none of a GlobalConstraint, whose `bus` is no port.
+    ports: frozenset[int]
+    #: Whether the type takes ports beyond `ports`, as a Link's or Process's `bus2`.
+    extends: bool
+    #: The stems named bare at port `1`, a Link's `efficiency`, `delay` and `cyclic_delay`.
+    unsuffixed: frozenset[str]
+    #: The stems the registry suffixes with a port of `ports`, and `unsuffixed`; none of a one-port type.
+    stems: frozenset[str]
+
+    def takes(self, port: int) -> bool:
+        """Whether the type attaches at `port`."""
+        return self.extends or port in self.ports
+
+    def column(self, stem: str, port: int) -> str:
+        """PyPSA's name for `stem` at `port`: `bus`, `p`, `bus0`, `p1`, `efficiency`, `efficiency2`, ..."""
+        if self.one_port or (port == 1 and stem in self.unsuffixed):
+            return stem
+        return f"{stem}{port}"
+
+    def carries(self, stem: str, port: int) -> bool:
+        """Whether PyPSA has a `stem` column at `port`: one it declares, or any at a port beyond `ports`."""
+        if not self.takes(port):
+            return False
+        return port not in self.ports or self.column(stem, port) in self.registered
+
+    def ports_of(self, c: pypsa.Components) -> list[int]:
+        """`c`'s ports the type takes as `port` labels, a one-port type's `""` as `0`."""
+        return [port for port in (int(p or 0) for p in c.ports) if self.takes(port)]
+
+    def buses(self, c: pypsa.Components) -> dict[int, str]:
+        """`c`'s bus column at each of its ports (`ports_of`)."""
+        return {port: self.column(BUS, port) for port in self.ports_of(c)}
+
+
+@cache
+def _port_table(ctype: str) -> _PortTable:
+    """`ctype`'s `_PortTable`, from PyPSA's registry and component class."""
+    from pypsa.components._types.mixin.multiports import _Multiport
+    from pypsa.components.legacy import _CLASS_MAPPING
+    from pypsa.components.types import get as get_component_type
+
+    component = get_component_type(ctype)
+    registered = frozenset(component.defaults.index)
+    one_port = component.category in {"controllable_one_port", "passive_one_port"}
+    suffixed = [
+        (stem, int(port))
+        for attr in registered
+        if (match := _PORT_SUFFIX.fullmatch(attr))
+        for stem, port in [match.groups()]
+    ]
+    declared = frozenset(port for stem, port in suffixed if stem == BUS)
+    cls: type = _CLASS_MAPPING[ctype]
+    unsuffixed = frozenset(cls._unsuffixed_attrs if issubclass(cls, _Multiport) else ())
+    return _PortTable(
+        registered=registered,
+        one_port=one_port,
+        ports=frozenset({0}) if one_port else declared,
+        extends=issubclass(cls, _Multiport),
+        unsuffixed=unsuffixed,
+        stems=unsuffixed | {stem for stem, port in suffixed if port in declared},
+    )
 
 
 @cache
 def _per_port_stems() -> frozenset[str]:
     """Every attribute stem some PyPSA type carries once per port, inputs and results alike.
 
-    A name ending in one of its type's port indices (`bus0`, `p1`), and the
-    stems an `_EXTENSIBLE` type leaves unsuffixed at port `1` (`efficiency`).
-
     Notes
     -----
     - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
     """
-    import pypsa
+    from pypsa.components.types import all_components
 
-    n = pypsa.Network()
-    stems: set[str] = set().union(
-        *(n.components[ctype]._unsuffixed_attrs for ctype in _EXTENSIBLE)
+    return frozenset().union(
+        *(_port_table(ctype.name).stems for ctype in all_components.values())
     )
-    for ctype in n.all_components:
-        c = n.components[ctype]
-        ports = set(c.ports) - {""}
-        stems |= {
-            match.group(1)
-            for attr in c.defaults.index
-            if (match := _PORT_SUFFIX.fullmatch(attr)) and match.group(2) in ports
-        }
-    return frozenset(stems)
-
-
-def _port_role(port: str) -> str:
-    """The `role` for a port index."""
-    if port == "":
-        return _SINGLE_PORT
-    return _INPUT_PORT if port == "0" else _OUTPUT_PORT
-
-
-def _port_attribute(stem: str, port: str, registered: Container[str]) -> str:
-    """PyPSA's name for `stem` at `port`: `bus0`, `p1`, `efficiency`, `efficiency2`, ...
-
-    A stem PyPSA registers at port `0` is suffixed from `0`; one it does not
-    leaves port `1` unsuffixed. A one-port type's port `""` is the bare stem.
-
-    Parameters
-    ----------
-    registered
-        The type's attribute names, which say whether `stem` starts at port `0`.
-
-    Notes
-    -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
-    """
-    if port == "1" and f"{stem}0" not in registered:
-        return stem
-    return f"{stem}{port}"
-
-
-def _carries(stem: str, port: str, registered: Container[str]) -> bool:
-    """Whether PyPSA has a `stem` column at `port`: a registered one, or any at an additional port."""
-    return (
-        _port_attribute(stem, port, registered) in registered
-        or _port_attribute(BUS, port, registered) not in registered
-    )
-
-
-@cache
-def _registered(ctype: str) -> frozenset[str]:
-    """`ctype`'s attribute names in PyPSA's bare registry, for `_port_attribute`."""
-    from pypsa.components.types import get as get_component_type
-
-    return frozenset(get_component_type(ctype).defaults.index)
-
-
-def _connection_rows(c: pypsa.Components) -> pd.DataFrame:
-    """One type's connections as `(entity, bus, role)` rows, one per port of `c.ports` with a bus.
-
-    Notes
-    -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
-    """
-    static = c.static
-    frames = []
-    for port in c.ports:
-        column = _port_attribute("bus", port, c.defaults.index)
-        if column not in static.columns:
-            continue
-        attached = static[static[column].astype(str) != ""]
-        if attached.empty:
-            continue
-        rows = attached[[column]].rename(columns={column: "bus"})
-        rows = rows.reset_index().rename(columns={"name": "entity"})
-        rows["role"] = _port_role(port)
-        frames.append(rows)
-    if not frames:
-        return pd.DataFrame(columns=["entity", "bus", "role"])
-    return pd.concat(frames, ignore_index=True)
 
 
 def _from_wkt(values: pd.Series, crs: Any) -> pd.Series:
@@ -1925,7 +1967,8 @@ class PyPSATool(Tool):
         types PyPSA does not know, required attributes (by source) with no
         row, property or declared default, a port's bus where a member has no
         connection there, curves and values a network would hold one of
-        (`_unheld`), and in `ignored` stored attributes a type does not take,
+        (`_unheld`), a one-port type's `bus` at a port but `0`, and in
+        `ignored` stored attributes a type does not take,
         which `build` leaves out.
 
         Raises
@@ -1985,6 +2028,12 @@ class PyPSATool(Tool):
                 or resolved[attr].varies.intersection(unheld.get(attr, ()))
             }
             read[ctype] = _TypeMembers.of(record, ctype, connection_frame)
+            connections = read[ctype].connections
+            if (
+                connections is not None
+                and not connections[PORT].map(_port_table(ctype).takes).all()
+            ):
+                unsupported_values.add((ctype, BUS))
             static_cols = read[ctype].columns
             from_connections = read[ctype].port_attributes(ctype)
             for attr in _required_attributes(ctype):
@@ -2170,7 +2219,7 @@ class PyPSATool(Tool):
         """Present a `Network` as the `Record` `write_layer` persists.
 
         The inverse of `build`: static and series values become long rows on
-        `con`, port columns connection rows carrying a `role`, buses and
+        `con`, port columns connection rows carrying their `bus`, buses and
         carriers the `bus` and `carrier` axes in PyPSA's order, `""` NULL,
         and each shape the `shape_{type}` property of the label it outlines.
         Outputs are attributes like any other. A static value is left out
@@ -2299,14 +2348,15 @@ class PyPSATool(Tool):
         return source
 
 
-def _port_names(c: pypsa.Components) -> dict[str, tuple[str, str]]:
+def _port_names(c: pypsa.Components) -> dict[str, tuple[str, int]]:
     """Per-port attribute name -> `(stem, port)`, for this type's actual ports."""
+    table = _port_table(c.name)
     registered = c.defaults.index
     return {
         name: (stem, port)
         for stem in sorted(_per_port_stems())
-        for port in c.ports
-        if (name := _port_attribute(stem, port, registered)) in registered
+        for port in table.ports_of(c)
+        if (name := table.column(stem, port)) in registered
     }
 
 
@@ -2487,10 +2537,7 @@ def _registry() -> _Registry:
         if ctype not in _AXIS_TYPES and named:
             carries[ctype] = carries.get(ctype, frozenset()) | set(named.values())
     properties[CONNECTION] = {
-        ROLE: PropertySpec(
-            one_of=ROLE,
-            description="Which end of the component this attachment is.",
-        )
+        BUS: PropertySpec(one_of=BUS, description="The bus the port attaches to.")
     }
     schema = RecordSchema(
         dimensions={
@@ -2525,18 +2572,21 @@ def _registry() -> _Registry:
             TRANSFORMER_TYPE: Dimension(
                 dtype="str", description="A standard type of transformer."
             ),
-            ROLE: Dimension(
-                one_of=_ROLES,
-                description="An end of a component an attachment can be.",
+            PORT: Dimension(
+                dtype="int",
+                description=(
+                    "The number of a port, as in PyPSA's `bus0`, `bus1`, ..., "
+                    "with a one-port type's `bus` at port 0."
+                ),
             ),
             CONNECTION: Dimension(
-                over={"entity": ENTITY, "bus": BUS},
-                description="An entity's attachment to one bus.",
+                over={ENTITY: ENTITY, PORT: PORT},
+                description="A port of an entity, attached to the bus `connection.bus`.",
             ),
         },
         properties=properties,
         attributes=attributes | results,
-        partial=frozenset({ENTITY, BUS, SCENARIO, CONNECTION}),
+        partial=frozenset({ENTITY, BUS, PORT, SCENARIO, CONNECTION}),
     )
     return _Registry(schema, carries, inputs)
 
@@ -2591,6 +2641,26 @@ class _NetworkSource:
         return self._own_statics[c.name]
 
     @cached_property
+    def _members(self) -> dict[str, pd.DataFrame]:
+        """Each `_AXIS_TYPES` and entity type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with the properties of that dim it has columns for and its bus columns, by type, entity types in PyPSA's order.
+
+        Raises
+        ------
+        ValueError
+            If a member's properties or buses differ by scenario (`_unscoped`).
+        """
+        members = {}
+        entities = [c.name for c in self.n.components if _as_entities(c)]
+        for ctype in [*_AXIS_TYPES, *entities]:
+            c, dim = self.n.c[ctype], _dim_of(ctype)
+            static = self._own(c)
+            columns = [p for p in self.schema.properties[dim] if p in static.columns]
+            frame = static[[*columns, *_port_table(ctype).buses(c).values()]]
+            frame = frame.rename_axis(index={"name": dim}).reset_index()
+            members[ctype] = _unscoped(_none_for_empty(frame), [dim], ctype, self.con)
+        return members
+
+    @cached_property
     def custom(self) -> _Custom:
         """The network's custom static columns, placed (`_Custom.of`)."""
         return _Custom.of(self.n)
@@ -2618,7 +2688,7 @@ class _NetworkSource:
         -----
         - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
         """
-        _ = self._axes, self._entity_frame  # forced, so `_unscoped` refuses at the call
+        _ = self._axes, self._entity_frame  # forced, so `_members` refuses at the call
         schema = self.schema
         for subject, typed in self.custom.properties.items():
             for name in typed:
@@ -2738,7 +2808,9 @@ class _NetworkSource:
         """Every labelled axis with its properties, by dim, in PyPSA's order; empty where the network has none.
 
         A carrier named but not in `n.carriers` is added after those listed,
-        its properties NULL.
+        its properties NULL. The ports run from `0` to the highest a connection
+        has, at least `1`, so a connection staged at port `0` or `1` names a
+        label the axis has.
         """
         snapshots = self._snapshots
         timesteps = (
@@ -2768,6 +2840,7 @@ class _NetworkSource:
             BUS: buses,
             CARRIER: pd.concat([listed, added], ignore_index=True),
             SUB_NETWORK: self._sub_networks,
+            PORT: pd.DataFrame({PORT: range(max([1, *self._connections[PORT]]) + 1)}),
             **{dim: self._labels(ctype) for ctype, dim in _CATALOG_TYPES.items()},
             **{dim: self._shapes[dim] for dim in self._shape_dims},
         }
@@ -2788,14 +2861,8 @@ class _NetworkSource:
         return LazyRelations((*present, ENTITY, CONNECTION), axis)
 
     def _labels(self, ctype: str) -> pd.DataFrame:
-        """One `_AXIS_TYPES` type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with their properties."""
-        dim = _AXIS_TYPES[ctype]
-        static = self._own(self.n.c[ctype])
-        columns = [p for p in self.schema.properties[dim] if p in static.columns]
-        frame = static[columns].rename_axis(index={"name": dim}).reset_index()
-        return self._with_shapes(
-            _unscoped(_none_for_empty(frame), [dim], ctype, self.con), dim
-        )
+        """One `_AXIS_TYPES` type's `_members`, with the geometries of the shapes outlining them."""
+        return self._with_shapes(self._members[ctype], _AXIS_TYPES[ctype])
 
     def _with_shapes(self, frame: pd.DataFrame, dim: str) -> pd.DataFrame:
         """`frame`, labels of `dim` in order, with the geometries of those shapes outline (`_outlined`)."""
@@ -2811,35 +2878,43 @@ class _NetworkSource:
         - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
         """
         frames = [
-            self._static_frame(c.name).assign(**{CTYPE: c.name})
+            self._members[c.name]
+            .drop(columns=[*_port_table(c.name).buses(c).values()])
+            .assign(**{CTYPE: c.name})
             for c in self.n.components
             if _as_entities(c)
         ]
         if not frames:
             return pd.DataFrame(columns=[ENTITY, CTYPE])
-        merged = _none_for_empty(pd.concat(frames, ignore_index=True))
-        merged = self._with_shapes(merged, ENTITY)
+        merged = self._with_shapes(pd.concat(frames, ignore_index=True), ENTITY)
         lead = [ENTITY, CTYPE]
         return merged[[*lead, *(c for c in merged.columns if c not in lead)]]
 
     @cached_property
-    def _connection_frame(self) -> DuckDBPyRelation:
-        """Every type's connections in one frame, `(connection, role)`.
+    def _connections(self) -> pd.DataFrame:
+        """Every type's connections as flat `(entity, port, bus)` rows, one per port with a bus.
 
         Notes
         -----
         - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
-        types = [c.name for c in self.n.components if _as_entities(c) and c.ports]
-        frames = [_connection_rows(self.n.c[ctype]) for ctype in types]
-        rows = (
-            pd.concat(frames, ignore_index=True)
-            if frames
-            else pd.DataFrame(columns=["entity", "bus", "role"])
-        )
-        flat = self.con.from_df(_unscoped(rows, [ENTITY, BUS], CONNECTION, self.con))
+        frames = []
+        for ctype, members in self._members.items():
+            for port, column in _port_table(ctype).buses(self.n.c[ctype]).items():
+                attached = members[members[column].astype(str) != ""]
+                rows = attached[[ENTITY, column]].rename(columns={column: BUS})
+                frames.append(rows.assign(**{PORT: port})[[ENTITY, PORT, BUS]])
+        if not frames:
+            return pd.DataFrame(columns=[ENTITY, PORT, BUS])
+        return pd.concat(frames, ignore_index=True)
+
+    @cached_property
+    def _connection_frame(self) -> DuckDBPyRelation:
+        """`_connections` as the `connection` axis, `connection.bus` beside it."""
+        flat = self.con.from_df(self._connections)
         return flat.project(
-            _connection_struct(col(ENTITY), col(BUS)), star(exclude=[ENTITY, BUS])
+            packed(self.schema, CONNECTION, flat.columns, {}).alias(CONNECTION),
+            star(exclude=[ENTITY, PORT]),
         )
 
     def _as_long_rel(
@@ -2847,24 +2922,22 @@ class _NetworkSource:
         c: pypsa.Components,
         attr: str,
         *,
-        unchanged: str | None,
-        buses: pd.Series | None,
+        held: _BaseRows | None,
         drop_defaults: bool,
     ) -> DuckDBPyRelation | None:
         """`attr` as long rows `(entity, snapshot, scenario, value)`, `None` where it has none.
 
         A series is melted, a static scalar a NULL-snapshot row, each left
-        out where it repeats what record attribute `unchanged` resolves to
-        without it (`_differing`, `_changing`).
+        out where it repeats what `held` resolves to without it
+        (`_differing`, `_changing`).
 
         Parameters
         ----------
-        buses
-            Each entity's bus at the port `attr` is at, which keys `unchanged`;
-            `None` where `attr` is at no port.
+        held
+            `base`'s rows to compare with, `None` to keep every row.
         drop_defaults
-            Whether a value is compared with its type's default where `base`
-            holds none for it.
+            Whether a static value at its type's default is left out where
+            `held` has no row for it.
 
         Raises
         ------
@@ -2889,7 +2962,7 @@ class _NetworkSource:
         parts: list[DuckDBPyRelation | None] = []
         excluded: pd.Index = pd.Index([])
         if varying:
-            parts.append(self._melt_dynamic(c, attr, unchanged=unchanged, buses=buses))
+            parts.append(self._melt_dynamic(c, attr, held=held))
             excluded = c.dynamic[attr].columns
         static_backed = attr in c.defaults.index and bool(c.defaults.at[attr, "static"])
         if not varying or static_backed:
@@ -2898,8 +2971,7 @@ class _NetworkSource:
                     c,
                     attr,
                     excluded,
-                    unchanged=unchanged,
-                    buses=buses,
+                    held=held,
                     drop_defaults=drop_defaults,
                 )
             )
@@ -2910,14 +2982,11 @@ class _NetworkSource:
         c: pypsa.Components,
         attr: str,
         *,
-        unchanged: str | None,
-        buses: pd.Series | None,
+        held: _BaseRows | None,
     ) -> DuckDBPyRelation | None:
         """Melt one varying attribute's wide dynamic frame to long rows, `None` where it has no columns left.
 
-        A column repeating record attribute `unchanged`'s series is left out
-        (`_differing`), keyed by its entity's connection to its bus in
-        `buses` where given.
+        A column repeating `held`'s series is left out (`_differing`).
 
         Each column becomes one arrow row holding its series as a list, a
         view of the frame where its layout allows, which DuckDB unnests entity
@@ -2932,9 +3001,9 @@ class _NetworkSource:
         A NaN cell is a NULL row.
         """
         wide = c.dynamic[attr]
-        if unchanged is not None and not wide.empty:
-            keys = self._series_keys(wide.columns, _dim_of(c.name), buses)
-            wide = wide.loc[:, self._differing(unchanged, wide.to_numpy(), keys)]
+        if held is not None and not wide.empty:
+            keys = self._series_keys(wide.columns, _dim_of(c.name))
+            wide = wide.loc[:, self._differing(held.rel, wide.to_numpy(), keys)]
         if wide.empty:
             return None
         labels = _series_labels(wide.columns)
@@ -2962,29 +3031,26 @@ class _NetworkSource:
             col("value"),
         )
 
-    def _series_keys(
-        self, columns: pd.Index, dim: str, buses: pd.Series | None
-    ) -> DuckDBPyRelation:
-        """The keys of each column of a dynamic frame of `dim`'s type, its 1-based position as `_col`: its label of `dim`, or its entity's connection to its bus in `buses`, and its scenario where stochastic."""
+    def _series_keys(self, columns: pd.Index, dim: str) -> DuckDBPyRelation:
+        """The keys of each column of a dynamic frame of `dim`'s type, its 1-based position as `_col`: its label of `dim`, and its scenario where stochastic."""
         labels = _series_labels(columns)
         frame = pd.DataFrame({**labels, "_col": np.arange(1, len(columns) + 1)})
-        entity = col(ENTITY).cast(sqltypes.VARCHAR)
-        key = entity.alias(dim)
-        if buses is not None:
-            frame[BUS] = frame[ENTITY].map(buses)
-            key = _connection_struct(entity, col(BUS))
+        key = col(ENTITY).cast(sqltypes.VARCHAR).alias(dim)
         scenario = [col(SCENARIO)] if SCENARIO in labels else []
         return self.con.from_df(frame).project(key, *scenario, col("_col"))
 
     def _differing(
-        self, attribute: str, values: np.ndarray, keys: DuckDBPyRelation
+        self,
+        held: DuckDBPyRelation,
+        values: np.ndarray,
+        keys: DuckDBPyRelation,
     ) -> np.ndarray:
-        """Whether each column of `values`, a series over `n.snapshots` in order, differs from `base`'s series of `attribute`.
+        """Whether each column of `values`, a series over `n.snapshots` in order, differs from `base`'s series in `held`.
 
         A column is matched on its row of `keys`, by its 1-based position
         `_col`, NULL equal to NULL. It differs where `base` holds no row at
         one of the network's snapshots or another value there, NULL equal to
-        NaN, and wholly where `base` holds no such keys. `base`'s rows at
+        NaN, and wholly where `held` lacks such keys. `base`'s rows at
         other snapshots, or set on a key `keys` lacks, are not compared.
 
         Notes
@@ -2993,9 +3059,8 @@ class _NetworkSource:
         - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         steps, width = values.shape
-        held = self._base_attribute(attribute)
         on = [k for k in keys.columns if k != "_col"]
-        if held is None or not {SNAPSHOT, *on} <= set(held.columns):
+        if not {SNAPSHOT, *on} <= set(held.columns):
             return np.ones(width, dtype=bool)
         unkeyed = [
             col(c).isnull()
@@ -3032,8 +3097,7 @@ class _NetworkSource:
         attr: str,
         exclude: pd.Index,
         *,
-        unchanged: str | None,
-        buses: pd.Series | None,
+        held: _BaseRows | None,
         drop_defaults: bool,
     ) -> DuckDBPyRelation | None:
         """NULL-snapshot long rows from `attr`'s static scalars (`_scalar_rows`), `None` where none remain.
@@ -3041,16 +3105,15 @@ class _NetworkSource:
         A custom column has no default of its type to compare with.
         """
         static = _shared_across_scenarios(_scalar_rows(self._own(c)[attr], exclude))
-        if unchanged is not None:
-            undeclared = static
-            if drop_defaults and attr in c.defaults.index:
-                undeclared = _drop_default_rows(static, c.defaults.at[attr, "default"])
-            static = self._changing(
-                unchanged, _dim_of(c.name), static, undeclared.index, buses
-            )
+        undeclared = static
+        if drop_defaults and attr in c.defaults.index:
+            undeclared = _drop_default_rows(static, c.defaults.at[attr, "default"])
+        if held is None:
+            static = undeclared
+        else:
+            static = self._changing(held, _dim_of(c.name), static, undeclared.index)
         if static.empty:
             return None
-        _dr_static = static
         snapshot = self.schema.duck_type(self.schema.dimensions[SNAPSHOT])
         return self.con.from_df(static).project(
             col(ENTITY),
@@ -3061,16 +3124,14 @@ class _NetworkSource:
 
     def _changing(
         self,
-        attribute: str,
+        held: _BaseRows,
         dim: str,
         rows: pd.DataFrame,
         undeclared: pd.Index,
-        buses: pd.Series | None,
     ) -> pd.DataFrame:
-        """`rows` but those repeating what `attribute` resolves to without them.
+        """`rows` but those repeating what `held` resolves to without them.
 
-        A label of `dim`, or an entity's connection to its bus in `buses`,
-        that `base` holds rows of `attribute` for is compared with each of
+        A label of `dim` that `held` has rows for is compared with each of
         them at the row's scenario or none, at any for a row at none, and left
         out only where each is static and equal, NULL equal to NULL; a row at
         none also only where those reach every scenario (`_held_everywhere`)
@@ -3083,17 +3144,10 @@ class _NetworkSource:
         - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         keep = pd.Series(rows.index.isin(undeclared), index=rows.index)
-        on = [ENTITY]
-        if buses is not None:
-            rows = rows.assign(**{BUS: rows[ENTITY].map(buses)})
-            on.append(BUS)
-        key = (attribute, dim if buses is None else CONNECTION)
-        if key not in self._base_statics:
-            self._base_statics[key] = self._base_static(*key)
-        held = self._base_statics[key]
-        if held is None:
+        static = held.static(dim)
+        if static is None:
             return rows[keep]
-        pairs = rows.reset_index().merge(held, on=on, suffixes=("", "_base"))
+        pairs = rows.reset_index().merge(static, on=ENTITY, suffixes=("", "_base"))
         scenario, scenario_base = pairs[SCENARIO], pairs[f"{SCENARIO}_base"]
         at = scenario.isna() | scenario_base.isna() | (scenario == scenario_base)
         pairs = pairs[at]
@@ -3118,53 +3172,19 @@ class _NetworkSource:
         return scenario.isna().groupby(by).any() | each
 
     @cached_property
-    def _base_attributes(self) -> dict[str, DuckDBPyRelation | None]:
-        """`_base_attribute` by its argument, resolved once for each comparison with it."""
+    def _held_rows_by(self) -> dict[tuple[str, int | None], _BaseRows | None]:
+        """`_held_rows` by its arguments, resolved once for each comparison with them."""
         return {}
 
-    def _base_attribute(self, attribute: str) -> DuckDBPyRelation | None:
-        """`base`'s rows of `attribute`; `None` where it holds none or there is no `base`."""
-        if attribute not in self._base_attributes:
+    def _held_rows(self, attribute: str, port: int | None) -> _BaseRows | None:
+        """`base`'s rows of `attribute`, at a `port` its connections' there as plain `entity` rows; `None` where it holds none or there is no `base`."""
+        key = (attribute, port)
+        if key not in self._held_rows_by:
             rel = None if self.base is None else self.base.attributes.get(attribute)
-            self._base_attributes[attribute] = rel
-        return self._base_attributes[attribute]
-
-    @cached_property
-    def _base_statics(self) -> dict[tuple[str, str], pd.DataFrame | None]:
-        """`_base_static` by its arguments, read once for the component types sharing an attribute."""
-        return {}
-
-    def _base_static(self, attribute: str, dim: str) -> pd.DataFrame | None:
-        """`base`'s rows of `attribute` keyed by `dim`, one `(entity, scenario, value, static)` per entity and scenario, a connection's with its `bus` after `entity`; `None` where it has none.
-
-        A row is static where no key but `dim` and `scenario` is set, and an
-        entity at a scenario where each of its rows is; only then is `value`
-        its one row's. Aggregated in DuckDB: a series' rows never reach pandas.
-        """
-        rel = self._base_attribute(attribute)
-        if rel is None or dim not in rel.columns:
-            return None
-        others = [
-            c for c in rel.columns if c not in (dim, SCENARIO, "attribute", "value")
-        ]
-        keys = {ENTITY: col(dim)}
-        if dim == CONNECTION:
-            keys = {k: fn.struct_extract(col(dim), lit(k)) for k in (ENTITY, BUS)}
-        scenario = col(SCENARIO) if SCENARIO in rel.columns else lit(None)
-        static = ex_all([lit(True), *(col(c).isnull() for c in others)])
-        keyed = rel.filter(col(dim).isnotnull()).project(
-            *(key.cast(sqltypes.VARCHAR).alias(k) for k, key in keys.items()),
-            scenario.cast(sqltypes.VARCHAR).alias(SCENARIO),
-            col("value"),
-            static.alias("static"),
-        )
-        return keyed.aggregate(
-            [
-                *map(col, [*keys, SCENARIO]),
-                fn.any_value(col("value")).alias("value"),
-                fn.bool_and(col("static")).alias("static"),
-            ]
-        ).df()
+            if rel is not None and port is not None:
+                rel = _entity_rows_at(rel, port)
+            self._held_rows_by[key] = None if rel is None else _BaseRows(rel)
+        return self._held_rows_by[key]
 
     @property
     def attributes(self) -> LazyRelations:
@@ -3210,7 +3230,8 @@ class _NetworkSource:
         if weighting.dim == SNAPSHOT:
             values = weights[["value"]].to_numpy(dtype=float)
             one = self.con.from_df(pd.DataFrame({"_col": [1]}))
-            if not self._differing(attribute, values, one)[0]:
+            held = self._held_rows(attribute, None)
+            if held is not None and not self._differing(held.rel, values, one)[0]:
                 weights = weights.iloc[:0]
         keys = (
             self._snapshot_key if weighting.dim == SNAPSHOT else star(exclude=["value"])
@@ -3317,103 +3338,61 @@ class _NetworkSource:
 
     # -- frames -------------------------------------------------------------
 
-    def _static_frame(self, ctype: str) -> pd.DataFrame:
-        """Members of one type with the properties of `entity` it has columns for."""
-        static = self._own(self.n.c[ctype])
-        columns = [p for p in self.schema.properties[ENTITY] if p in static.columns]
-        frame = static[columns].reset_index().rename(columns={"name": "entity"})
-        return _unscoped(frame, [ENTITY], ctype, self.con)
-
     def _tagged_long_rel(
         self,
         c: pypsa.Components,
         attribute: str,
-        source_attr: str,
+        column: str,
+        port: int | None,
         *,
         drop_defaults: bool,
-        buses: pd.Series | None = None,
     ) -> DuckDBPyRelation | None:
-        """PyPSA's `source_attr` as long rows of `attribute`, a scalar, keyed by `c`'s dim; `None` where it has none.
+        """PyPSA's `column` as long rows of `attribute`, keyed by `c`'s dim, or at a `port` by the connection there of each entity with a bus; `None` where it has none.
 
         A static value repeating what `base` resolves is left out (`_as_long_rel`).
-        """
-        rel = self._as_long_rel(
-            c,
-            source_attr,
-            unchanged=attribute if self._LEAVES_OUT_REPEATS else None,
-            buses=buses,
-            drop_defaults=drop_defaults,
-        )
-        if rel is None:
-            return None
-        dim = _dim_of(c.name)
-        return rel.select(
-            *(
-                col(name).alias(dim) if name == ENTITY else col(name)
-                for name in rel.columns
-            ),
-            lit(attribute).alias("attribute"),
-            lit(None).alias("breakpoint"),
-        )
-
-    def _port_long_rel(
-        self,
-        c: pypsa.Components,
-        attribute: str,
-        column: str,
-        port: str,
-        *,
-        drop_defaults: bool,
-    ) -> DuckDBPyRelation | None:
-        """`column`'s long rows at `port`, tagged `attribute`, keyed by connection; `None` where the port has no bus column or no rows.
 
         Notes
         -----
         - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
-        static = c.static
-        bus_column = _port_attribute(BUS, port, c.defaults.index)
-        if bus_column not in static.columns:
+        compared = self._LEAVES_OUT_REPEATS
+        rel = self._as_long_rel(
+            c,
+            column,
+            held=self._held_rows(attribute, port) if compared else None,
+            drop_defaults=drop_defaults and compared,
+        )
+        if rel is None:
             return None
-        buses = static[bus_column]
-        if isinstance(buses.index, pd.MultiIndex):
-            buses = buses.droplevel(SCENARIO)
-            buses = buses[~buses.index.duplicated()]
-        buses = buses[buses.astype(str) != ""]
-        bus_df = buses.rename(BUS).rename_axis(ENTITY).reset_index()
-        bus_rel = self.con.from_df(bus_df).project(
-            col(ENTITY).cast(sqltypes.VARCHAR).alias(ENTITY), col(BUS)
-        )
-        v = self._tagged_long_rel(
-            c, attribute, column, drop_defaults=drop_defaults, buses=buses
-        )
-        if v is None:
-            return None
-        return (
-            v.set_alias("v")
-            .join(bus_rel.set_alias("b"), col("v", ENTITY) == col("b", ENTITY))
-            .project(
-                *(col("v", name) for name in v.columns if name != ENTITY),
-                _connection_struct(col("v", ENTITY), col("b", BUS)),
-            )
-        )
-
-    def _rows(
-        self,
-        c: pypsa.Components,
-        attribute: str,
-        column: str,
-        port: str | None,
-        *,
-        drop_defaults: bool,
-    ) -> DuckDBPyRelation | None:
-        """PyPSA's `column` as long rows of `attribute`, keyed by its connection where it is at a `port`."""
+        tags = [lit(attribute).alias("attribute"), lit(None).alias("breakpoint")]
         if port is None:
-            return self._tagged_long_rel(
-                c, attribute, column, drop_defaults=drop_defaults
+            dim = _dim_of(c.name)
+            return rel.select(
+                *(
+                    col(name).alias(dim) if name == ENTITY else col(name)
+                    for name in rel.columns
+                ),
+                *tags,
             )
-        return self._port_long_rel(
-            c, attribute, column, port, drop_defaults=drop_defaults
+        connections = self._connections
+        at_port = connections.loc[connections[PORT] == port, [ENTITY]]
+        attached = self.con.from_df(at_port).project(
+            col(ENTITY).cast(sqltypes.VARCHAR).alias(ENTITY)
+        )
+        return (
+            rel.set_alias("v")
+            .join(
+                attached.set_alias("b"),
+                col("v", ENTITY) == col("b", ENTITY),
+                how="semi",
+            )
+            .project(
+                *(col(name) for name in rel.columns if name != ENTITY),
+                *tags,
+                packed(self.schema, CONNECTION, [ENTITY], {PORT: port}).alias(
+                    CONNECTION
+                ),
+            )
         )
 
     def _long_frame(self, attribute: str, ctypes: list[str]) -> DuckDBPyRelation:
@@ -3428,7 +3407,7 @@ class _NetworkSource:
         rels = []
         for ctype in ctypes:
             c = self.n.c[ctype]
-            ports: dict[str, str | None] = {
+            ports: dict[str, int | None] = {
                 name: port
                 for name, (stem, port) in _port_names(c).items()
                 if stem == attribute
@@ -3438,7 +3417,9 @@ class _NetworkSource:
             ):
                 ports = {attribute: None}
             rels += [
-                self._rows(c, attribute, name, port, drop_defaults=port is None)
+                self._tagged_long_rel(
+                    c, attribute, name, port, drop_defaults=port is None
+                )
                 for name, port in ports.items()
             ]
         columns = list(self.schema.long_columns_for(attribute))
@@ -3460,7 +3441,9 @@ class _NetworkSource:
                 if name != attribute:
                     continue
                 port = ports[column][1] if column in ports else None
-                rels.append(self._rows(c, name, column, port, drop_defaults=True))
+                rels.append(
+                    self._tagged_long_rel(c, name, column, port, drop_defaults=True)
+                )
         rel = _union_all(rels)
         if rel is None:
             return None
@@ -4066,7 +4049,7 @@ def _required_attributes(ctype: str) -> frozenset[str]:
 
 
 def _record_connections(record: RecordLike) -> pd.DataFrame | None:
-    """Every type's connections as flat `(entity, bus, ...)` rows, read once for `_ordered_connections` to scope per type."""
+    """Every type's connections as flat `(entity, port, bus)` rows, read once for `_TypeMembers.of` to scope per type."""
     frame = record.properties.get(CONNECTION)
     if frame is None:
         return None
@@ -4082,41 +4065,15 @@ def _tuples_of(tuples: DuckDBPyRelation, members: DuckDBPyRelation) -> DuckDBPyR
     )
 
 
-def _ordered_connections(
-    frame: pd.DataFrame | None, members: DuckDBPyRelation | None
-) -> pd.DataFrame | None:
-    """`members`' connections out of `frame`, numbered per component in row order, inputs first.
-
-    A restatement that appends a connection renumbers none, and `bus0` is the
-    input end PyPSA's sign convention expects. A one-port component's port is `""`.
-
-    Notes
-    -----
-    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
-    - [one record over one fold](https://energy-models.github.io/datarecord/about/one-record/)
-    """
-    if frame is None or members is None:
-        return None
-    mine = {entity for (entity,) in members.project(col(ENTITY)).fetchall()}
-    df = frame[frame["entity"].isin(mine)]
-    if df.empty:
-        return None
-    df = df.assign(_role_rank=(df["role"] != _INPUT_PORT).astype(int)).sort_values(
-        ["entity", "_role_rank"], kind="stable"
-    )
-    grouped = df.groupby(["entity"], dropna=False)
-    single = grouped["bus"].transform("size").eq(1) & df["role"].eq(_SINGLE_PORT)
-    df["port"] = grouped.cumcount().astype(str).where(~single, "")
-    return df
-
-
 @dataclass(frozen=True)
 class _TypeMembers:
-    """One type's members and numbered connections, read once for `verify` and `build` to share."""
+    """One type's members and their connections, read once for `verify` and `build` to share."""
 
     #: `_members`: the static frame PyPSA's `n.<type>` starts from.
     members: DuckDBPyRelation | None
-    #: `_ordered_connections`: the type's connections with their port index.
+    #: The members' entity labels.
+    entities: frozenset[str]
+    #: The members' connections, each at its port; `None` where they have none.
     connections: pd.DataFrame | None
 
     @classmethod
@@ -4125,7 +4082,15 @@ class _TypeMembers:
     ) -> _TypeMembers:
         """`ctype`'s reads, scoping `connections` (`_record_connections`) to it."""
         members = _members(record, ctype)
-        return cls(members, _ordered_connections(connections, members))
+        entities = frozenset(
+            ()
+            if members is None
+            else (entity for (entity,) in members.project(col(ENTITY)).fetchall())
+        )
+        mine = None
+        if connections is not None:
+            mine = connections[connections[ENTITY].isin(entities)]
+        return cls(members, entities, None if mine is None or mine.empty else mine)
 
     @property
     def columns(self) -> frozenset[str]:
@@ -4142,14 +4107,13 @@ class _TypeMembers:
         - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
         """
-        if self.connections is None or self.members is None:
+        if self.connections is None:
             return frozenset()
-        members = {entity for (entity,) in self.members.project(col(ENTITY)).fetchall()}
-        registered = _registered(ctype)
+        table = _port_table(ctype)
         return frozenset(
-            _port_attribute(BUS, port, registered)
-            for port, rows in self.connections.groupby("port")
-            if members <= set(rows[ENTITY])
+            table.column(BUS, port)
+            for port, rows in self.connections.groupby(PORT)
+            if self.entities <= set(rows[ENTITY])
         )
 
 
@@ -4164,8 +4128,7 @@ def _collapse_connections(
     Parameters
     ----------
     connections
-        `ctype`'s connections as `_ordered_connections` numbers them, which
-        `_port_columns` places per-connection values by.
+        `ctype`'s connections (`_TypeMembers.connections`).
 
     Notes
     -----
@@ -4173,13 +4136,13 @@ def _collapse_connections(
     """
     if connections is None:
         return static
-    registered = _registered(ctype)
+    table = _port_table(ctype)
     stems = [BUS, *(s for s in sorted(_per_port_stems() - {BUS}) if s in connections)]
     pieces = []
     for stem in stems:
-        piece = connections.pivot(index="entity", columns="port", values=stem)
-        piece = piece[[p for p in piece if _carries(stem, p, registered)]]
-        piece.columns = [_port_attribute(stem, port, registered) for port in piece]
+        piece = connections.pivot(index=ENTITY, columns=PORT, values=stem)
+        piece = piece[[p for p in piece if table.carries(stem, p)]]
+        piece.columns = [table.column(stem, port) for port in piece]
         pieces.append(piece if stem == BUS else piece.dropna(axis=1, how="all"))
     _dr_wide = pd.concat(pieces, axis=1).reset_index()
     ports = con.sql("FROM _dr_wide").set_alias("ports")
@@ -4192,18 +4155,6 @@ def _collapse_connections(
     )
 
 
-def _connection_struct(entity: Expression, bus: Expression) -> Expression:
-    """The `connection` column packed from `entity` and `bus`, typed as declared.
-
-    Notes
-    -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
-    """
-    schema = _registry().schema
-    struct = schema.duck_type(schema.dimensions[CONNECTION])
-    return fn.struct_pack(**{ENTITY: entity, BUS: bus}).cast(struct).alias(CONNECTION)
-
-
 def _port_columns(
     long: DuckDBPyRelation,
     stem: str,
@@ -4213,15 +4164,14 @@ def _port_columns(
 ) -> dict[str, DuckDBPyRelation]:
     """A per-connection attribute's rows split into PyPSA's port columns that carry `stem`.
 
-    A row takes the port `_ordered_connections` numbered its `(entity, bus)`
-    with, so it lands beside its bus; one naming no connection is dropped.
+    A row naming no connection of `connections` is dropped.
 
     Parameters
     ----------
     long
-        The attribute's rows, carrying `entity` and `bus`.
+        The attribute's rows, carrying `entity` and `port`.
     connections
-        `ctype`'s connections as `_ordered_connections` numbers them.
+        `ctype`'s connections (`_TypeMembers.connections`).
 
     Notes
     -----
@@ -4229,22 +4179,22 @@ def _port_columns(
     """
     if connections is None:
         return {}
-    _dr_keyed = connections[[ENTITY, BUS, "port"]]
-    ports = con.sql("FROM _dr_keyed").set_alias("ports")
-    placed = (
-        long.set_alias("v")
-        .join(ports, ex_all(col("v", c) == col("ports", c) for c in (ENTITY, BUS)))
-        .project(*(col("v", c) for c in long.columns if c != BUS), col("ports", "port"))
+    _dr_keyed = connections[[ENTITY, PORT]]
+    keyed = con.sql("FROM _dr_keyed").set_alias("ports")
+    placed = long.set_alias("v").join(
+        keyed,
+        ex_all(col("v", c) == col("ports", c) for c in (ENTITY, PORT)),
+        how="semi",
     )
-    registered = _registered(ctype)
+    table = _port_table(ctype)
     columns = {
-        _port_attribute(stem, port, registered): port
-        for port in connections["port"].unique()
-        if _carries(stem, port, registered)
+        table.column(stem, port): port
+        for port in connections[PORT].unique().tolist()
+        if table.carries(stem, port)
     }
     return {
-        column: placed.filter(col("port") == lit(port))
-        .project(star(exclude=["port"]))
+        column: placed.filter(col(PORT) == lit(port))
+        .project(star(exclude=[PORT]))
         .set_alias(column)
         for column, port in columns.items()
     }
