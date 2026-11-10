@@ -951,9 +951,19 @@ class TestPyPSA:
         assert {("Generator", "bus"), ("Load", "bus")} <= missing
         assert ("Link", "bus0") not in missing, "no link is at Manchester"
 
-    @pytest.mark.parametrize("keep_port_0", [True, False], ids=["both", "port-1"])
-    def test_verify_reports_a_one_port_type_at_a_port_but_0(self, store, keep_port_0):
-        """A Generator has its `bus` at port 0 alone, so a connection at port 1 blocks the build.
+    @pytest.mark.parametrize(
+        ("ctype", "entity", "port", "dropped"),
+        [
+            ("Generator", "gen", 1, None),
+            ("Generator", "gen", 1, 0),
+            ("Line", "line", 2, None),
+        ],
+        ids=["both", "port-1", "line-port-2"],
+    )
+    def test_verify_reports_a_bus_at_a_port_its_type_lacks(
+        self, store, ctype, entity, port, dropped
+    ):
+        """A Generator has its `bus` at port 0 alone and a Line at ports 0 and 1, so a connection at another port blocks the build.
 
         Notes
         -----
@@ -963,13 +973,15 @@ class TestPyPSA:
 
         n = _north()
         n.add("Bus", "south")
+        n.add("Line", "line", bus0="north", bus1="south", x=0.1)
+        n.add("Link", "link", bus0="north", bus1="south", bus2="south")
         w = WorkingRecord(export_network(n, store).record)
-        if not keep_port_0:
-            w.remove("connection", [{"entity": "gen", "port": 0}])
-        w.add("connection", [{"entity": "gen", "port": 1}], bus="south")
+        if dropped is not None:
+            w.remove("connection", [{"entity": entity, "port": dropped}])
+        w.add("connection", [{"entity": entity, "port": port}], bus="south")
 
-        assert ("Generator", "bus") in PyPSA.verify(w).unsupported_values
-        with pytest.raises(UnsupportedRecordError, match="Generator"):
+        assert (ctype, "bus") in PyPSA.verify(w).unsupported_values
+        with pytest.raises(UnsupportedRecordError, match=ctype):
             PyPSA.build(w)
 
     def test_requires_reports_the_records_own_types(self, single_revision):

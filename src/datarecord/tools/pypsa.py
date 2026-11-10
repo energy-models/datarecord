@@ -1729,12 +1729,81 @@ def _retire(
 _PORT_SUFFIX = re.compile(r"(.+?)(\d+)")
 
 
+@dataclass(frozen=True)
+class _PortTable:
+    """How PyPSA names one type's per-port columns, read once from its registry.
+
+    Notes
+    -----
+    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+    """
+
+    #: The type's attribute names in PyPSA's bare registry.
+    registered: frozenset[str]
+    #: Whether the type attaches at one bus, by its category: a Generator, Load, Store, StorageUnit or ShuntImpedance.
+    one_port: bool
+    #: The ports the registry declares a bus at: `0` of a one-port type, `0` and `1` of a branch, none of a GlobalConstraint, whose `bus` is no port.
+    ports: frozenset[int]
+    #: Whether the type takes ports beyond `ports`, as a Link's or Process's `bus2`.
+    extends: bool
+    #: The stems named bare at port `1`, a Link's `efficiency`, `delay` and `cyclic_delay`.
+    unsuffixed: frozenset[str]
+    #: The stems the registry suffixes with a port of `ports`, and `unsuffixed`; none of a one-port type.
+    stems: frozenset[str]
+
+    def takes(self, port: int) -> bool:
+        """Whether the type attaches at `port`."""
+        return self.extends or port in self.ports
+
+    def column(self, stem: str, port: int) -> str:
+        """PyPSA's name for `stem` at `port`: `bus`, `p`, `bus0`, `p1`, `efficiency`, `efficiency2`, ..."""
+        if self.one_port or (port == 1 and stem in self.unsuffixed):
+            return stem
+        return f"{stem}{port}"
+
+    def carries(self, stem: str, port: int) -> bool:
+        """Whether PyPSA has a `stem` column at `port`: one it declares, or any at a port beyond `ports`."""
+        if not self.takes(port):
+            return False
+        return port not in self.ports or self.column(stem, port) in self.registered
+
+    def ports_of(self, c: pypsa.Components) -> list[int]:
+        """`c`'s ports the type takes as `port` labels, a one-port type's `""` as `0`."""
+        return [port for port in (int(p or 0) for p in c.ports) if self.takes(port)]
+
+
+@cache
+def _port_table(ctype: str) -> _PortTable:
+    """`ctype`'s `_PortTable`, from PyPSA's registry and component class."""
+    from pypsa.components._types.mixin.multiports import _Multiport
+    from pypsa.components.legacy import _CLASS_MAPPING
+    from pypsa.components.types import get as get_component_type
+
+    component = get_component_type(ctype)
+    registered = frozenset(component.defaults.index)
+    one_port = component.category in {"controllable_one_port", "passive_one_port"}
+    suffixed = [
+        (stem, int(port))
+        for attr in registered
+        if (match := _PORT_SUFFIX.fullmatch(attr))
+        for stem, port in [match.groups()]
+    ]
+    declared = frozenset(port for stem, port in suffixed if stem == BUS)
+    cls: type = _CLASS_MAPPING[ctype]
+    unsuffixed = frozenset(cls._unsuffixed_attrs if issubclass(cls, _Multiport) else ())
+    return _PortTable(
+        registered=registered,
+        one_port=one_port,
+        ports=frozenset({0}) if one_port else declared,
+        extends=issubclass(cls, _Multiport),
+        unsuffixed=unsuffixed,
+        stems=unsuffixed | {stem for stem, port in suffixed if port in declared},
+    )
+
+
 @cache
 def _per_port_stems() -> frozenset[str]:
     """Every attribute stem some PyPSA type carries once per port, inputs and results alike.
-
-    A name PyPSA declares at each of its type's `bus` ports (`bus0`, `p1`),
-    and the stems a type leaves unsuffixed at port `1` (`efficiency`).
 
     Notes
     -----
@@ -1742,79 +1811,9 @@ def _per_port_stems() -> frozenset[str]:
     """
     from pypsa.components.types import all_components
 
-    stems: set[str] = set()
-    for ctype in all_components.values():
-        stems |= _unsuffixed(ctype.name)
-        suffixed = [
-            match.groups()
-            for attr in _registered(ctype.name)
-            if (match := _PORT_SUFFIX.fullmatch(attr))
-        ]
-        ports = {port for stem, port in suffixed if stem == BUS}
-        stems |= {stem for stem, port in suffixed if port in ports}
-    return frozenset(stems)
-
-
-@cache
-def _unsuffixed(ctype: str) -> frozenset[str]:
-    """The stems `ctype` names bare at port `1`, a Link's `efficiency`, `delay` and `cyclic_delay`; none for any other type."""
-    from pypsa.components.legacy import _CLASS_MAPPING
-
-    # Only multi-port classes declare `_unsuffixed_attrs`.
-    return frozenset(getattr(_CLASS_MAPPING[ctype], "_unsuffixed_attrs", ()))
-
-
-def _ports(c: pypsa.Components) -> list[int]:
-    """`c`'s ports as `port` labels: PyPSA's indices, a one-port type's `""` as `0`."""
-    return [int(port or 0) for port in c.ports]
-
-
-@cache
-def _one_port(ctype: str) -> bool:
-    """Whether PyPSA's `ctype` attaches at one bus, a Generator, Load, Store, StorageUnit or ShuntImpedance."""
-    from pypsa.components.types import get as get_component_type
-
-    category = get_component_type(ctype).category
-    return category in {"controllable_one_port", "passive_one_port"}
-
-
-def _port_attribute(stem: str, port: int, ctype: str) -> str:
-    """PyPSA's name for `stem` at `port` of `ctype`: `bus`, `p`, `bus0`, `p1`, `efficiency`, `efficiency2`, ...
-
-    A one-port type has the bare stem, and so does a stem `ctype` leaves
-    unsuffixed at port `1` (`_unsuffixed`). Every other is suffixed.
-
-    Notes
-    -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
-    """
-    if _one_port(ctype) or (port == 1 and stem in _unsuffixed(ctype)):
-        return stem
-    return f"{stem}{port}"
-
-
-def _carries(stem: str, port: int, ctype: str) -> bool:
-    """Whether PyPSA has a `stem` column at `port` of `ctype`.
-
-    A one-port type has columns at port `0` only. Any other type has the ones
-    PyPSA declares, and every per-port column at a port beyond those it
-    declares a `bus` for, as a Link's `bus2` and `efficiency2`.
-    """
-    registered = _registered(ctype)
-    if _one_port(ctype):
-        return port == 0 and stem in registered
-    return (
-        _port_attribute(stem, port, ctype) in registered
-        or f"{BUS}{port}" not in registered
+    return frozenset().union(
+        *(_port_table(ctype.name).stems for ctype in all_components.values())
     )
-
-
-@cache
-def _registered(ctype: str) -> frozenset[str]:
-    """`ctype`'s attribute names in PyPSA's bare registry, `bus0`, `bus1`, `efficiency`, `p0` for a Link."""
-    from pypsa.components.types import get as get_component_type
-
-    return frozenset(get_component_type(ctype).defaults.index)
 
 
 def _from_wkt(values: pd.Series, crs: Any) -> pd.Series:
@@ -1974,8 +1973,7 @@ class PyPSATool(Tool):
             connections = read[ctype].connections
             if (
                 connections is not None
-                and _one_port(ctype)
-                and (connections[PORT] != 0).any()
+                and not connections[PORT].map(_port_table(ctype).takes).all()
             ):
                 unsupported_values.add((ctype, BUS))
             static_cols = read[ctype].columns
@@ -2294,12 +2292,13 @@ class PyPSATool(Tool):
 
 def _port_names(c: pypsa.Components) -> dict[str, tuple[str, int]]:
     """Per-port attribute name -> `(stem, port)`, for this type's actual ports."""
+    table = _port_table(c.name)
     registered = c.defaults.index
     return {
         name: (stem, port)
         for stem in sorted(_per_port_stems())
-        for port in _ports(c)
-        if (name := _port_attribute(stem, port, c.name)) in registered
+        for port in table.ports_of(c)
+        if (name := table.column(stem, port)) in registered
     }
 
 
@@ -2828,13 +2827,12 @@ class _NetworkSource:
         """
         frames = []
         for c in self.n.components:
-            if not (_as_entities(c) and c.ports):
+            if not _as_entities(c):
                 continue
             static = c.static
-            for port in _ports(c):
-                column = _port_attribute(BUS, port, c.name)
-                if column not in static.columns:
-                    continue
+            table = _port_table(c.name)
+            for port in table.ports_of(c):
+                column = table.column(BUS, port)
                 attached = static[static[column].astype(str) != ""]
                 rows = attached[[column]].rename(columns={column: BUS})
                 rows = rows.reset_index().rename(columns={"name": ENTITY})
@@ -4109,8 +4107,9 @@ class _TypeMembers:
         """
         if self.connections is None:
             return frozenset()
+        table = _port_table(ctype)
         return frozenset(
-            _port_attribute(BUS, port, ctype)
+            table.column(BUS, port)
             for port, rows in self.connections.groupby(PORT)
             if self.entities <= set(rows[ENTITY])
         )
@@ -4135,12 +4134,13 @@ def _collapse_connections(
     """
     if connections is None:
         return static
+    table = _port_table(ctype)
     stems = [BUS, *(s for s in sorted(_per_port_stems() - {BUS}) if s in connections)]
     pieces = []
     for stem in stems:
         piece = connections.pivot(index=ENTITY, columns=PORT, values=stem)
-        piece = piece[[p for p in piece if _carries(stem, p, ctype)]]
-        piece.columns = [_port_attribute(stem, port, ctype) for port in piece]
+        piece = piece[[p for p in piece if table.carries(stem, p)]]
+        piece.columns = [table.column(stem, port) for port in piece]
         pieces.append(piece if stem == BUS else piece.dropna(axis=1, how="all"))
     _dr_wide = pd.concat(pieces, axis=1).reset_index()
     ports = con.sql("FROM _dr_wide").set_alias("ports")
@@ -4184,10 +4184,11 @@ def _port_columns(
         ex_all(col("v", c) == col("ports", c) for c in (ENTITY, PORT)),
         how="semi",
     )
+    table = _port_table(ctype)
     columns = {
-        _port_attribute(stem, port, ctype): port
+        table.column(stem, port): port
         for port in connections[PORT].unique().tolist()
-        if _carries(stem, port, ctype)
+        if table.carries(stem, port)
     }
     return {
         column: placed.filter(col(PORT) == lit(port))

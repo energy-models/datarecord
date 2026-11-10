@@ -268,7 +268,8 @@ All notable changes to datarecord are documented here. The format follows
   `remove("bus", ...)` refuses a bus that a connection is at, so remove those
   connections first. `build` leaves out a value at a port PyPSA has no column
   of it for, such as a Link's `efficiency` at port 0, and `verify` reports a
-  one-port type's `bus` at a port but 0 in `unsupported_values`. Export a network again to rewrite a record that the
+  `bus` at a port its type lacks, such as a one-port type's at a port but 0,
+  in `unsupported_values`. Export a network again to rewrite a record that the
   PyPSA tool wrote before.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`
