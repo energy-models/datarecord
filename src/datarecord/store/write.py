@@ -109,6 +109,8 @@ def write_layer(
         If an axis file holds one label twice, naming it, or orders
         its parent's labels otherwise than the parent, naming the first label
         out of place.
+        If a multi-dim's tuple has some fields NULL and not all, naming the
+        file, judged on the file as written.
         If a multi-dim's tuple names a label that the layer's final axis of
         that dim does not hold, naming the multi-dim, the coordinate and up to
         three such labels.
@@ -134,7 +136,14 @@ def write_layer(
         if rel is None:
             return None
         _validate_frame(rel, kind, key, schema)
-        return con.read_parquet(_write_frame(rel, base, kind, key, schema, con))
+        frame = con.read_parquet(_write_frame(rel, base, kind, key, schema, con))
+        multi_dims = (
+            schema.multi_dims_of(key)
+            if kind == "attributes"
+            else {key} & set(schema.multi_dims)
+        )
+        schema.refuse_partial_tuples(multi_dims, frame, carrier=f"{kind}/{key}.parquet")
+        return frame
 
     refuse_one_of_file(schema, data.axes(), "the layer")
     for key in sorted(data.axes(), key=schema.multi_dims.__contains__):
