@@ -20,7 +20,7 @@ from collections.abc import Callable, Iterator, Mapping, Sequence, Set
 from contextlib import contextmanager
 from functools import reduce
 from itertools import combinations
-from uuid import UUID, uuid4
+from uuid import UUID
 
 import duckdb
 from duckdb import CoalesceOperator as coalesce
@@ -32,14 +32,13 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import (
     FOLD,
-    SCRATCH,
-    create_table,
     ex_all,
     fn,
     join_on,
     null_safe,
     shared_table,
     struct_of,
+    temp_table,
     union_all_by_name,
 )
 from datarecord.resolve.coords import (
@@ -650,7 +649,7 @@ def _fold_at_hand(source: LayerSource) -> Fold | None:
 
 @contextmanager
 def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
-    """`_fold_map` with each source's fold kept in a table, every one dropped on exit.
+    """`_fold_map` with each source's fold kept in a temporary table, every one dropped on exit.
 
     The relation entered reads the last table, so it is read before exit.
     """
@@ -663,14 +662,13 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
 
 
 def _checkpoint(
-    rel: DuckDBPyRelation,
-    made: list[str],
-    con: DuckDBPyConnection,
-    database: str,
+    rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """`rel` as a table of `database`'s `_scratch` schema, its name appended to `made`."""
-    name = str(col(database, SCRATCH, f"fold_{uuid4().hex}"))
-    create_table(con, name, rel)
+    """`rel` as a temporary table of `con`, its name appended to `made`.
+
+    `con` alone sees it, so the fold that makes it reads and drops it there.
+    """
+    name = temp_table(con, rel, "fold")
     made.append(name)
     return con.table(name)
 
@@ -745,11 +743,7 @@ def _fold_onto(
         return source_for(sources, layer)
 
     def keep(rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        return (
-            rel
-            if made is None
-            else _checkpoint(rel, made, con, sources[-1].workspace.name)
-        )
+        return rel if made is None else _checkpoint(rel, made, con)
 
     for source in sources:
         if rel is not None:

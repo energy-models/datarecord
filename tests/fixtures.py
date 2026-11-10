@@ -583,9 +583,9 @@ def in_threads(n: int, fn: Callable[[int], Any]) -> list[Any]:
 
 
 def scratch_tables(con: duckdb.DuckDBPyConnection) -> set[str]:
-    """The tables left in a `_scratch` schema, or as one of `con`'s temporary tables."""
+    """The temporary tables left on `con`."""
     rows = con.execute(
-        "SELECT table_name FROM duckdb_tables() WHERE schema_name = '_scratch' OR temporary"
+        "SELECT table_name FROM duckdb_tables() WHERE temporary"
     ).fetchall()
     return {table for (table,) in rows}
 

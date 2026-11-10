@@ -46,7 +46,7 @@ from pydantic import (
     model_validator,
 )
 
-from datarecord.duck import FOLD, SCRATCH, STAGED, transaction
+from datarecord.duck import FOLD, STAGED, transaction
 from datarecord.mutable import StagedSource, WorkingRecord
 from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
@@ -261,7 +261,7 @@ class Workspace:
             setup.execute(f"ATTACH {lit(database)} AS {col(name)}")
             for ddl in (_SCHEMAS, _REVISIONS, _REGISTERED):
                 setup.execute(_in(self, ddl))
-            for schema in (FOLD, STAGED, SCRATCH):
+            for schema in (FOLD, STAGED):
                 setup.execute(f"CREATE SCHEMA IF NOT EXISTS {col(name, schema)}")
             registered = setup.execute(
                 _in(self, "SELECT name, held FROM {registered}")

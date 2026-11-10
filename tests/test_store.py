@@ -580,8 +580,9 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
     folds = nested_tables(workspace.con, "_fold")
     assert "owner_map" in folds[child.id.hex], "the map is a shared table"
     child.materialise()
-    assert scratch_tables(workspace.con) == set(), (
-        "the fold keeps no table of its steps"
+    cons = [workspace.con, *(con for con, _ in results)]
+    assert all(scratch_tables(con) == set() for con in cons), (
+        "the fold keeps no table of its steps on any cursor"
     )
 
 

@@ -16,7 +16,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 ## Abstract
 
-The tables a workspace creates move out of `main` into three schemas: `_fold` for a revision's fold, `_staged` for a `WorkingRecord`'s staging tables, `_scratch` for a call's intermediates. A revision's fold and a record's staging tables each get a schema of their own inside, which is held by its holders: the records reading it and the registrations whose views read it. The workspace drops a schema when its last holder releases it. A record releases its holds on `close()`, or once it is collected unclosed. Every relation a record hands out keeps the record alive, so its tables live while the record or any relation taken from it lives.
+The tables a workspace keeps move out of `main` into two schemas: `_fold` for a revision's fold, `_staged` for a `WorkingRecord`'s staging tables. A call's intermediates become temporary tables of its cursor. A revision's fold and a record's staging tables each get a schema of their own inside, which is held by its holders: the records reading it and the registrations whose views read it. The workspace drops a schema when its last holder releases it. A record releases its holds on `close()`, or once it is collected unclosed. Every relation a record hands out keeps the record alive, so its tables live while the record or any relation taken from it lives.
 
 ## Motivation
 
@@ -35,15 +35,16 @@ DuckDB does not help. It drops a table a view reads without complaint, and the v
 
 ### Layout
 
-| schema            | holds                                                                       | created by                            |
-| ----------------- | --------------------------------------------------------------------------- | ------------------------------------- |
-| `main`            | `schemas`, `revisions`, `registered`                                        | the workspace                         |
-| `_fold.<rid>`     | `owner_map`, `dims_<dim>`, `dead_<name>` and `dim_owners` of revision `rid` | the first cursor to fold `rid`        |
-| `_staged.<layer>` | a `WorkingRecord`'s staging tables                                          | `WorkingRecord(...)`                  |
-| `_scratch`        | a fold's checkpoints, an edit's snapshot, the PyPSA exporter's joins        | the call using them, which drops them |
-| `<name>`          | the views of a registration (DEP 34)                                        | `register(name)`                      |
+| schema            | holds                                                                       | created by                     |
+| ----------------- | --------------------------------------------------------------------------- | ------------------------------ |
+| `main`            | `schemas`, `revisions`, `registered`                                        | the workspace                  |
+| `_fold.<rid>`     | `owner_map`, `dims_<dim>`, `dead_<name>` and `dim_owners` of revision `rid` | the first cursor to fold `rid` |
+| `_staged.<layer>` | a `WorkingRecord`'s staging tables                                          | `WorkingRecord(...)`           |
+| `<name>`          | the views of a registration (DEP 34)                                        | `register(name)`               |
 
-`_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as names it finds taken. The id in a nested schema's name keys its tables, which no longer carry it.
+`_fold` and `_staged` are created with the workspace, so `register` refuses them as names it finds taken. The id in a nested schema's name keys its tables, which no longer carry it.
+
+A table that lives within one call, a fold's checkpoints, an edit's snapshot or the PyPSA exporter's joins, is a `TEMP` table of the calling cursor, in no schema of the database. The call creates, reads and drops it on that cursor.
 
 ### Holders
 
@@ -86,7 +87,9 @@ Only what a record hands out is anchored. A relation the record caches for itsel
 
 A `Record` holds the fold of each layer it folds rather than of its revision only. Its relations read an ancestor's fold where the workspace has one ([the nearest fold at hand](../layers/resolution.md#a-fold-starts-from-the-nearest-fold-at-hand)), and that fold would otherwise drop with the ancestor's last record.
 
-A schema per revision and per record makes it the unit of holding: a `WorkingRecord`'s about 310 staging tables are dropped by one `DROP SCHEMA … CASCADE`, and the holds name a handful of schemas, not hundreds of tables. Nesting them keeps the top level to `main`, the three schemas and the registrations, which is what a SQL client browsing the database sees.
+A schema per revision and per record makes it the unit of holding: a `WorkingRecord`'s about 310 staging tables are dropped by one `DROP SCHEMA … CASCADE`, and the holds name a handful of schemas, not hundreds of tables. Nesting them keeps the top level to `main`, the two schemas and the registrations, which is what a SQL client browsing the database sees.
+
+A call's intermediate table is created, read and dropped by one call on one cursor, so no other cursor needs to see it and no holder needs to keep it: a `TEMP` table, visible to that cursor alone, fits. It leaves nothing behind in a file database when the process dies mid-call, where a table of a shared schema would stay until something swept it. A transaction that writes to the workspace's database can still create one, since DuckDB does not count the temporary catalog as a second database written. Past DuckDB's `memory_limit` it spills to the `temp_directory`, `.tmp` by default, as a table of an in-memory database does. The tables other cursors read, the fold's and the staging tables, stay in the database.
 
 A registration holds the schemas of its record rather than the tables its rendered SQL names. The two sets cover the same tables, and taking the record's spares parsing the views.
 
@@ -128,11 +131,11 @@ ws.unregister("edit_3f2a")  # the staging tables are dropped
 
 1. The holder registry on `Workspace`: hold, release, and drop on the last release, on the workspace's own cursor under one lock.
 2. `WorkingRecord`: its staging tables, `close()`, the finaliser, the refusal after close, and the registration's holds.
-3. The layout: `_fold`, `_staged` and `_scratch`, every table moved into them, and the holds taken on schemas.
+3. The layout: `_fold` and `_staged`, every shared table moved into them, the holds taken on schemas, and a call's intermediates made `TEMP` tables of its cursor.
 4. `Record`: `_fold.<id>` of each layer it folds, held from construction; `close()`, the finaliser, the refusal after close, and `Revision.record` replacing a closed record. A `WorkingRecord` takes its base's, and reads a `Record` base through a copy open while it is, so closing the caller's base leaves its edits working.
 5. Anchoring: each relation of `dims`, `properties` and `attributes` keeps its record through a `weakref.finalize`, and a collected `Record` releases.
 
-The checks: a workspace that opens and closes records, edits and registrations in a loop ends with only the tables of `main` and the three schemas, empty. A view registered on a closed record reads until it is unregistered. A read after `close()` raises the closed error. A relation, or one derived from it, of a record collected unclosed reads after a collection, and the record's fold and staging tables go once the relation does. A registration of a collected record frees its fold on `unregister`.
+The checks: a workspace that opens and closes records, edits and registrations in a loop ends with only the tables of `main` and the two schemas, empty, and no temporary table on its cursor. A view registered on a closed record reads until it is unregistered. A read after `close()` raises the closed error. A relation, or one derived from it, of a record collected unclosed reads after a collection, and the record's fold and staging tables go once the relation does. A registration of a collected record frees its fold on `unregister`.
 
 ## Rejected Ideas
 
@@ -142,6 +145,7 @@ The checks: a workspace that opens and closes records, edits and registrations i
 - Wrapping each relation in a proxy holding the record. A proxy is no `DuckDBPyRelation`, which every consumer takes, and a relation derived from it would drop the proxy.
 - Only `close()`. Every forgotten record leaks, as all of them do today.
 - Holds kept in a DuckDB table. The Python holders would not survive a reopen, and the one that does, a registration, is already a row of `registered`.
+- A `_scratch` schema of the database for a call's intermediates. Each call drops its own, but a process that dies mid-call leaves them in a file database, and they are named in a catalog every cursor sees for tables only one reads.
 - A top-level schema per revision and per record. The top level fills with ids as `main` does today.
 - A table prefix per kind in `main`, as today. A record's tables can then be dropped only one by one, and a SQL client sees them all beside the bookkeeping.
 - Evicting shared tables by age or size. It breaks a live record's relations without telling it.

@@ -65,8 +65,6 @@ fn = _Functions()
 FOLD = "_fold"
 #: The schema each `WorkingRecord`'s staging tables are kept in, as a schema of its own inside.
 STAGED = "_staged"
-#: The schema a call keeps its intermediate tables in, each dropped by that call.
-SCRATCH = "_scratch"
 
 
 def nested(parent: str, id: UUID) -> str:
@@ -444,15 +442,26 @@ def _past_conflicts(create: Callable[[], object]) -> None:
 def scratch_table(
     con: DuckDBPyConnection, rel: DuckDBPyRelation
 ) -> Iterator[DuckDBPyRelation]:
-    """`rel` collected into a temporary table of `con`, read as one, and dropped on exit.
+    """`rel` collected into a temporary table of `con`'s own, read as one, and dropped on exit.
 
     A table both pins what `rel` reads, where a later write would change it,
-    and stops each step over it from binding `rel`'s whole tree again.
+    and stops each step over it from binding `rel`'s whole tree again. Only
+    `con` sees it, so it is read on `con` alone.
+
+    Notes
+    -----
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
     """
-    name = f"temp.main._scratch_{uuid4().hex}"
-    _dr_rel = rel
-    con.execute(f"CREATE TEMP TABLE {name} AS FROM _dr_rel")
+    name = temp_table(con, rel, "t")
     try:
         yield con.table(name)
     finally:
         con.execute(f"DROP TABLE {name}")
+
+
+def temp_table(con: DuckDBPyConnection, rel: DuckDBPyRelation, prefix: str) -> str:
+    """`rel` collected into a new temporary table of `con`, its name as SQL reads it."""
+    name = f"temp.main.{prefix}_{uuid4().hex}"
+    _dr_rel = rel
+    con.execute(f"CREATE TEMP TABLE {name} AS FROM _dr_rel")
+    return name

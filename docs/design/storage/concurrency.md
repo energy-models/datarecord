@@ -21,6 +21,7 @@ A dict keyed by thread id would reuse ids, and a `ContextVar` would be copied in
 
 Tables in the workspace's database are shared between cursors: the `revisions` cache, the staging tables and the folded caches.
 So are a record's [registered views](views.md), which every cursor reads and which show an edit once its transaction commits.
+A table that lives within one call, such as a fold's checkpoint, is a temporary table of the calling cursor instead, which no other cursor sees ([the database's schemas](store.md#the-databases-schemas)).
 A `DuckDBPyRelation` is bound to the cursor that built it.
 The line between thread-bound and shared objects runs around relations alone.
 

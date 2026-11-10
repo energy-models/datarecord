@@ -563,7 +563,7 @@ def test_unregister_finishes_a_running_statement_and_fails_a_later_one(
         rel.fetchall()
 
 
-@pytest.mark.parametrize("name", ["_fold", "_staged", "_scratch"])
+@pytest.mark.parametrize("name", ["_fold", "_staged"])
 def test_register_refuses_a_schema_of_the_workspace(small, name):
     with pytest.raises(duckdb.CatalogException, match="already exists"):
         small.record.register(name)

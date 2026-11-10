@@ -71,16 +71,15 @@ A passed connection that ran `USE datarecord` runs `USE` on its own database aga
 
 The tables a workspace creates sit in schemas of its database, so its `main` holds only its bookkeeping:
 
-| schema            | holds                                                                            | created by                            |
-| ----------------- | -------------------------------------------------------------------------------- | ------------------------------------- |
-| `main`            | `schemas`, `revisions`, `registered`                                             | the workspace                         |
-| `_fold.<rid>`     | the [shared tables](concurrency.md#a-cursor-per-thread) of revision `rid`'s fold | the first cursor to fold `rid`        |
-| `_staged.<layer>` | a `WorkingRecord`'s [staging tables](../use/editing.md#staging)                  | `WorkingRecord(...)`                  |
-| `_scratch`        | a call's intermediate tables, a fold's checkpoints and an edit's snapshots       | the call using them, which drops them |
-| `<name>`          | the [views of a registration](views.md)                                          | `register(name)`                      |
+| schema            | holds                                                                            | created by                     |
+| ----------------- | -------------------------------------------------------------------------------- | ------------------------------ |
+| `main`            | `schemas`, `revisions`, `registered`                                             | the workspace                  |
+| `_fold.<rid>`     | the [shared tables](concurrency.md#a-cursor-per-thread) of revision `rid`'s fold | the first cursor to fold `rid` |
+| `_staged.<layer>` | a `WorkingRecord`'s [staging tables](../use/editing.md#staging)                  | `WorkingRecord(...)`           |
+| `<name>`          | the [views of a registration](views.md)                                          | `register(name)`               |
 
 SQL names each in full, `datarecord._fold.<rid>.owner_map`.
-`_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as taken names.
+`_fold` and `_staged` are created with the workspace, so `register` refuses them as taken names.
 The id in a nested schema's name keys its tables, which do not carry it, and is its 32-digit hex, without dashes.
 A `Record` holds `_fold.<id>` of each layer it folds, its revision's among them, from construction until it is closed or collected.
 A `WorkingRecord` holds its base's and its own `_staged.<layer>` the same way.
@@ -93,7 +92,9 @@ A record forgotten unclosed costs its tables only until it and its relations are
 A closed record refuses every read with `ValueError`, and `Revision.record` builds a new one once its cached record is closed.
 A workspace reopened on a file holds again, for every registration in `registered`, the schemas its `held` column lists, so its views read on and `unregister` drops them there too.
 The column names each schema inside the database, `_fold.<rid>`, so the file reads alike attached under another name.
-The PyPSA exporter, which holds a record's connection but no workspace, keeps its joins in temporary tables of its cursor instead, dropped by the call too.
+A table that lives within one call, a fold's checkpoints, an edit's snapshot or the PyPSA exporter's joins, is a temporary table of the calling cursor rather than one of the database.
+The call creates, reads and drops it on that cursor, the only one that sees it, so it needs no holder, and a process that dies mid-call leaves nothing of it in a file database.
+Past DuckDB's `memory_limit` a temporary table spills to its `temp_directory`, `.tmp` by default, as a table of an in-memory database does.
 
 ### The layers
 

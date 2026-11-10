@@ -505,7 +505,7 @@ class Record:
         ------
         duckdb.CatalogException
             If the schema `name` exists in the workspace's database, as
-            `_fold`, `_staged` and `_scratch` always do.
+            `_fold` and `_staged` always do.
         duckdb.TransactionException
             Where the cursor already holds an open transaction, or another
             cursor registers `name` at the same time.

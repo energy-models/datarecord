@@ -170,9 +170,9 @@ All notable changes to datarecord are documented here. The format follows
   A closed record raises `ValueError` on every read and edit. A registration
   of the record keeps the tables until `Workspace.unregister(name)`. The
   workspace keeps its tables out of its database's `main`: a revision's fold in
-  `_fold."<id>"`, a `WorkingRecord`'s staging tables in `_staged."<id>"`, and
-  a call's intermediate tables in `_scratch`, so `register` refuses these
-  three names. A workspace reopened on a file can `unregister` the
+  `_fold."<id>"` and a `WorkingRecord`'s staging tables in `_staged."<id>"`,
+  so `register` refuses these two names. A call's intermediate tables are
+  temporary tables of its cursor. A workspace reopened on a file can `unregister` the
   registrations it lists.
 - `Record.close()` releases the record's folds, and `with record:` closes it
   on exit. The workspace drops a revision's fold once no open record or
