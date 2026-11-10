@@ -284,8 +284,8 @@ _ENTITY = "does not fit 'entity' of dtype str"
             id="property-mapping-keys",
         ),
         pytest.param(
-            lambda s: s.set("connection.role", "input", bus=5),
-            "does not fit 'bus' of dtype str",
+            lambda s: s.set("connection.bus", "Manchester", port="0"),
+            "does not fit 'port' of dtype int",
             id="multi-dim-keyword",
         ),
         pytest.param(
@@ -509,9 +509,7 @@ def _rows(rel):
         (
             "dims",
             "connection",
-            lambda w: w.add(
-                "connection", [{"entity": "Norway Gas", "bus": "Manchester"}]
-            ),
+            lambda w: w.add("connection", [{"entity": "Norway Gas", "port": 1}]),
         ),
     ],
     ids=[
@@ -964,50 +962,50 @@ def test_an_add_undone_by_a_remove_writes_nothing(staged, root, set_value):
 
 
 def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
-    """Per `(entity, bus)`, the multi-dim's own key.
+    """Per `(entity, port)`, the multi-dim's own key.
 
     Notes
     -----
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
     """
-    staged.remove("connection", [{"entity": "Norwich Converter", "bus": "Norwich"}])
-    before = unpacked(staged.dims["connection"])
+    staged.remove("connection", [{"entity": "Norwich Converter", "port": 0}])
+    before = unpacked(staged.properties["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = root.store.commit(staged)
-    rows = unpacked(child.record.dims["connection"])
+    rows = unpacked(child.record.properties["connection"])
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     assert "Norwich DC" in left, "the component's other port survives the commit"
 
 
-def _efficiency(record, entity="Manchester Wind") -> dict[str, float]:
-    """`efficiency` per bus for one entity, as the record resolves it."""
+def _efficiency(record, entity="Manchester Wind") -> dict[int, float]:
+    """`efficiency` per port for one entity, as the record resolves it."""
     resolved = broadcast(record, "efficiency", "connection")
-    return {bus: v for ((e, bus),), v in resolved.items() if e == entity}
+    return {port: v for ((e, port),), v in resolved.items() if e == entity}
 
 
-def test_a_bus_keyword_addresses_one_connection(staged, root):
-    """`bus=` names one connection, which the stage packs into its struct.
+def test_a_port_keyword_addresses_one_connection(staged, root):
+    """`port=` names one connection, which the stage packs into its struct.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
     - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
-    staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
+    staged.set("efficiency", 0.5, entity=["Manchester Wind"], port=0)
 
     own = staged.edits.attribute("efficiency")
-    assert "bus" not in own.columns, "the row carries the connection, not its bus"
+    assert "port" not in own.columns, "the row carries the connection, not its port"
     assert own.project("connection").distinct().fetchall() == [
-        ({"entity": "Manchester Wind", "bus": "Manchester"},)
+        ({"entity": "Manchester Wind", "port": 0},)
     ]
-    assert _efficiency(staged)["Manchester"] == 0.5
+    assert _efficiency(staged)[0] == 0.5
 
     child = root.store.commit(staged)
-    assert _efficiency(child.record)["Manchester"] == 0.5
+    assert _efficiency(child.record)[0] == 0.5
 
 
 def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
@@ -1021,11 +1019,11 @@ def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
         staged.set(
             "efficiency",
             staged.con.sql(
-                "SELECT {'entity': 'Manchester Wind', 'bus': 'Manchester'} "
+                "SELECT {'entity': 'Manchester Wind', 'port': 0} "
                 f"AS connection, {value} AS value"
             ),
         )
-    assert _efficiency(staged)["Manchester"] == 0.25, "one key, replaced"
+    assert _efficiency(staged)[0] == 0.25, "one key, replaced"
 
 
 def test_set_takes_a_frame_duckdb_scans(staged):
@@ -1111,8 +1109,8 @@ def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
 @pytest.mark.parametrize(
     "select",
     [
-        "'Manchester Wind' AS entity, 'Manchester' AS bus, 0.5 AS value",
-        "{'entity': 'Manchester Wind', 'bus': NULL::VARCHAR} AS connection, "
+        "'Manchester Wind' AS entity, 0 AS port, 0.5 AS value",
+        "{'entity': 'Manchester Wind', 'port': NULL::BIGINT} AS connection, "
         "0.5 AS value",
     ],
     ids=["flat", "partly-null"],
@@ -1168,7 +1166,7 @@ def test_remove_then_add_starts_without_the_parents_connections(staged, root):
     assert _efficiency(child.record) == {}, "its connections are re-added by hand"
 
 
-_TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
+_TUPLE = {"entity": "Manchester Wind", "port": 1}
 
 
 @pytest.mark.parametrize(
@@ -1177,7 +1175,7 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         (
             pd.DataFrame([{"connection": {"entity": "Manchester Wind"}}]),
             {},
-            r"as a struct of its coordinates \['entity', 'bus'\]",
+            r"as a struct of its coordinates \['entity', 'port'\]",
         ),
         (
             pd.DataFrame([{"connection": _TUPLE, "entity": "Manchester Wind"}]),
@@ -1187,15 +1185,15 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         (
             pd.DataFrame([{"entity": "Manchester Wind"}]),
             {},
-            r"carries no column \['bus'\]",
+            r"carries no column \['port'\]",
         ),
         (
-            [{"entity": "Manchester Wind", "bus": "Norway"}, {"entity": 1, "bus": "x"}],
+            [_TUPLE, {"entity": 1, "port": 0}],
             {},
             "has type INTEGER, which does not fit 'entity'",
         ),
         (
-            pd.DataFrame({"entity": [None], "bus": ["Norway"]}),
+            pd.DataFrame({"entity": [None], "port": [1]}),
             {},
             "with a coordinate NULL",
         ),
@@ -1292,7 +1290,7 @@ def test_set_refuses_a_coordinate(staged):
     - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     with pytest.raises(ValueError, match="names a coordinate of the multi-dim"):
-        staged.set("connection.bus", "Norway", entity="Manchester Wind")
+        staged.set("connection.port", 1, entity="Manchester Wind")
 
 
 def test_every_declared_multi_dim_reads_its_staged_rows(store):

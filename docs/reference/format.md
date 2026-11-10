@@ -66,7 +66,7 @@ Its first column is the key, named for the dim, and each further column is one [
 
 ```text
 dims/entity.parquet       entity | ctype | carrier | sign | type
-dims/connection.parquet   connection STRUCT(entity, bus) | role
+dims/connection.parquet   connection STRUCT(entity, port) | bus
 ```
 
 - A property is NULL in a row where no layer wrote a value for that label.
@@ -84,11 +84,11 @@ An attribute file contains the long rows of one attribute: its own coordinates, 
 
 The coordinates are the dims that the attribute's [`dims`](schema.md) declare, multi-dims first, each multi-dim as one struct column.
 
-| Attribute                               | Columns                                                        |
-| --------------------------------------- | -------------------------------------------------------------- |
-| `p_nom` over `entity`                   | `entity, attribute, breakpoint, value`                         |
-| `p_max_pu` over `entity` and `snapshot` | `entity, snapshot, attribute, breakpoint, value`               |
-| `efficiency` over `connection`          | `connection STRUCT(entity, bus), attribute, breakpoint, value` |
+| Attribute                               | Columns                                                         |
+| --------------------------------------- | --------------------------------------------------------------- |
+| `p_nom` over `entity`                   | `entity, attribute, breakpoint, value`                          |
+| `p_max_pu` over `entity` and `snapshot` | `entity, snapshot, attribute, breakpoint, value`                |
+| `efficiency` over `connection`          | `connection STRUCT(entity, port), attribute, breakpoint, value` |
 
 A NULL coordinate means every label of its dim, by [the broadcast rule](data-model.md).
 `breakpoint` is NULL except on the rows of a curve.

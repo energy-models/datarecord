@@ -97,8 +97,8 @@ Their `schema` is empty, because the record's names are PyPSA's.
 | `ctype`                          | a dim with `one_of`: the component types                              |
 | `bus`, `carrier`, `sub_network`  | a bus, a carrier, a SubNetwork as PyPSA numbers it                    |
 | `line_type`, `transformer_type`  | a standard type                                                       |
-| `connection`                     | a multi-dim over `(entity, bus)`: one port of a component             |
-| `role`                           | a dim with `one_of`: `input`, `output` and `attached`                 |
+| `port`                           | a port's number, as in PyPSA's `bus0`, `bus1`, …                      |
+| `connection`                     | a multi-dim over `(entity, port)`: one port of a component            |
 | `snapshot`                       | a timestamp, or a multi-dim over `(period, timestep)` if multi-period |
 | `timestep`, `period`, `scenario` | a timestep, an investment period by its year, a scenario              |
 
@@ -109,10 +109,12 @@ Their `schema` is empty, because the record's names are PyPSA's.
 | `carrier`                       | `color`, `nice_name`                            |
 | `sub_network`                   | `carrier`                                       |
 | `line_type`, `transformer_type` | every registry input of the type                |
-| `connection`                    | `role`                                          |
+| `connection`                    | `bus`                                           |
 
-`partial` is `{"entity", "bus", "scenario", "connection"}`.
-`to_datarecord` writes no axis of `ctype` or `role`, since a dim with `one_of` lists its labels.
+`partial` is `{"entity", "bus", "port", "scenario", "connection"}`.
+`to_datarecord` writes no axis of `ctype`, since a dim with `one_of` lists its labels.
+Its `port` axis lists ports 0 and 1, which PyPSA's registry declares, and any further port a connection has, in ascending order.
+So you can add a component's connections at ports 0 and 1 without adding a port first.
 Every other registry input is an attribute, `p_nom` among them.
 Every component attribute is over `scenario`, except those PyPSA keeps the same in every scenario.
 These are `active`, `build_year`, `committable`, `lifetime`, `weight`, `*_nom_extendable`, `*_nom_mod` and the results `*_nom_opt`.
@@ -121,15 +123,15 @@ These are `active`, `build_year`, `committable`, `lifetime`, `weight`, `*_nom_ex
 
 `verify` takes a record or a [selection](#selecting-before-a-build), and reports in a `Requirements`:
 
-| Field                | Entries                                                                                      |
-| -------------------- | -------------------------------------------------------------------------------------------- |
-| `dims`               | `snapshot`, `period` or `scenario`, where the schema lacks it and no selection squeezes it   |
-| `unsupported_keys`   | `snapshot`, where it is in `partial`                                                         |
-| `unsupported_dims`   | each dim of the record's own ([a collection](#a-collection))                                 |
-| `categories`         | each `ctype` that PyPSA's registry lacks                                                     |
-| `attributes`         | each required attribute with no row, property or declared default, a port's `bus` among them |
-| `unsupported_values` | each attribute stored as a curve, or varying along a dim PyPSA holds it without              |
-| `ignored`            | each attribute a type has a value for and does not take                                      |
+| Field                | Entries                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `dims`               | `snapshot`, `period` or `scenario`, where the schema lacks it and no selection squeezes it                                       |
+| `unsupported_keys`   | `snapshot`, where it is in `partial`                                                                                             |
+| `unsupported_dims`   | each dim of the record's own ([a collection](#a-collection))                                                                     |
+| `categories`         | each `ctype` that PyPSA's registry lacks                                                                                         |
+| `attributes`         | each required attribute with no row, property or declared default, a port's `bus` among them                                     |
+| `unsupported_values` | each attribute stored as a curve, or varying along a dim PyPSA holds it without, such as a one-port type's `bus` at a port but 0 |
+| `ignored`            | each attribute a type has a value for and does not take                                                                          |
 
 When `verify` finds an unsupported key or dim, it reports nothing else.
 It raises `ValueError` for a selection that `build` refuses.
@@ -170,19 +172,21 @@ A library type has the library's values in the built network.
 
 ### Ports
 
-Each port of a component is a `connection` tuple `(entity, bus)`, and a per-port input or result is an attribute over `connection`.
+Each port of a component is a `connection` tuple `(entity, port)`, and the property `connection.bus` is the bus the port attaches to.
+The port is PyPSA's number in `bus0`, `bus1`, …, and a one-port component has its `bus` at port 0.
+A per-port input or result is an attribute over `connection`.
 `build` turns the tuples of a component back into PyPSA's numbered columns:
 
 <figure class="diagram">
 --8<-- "docs/static/tools-ports.svg"
 </figure>
 
-`bus0` is the connection with role `input`, and the other ports follow in [axis order](data-model.md#dims-and-labels).
-The `efficiency` row at the second port is PyPSA's `efficiency`, and at a third port it is `efficiency2`.
+`build` names a column by the component type: port 0 of a Generator is `bus`, and port 2 of a Link is `bus2`.
+Two ports at one bus are two tuples, so a Link from `north` to `north` keeps both ports.
+The `efficiency` row at port 1 is PyPSA's `efficiency`, and at port 2 it is `efficiency2`.
 A Process's `rate0`, `rate1`, … are the one attribute `rate`.
 `rate` declares no default, and a port with no row keeps PyPSA's default for that port.
 `delay` and `cyclic_delay` are over `connection`.
-A one-port component's connection has the role `attached`.
 
 ### Results on connections
 

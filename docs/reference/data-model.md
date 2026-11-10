@@ -79,7 +79,7 @@ For a multi-dim with no tuples, `record.dims` returns an empty relation.
 
 A **property** is a value per label of its subject dim, declared by a `PropertySpec` under `properties`.
 It is stored as a column of that dim's axis file, so it has no `dims` of its own.
-You name it `subject.name`, such as `entity.carrier` or `connection.role`, and a plain name always means an attribute.
+You name it `subject.name`, such as `entity.carrier` or `bus.carrier`, and a plain name always means an attribute.
 `record.properties[subject]` returns the subject's key and every property declared for it:
 
 ```python

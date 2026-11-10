@@ -921,12 +921,12 @@ class WorkingRecord(Record):
         the labels of that dim matching it on the record as staged, the
         keywords combining as an intersection; `set` writes one row per label,
         and stores nothing of the filter, so a label added later is not reached.
-        A property of a multi-dim `attribute` is over - `role="output"` -
-        selects its tuples the same way, narrowed by any keyword naming one of
-        its coordinates. On a multi-dim's property, the keywords select its
-        tuples as on an attribute over it: `set("connection.note", v,
-        role="output")` patches the output connections, and `ctype="Link"`
-        the connections of links.
+        A property of a multi-dim `attribute` is over - `bus="north"` for a
+        `connection.bus` - selects its tuples the same way, narrowed by any
+        keyword naming one of its coordinates. On a multi-dim's property, the
+        keywords select its tuples as on an attribute over it:
+        `set("connection.note", v, bus="north")` patches the connections at
+        `north`, and `ctype="Link"` the connections of links.
 
         Raises
         ------
