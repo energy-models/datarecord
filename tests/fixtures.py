@@ -10,7 +10,7 @@ them under the schema the layer was started with.
 
 Notes
 -----
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
 
 from __future__ import annotations
@@ -49,7 +49,7 @@ TYPES = (
 """The `ctype` labels `schema()` declares - every one a test writes."""
 
 # No `ctype`: an attribute row is keyed by `name`, unique across every type
-# (https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim). The entity tables below keep it.
+# (https://energy-models.github.io/datarecord/reference/format/#labels). The entity tables below keep it.
 LONG_COLUMNS = [
     "entity",
     "bus",
@@ -81,8 +81,8 @@ def write_attribute(
 
     Notes
     -----
-    - [wide and long rows](https://energy-models.github.io/datarecord/design/model/attributes/#wide-and-long-rows)
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
+    - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
     """
     df = pd.DataFrame(rows)
     if connection is None:
@@ -152,7 +152,7 @@ def restate(
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     old = _as_written(layer, kind, name)
     records = old.to_dict("records")
@@ -178,7 +178,7 @@ def write_multi_dim(layer: HandBuilt, multi: str, rows: list[dict]) -> None:
 
     Notes
     -----
-    - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [where the rows live](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     restate(layer, "dims", multi, rows)
 
@@ -205,8 +205,8 @@ def write_connections(layer: HandBuilt, rows: list[dict]) -> None:
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
-    - [where the rows live](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [where the rows live](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     restate(layer, "dims", "connection", [_connection(r) for r in rows])
 
@@ -216,7 +216,7 @@ def drop_connections(layer: HandBuilt, pairs: list[tuple[str, str]]) -> None:
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
     """
     gone = [{"entity": e, "bus": b} for e, b in pairs]
     restate(layer, "dims", "connection", [], drop=gone)
@@ -232,7 +232,7 @@ def drop_entities(layer: HandBuilt, names: list[str]) -> None:
 
     Notes
     -----
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     restate(layer, "dims", "entity", [], drop=names)
 
@@ -242,7 +242,7 @@ def write_axis(layer: HandBuilt, dim: str, rows: list[dict]) -> None:
 
     Notes
     -----
-    - [the record format](https://energy-models.github.io/datarecord/design/storage/format/)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
     restate(layer, "dims", dim, rows)
 
@@ -297,8 +297,8 @@ def rename_components(n, ctype: str, suffix: str) -> None:
 
     Notes
     -----
-    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
-    - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
     c = n.c[ctype]
     index = c.static.index
@@ -485,8 +485,8 @@ def schema(
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-    - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+    - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     # Callers declare per type, which is how a modelling framework thinks; the
     # schema stores one spec per attribute, record-wide. Flattening here keeps

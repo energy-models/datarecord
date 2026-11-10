@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
+- [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
 
 import pytest
@@ -32,7 +32,7 @@ def stochastic():
 
     Notes
     -----
-    - [a label is unique within its dim](https://energy-models.github.io/datarecord/design/storage/format/#a-label-is-unique-within-its-dim)
+    - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
     """
     import pypsa
 

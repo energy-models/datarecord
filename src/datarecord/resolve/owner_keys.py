@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-- [flags](https://energy-models.github.io/datarecord/design/layers/resolution/#flags)
+- [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+- [flags](https://energy-models.github.io/datarecord/reference/resolution/#flags)
 """
 
 from __future__ import annotations
@@ -40,7 +40,7 @@ def cast_declared(
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     """
     cols = [
         col(c).cast(found[1]).alias(c)
@@ -58,7 +58,7 @@ def _empty_relation(
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     """
     return empty_relation(
         con, **{c: schema.column_type(c) or sqltypes.VARCHAR for c in columns}
@@ -78,8 +78,8 @@ def with_columns(
 
     Notes
     -----
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     missing = [c for c in columns if c not in rel.columns]
     if not missing:
@@ -131,7 +131,7 @@ def owner_keys(
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     tagged = _tagged(schema, rel, layer_id)
     return tagged.aggregate(
@@ -163,7 +163,7 @@ def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...
 
     Notes
     -----
-    - [flags](https://energy-models.github.io/datarecord/design/layers/resolution/#flags)
+    - [flags](https://energy-models.github.io/datarecord/reference/resolution/#flags)
     """
     broadcast = schema.broadcast_dims
     over = {d: _over(schema, d, attributes) for d in broadcast}
@@ -187,7 +187,7 @@ def _over(schema: Schema, dim: str, attributes: tuple[str, ...]) -> Expression:
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
     lacking = [
         a

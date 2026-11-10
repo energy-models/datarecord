@@ -19,8 +19,8 @@ must be unset, or botocore reads that profile instead.
 
 Notes
 -----
-- [files, local and remote](https://energy-models.github.io/datarecord/design/storage/store/#files-local-and-remote)
-- [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+- [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+- [the store](https://energy-models.github.io/datarecord/reference/store/#store)
 """
 
 import os

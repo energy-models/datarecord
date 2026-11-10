@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+- [the schema](https://energy-models.github.io/datarecord/reference/schema/)
 """
 
 import json
@@ -64,7 +64,7 @@ def _listing_dims(**labels: list[str]) -> dict[str, Dimension]:
     }
 
 
-# -- derived keys (https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override) -----------------------------------------------------
+# -- derived keys (https://energy-models.github.io/datarecord/reference/layers/#partial) -----------------------------------------------------
 
 
 def test_ownership_is_derived_not_declared():
@@ -101,7 +101,7 @@ def test_partial_dims_is_the_union_over_attributes():
     )
 
 
-# -- addressing (https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives) ------------------------------------
+# -- addressing (https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives) ------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -132,7 +132,7 @@ def test_the_section_decides_where_a_value_lives():
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
     """
     s = _schema()
     assert s.long_columns_for("p_nom") == ("entity", "attribute", "breakpoint", "value")
@@ -214,7 +214,7 @@ def test_a_coordinate_is_addressed_as_a_property_is():
 
     Notes
     -----
-    - [coordinates](https://energy-models.github.io/datarecord/design/model/multi-dims/#coordinates)
+    - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     s = _schema()
     assert s.resolve("connection.bus") == ("connection", s.dimensions["bus"])
@@ -269,7 +269,7 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
     """
     s = _schema(
         dimensions=_listing_dims(carrier_kind=["wind", "solar"], era=["old", "new"]),
@@ -363,7 +363,7 @@ def test_resolve_reads_a_property_dotted_and_a_plain_name_as_an_attribute(
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
+    - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
     """
     resolved = _shared().resolve(name)
     spec = resolved[1] if isinstance(resolved, tuple) else resolved
@@ -632,7 +632,7 @@ def test_a_dim_reference_must_resolve(build, match):
         build()
 
 
-# -- defaults through the manifest (https://energy-models.github.io/datarecord/design/model/attributes/#attributespec, https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ------------------------------
+# -- defaults through the manifest (https://energy-models.github.io/datarecord/reference/schema/#attributes, https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record) ------------------------------
 
 
 @pytest.mark.parametrize("value", [float("inf"), None])
@@ -647,7 +647,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
 
     Notes
     -----
-    - [AttributeSpec](https://energy-models.github.io/datarecord/design/model/attributes/#attributespec)
+    - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="str")},
@@ -657,7 +657,7 @@ def test_a_default_survives_the_manifest_round_trip(value):
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
 
 
-# -- versioning (https://energy-models.github.io/datarecord/design/model/schema/#versioning) -------------------------------------------------------
+# -- versioning (https://energy-models.github.io/datarecord/reference/schema/#compatibility) -------------------------------------------------------
 
 
 def _restating(**attributes: AttributeSpec) -> Schema:
@@ -708,7 +708,7 @@ def test_a_compatible_change(new):
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
     assert new.compatible_with(_schema()) == []
 
@@ -743,13 +743,13 @@ def test_an_incompatible_change(old, new, reason):
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
     reasons = new.compatible_with(old)
     assert any(reason in r for r in reasons), reasons
 
 
-# -- unit and description (https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description) ---------------------------------------------
+# -- unit and description (https://energy-models.github.io/datarecord/reference/schema/#unit-and-description) ---------------------------------------------
 
 
 def test_unit_and_description_are_declared_on_both():
@@ -757,7 +757,7 @@ def test_unit_and_description_are_declared_on_both():
 
     Notes
     -----
-    - [unit and description](https://energy-models.github.io/datarecord/design/model/schema/#unit-and-description)
+    - [unit and description](https://energy-models.github.io/datarecord/reference/schema/#unit-and-description)
     """
     s = Schema(
         dimensions={
@@ -779,7 +779,7 @@ def test_unit_and_description_are_declared_on_both():
     )
 
 
-# -- serialisation (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ----------------------------------------------------
+# -- serialisation (https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record) ----------------------------------------------------
 
 
 def test_round_trips_through_json():
@@ -810,7 +810,7 @@ def test_column_types_cover_structural_dims_and_flags():
     s = _schema()
     assert s.column_type("entity") == sqltypes.VARCHAR
     assert s.column_type("timestep") == sqltypes.TIMESTAMP
-    # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map), so
+    # One struct per flag column, a BOOLEAN field per declared dim (https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map), so
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
@@ -830,13 +830,13 @@ def test_attributes_need_at_least_one_dim():
 
     Notes
     -----
-    - [dimensions](https://energy-models.github.io/datarecord/design/model/dims/)
+    - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
     """
     with pytest.raises(ValidationError, match="at least one dim"):
         Schema(attributes={"p_nom": AttributeSpec(dtype="float")})
 
 
-# -- names (https://energy-models.github.io/datarecord/design/model/schema/#names) -----
+# -- names (https://energy-models.github.io/datarecord/reference/schema/#names) -----
 
 
 def _declaring(position: str, name: str) -> Schema:
@@ -904,7 +904,7 @@ def test_a_plain_identifier_is_accepted(name):
     _declaring("dim", name)
 
 
-# -- dtypes (https://energy-models.github.io/datarecord/design/model/schema/#dtypes) ---
+# -- dtypes (https://energy-models.github.io/datarecord/reference/schema/#dtypes) ---
 
 
 @pytest.mark.parametrize(
@@ -952,7 +952,7 @@ def test_a_dtype_takes_its_kinds_mathspec_forms(build, match):
 
     Notes
     -----
-    - [dtypes](https://energy-models.github.io/datarecord/design/model/schema/#dtypes)
+    - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
     """
     with pytest.raises(ValidationError, match=match):
         build()

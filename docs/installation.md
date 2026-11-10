@@ -6,49 +6,44 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Installation
 
-## Installing a user environment
+This page shows how to install datarecord for use and for development. datarecord needs Python 3.12 or later.
 
-!!! hint
-
-    If it is your first time using Python, we recommend [pixi](https://pixi.prefix.dev/), [conda](https://docs.conda.io/projects/conda), or [uv](https://docs.astral.sh/uv/) as easy-to-use package managers.
-    They are available for Windows, macOS, and GNU/Linux.
-    It is always helpful to use dedicated environments.
-
-You can install `datarecord` via all common package managers:
+## Install for use
 
 === "pixi"
 
-    ``` bash
-    pixi add --pypi datarecord
+    ```bash
+    pixi add --pypi "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
 === "uv"
 
-    ``` bash
-    uv add datarecord
+    ```bash
+    uv add "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
 === "conda"
 
-    ``` bash
-    conda create -n datarecord "python>=3.12" "pip"
+    ```bash
+    conda create -n datarecord "python>=3.12" pip
     conda activate datarecord
-    pip install datarecord
+    pip install "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
 === "pip"
 
-    ``` bash
-    pip install datarecord
+    ```bash
+    pip install "datarecord @ git+https://github.com/energy-models/datarecord"
     ```
 
-`datarecord` is written and tested to be compatible with Python 3.12 and above.
-We recommend to use the latest version with active support (see [endoflife.date](https://endoflife.date/python)).
+Two extras add optional parts. Write `datarecord[pypsa]` in place of `datarecord` for the PyPSA tool, and `datarecord[remote]` for records on S3.
 
-## Installing a development environment
+Each form installs from GitHub, because the release on PyPI, `0.1.0a1`, predates the design these pages describe. The install brings `mathspec` with it, at the commit that `pyproject.toml` pins, so there is nothing to install beside it.
 
-The install instructions are slightly different to create a development environment compared to a user environment:
+## Install for development
+
+The repository manages its environment with [pixi](https://pixi.sh), which installs mathspec at the pinned commit for you:
 
 --8<-- "README.md:docs-install-dev"
 
-For more detailed instructions specific to developing the `datarecord` codebase, see the [contributing guide](contributing.md).
+The [contributing guide](development/contributing.md) lists the workflow and conventions.

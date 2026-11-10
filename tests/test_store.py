@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
-- [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+- [the store](https://energy-models.github.io/datarecord/reference/store/#store)
+- [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
 """
 
 import json
@@ -80,7 +80,7 @@ def test_the_tree_lives_in_the_layers(store, tree):
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
     root, child = tree
     fresh = Workspace()
@@ -142,7 +142,7 @@ def test_a_commit_writes_each_file_once(workspace, store, monkeypatch):
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
     files = _Recording()
     monkeypatch.setattr(workspace, "_local", files)
@@ -177,7 +177,7 @@ def test_a_second_claim_of_an_id_fails(store, committed):
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
     claim = store.claim(parent=None)
     if committed:
@@ -196,7 +196,7 @@ def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
     root = store.commit(_p_nom(), parent=None)
     unheld = _Source(
@@ -242,7 +242,7 @@ def test_cleanup_deletes_a_pending_layer_and_no_committed_one(store, by):
 
     Notes
     -----
-    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    - [cleanup](https://energy-models.github.io/datarecord/reference/store/#cleanup)
     """
     root = store.commit(_p_nom(), parent=None)
     claim = store.claim(parent=root)
@@ -258,7 +258,7 @@ def test_cleanup_refuses_a_committed_layer_and_spares_a_young_one(store):
 
     Notes
     -----
-    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    - [cleanup](https://energy-models.github.io/datarecord/reference/store/#cleanup)
     """
     root = store.commit(_p_nom(), parent=None)
     claim = store.claim(parent=root)
@@ -281,7 +281,7 @@ def test_a_cleaned_up_claim_commits_no_more(store, monkeypatch, when):
 
     Notes
     -----
-    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    - [cleanup](https://energy-models.github.io/datarecord/reference/store/#cleanup)
     """
     root = store.commit(_p_nom(), parent=None)
     claim = store.claim(parent=root)
@@ -309,7 +309,7 @@ def test_a_layer_directory_without_a_claim_is_no_claim(store):
 
     Notes
     -----
-    - [cleanup](https://energy-models.github.io/datarecord/design/storage/store/#cleanup)
+    - [cleanup](https://energy-models.github.io/datarecord/reference/store/#cleanup)
     """
     claim = store.claim(parent=None)
     stray = Path(store.layer_dir(uuid4()))
@@ -351,7 +351,7 @@ def test_revisions_filter_by_meta(metas, meta, found):
 
     Notes
     -----
-    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
+    - [the layers](https://energy-models.github.io/datarecord/reference/store/)
     """
     store, names = metas
     fresh = Workspace()
@@ -370,7 +370,7 @@ def test_a_meta_float_is_finite(store):
 
     Notes
     -----
-    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
+    - [the layers](https://energy-models.github.io/datarecord/reference/store/)
     """
     with pytest.raises(ValidationError, match="finite"):
         store.claim(parent=None, meta={"x": math.nan})
@@ -386,7 +386,7 @@ def test_a_claim_crosses_a_process_boundary(store):
 
     Notes
     -----
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
     """
     root = store.commit(_p_nom(), parent=None)
     claim = store.claim(parent=root, meta={"run": "a"})
@@ -422,7 +422,7 @@ def test_a_commit_may_add_to_its_claims_meta_but_not_change_it(store, given, out
 
     Notes
     -----
-    - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
     claim = store.claim(parent=None, meta={"run": "a", "n": 3})
     if isinstance(outcome, str):
@@ -447,7 +447,7 @@ def test_a_child_narrowing_its_parents_schema_stays_pending(store):
 
     Notes
     -----
-    - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+    - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
     """
     wide = widened(_SCHEMA, "extra")
     root = store.commit(_Source(wide, attributes={"p_nom": _long()}), parent=None)
@@ -490,7 +490,7 @@ def test_a_working_record_lands_on_its_base(store):
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
     root = store.commit(_p_nom(), parent=None)
     w = WorkingRecord(root.record)
@@ -511,7 +511,7 @@ def test_a_working_record_over_no_revision_of_the_store_is_refused(
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
     root = store.commit(_p_nom(), parent=None)
     elsewhere = WorkingRecord(base(store, root, tmp_path))
@@ -538,7 +538,7 @@ def test_a_revision_crosses_a_process_boundary(workspace, tree):
 
     Notes
     -----
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/design/storage/concurrency/#crossing-a-process-boundary)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
     """
     root, child = tree
     names = list(child.record.attributes)
@@ -564,7 +564,7 @@ def test_threads_share_one_folded_owner_map(workspace, tree):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
     """
     _, child = tree
     record = child.record
@@ -592,7 +592,7 @@ def test_a_record_read_first_here_reads_alike_in_other_threads(tree, working):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
     """
     _, child = tree
     record = WorkingRecord(child.record) if working else child.record
@@ -620,7 +620,7 @@ def test_a_revision_is_cached_only_after_its_parent(store):
 
     Notes
     -----
-    - [the layers](https://energy-models.github.io/datarecord/design/storage/store/#the-layers)
+    - [the layers](https://energy-models.github.io/datarecord/reference/store/)
     """
     root = store.commit(_p_nom(), parent=None)
     child = store.commit(_p_nom(), parent=root)
@@ -701,9 +701,9 @@ def test_a_fold_reads_under_a_widened_schema(store):
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
     after = _materialised_then_widened(store)
     rows = after.record.attributes["p_max_pu"].df()
@@ -723,8 +723,8 @@ def test_a_staged_tail_folds_onto_a_fold_from_before_a_widening(store):
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
     """
     after = _materialised_then_widened(store, partial={"period"})
     w = WorkingRecord(after.record)
@@ -753,8 +753,8 @@ def test_a_dim_listing_labels_resolves_after_a_widening(store):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     dims = {**_NARROW, "scenario": Dimension(one_of=["low", "high"])}
     layer = empty_root(store, schema(dims=dims))
@@ -785,7 +785,7 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     from datarecord.store import cache
 
@@ -809,7 +809,7 @@ def test_a_relation_from_another_connection_is_rejected(tree):
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
     """
     root, _ = tree
     foreign = duckdb.connect()
@@ -840,7 +840,7 @@ def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     _, child = tree
     w = WorkingRecord(child.record)
@@ -868,7 +868,7 @@ def test_a_materialised_node_reads_as_folded_afresh(store, tree, read):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     _, child = tree
     w = WorkingRecord(child.record)

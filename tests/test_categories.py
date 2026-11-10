@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-- [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+- [owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+- [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
 """
 
 import pandas as pd
@@ -191,7 +191,7 @@ def test_a_multi_dim_is_categorized_by_its_property(ports):
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
     """
     staged = WorkingRecord(ports.record)
     staged.set("efficiency", 0.5, role="output", snapshot=[0])
@@ -257,7 +257,7 @@ def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
 
     Notes
     -----
-    - [categories](https://energy-models.github.io/datarecord/design/model/properties/#categories)
+    - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
     """
     staged = WorkingRecord(ports.record)
     staged.set(f"{subject}.note", "x", **keywords)

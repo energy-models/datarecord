@@ -75,10 +75,13 @@ and only for a name a release from v0.1.0 on shipped.
 **A test asserting the old behaviour is not a blocker**; say in the PR what
 coverage moved where.
 
-Where the change is to a construct the design pages define, the rename lands in
-[`docs/design/`](docs/design/) too — a docstring's `Notes` links to a section by
-anchor, so a heading that moves has to be followed there. `pixi run -e docs
-docs-build` fails on a link that stopped resolving.
+Where the change renames a construct that the reference or about pages define,
+the rename lands in [`docs/reference/`](docs/reference/) and
+[`docs/about/`](docs/about/) too. A docstring's `Notes` links to a section by
+anchor, so a heading that moves is followed there. `pixi run -e docs
+docs-build` fails on a link between pages that stopped resolving, but it does
+not check the full URLs in docstrings and messages, so search `src/` for the
+old anchor.
 
 # Part 2 — Good defaults
 
@@ -136,11 +139,12 @@ name is the _caller_, not the implementer.
 - **Cut** restatement of the signature, argument for a settled decision,
   narration of how the answer was found, and any tour of internals a caller
   cannot see.
-- **Cite the design pages, don't restate them.** A `Notes` section at the end of
-  the docstring, listing the [`docs/design/`](docs/design/) pages it depends on
-  by link — never a DEP (see
-  [design enhancement proposals](CONTRIBUTING.md#design-enhancement-proposals)); the argument stays
-  there. A docstring that re-argues the design is a
+- **Cite the reference and about pages, don't restate them.** A `Notes`
+  section at the end of the docstring lists, by link, the pages under
+  [`docs/reference/`](docs/reference/) and [`docs/about/`](docs/about/) that it
+  depends on, and never a DEP
+  ([design enhancement proposals](CONTRIBUTING.md#design-enhancement-proposals)).
+  The argument stays on those pages. A docstring that re-argues the design is a
   defect. `Notes` rather than `References`, which numpydoc reserves for sources
   that augment a docstring rather than ones it needs to be understood.
 - **The form is
@@ -176,7 +180,7 @@ def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) 
 
     Notes
     -----
-    - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+    - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
     """
 ```
 

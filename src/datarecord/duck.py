@@ -17,10 +17,10 @@ would be name-mangled inside a class.
 
 Notes
 -----
-- [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
-- [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
-- [module layout](https://energy-models.github.io/datarecord/design/package/)
-- [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
+- [the schema](https://energy-models.github.io/datarecord/reference/schema/)
+- [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
+- [module layout](https://energy-models.github.io/datarecord/development/package/)
+- [the workspace's database](https://energy-models.github.io/datarecord/reference/store/#the-database)
 """
 
 import operator
@@ -184,8 +184,8 @@ def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-    - [resolving a relation](https://energy-models.github.io/datarecord/design/layers/resolution/#resolving-a-relation)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
     """
     return reduce(DuckDBPyRelation.union_by_name, rels)
 
@@ -265,8 +265,8 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    - [the write API](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
     _dr_frame = frame
     if isinstance(frame, DuckDBPyRelation):
@@ -435,7 +435,7 @@ def shared_table(
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
     """
     schema = f"{col(database)}.{nested(parent, id)}"
     name = f"{schema}.{table}"

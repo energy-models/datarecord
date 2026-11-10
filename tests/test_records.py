@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [the Record protocol](https://energy-models.github.io/datarecord/design/use/reading/)
+- [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
 """
 
 from dataclasses import dataclass
@@ -70,7 +70,7 @@ def both(written):
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
     """
     node = written.record
     directory = written.store.layer(written.id)
@@ -129,7 +129,7 @@ def test_a_plain_dict_backed_record_satisfies_the_protocol(store):
 
     Notes
     -----
-    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
+    - [relations](https://energy-models.github.io/datarecord/reference/record/#relations)
     """
     record = _dict_record(store)
     assert isinstance(record, RecordLike)
@@ -145,7 +145,7 @@ def test_the_writer_refuses_timestamps_with_a_time_zone(store):
 
     Notes
     -----
-    - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [the write API](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
     record = _dict_record(store, "TIMESTAMPTZ '2020-01-01 00:00:00+00'")
     with pytest.raises(ValueError, match="carry timestamps with a time zone"):
@@ -163,8 +163,8 @@ def test_constructions_agree(both):
 
     Notes
     -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
-    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
+    - [one record over one fold](https://energy-models.github.io/datarecord/reference/resolution/)
+    - [relations](https://energy-models.github.io/datarecord/reference/record/#relations)
     """
     for record in both:
         assert isinstance(record, RecordLike)
@@ -197,7 +197,7 @@ def test_relations_stay_unmaterialised(both):
     assert "FILTER" in filtered.explain().upper(), "a filter pushes into the plan"
 
 
-# -- flags, the one non-frame member (https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold) ----------------------------------
+# -- flags, the one non-frame member (https://energy-models.github.io/datarecord/reference/resolution/) ----------------------------------
 
 
 def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
@@ -213,8 +213,8 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
 
     Notes
     -----
-    - [Flags](https://energy-models.github.io/datarecord/design/use/reading/#flags)
-    - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     """
     layer = empty_root(
         store,
@@ -257,8 +257,8 @@ def test_node_record_orders_members(store):
 
     Notes
     -----
-    - [one record over one fold](https://energy-models.github.io/datarecord/design/layers/resolution/#one-record-over-one-fold)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [one record over one fold](https://energy-models.github.io/datarecord/reference/resolution/)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root_layer = empty_root(store, schema())
     write_component(
@@ -289,7 +289,7 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/design/model/multi-dims/#attributes-over-a-multi-dim)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
     """
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])
@@ -304,7 +304,7 @@ def test_missing_key_raises(both):
 
     Notes
     -----
-    - [relations](https://energy-models.github.io/datarecord/design/use/reading/#relations)
+    - [relations](https://energy-models.github.io/datarecord/reference/record/#relations)
     """
     for record in both:
         assert "p_max_pu" in record.attributes
@@ -314,7 +314,7 @@ def test_missing_key_raises(both):
             record.attributes["not_an_attribute"]
 
 
-# -- one schema per record root (https://energy-models.github.io/datarecord/design/model/schema/#one-schema-per-record) ----------------------------------------
+# -- one schema per record root (https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record) ----------------------------------------
 
 
 def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):

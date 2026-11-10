@@ -2,9 +2,9 @@
 SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 290" width="780" height="290" style="max-width: 100%; height: auto" role="img" aria-labelledby="ss-t ss-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="ss-t">Squeezing scenario at high settles an attribute along scenario and drops the column and the property referring to it</title>
-  <desc id="ss-d">The record's p_nom over entity and scenario holds gas NULL 50, gas high 70, wind NULL 100 and wind low 80. Selecting scenario equal to high drops wind low, which names another label, and settles gas along scenario alone, so gas high 70 replaces gas NULL 50. The selection's p_nom holds gas 70 and wind 100, without the scenario column. The entities' property scenario, NULL for gas and high for wind, goes with the dim, leaving entity and carrier.</desc>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 200" width="780" height="200" style="max-width: 100%; height: auto" role="img" aria-labelledby="ss-t ss-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="ss-t">Squeezing snapshot at one label</title>
+  <desc id="ss-d">The record's p_max_pu has rows for wind at snapshots 0, 1 and 2 and a row with entity and snapshot NULL. Squeezing snapshot at 1 drops the rows at snapshots 0 and 2, keeps the row at 1, settles the NULL row to snapshot 1, and drops the snapshot column: the selection contains wind 0.8 and entity NULL 1.0.</desc>
   <defs>
     <marker id="ss-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -14,87 +14,69 @@ SPDX-License-Identifier: CC-BY-4.0
     </pattern>
   </defs>
   <g stroke="none">
-    <path d="M16,54 V35 A3,3 0 0 1 19,32 H223 A3,3 0 0 1 226,35 V54 Z" fill="currentColor" fill-opacity="0.1"/>
-    <rect x="16" y="54" width="210" height="18" fill="url(#ss-hatch)"/>
-    <path d="M16,108 H226 V123 A3,3 0 0 1 223,126 H19 A3,3 0 0 1 16,123 Z" fill="url(#ss-hatch)"/>
-    <path d="M16,190 V171 A3,3 0 0 1 19,168 H223 A3,3 0 0 1 226,171 V190 Z" fill="currentColor" fill-opacity="0.1"/>
-    <path d="M500,54 V35 A3,3 0 0 1 503,32 H637 A3,3 0 0 1 640,35 V54 Z" fill="currentColor" fill-opacity="0.1"/>
-    <path d="M500,190 V171 A3,3 0 0 1 503,168 H637 A3,3 0 0 1 640,171 V190 Z" fill="currentColor" fill-opacity="0.1"/>
-    <rect x="500" y="258" width="14" height="14" fill="url(#ss-hatch)"/>
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H213 A3,3 0 0 1 216,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,54 H216 V72 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,54 H216 V72 H16 Z" fill="url(#ss-hatch)"/>
+    <path d="M16,72 H216 V90 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H216 V108 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H216 V108 H16 Z" fill="url(#ss-hatch)"/>
+    <path d="M16,108 H216 V123 A3,3 0 0 1 213,126 H19 A3,3 0 0 1 16,123 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M476,54 V35 A3,3 0 0 1 479,32 H673 A3,3 0 0 1 676,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <path d="M476,54 H676 V72 H476 Z" fill="#009E73" fill-opacity="0.08"/>
+    <path d="M476,72 H676 V87 A3,3 0 0 1 673,90 H479 A3,3 0 0 1 476,87 Z" fill="#009E73" fill-opacity="0.08"/>
+    <rect x="476" y="112" width="14" height="14" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="476" y="136" width="14" height="14" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="476" y="160" width="14" height="14" fill="url(#ss-hatch)"/>
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">record</text>
-    <text x="68" y="22" fill-opacity="0.7">p_nom</text>
-    <text x="16" y="158" font-weight="bold">record</text>
-    <text x="68" y="158" fill-opacity="0.7">entity properties</text>
-    <text x="500" y="22" font-weight="bold">selection</text>
-    <text x="570" y="22" fill-opacity="0.7">p_nom</text>
-    <text x="500" y="158" font-weight="bold">selection</text>
-    <text x="570" y="158" fill-opacity="0.7">entity properties</text>
+    <text x="78" y="22" fill-opacity="0.75">p_max_pu</text>
     <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
-      <text x="24" y="46" font-weight="bold">entity</text>
-      <text x="90" y="46" font-weight="bold">scenario</text>
-      <text x="176" y="46" font-weight="bold">value</text>
-      <text x="24" y="68">gas</text>
-      <text x="90" y="68">NULL</text>
-      <text x="176" y="68">50</text>
-      <text x="24" y="86">gas</text>
-      <text x="90" y="86">high</text>
-      <text x="176" y="86">70</text>
-      <text x="24" y="104">wind</text>
-      <text x="90" y="104">NULL</text>
-      <text x="176" y="104">100</text>
-      <text x="24" y="122">wind</text>
-      <text x="90" y="122">low</text>
-      <text x="176" y="122">80</text>
-      <text x="24" y="182" font-weight="bold">entity</text>
-      <text x="90" y="182" font-weight="bold">carrier</text>
-      <text x="160" y="182" font-weight="bold">scenario</text>
-      <text x="24" y="204">gas</text>
-      <text x="90" y="204">gas</text>
-      <text x="160" y="204">NULL</text>
-      <text x="24" y="222">wind</text>
-      <text x="90" y="222">wind</text>
-      <text x="160" y="222">high</text>
-      <text x="508" y="46" font-weight="bold">entity</text>
-      <text x="574" y="46" font-weight="bold">value</text>
-      <text x="508" y="68">gas</text>
-      <text x="574" y="68">70</text>
-      <text x="508" y="86">wind</text>
-      <text x="574" y="86">100</text>
-      <text x="508" y="182" font-weight="bold">entity</text>
-      <text x="574" y="182" font-weight="bold">carrier</text>
-      <text x="508" y="204">gas</text>
-      <text x="574" y="204">gas</text>
-      <text x="508" y="222">wind</text>
-      <text x="574" y="222">wind</text>
+    <text x="24" y="47" font-weight="bold">entity</text>
+    <text x="88" y="47" font-weight="bold">snapshot</text>
+    <text x="166" y="47" font-weight="bold">value</text>
+    <text x="24" y="67">wind</text>
+    <text x="88" y="67">0</text>
+    <text x="166" y="67">0.3</text>
+    <text x="24" y="85">wind</text>
+    <text x="88" y="85">1</text>
+    <text x="166" y="85">0.8</text>
+    <text x="24" y="103">wind</text>
+    <text x="88" y="103">2</text>
+    <text x="166" y="103">0.5</text>
+    <text x="24" y="121">NULL</text>
+    <text x="88" y="121">NULL</text>
+    <text x="166" y="121">1.0</text>
+    </g>
+    <text x="476" y="22" font-weight="bold">selection</text>
+    <text x="562" y="22" fill-opacity="0.75">snapshot squeezed</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="484" y="47" font-weight="bold">entity</text>
+    <text x="626" y="47" font-weight="bold">value</text>
+    <text x="484" y="67">wind</text>
+    <text x="626" y="67">0.8</text>
+    <text x="484" y="85">NULL</text>
+    <text x="626" y="85">1.0</text>
     </g>
   </g>
   <g fill="none" stroke="currentColor" stroke-width="1">
-    <rect x="16" y="32" width="210" height="94" rx="3"/>
-    <line x1="16" y1="54" x2="226" y2="54"/>
-    <rect x="16" y="168" width="210" height="58" rx="3"/>
-    <line x1="16" y1="190" x2="226" y2="190"/>
-    <rect x="500" y="32" width="140" height="58" rx="3"/>
-    <line x1="500" y1="54" x2="640" y2="54"/>
-    <rect x="500" y="168" width="140" height="58" rx="3"/>
-    <line x1="500" y1="190" x2="640" y2="190"/>
-    <path d="M226,43 H340 V179 H226"/>
-    <path d="M500,43 H460 V179 H500"/>
-    <rect x="500" y="258" width="14" height="14"/>
+    <rect x="16" y="32" width="200" height="94" rx="3"/>
+    <line x1="16" y1="54" x2="216" y2="54"/>
+    <rect x="476" y="32" width="200" height="58" rx="3"/>
+    <line x1="476" y1="54" x2="676" y2="54"/>
+    <rect x="476" y="112" width="14" height="14"/>
+    <rect x="476" y="136" width="14" height="14"/>
+    <rect x="476" y="160" width="14" height="14"/>
   </g>
   <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#ss-arrow)">
-    <path d="M340,108 H452"/>
+    <path d="M216,72 H468"/>
   </g>
   <g fill="currentColor">
-    <text x="234" y="68" font-size="12" fill-opacity="0.7">settled</text>
-    <text x="234" y="122" font-size="12" fill-opacity="0.7">names low</text>
-    <text x="348" y="98" font-size="12" font-weight="bold">select</text>
-    <text x="348" y="126" font-size="12" fill-opacity="0.7">scenario = high</text>
-    <text x="652" y="68" font-size="12" fill-opacity="0.7">settled along</text>
-    <text x="652" y="83" font-size="12" fill-opacity="0.7">scenario, no column</text>
-    <text x="652" y="204" font-size="12" fill-opacity="0.7">property referring</text>
-    <text x="652" y="219" font-size="12" fill-opacity="0.7">to scenario goes</text>
-    <text x="520" y="269" font-size="12">dropped by the select</text>
+    <text x="300" y="30" font-size="12" font-weight="bold">squeeze</text>
+    <text x="300" y="46" font-size="12" fill-opacity="0.75">keep snapshot 1,</text>
+    <text x="300" y="62" font-size="12" fill-opacity="0.75">drop the column</text>
+    <text x="496" y="123" font-size="12">record read</text>
+    <text x="496" y="147" font-size="12">selection</text>
+    <text x="496" y="171" font-size="12">dropped by the selection</text>
   </g>
 </svg>

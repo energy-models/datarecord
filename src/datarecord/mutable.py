@@ -10,7 +10,7 @@ until `edits` is written as a child.
 
 Notes
 -----
-- [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
+- [WorkingRecord](https://energy-models.github.io/datarecord/reference/editing/)
 """
 
 from __future__ import annotations
@@ -69,7 +69,7 @@ if TYPE_CHECKING:
     from datarecord.store.store import Workspace
 
 
-# -- value normalisation (https://energy-models.github.io/datarecord/design/use/editing/#set) ----------------------------------------------
+# -- value normalisation (https://energy-models.github.io/datarecord/reference/editing/#set) ----------------------------------------------
 
 
 def _series_index(value: Any) -> Sequence[Any] | None:
@@ -154,7 +154,7 @@ def normalise_value(
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
     index = _series_index(value)
     if index is not None:
@@ -191,8 +191,8 @@ class StagedSource:
 
     Notes
     -----
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
 
     record: WorkingRecord
@@ -236,7 +236,7 @@ class StagedSource:
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
         """
         return self.record._restatement(f"{_AXIS_PREFIX}{dim}")
 
@@ -260,7 +260,7 @@ class StagedSource:
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         arms = [
             rel
@@ -281,7 +281,7 @@ class _Base(Record):
 
     Notes
     -----
-    - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
+    - [staging](https://energy-models.github.io/datarecord/reference/editing/#transactions-and-staging)
     """
 
     def __post_init__(self) -> None:
@@ -312,7 +312,7 @@ def _atomic[**P](
 
     Notes
     -----
-    - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+    - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
     """
 
     @wraps(edit)
@@ -321,7 +321,7 @@ def _atomic[**P](
         with transaction(
             self.con,
             edit.__name__,
-            "https://energy-models.github.io/datarecord/design/use/editing/#edits",
+            "https://energy-models.github.io/datarecord/reference/editing/#edits",
         ) as on_rollback:
             on_rollback(
                 partial(object.__setattr__, self, "_touched", set(self._touched))
@@ -333,7 +333,7 @@ def _atomic[**P](
     return run
 
 
-# -- the DuckDB-backed implementation (https://energy-models.github.io/datarecord/design/use/editing/#staging) ---------------------------------
+# -- the DuckDB-backed implementation (https://energy-models.github.io/datarecord/reference/editing/#transactions-and-staging) ---------------------------------
 
 
 class WorkingRecord(Record):
@@ -362,9 +362,9 @@ class WorkingRecord(Record):
 
     Notes
     -----
-    - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
-    - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
-    - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+    - [WorkingRecord](https://energy-models.github.io/datarecord/reference/editing/)
+    - [staging](https://energy-models.github.io/datarecord/reference/editing/#transactions-and-staging)
+    - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
     """
 
     #: This record's one identity, which is the staged layer's: the fold stamps
@@ -408,7 +408,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
+        - [WorkingRecord](https://energy-models.github.io/datarecord/reference/editing/)
         """
         if not isinstance(base, Record):
             msg = (
@@ -420,7 +420,7 @@ class WorkingRecord(Record):
         refuse_open_transaction(
             base.con,
             "WorkingRecord",
-            "https://energy-models.github.io/datarecord/design/use/editing/#staging",
+            "https://energy-models.github.io/datarecord/reference/editing/#transactions-and-staging",
         )
         # `object.__setattr__` throughout: the base is a frozen dataclass, and
         # these are set before `super().__init__` because the `StagedSource`
@@ -642,13 +642,13 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         return tuple(
             c for c in self.schema.long_columns_for(attribute) if c not in LONG_TAIL
         )
 
-    # -- Record, one fold deeper (https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits) --------------------------------
+    # -- Record, one fold deeper (https://energy-models.github.io/datarecord/reference/editing/) --------------------------------
 
     # `schema`, `dims`, `properties`, `attributes` and `flags` are
     # inherited from `Record` unchanged, which is the property this design
@@ -665,8 +665,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-        - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+        - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
         """
         spec = self.schema.attributes.get(attribute)
         whole = (
@@ -676,7 +676,7 @@ class WorkingRecord(Record):
             d for d in (*self.schema.multi_dims, *self.schema.dims) if d in whole
         )
 
-    # -- edits (https://energy-models.github.io/datarecord/design/use/editing/#set, https://energy-models.github.io/datarecord/design/use/editing/#add-remove) ----------------------------------------
+    # -- edits (https://energy-models.github.io/datarecord/reference/editing/#set, https://energy-models.github.io/datarecord/reference/editing/#add-and-remove) ----------------------------------------
 
     def _key_coordinate(self, attribute: str, value: Any, given: Container[str]) -> str:
         """Which coordinate a mapping's keys or a labelled series' index holds.
@@ -698,7 +698,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         coordinates = _flat_coordinates(self.schema, attribute)
         named = _series_index_name(value)
@@ -742,8 +742,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         unknown = sorted(set(coords) - {dim})
         if unknown:
@@ -781,8 +781,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         if not isinstance(value, Mapping):
             value = dict.fromkeys(self._labels_matching(dim, {}), value)
@@ -809,8 +809,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         table = self._ensure(kind)
         # Raw SQL because `UPDATE ... FROM` is a join-update, which the relational
@@ -830,7 +830,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+        - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
         multi = sorted(set(dims) & set(self.schema.multi_dims))
         if multi:
@@ -852,7 +852,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+        - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
         self._validate_dims(coords)
         spec = self.schema.attributes.get(attribute)
@@ -948,9 +948,9 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the shape of an edit](https://energy-models.github.io/datarecord/design/use/editing/#the-shape-of-an-edit)
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
-        - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+        - [the shape of an edit](https://energy-models.github.io/datarecord/reference/editing/#the-shape-of-an-edit)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
+        - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
         keyed = isinstance(value, Mapping) or _series_index(value) is not None
         if isinstance(self.schema.resolve(attribute), tuple):
@@ -1188,7 +1188,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+        - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
         named = self.schema.one_of_properties()
         for name, values in data.items():
@@ -1230,7 +1230,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         call = f"set({name!r}, ...)"
         subject, dot, _ = name.partition(".")
@@ -1352,7 +1352,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [validation](https://energy-models.github.io/datarecord/design/use/editing/#validation)
+        - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
         _, declared, shown = cast(
             "tuple[str, DuckDBPyType, str]", self.schema.declared(dim)
@@ -1392,7 +1392,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+        - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
         """
         staging = self.con.table(table)
         carried = set(rel.columns)
@@ -1436,9 +1436,9 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
 
         def coordinate(d: str) -> Expression:
@@ -1482,8 +1482,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-        - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+        - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
         """
         coordinates = self.schema.coordinates_of(attribute)
         if not coordinates:
@@ -1543,8 +1543,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
-        - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+        - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
         """
         rel = self._collapsed_attribute(attribute)
         coordinates = self.schema.coordinates_of(attribute)
@@ -1560,7 +1560,7 @@ class WorkingRecord(Record):
                 f"one naming {sorted(b)} that both cover {at}, where no staged row "
                 f"names {sorted(a | b)}, so neither is the more specific there; stage "
                 f"the rows with one naming both in one frame "
-                f"(https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)"
+                f"(https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)"
             )
             raise ValueError(msg)
 
@@ -1582,7 +1582,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
         open_ = [c for c in key if c in broadcast]
         _dr_rel = rel
@@ -1608,8 +1608,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [the long schema](https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
+        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+        - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
         """
         return tuple(c for c in self.schema.long_columns_for(attribute) if c != "value")
 
@@ -1643,9 +1643,9 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [partial](https://energy-models.github.io/datarecord/design/layers/tree/#partial-the-granularity-of-an-override)
-        - [a dim outside `partial`](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
-        - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
+        - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
+        - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
+        - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
         """
         whole = self._owned_whole(attribute)
         if not whole:
@@ -1751,9 +1751,9 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         if dim not in self.schema.dimensions:
             msg = f"the schema declares no dim {dim!r}"
@@ -1812,8 +1812,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
-        - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+        - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
+        - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
         """
         call = f"`remove({dim!r}, ...)`"
         self._refuse_one_of(dim, call)
@@ -1859,7 +1859,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
         """
         if dim not in self.schema.one_of_dims:
             return
@@ -1867,7 +1867,7 @@ class WorkingRecord(Record):
             f"{call} is refused: {dim!r} lists its labels with `one_of`, "
             f"{list(self.schema.dimensions[dim].one_of or ())}, so its axis is "
             f"the schema's; change the schema instead "
-            f"(https://energy-models.github.io/datarecord/design/model/dims/#a-dim-with-one_of)"
+            f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
         )
         raise ValueError(msg)
 
@@ -2002,7 +2002,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [add / remove](https://energy-models.github.io/datarecord/design/use/editing/#add-remove)
+        - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
         """
         problems = []
         naming = [k for k, d in self.schema.one_of_properties().items() if d == dim]
@@ -2058,8 +2058,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-        - [versioning](https://energy-models.github.io/datarecord/design/model/schema/#versioning)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+        - [versioning](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
         """
         extra = sorted(c for c in columns if c not in known)
         if not extra:
@@ -2074,11 +2074,11 @@ class WorkingRecord(Record):
         msg = (
             f"{call} was given columns {extra} the schema does not declare "
             f"there; it holds {sorted(known)}. A column there is a property, so "
-            f"declare it on its subject before writing it (https://energy-models.github.io/datarecord/design/model/schema/#versioning){hint}"
+            f"declare it on its subject before writing it (https://energy-models.github.io/datarecord/reference/schema/#compatibility){hint}"
         )
         raise ValueError(msg)
 
-    # -- edits / rollback (https://energy-models.github.io/datarecord/design/use/editing/#edits) --------------------------
+    # -- edits / rollback (https://energy-models.github.io/datarecord/reference/editing/#edits) --------------------------
 
     @_atomic
     def rollback(self) -> None:
@@ -2086,7 +2086,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [WorkingRecord](https://energy-models.github.io/datarecord/design/use/editing/)
+        - [WorkingRecord](https://energy-models.github.io/datarecord/reference/editing/)
         """
         for kind, attribute in self._touched:
             self.con.execute(f"DELETE FROM {self._staged[kind, attribute]}")
@@ -2111,9 +2111,9 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
-        - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
-        - [multi-dims](https://energy-models.github.io/datarecord/design/model/multi-dims/)
+        - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
+        - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
@@ -2145,15 +2145,15 @@ class WorkingRecord(Record):
             labels[dim] = kept.set_alias("k")
         return labels[dim]
 
-    # -- what edits write (https://energy-models.github.io/datarecord/design/use/editing/#edits) ------------------------------------------
+    # -- what edits write (https://energy-models.github.io/datarecord/reference/editing/#edits) ------------------------------------------
 
     def _staged_dims(self) -> tuple[str, ...]:
         """Which axes an edit left differing from the base's, in declaration order.
 
         Notes
         -----
-        - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
-        - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
+        - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
+        - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
         """
         return tuple(
             d
@@ -2191,8 +2191,8 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [edits](https://energy-models.github.io/datarecord/design/use/editing/#edits)
-        - [reading with pending edits](https://energy-models.github.io/datarecord/design/use/editing/#reading-with-pending-edits)
+        - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
+        - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
         """
         self._require_editable()
         return cast("StagedSource", self.sources[-1])
@@ -2217,7 +2217,7 @@ def _column_type(
     if dtype is None:
         msg = (
             f"the schema declares no type for {column!r}, which a staged "
-            f"row needs to fill (https://energy-models.github.io/datarecord/design/storage/format/#the-long-schema)"
+            f"row needs to fill (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)"
         )
         raise ValueError(msg)
     return dtype
@@ -2232,7 +2232,7 @@ def _flat_coordinates(schema: Schema, attribute: str) -> dict[str, str]:
 
     Notes
     -----
-    - [set](https://energy-models.github.io/datarecord/design/use/editing/#set)
+    - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
     flat: dict[str, str] = {}
     for coordinate in schema.coordinates_of(attribute):
@@ -2278,7 +2278,7 @@ def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
 
     Notes
     -----
-    - [where a value lives](https://energy-models.github.io/datarecord/design/storage/format/#where-a-value-lives)
+    - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     return {
         dim: _column_type(schema, dim),
@@ -2329,7 +2329,7 @@ def _reaching(
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     keys = staged.project(*(col(c).alias(f"_k_{c}") for c in scope)).distinct()
     named = reduce(
@@ -2389,8 +2389,8 @@ def _spread(
 
     Notes
     -----
-    - [a dim outside `partial`](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     keys = [*scope, *whole]
     open_ = reduce(operator.or_, (col(c).isnull() for c in whole))

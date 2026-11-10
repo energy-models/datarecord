@@ -4,7 +4,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="rf-t rf-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rf-t">One layer folds onto its parent's owner map</title>
-  <desc id="rf-d">With partial dims entity and scenario, the parent's owner map holds the root's rows gas NULL, wind NULL and coal NULL. The child removes coal and writes gas NULL 60, NULL high 999 and the row naming both, gas high 999. The fold prunes the root's coal row, which names the removed label, drops the root's gas row, which the child's gas NULL covers, and adds the child's three rows and one overlap row, wind high, owned by the child, where the root's wind NULL crosses the child's NULL high.</desc>
+  <desc id="rf-d">With partial dims entity and scenario, the parent's owner map contains the root's rows gas NULL, wind NULL and coal NULL. The child removes coal and writes gas NULL 60, NULL high 999 and gas high 999. The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas NULL covers. It adds the child's three rows and one overlap row, wind high, which the owner map assigns to the child, where the root's wind NULL crosses the child's NULL high.</desc>
   <defs>
     <marker id="rf-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -14,7 +14,7 @@ SPDX-License-Identifier: CC-BY-4.0
     </pattern>
   </defs>
   <g stroke="none">
-    <path d="M16,54 V35 A3,3 0 0 1 19,32 H223 A3,3 0 0 1 226,35 V54 Z" fill="currentColor" fill-opacity="0.1"/>
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H223 A3,3 0 0 1 226,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
     <rect x="16" y="54" width="210" height="18" fill="#0072B2" fill-opacity="0.08"/>
     <rect x="16" y="54" width="210" height="18" fill="url(#rf-hatch)"/>
     <rect x="16" y="72" width="210" height="18" fill="#0072B2" fill-opacity="0.08"/>
@@ -24,7 +24,7 @@ SPDX-License-Identifier: CC-BY-4.0
     <rect x="16" y="190" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
     <rect x="16" y="208" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
     <path d="M16,226 H226 V245 A3,3 0 0 1 223,248 H19 A3,3 0 0 1 16,245 Z" fill="#E69F00" fill-opacity="0.08"/>
-    <path d="M500,54 V35 A3,3 0 0 1 503,32 H707 A3,3 0 0 1 710,35 V54 Z" fill="currentColor" fill-opacity="0.1"/>
+    <path d="M500,54 V35 A3,3 0 0 1 503,32 H707 A3,3 0 0 1 710,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
     <rect x="500" y="54" width="210" height="18" fill="#0072B2" fill-opacity="0.08"/>
     <rect x="500" y="72" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
     <rect x="500" y="90" width="210" height="18" fill="#E69F00" fill-opacity="0.08"/>
@@ -37,83 +37,79 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">parent map</text>
-    <text x="106" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="110" y="22" fill-opacity="0.7">p_nom</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="90" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="176" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">layer</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="90" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="234" y="68" fill-opacity="0.7" font-size="12">covered</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="90" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">coal</text>
+    <text x="90" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="234" y="104" fill-opacity="0.7" font-size="12">removed</text>
     <text x="16" y="158" font-weight="bold">child layer</text>
-    <text x="114" y="158" fill-opacity="0.7">p_nom, removes coal</text>
+    <text x="118" y="158" fill-opacity="0.7">p_nom, removes coal</text>
+    <text x="24" y="183" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="90" y="183" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="176" y="183" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="90" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="176" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">60</text>
+    <text x="24" y="222" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="90" y="222" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="176" y="222" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
+    <text x="24" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="90" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="176" y="240" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">999</text>
     <text x="500" y="22" font-weight="bold">owner map</text>
-    <text x="582" y="22" fill-opacity="0.7">after the fold</text>
-    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
-      <text x="24" y="46" font-weight="bold">entity</text>
-      <text x="90" y="46" font-weight="bold">scenario</text>
-      <text x="176" y="46" font-weight="bold">layer</text>
-      <text x="24" y="68">gas</text>
-      <text x="90" y="68">NULL</text>
-      <text x="176" y="68">root</text>
-      <text x="24" y="86">wind</text>
-      <text x="90" y="86">NULL</text>
-      <text x="176" y="86">root</text>
-      <text x="24" y="104">coal</text>
-      <text x="90" y="104">NULL</text>
-      <text x="176" y="104">root</text>
-      <text x="24" y="182" font-weight="bold">entity</text>
-      <text x="90" y="182" font-weight="bold">scenario</text>
-      <text x="176" y="182" font-weight="bold">value</text>
-      <text x="24" y="204">gas</text>
-      <text x="90" y="204">NULL</text>
-      <text x="176" y="204">60</text>
-      <text x="24" y="222">NULL</text>
-      <text x="90" y="222">high</text>
-      <text x="176" y="222">999</text>
-      <text x="24" y="240">gas</text>
-      <text x="90" y="240">high</text>
-      <text x="176" y="240">999</text>
-      <text x="508" y="46" font-weight="bold">entity</text>
-      <text x="574" y="46" font-weight="bold">scenario</text>
-      <text x="660" y="46" font-weight="bold">layer</text>
-      <text x="508" y="68">wind</text>
-      <text x="574" y="68">NULL</text>
-      <text x="660" y="68">root</text>
-      <text x="508" y="86">gas</text>
-      <text x="574" y="86">NULL</text>
-      <text x="660" y="86">child</text>
-      <text x="508" y="104">NULL</text>
-      <text x="574" y="104">high</text>
-      <text x="660" y="104">child</text>
-      <text x="508" y="122">gas</text>
-      <text x="574" y="122">high</text>
-      <text x="660" y="122">child</text>
-      <text x="508" y="140">wind</text>
-      <text x="574" y="140">high</text>
-      <text x="660" y="140">child</text>
-    </g>
+    <text x="586" y="22" fill-opacity="0.7">after the fold</text>
+    <text x="508" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="574" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="660" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">layer</text>
+    <text x="508" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="574" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="660" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">root</text>
+    <text x="508" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="574" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="660" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="508" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
+    <text x="574" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="660" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="508" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="574" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="660" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="508" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="574" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="660" y="140" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">child</text>
+    <text x="728" y="140" font-size="12">overlap</text>
+    <text x="350" y="100" font-weight="bold" font-size="12">fold</text>
+    <text x="350" y="126" fill-opacity="0.7" font-size="12">drop removed, drop covered,</text>
+    <text x="350" y="141" fill-opacity="0.7" font-size="12">add rows and overlaps</text>
+    <text x="520" y="197" font-size="12">root layer</text>
+    <text x="520" y="221" font-size="12">child layer</text>
+    <text x="520" y="245" font-size="12">overlap row</text>
+    <text x="520" y="269" font-size="12">dropped by the fold</text>
   </g>
   <g fill="none" stroke="currentColor" stroke-width="1">
     <rect x="16" y="32" width="210" height="80" rx="3"/>
     <line x1="16" y1="54" x2="226" y2="54"/>
     <rect x="16" y="168" width="210" height="80" rx="3"/>
     <line x1="16" y1="190" x2="226" y2="190"/>
+    <path d="M716,129 H722 V141 H716"/>
     <rect x="500" y="32" width="210" height="116" rx="3"/>
     <line x1="500" y1="54" x2="710" y2="54"/>
     <path d="M226,43 H340 V179 H226"/>
-    <path d="M716,131 H722 V145 H716"/>
     <rect x="500" y="186" width="14" height="14"/>
     <rect x="500" y="210" width="14" height="14"/>
     <rect x="500" y="234" width="14" height="14"/>
     <rect x="500" y="258" width="14" height="14"/>
   </g>
   <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rf-arrow)">
-    <path d="M340,108 H492"/>
-  </g>
-  <g fill="currentColor">
-    <text x="234" y="68" font-size="12" fill-opacity="0.7">covered</text>
-    <text x="234" y="104" font-size="12" fill-opacity="0.7">removed</text>
-    <text x="352" y="98" font-size="12" font-weight="bold">fold</text>
-    <text x="352" y="126" font-size="12" fill-opacity="0.7">prune, drop covered,</text>
-    <text x="352" y="141" font-size="12" fill-opacity="0.7">add rows, overlaps</text>
-    <text x="728" y="142" font-size="12">overlap</text>
-    <text x="520" y="197" font-size="12">root layer</text>
-    <text x="520" y="221" font-size="12">child layer</text>
-    <text x="520" y="245" font-size="12">overlap row</text>
-    <text x="520" y="269" font-size="12">dropped by the fold</text>
+    <path d="M340,108 L492,108"/>
   </g>
 </svg>

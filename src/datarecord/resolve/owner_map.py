@@ -9,8 +9,8 @@ map's and the coords' alike.
 
 Notes
 -----
-- [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-- [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+- [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+- [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
 """
 
 from __future__ import annotations
@@ -106,10 +106,10 @@ def fold_layer(
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [crossing rows](https://energy-models.github.io/datarecord/design/layers/resolution/#crossing-rows)
-    - [one plan for every layer](https://energy-models.github.io/datarecord/design/layers/resolution/#one-plan-for-every-layer)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
+    - [one plan for every layer](https://energy-models.github.io/datarecord/reference/resolution/#folding-a-layer-onto-its-parent)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     if own is not None:
         own = keep(own)
@@ -316,7 +316,7 @@ def uncovered(
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     for mask in named_sets(staged, columns):
         part = staged.filter(names_exactly(columns, mask))
@@ -340,7 +340,7 @@ def unsettled(
 
     Notes
     -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     sets = named_sets(rel, coordinates)
 
@@ -376,8 +376,8 @@ def _overlaps(pairs: DuckDBPyRelation, schema: Schema) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/design/model/attributes/#the-broadcast-rule)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     return pairs.project(
         *_met(schema),
@@ -409,7 +409,7 @@ def _refuse_unfilled(
 
     Notes
     -----
-    - [a dim outside `partial`](https://energy-models.github.io/datarecord/design/layers/resolution/#a-dim-outside-partial)
+    - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
     """
     dims = schema.partial_dims
     others = [d for d in schema.broadcast_dims if d not in dims]
@@ -482,7 +482,7 @@ def owned_rows(source: LayerSource, attribute: str) -> DuckDBPyRelation | None:
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     rel = source.attribute(attribute)
     if rel is None and source.frozen:
@@ -523,7 +523,7 @@ def _widened(
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
     """
     if was == now:
         return rel
@@ -585,7 +585,7 @@ def _split(
 
     Notes
     -----
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
     """
     keys = was.partial_dims
     key_cols = [f"_key_{k}" for k in keys]
@@ -638,9 +638,9 @@ def _fold_map(
 
     Notes
     -----
-    - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     schema, con = sources[-1].schema, sources[-1].workspace.con
     base, above = _base_and_above(sources, _fold_at_hand)
@@ -696,7 +696,7 @@ def _pruned(schema: Schema) -> tuple[str, ...]:
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     return schema.partial_dims
 
@@ -735,10 +735,10 @@ def _fold_onto(
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/design/layers/resolution/#extending-the-map-to-a-wider-schema)
-    - [a fold starts from the nearest fold at hand](https://energy-models.github.io/datarecord/design/layers/resolution/#a-fold-starts-from-the-nearest-fold-at-hand)
-    - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    - [a fold starts from the nearest fold at hand](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     held = dict(held)
     past = {
@@ -819,7 +819,7 @@ def source_for(sources: Sequence[LayerSource], layer_uuid: UUID) -> LayerSource:
 
     Notes
     -----
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     for source in sources:
         if source.layer_id == layer_uuid:
@@ -841,7 +841,7 @@ def split_frozen(
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
     """
     count = next((i for i, s in enumerate(sources) if not s.frozen), len(sources))
     return list(sources[:count]), list(sources[count:])
@@ -870,9 +870,9 @@ def _table(
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     schema = sources[-1].schema
     frozen, above = split_frozen(sources)
@@ -908,9 +908,9 @@ def _frozen_table(
 
     Notes
     -----
-    - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
-    - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     if not sources:
         return None

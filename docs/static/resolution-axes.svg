@@ -2,87 +2,99 @@
 SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 262" width="720" height="262" style="max-width: 100%; height: auto" role="img" aria-labelledby="ra-t ra-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 236" width="760" height="236" style="max-width: 100%; height: auto" role="img" aria-labelledby="ra-t ra-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="ra-t">Each axis resolves to the deepest file for it</title>
-  <desc id="ra-d">The root layer holds dims/entity.parquet, with gas and wind and their ctype property, and dims/scenario.parquet, with low and high. The child layer restates the entity axis whole, as gas, wind and solar with their ctype, and holds no scenario file. The resolved entity axis is the child layer's file and the resolved scenario axis the root layer's: each resolved axis is the deepest file for it on the path from the root.</desc>
+  <desc id="ra-d">The root layer contains dims/entity.parquet with gas and wind, and dims/scenario.parquet with low and high. The child layer restates the entity axis as gas, wind and solar, and has no scenario file. The resolved entity axis is the child's file and the resolved scenario axis is the root's.</desc>
+  <defs>
+    <marker id="ra-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="ra-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
   <g stroke="none">
-    <path d="M16,78 V59 A3,3 0 0 1 19,56 H213 A3,3 0 0 1 216,59 V78 Z" fill="#0072B2" fill-opacity="0.2"/>
-    <rect x="16" y="78" width="200" height="18" fill="#0072B2" fill-opacity="0.08"/>
-    <path d="M16,96 H216 V111 A3,3 0 0 1 213,114 H19 A3,3 0 0 1 16,111 Z" fill="#0072B2" fill-opacity="0.08"/>
-    <path d="M16,172 V153 A3,3 0 0 1 19,150 H213 A3,3 0 0 1 216,153 V172 Z" fill="#0072B2" fill-opacity="0.2"/>
-    <rect x="16" y="172" width="200" height="18" fill="#0072B2" fill-opacity="0.08"/>
-    <path d="M16,190 H216 V205 A3,3 0 0 1 213,208 H19 A3,3 0 0 1 16,205 Z" fill="#0072B2" fill-opacity="0.08"/>
-    <path d="M260,78 V59 A3,3 0 0 1 263,56 H457 A3,3 0 0 1 460,59 V78 Z" fill="#E69F00" fill-opacity="0.2"/>
-    <rect x="260" y="78" width="200" height="18" fill="#E69F00" fill-opacity="0.08"/>
-    <rect x="260" y="96" width="200" height="18" fill="#E69F00" fill-opacity="0.08"/>
-    <path d="M260,114 H460 V129 A3,3 0 0 1 457,132 H263 A3,3 0 0 1 260,129 Z" fill="#E69F00" fill-opacity="0.08"/>
-    <path d="M504,78 V59 A3,3 0 0 1 507,56 H701 A3,3 0 0 1 704,59 V78 Z" fill="currentColor" fill-opacity="0.1"/>
-    <rect x="504" y="78" width="200" height="18" fill="#E69F00" fill-opacity="0.08"/>
-    <path d="M504,96 H704 V111 A3,3 0 0 1 701,114 H507 A3,3 0 0 1 504,111 Z" fill="#0072B2" fill-opacity="0.08"/>
-    <rect x="16" y="240" width="14" height="14" fill="#0072B2" fill-opacity="0.08"/>
-    <rect x="136" y="240" width="14" height="14" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H183 A3,3 0 0 1 186,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="170" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H186 V91 A3,3 0 0 1 183,94 H19 A3,3 0 0 1 16,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,170 V151 A3,3 0 0 1 19,148 H183 A3,3 0 0 1 186,151 V170 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="170" width="170" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,188 H186 V207 A3,3 0 0 1 183,210 H19 A3,3 0 0 1 16,207 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M290,54 V35 A3,3 0 0 1 293,32 H457 A3,3 0 0 1 460,35 V54 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="290" y="54" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="290" y="72" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M290,90 H460 V109 A3,3 0 0 1 457,112 H293 A3,3 0 0 1 290,109 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M290,170 V151 A3,3 0 0 1 293,148 H457 A3,3 0 0 1 460,151 V170 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M564,54 V35 A3,3 0 0 1 567,32 H731 A3,3 0 0 1 734,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="564" y="54" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="564" y="72" width="170" height="18" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M564,90 H734 V109 A3,3 0 0 1 731,112 H567 A3,3 0 0 1 564,109 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M564,170 V151 A3,3 0 0 1 567,148 H731 A3,3 0 0 1 734,151 V170 Z" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="564" y="170" width="170" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M564,188 H734 V207 A3,3 0 0 1 731,210 H567 A3,3 0 0 1 564,207 Z" fill="#0072B2" fill-opacity="0.08"/>
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">root layer</text>
-    <text x="260" y="22" font-weight="bold">child layer</text>
-    <text x="504" y="22" font-weight="bold">resolved axes</text>
-    <text x="16" y="48" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">dims/entity.parquet</text>
-    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
-    <text x="24" y="71" font-weight="bold">entity</text>
-    <text x="116" y="71" font-weight="bold">ctype</text>
-    <text x="24" y="91">gas</text>
-    <text x="116" y="91">generator</text>
-    <text x="24" y="109">wind</text>
-    <text x="116" y="109">generator</text>
-    </g>
-    <text x="16" y="142" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">dims/scenario.parquet</text>
-    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
-    <text x="24" y="165" font-weight="bold">scenario</text>
-    <text x="116" y="165" font-weight="bold"></text>
-    <text x="24" y="185">low</text>
-    <text x="116" y="185"></text>
-    <text x="24" y="203">high</text>
-    <text x="116" y="203"></text>
-    </g>
-    <text x="260" y="48" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace">dims/entity.parquet</text>
-    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
-    <text x="268" y="71" font-weight="bold">entity</text>
-    <text x="360" y="71" font-weight="bold">ctype</text>
-    <text x="268" y="91">gas</text>
-    <text x="360" y="91">generator</text>
-    <text x="268" y="109">wind</text>
-    <text x="360" y="109">generator</text>
-    <text x="268" y="127">solar</text>
-    <text x="360" y="127">generator</text>
-    </g>
-    <text x="360" y="183" text-anchor="middle" font-size="12" fill-opacity="0.7">no scenario file</text>
-    <text x="504" y="48" font-size="12" font-family="ui-monospace, SFMono-Regular, Menlo, monospace"></text>
-    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
-    <text x="512" y="71" font-weight="bold">dim</text>
-    <text x="604" y="71" font-weight="bold">layer</text>
-    <text x="512" y="91">entity</text>
-    <text x="604" y="91">child</text>
-    <text x="512" y="109">scenario</text>
-    <text x="604" y="109">root</text>
-    </g>
-    <text x="260" y="226" font-size="12" fill-opacity="0.7">restates entity whole, adds solar</text>
-    <text x="504" y="132" font-size="12" fill-opacity="0.7">each axis is the deepest file for it</text>
-    <text x="36" y="251" font-size="12">root layer</text>
-    <text x="156" y="251" font-size="12">child layer</text>
-    <text x="286" y="251" font-size="12">absent: no file</text>
+    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity.parquet</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="94" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="94" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="94" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="16" y="138" font-weight="bold"></text>
+    <text x="16" y="138" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/scenario.parquet</text>
+    <text x="24" y="163" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="24" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
+    <text x="24" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="290" y="22" font-weight="bold">child layer</text>
+    <text x="392" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity.parquet</text>
+    <text x="298" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="368" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
+    <text x="298" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="368" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="298" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="368" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="298" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">solar</text>
+    <text x="368" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="290" y="138" font-weight="bold"></text>
+    <text x="298" y="163" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="302" y="184" font-style="italic" font-size="12">no file: axis unchanged</text>
+    <text x="564" y="22" font-weight="bold">resolved</text>
+    <text x="642" y="22" fill-opacity="0.7">entity</text>
+    <text x="572" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
+    <text x="642" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
+    <text x="572" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
+    <text x="642" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="572" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
+    <text x="642" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="572" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">solar</text>
+    <text x="642" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
+    <text x="564" y="138" font-weight="bold"></text>
+    <text x="564" y="138" fill-opacity="0.7">scenario</text>
+    <text x="572" y="163" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
+    <text x="572" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
+    <text x="572" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
+    <text x="470" y="64" fill-opacity="0.7" font-size="12">deepest</text>
+    <text x="250" y="234" font-size="12"></text>
   </g>
   <g fill="none" stroke="currentColor" stroke-width="1">
-    <rect x="16" y="56" width="200" height="58" rx="3"/>
-    <path d="M16,78 H216"/>
-    <rect x="16" y="150" width="200" height="58" rx="3"/>
-    <path d="M16,172 H216"/>
-    <rect x="260" y="56" width="200" height="76" rx="3"/>
-    <path d="M260,78 H460"/>
-    <rect x="260" y="150" width="200" height="58" rx="3" stroke-dasharray="4 3"/>
-    <rect x="504" y="56" width="200" height="58" rx="3"/>
-    <path d="M504,78 H704"/>
-    <rect x="16" y="240" width="14" height="14"/>
-    <rect x="136" y="240" width="14" height="14"/>
-    <rect x="266" y="240" width="14" height="14" stroke-dasharray="3 2"/>
+    <rect x="16" y="32" width="170" height="62" rx="3"/>
+    <line x1="16" y1="54" x2="186" y2="54"/>
+    <rect x="16" y="148" width="170" height="62" rx="3"/>
+    <line x1="16" y1="170" x2="186" y2="170"/>
+    <rect x="290" y="32" width="170" height="80" rx="3"/>
+    <line x1="290" y1="54" x2="460" y2="54"/>
+    <rect x="294" y="172" width="162" height="15" rx="3" stroke-dasharray="4 3"/>
+    <rect x="290" y="148" width="170" height="44" rx="3"/>
+    <line x1="290" y1="170" x2="460" y2="170"/>
+    <rect x="564" y="32" width="170" height="80" rx="3"/>
+    <line x1="564" y1="54" x2="734" y2="54"/>
+    <rect x="564" y="148" width="170" height="62" rx="3"/>
+    <line x1="564" y1="170" x2="734" y2="170"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#ra-arrow)">
+    <path d="M460,72 L556,72"/>
+    <path d="M186,192 L240,192 L240,222 L520,222 L520,188 L556,188"/>
   </g>
 </svg>

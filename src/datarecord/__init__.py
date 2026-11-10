@@ -9,8 +9,8 @@ a tree of layers, and `RecordLike` is the interface a reader codes against.
 
 Notes
 -----
-- [overview](https://energy-models.github.io/datarecord/design/)
-- [the package](https://energy-models.github.io/datarecord/design/package/)
+- [overview](https://energy-models.github.io/datarecord/about/)
+- [the package](https://energy-models.github.io/datarecord/development/package/)
 """
 
 import importlib.metadata

@@ -6,8 +6,8 @@
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
-- [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
+- [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+- [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
 """
 
 from __future__ import annotations
@@ -43,8 +43,8 @@ def materialised(revision_id: UUID, store: Store) -> bool:
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     return store.files.exists(store.owner_map_uri(revision_id))
 
@@ -73,7 +73,7 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     start = next(
         (
@@ -107,8 +107,8 @@ def materialise(
 
     Notes
     -----
-    - [a layer's data is write-once](https://energy-models.github.io/datarecord/design/layers/tree/#a-layers-data-is-write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     if materialised(revision_id, store):
         return
@@ -142,7 +142,7 @@ def _materialise_dims(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
+    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     con = store.workspace.con
     coords = Coords.held(sources[-1]) or Coords.resolve(sources)

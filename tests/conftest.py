@@ -97,8 +97,8 @@ def ac_dc():
 
     Notes
     -----
-    - [properties](https://energy-models.github.io/datarecord/design/model/properties/#properties)
-    - [custom columns](https://energy-models.github.io/datarecord/design/tools/pypsa/#custom-columns)
+    - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
+    - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
     """
     import pypsa
 
