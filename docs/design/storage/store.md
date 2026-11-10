@@ -48,7 +48,7 @@ It attaches it on a fresh in-memory connection that it opens, or on a connection
 ```python
 ws = Workspace()  # in memory, on a connection of its own
 ws = Workspace("cache.duckdb")  # a file, kept across runs
-ws = Workspace("cache.duckdb", con=server, name="datarecord")  # on the server's connection
+ws = Workspace(con=server, name="dr")  # on the server's connection, attached as dr
 ```
 
 Every table datarecord shares between cursors lives in the `main` schema of that database: the `schemas`, `revisions` and `registered` tables, the tables a fold [shares between threads](concurrency.md#a-cursor-per-thread) and the [staging tables](../use/editing.md#staging).
