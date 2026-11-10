@@ -2836,13 +2836,13 @@ tables are dropped.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Create the DuckDB schema <code>name</code> with a view per dim, property subject and attribute.</p>
-<p>The views sit in <code>name.dims</code>, <code>name.properties</code> and <code>name.attributes</code>,
-each reading as its relation here; over a <code>WorkingRecord</code> they follow
-every edit. They hold the tables the record reads, its folds and a
-<code>WorkingRecord</code>'s staging tables, until <code>unregister(name)</code>, whether
-the record is closed or not. <code>name</code> is listed in the workspace's
-<code>registered()</code> table.</p>
+        <p>Create the schema <code>name</code> in the workspace's database with a view per dim, property subject and attribute.</p>
+<p>The views sit in <code>name.dims</code>, <code>name.properties</code> and <code>name.attributes</code>
+there, <code>datarecord.name.dims.bus</code> by default, each reading as its
+relation here; over a <code>WorkingRecord</code> they follow every edit. They hold
+the tables the record reads, its folds and a <code>WorkingRecord</code>'s staging
+tables, until <code>unregister(name)</code>, whether the record is closed or not.
+<code>name</code> is listed in the workspace's <code>registered()</code> table.</p>
 
 
 <p><span class="doc-section-title">Raises:</span></p>
@@ -2860,19 +2860,8 @@ the record is closed or not. <code>name</code> is listed in the workspace's
             </td>
             <td>
               <div class="doc-md-description">
-                <p>If the schema <code>name</code> exists, as <code>_fold</code>, <code>_staged</code> and <code>_scratch</code>
-always do.</p>
-              </div>
-            </td>
-          </tr>
-          <tr class="doc-section-item">
-            <td>
-                  <code><span title="ValueError">ValueError</span></code>
-            </td>
-            <td>
-              <div class="doc-md-description">
-                <p>If <code>name</code> is a database attached to the workspace, which DuckDB
-would read as the catalog of the nested schemas.</p>
+                <p>If the schema <code>name</code> exists in the workspace's database, as
+<code>_fold</code>, <code>_staged</code> and <code>_scratch</code> always do.</p>
               </div>
             </td>
           </tr>
@@ -2882,7 +2871,8 @@ would read as the catalog of the nested schemas.</p>
             </td>
             <td>
               <div class="doc-md-description">
-                <p>Where the cursor already holds an open transaction.</p>
+                <p>Where the cursor already holds an open transaction, or another
+cursor registers <code>name</code> at the same time.</p>
               </div>
             </td>
           </tr>
@@ -2956,76 +2946,64 @@ would read as the catalog of the nested schemas.</p>
 <span class="normal"><a href="#__codelineno-0-533">533</a></span>
 <span class="normal"><a href="#__codelineno-0-534">534</a></span>
 <span class="normal"><a href="#__codelineno-0-535">535</a></span>
-<span class="normal"><a href="#__codelineno-0-536">536</a></span>
-<span class="normal"><a href="#__codelineno-0-537">537</a></span>
-<span class="normal"><a href="#__codelineno-0-538">538</a></span>
-<span class="normal"><a href="#__codelineno-0-539">539</a></span>
-<span class="normal"><a href="#__codelineno-0-540">540</a></span>
-<span class="normal"><a href="#__codelineno-0-541">541</a></span>
-<span class="normal"><a href="#__codelineno-0-542">542</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-479" name="__codelineno-0-479"></a><span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="w">    </span><span class="sd">"""Create the DuckDB schema `name` with a view per dim, property subject and attribute.</span>
+<span class="normal"><a href="#__codelineno-0-536">536</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-479" name="__codelineno-0-479"></a><span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
+<a id="__codelineno-0-480" name="__codelineno-0-480"></a><span class="w">    </span><span class="sd">"""Create the schema `name` in the workspace's database with a view per dim, property subject and attribute.</span>
 <a id="__codelineno-0-481" name="__codelineno-0-481"></a>
-<a id="__codelineno-0-482" name="__codelineno-0-482"></a><span class="sd">    The views sit in `name.dims`, `name.properties` and `name.attributes`,</span>
-<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="sd">    each reading as its relation here; over a `WorkingRecord` they follow</span>
-<a id="__codelineno-0-484" name="__codelineno-0-484"></a><span class="sd">    every edit. They hold the tables the record reads, its folds and a</span>
-<a id="__codelineno-0-485" name="__codelineno-0-485"></a><span class="sd">    `WorkingRecord`'s staging tables, until `unregister(name)`, whether</span>
-<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">    the record is closed or not. `name` is listed in the workspace's</span>
-<a id="__codelineno-0-487" name="__codelineno-0-487"></a><span class="sd">    `registered()` table.</span>
+<a id="__codelineno-0-482" name="__codelineno-0-482"></a><span class="sd">    The views sit in `name.dims`, `name.properties` and `name.attributes`</span>
+<a id="__codelineno-0-483" name="__codelineno-0-483"></a><span class="sd">    there, `datarecord.name.dims.bus` by default, each reading as its</span>
+<a id="__codelineno-0-484" name="__codelineno-0-484"></a><span class="sd">    relation here; over a `WorkingRecord` they follow every edit. They hold</span>
+<a id="__codelineno-0-485" name="__codelineno-0-485"></a><span class="sd">    the tables the record reads, its folds and a `WorkingRecord`'s staging</span>
+<a id="__codelineno-0-486" name="__codelineno-0-486"></a><span class="sd">    tables, until `unregister(name)`, whether the record is closed or not.</span>
+<a id="__codelineno-0-487" name="__codelineno-0-487"></a><span class="sd">    `name` is listed in the workspace's `registered()` table.</span>
 <a id="__codelineno-0-488" name="__codelineno-0-488"></a>
 <a id="__codelineno-0-489" name="__codelineno-0-489"></a><span class="sd">    Raises</span>
 <a id="__codelineno-0-490" name="__codelineno-0-490"></a><span class="sd">    ------</span>
 <a id="__codelineno-0-491" name="__codelineno-0-491"></a><span class="sd">    duckdb.CatalogException</span>
-<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="sd">        If the schema `name` exists, as `_fold`, `_staged` and `_scratch`</span>
-<a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="sd">        always do.</span>
-<a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="sd">    ValueError</span>
-<a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">        If `name` is a database attached to the workspace, which DuckDB</span>
-<a id="__codelineno-0-496" name="__codelineno-0-496"></a><span class="sd">        would read as the catalog of the nested schemas.</span>
-<a id="__codelineno-0-497" name="__codelineno-0-497"></a><span class="sd">    duckdb.TransactionException</span>
-<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="sd">        Where the cursor already holds an open transaction.</span>
-<a id="__codelineno-0-499" name="__codelineno-0-499"></a>
-<a id="__codelineno-0-500" name="__codelineno-0-500"></a><span class="sd">    Notes</span>
-<a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="sd">    -----</span>
-<a id="__codelineno-0-502" name="__codelineno-0-502"></a><span class="sd">    - [registered views](https://energy-models.github.io/datarecord/reference/format/#registered-views)</span>
-<a id="__codelineno-0-503" name="__codelineno-0-503"></a><span class="sd">    """</span>
-<a id="__codelineno-0-504" name="__codelineno-0-504"></a>    <span class="n">con</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span>
-<a id="__codelineno-0-505" name="__codelineno-0-505"></a>    <span class="k">if</span> <span class="p">(</span><span class="n">name</span><span class="p">,)</span> <span class="ow">in</span> <span class="n">con</span><span class="o">.</span><span class="n">sql</span><span class="p">(</span>
-<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="s2">"SELECT database_name FROM duckdb_databases()"</span>
-<a id="__codelineno-0-507" name="__codelineno-0-507"></a>    <span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">():</span>
-<a id="__codelineno-0-508" name="__codelineno-0-508"></a>        <span class="n">msg</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">"`</span><span class="si">{</span><span class="n">name</span><span class="si">}</span><span class="s2">` names a database attached to the workspace; register under another name"</span>
-<a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="n">msg</span><span class="p">)</span>
-<a id="__codelineno-0-510" name="__codelineno-0-510"></a>    <span class="n">kinds</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="s2">"dims"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
-<a id="__codelineno-0-512" name="__codelineno-0-512"></a>        <span class="s2">"properties"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">properties</span><span class="p">,</span>
-<a id="__codelineno-0-513" name="__codelineno-0-513"></a>        <span class="s2">"attributes"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">attributes</span><span class="p">,</span>
-<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="p">}</span>
-<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="n">rendered</span> <span class="o">=</span> <span class="p">{</span>
-<a id="__codelineno-0-516" name="__codelineno-0-516"></a>        <span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">view</span><span class="p">):</span> <span class="n">_render</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">literals</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">wrap_text</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
-<a id="__codelineno-0-517" name="__codelineno-0-517"></a>        <span class="k">for</span> <span class="n">kind</span><span class="p">,</span> <span class="n">relations</span> <span class="ow">in</span> <span class="n">kinds</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-<a id="__codelineno-0-518" name="__codelineno-0-518"></a>        <span class="k">for</span> <span class="n">view</span><span class="p">,</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">relations</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
-<a id="__codelineno-0-519" name="__codelineno-0-519"></a>    <span class="p">}</span>
-<a id="__codelineno-0-520" name="__codelineno-0-520"></a>    <span class="n">holds</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">workspace</span><span class="o">.</span><span class="n">_holds</span>
-<a id="__codelineno-0-521" name="__codelineno-0-521"></a>    <span class="k">with</span> <span class="n">transaction</span><span class="p">(</span>
-<a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="n">con</span><span class="p">,</span>
-<a id="__codelineno-0-523" name="__codelineno-0-523"></a>        <span class="s2">"register"</span><span class="p">,</span>
-<a id="__codelineno-0-524" name="__codelineno-0-524"></a>        <span class="s2">"https://energy-models.github.io/datarecord/reference/format/#registered-views"</span><span class="p">,</span>
-<a id="__codelineno-0-525" name="__codelineno-0-525"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">on_rollback</span><span class="p">:</span>
-<a id="__codelineno-0-526" name="__codelineno-0-526"></a>        <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">name</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="n">holds</span><span class="o">.</span><span class="n">hold</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">)</span>
-<a id="__codelineno-0-528" name="__codelineno-0-528"></a>        <span class="n">on_rollback</span><span class="p">(</span><span class="n">partial</span><span class="p">(</span><span class="n">holds</span><span class="o">.</span><span class="n">release</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
-<a id="__codelineno-0-529" name="__codelineno-0-529"></a>        <span class="k">for</span> <span class="n">kind</span> <span class="ow">in</span> <span class="n">kinds</span><span class="p">:</span>
-<a id="__codelineno-0-530" name="__codelineno-0-530"></a>            <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">kind</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
-<a id="__codelineno-0-531" name="__codelineno-0-531"></a>        <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">query</span> <span class="ow">in</span> <span class="n">rendered</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
-<a id="__codelineno-0-532" name="__codelineno-0-532"></a>            <span class="n">con</span><span class="o">.</span><span class="n">_create_view</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span>
-<a id="__codelineno-0-533" name="__codelineno-0-533"></a>        <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
-<a id="__codelineno-0-534" name="__codelineno-0-534"></a>            <span class="s2">"INSERT INTO registered (name, revision, working, held)"</span>
-<a id="__codelineno-0-535" name="__codelineno-0-535"></a>            <span class="s2">" VALUES (?, ?, ?, ?)"</span><span class="p">,</span>
-<a id="__codelineno-0-536" name="__codelineno-0-536"></a>            <span class="p">[</span>
-<a id="__codelineno-0-537" name="__codelineno-0-537"></a>                <span class="n">name</span><span class="p">,</span>
-<a id="__codelineno-0-538" name="__codelineno-0-538"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">revision_id</span><span class="p">,</span>
-<a id="__codelineno-0-539" name="__codelineno-0-539"></a>                <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">frozen</span><span class="p">,</span>
-<a id="__codelineno-0-540" name="__codelineno-0-540"></a>                <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">),</span>
-<a id="__codelineno-0-541" name="__codelineno-0-541"></a>            <span class="p">],</span>
-<a id="__codelineno-0-542" name="__codelineno-0-542"></a>        <span class="p">)</span>
+<a id="__codelineno-0-492" name="__codelineno-0-492"></a><span class="sd">        If the schema `name` exists in the workspace's database, as</span>
+<a id="__codelineno-0-493" name="__codelineno-0-493"></a><span class="sd">        `_fold`, `_staged` and `_scratch` always do.</span>
+<a id="__codelineno-0-494" name="__codelineno-0-494"></a><span class="sd">    duckdb.TransactionException</span>
+<a id="__codelineno-0-495" name="__codelineno-0-495"></a><span class="sd">        Where the cursor already holds an open transaction, or another</span>
+<a id="__codelineno-0-496" name="__codelineno-0-496"></a><span class="sd">        cursor registers `name` at the same time.</span>
+<a id="__codelineno-0-497" name="__codelineno-0-497"></a>
+<a id="__codelineno-0-498" name="__codelineno-0-498"></a><span class="sd">    Notes</span>
+<a id="__codelineno-0-499" name="__codelineno-0-499"></a><span class="sd">    -----</span>
+<a id="__codelineno-0-500" name="__codelineno-0-500"></a><span class="sd">    - [registered views](https://energy-models.github.io/datarecord/reference/format/#registered-views)</span>
+<a id="__codelineno-0-501" name="__codelineno-0-501"></a><span class="sd">    """</span>
+<a id="__codelineno-0-502" name="__codelineno-0-502"></a>    <span class="n">ws</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">workspace</span>
+<a id="__codelineno-0-503" name="__codelineno-0-503"></a>    <span class="n">kinds</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-504" name="__codelineno-0-504"></a>        <span class="s2">"dims"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">dims</span><span class="p">,</span>
+<a id="__codelineno-0-505" name="__codelineno-0-505"></a>        <span class="s2">"properties"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">properties</span><span class="p">,</span>
+<a id="__codelineno-0-506" name="__codelineno-0-506"></a>        <span class="s2">"attributes"</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">attributes</span><span class="p">,</span>
+<a id="__codelineno-0-507" name="__codelineno-0-507"></a>    <span class="p">}</span>
+<a id="__codelineno-0-508" name="__codelineno-0-508"></a>    <span class="n">rendered</span> <span class="o">=</span> <span class="p">{</span>
+<a id="__codelineno-0-509" name="__codelineno-0-509"></a>        <span class="p">(</span><span class="n">ws</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">kind</span><span class="p">,</span> <span class="n">view</span><span class="p">):</span> <span class="n">_render</span><span class="p">(</span><span class="n">rel</span><span class="p">,</span> <span class="n">literals</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">wrap_text</span><span class="o">=</span><span class="kc">True</span><span class="p">)[</span><span class="mi">0</span><span class="p">]</span>
+<a id="__codelineno-0-510" name="__codelineno-0-510"></a>        <span class="k">for</span> <span class="n">kind</span><span class="p">,</span> <span class="n">relations</span> <span class="ow">in</span> <span class="n">kinds</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-511" name="__codelineno-0-511"></a>        <span class="k">for</span> <span class="n">view</span><span class="p">,</span> <span class="n">rel</span> <span class="ow">in</span> <span class="n">relations</span><span class="o">.</span><span class="n">items</span><span class="p">()</span>
+<a id="__codelineno-0-512" name="__codelineno-0-512"></a>    <span class="p">}</span>
+<a id="__codelineno-0-513" name="__codelineno-0-513"></a>    <span class="n">con</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">con</span>
+<a id="__codelineno-0-514" name="__codelineno-0-514"></a>    <span class="n">holds</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">_holds</span>
+<a id="__codelineno-0-515" name="__codelineno-0-515"></a>    <span class="k">with</span> <span class="n">transaction</span><span class="p">(</span>
+<a id="__codelineno-0-516" name="__codelineno-0-516"></a>        <span class="n">con</span><span class="p">,</span>
+<a id="__codelineno-0-517" name="__codelineno-0-517"></a>        <span class="s2">"register"</span><span class="p">,</span>
+<a id="__codelineno-0-518" name="__codelineno-0-518"></a>        <span class="s2">"https://energy-models.github.io/datarecord/reference/format/#registered-views"</span><span class="p">,</span>
+<a id="__codelineno-0-519" name="__codelineno-0-519"></a>    <span class="p">)</span> <span class="k">as</span> <span class="n">on_rollback</span><span class="p">:</span>
+<a id="__codelineno-0-520" name="__codelineno-0-520"></a>        <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">ws</span><span class="o">.</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-521" name="__codelineno-0-521"></a>        <span class="n">holds</span><span class="o">.</span><span class="n">hold</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">)</span>
+<a id="__codelineno-0-522" name="__codelineno-0-522"></a>        <span class="n">on_rollback</span><span class="p">(</span><span class="n">partial</span><span class="p">(</span><span class="n">holds</span><span class="o">.</span><span class="n">release</span><span class="p">,</span> <span class="n">name</span><span class="p">))</span>
+<a id="__codelineno-0-523" name="__codelineno-0-523"></a>        <span class="k">for</span> <span class="n">kind</span> <span class="ow">in</span> <span class="n">kinds</span><span class="p">:</span>
+<a id="__codelineno-0-524" name="__codelineno-0-524"></a>            <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="sa">f</span><span class="s2">"CREATE SCHEMA </span><span class="si">{</span><span class="n">col</span><span class="p">(</span><span class="n">ws</span><span class="o">.</span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">name</span><span class="p">,</span><span class="w"> </span><span class="n">kind</span><span class="p">)</span><span class="si">}</span><span class="s2">"</span><span class="p">)</span>
+<a id="__codelineno-0-525" name="__codelineno-0-525"></a>        <span class="k">for</span> <span class="n">path</span><span class="p">,</span> <span class="n">query</span> <span class="ow">in</span> <span class="n">rendered</span><span class="o">.</span><span class="n">items</span><span class="p">():</span>
+<a id="__codelineno-0-526" name="__codelineno-0-526"></a>            <span class="n">con</span><span class="o">.</span><span class="n">_create_view</span><span class="p">(</span><span class="n">path</span><span class="p">,</span> <span class="n">query</span><span class="p">)</span>
+<a id="__codelineno-0-527" name="__codelineno-0-527"></a>        <span class="n">con</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span>
+<a id="__codelineno-0-528" name="__codelineno-0-528"></a>            <span class="sa">f</span><span class="s2">"INSERT INTO </span><span class="si">{</span><span class="n">ws</span><span class="o">.</span><span class="n">qualified</span><span class="p">(</span><span class="s1">'registered'</span><span class="p">)</span><span class="si">}</span><span class="s2"> (name, revision, working, held)"</span>
+<a id="__codelineno-0-529" name="__codelineno-0-529"></a>            <span class="s2">" VALUES (?, ?, ?, ?)"</span><span class="p">,</span>
+<a id="__codelineno-0-530" name="__codelineno-0-530"></a>            <span class="p">[</span>
+<a id="__codelineno-0-531" name="__codelineno-0-531"></a>                <span class="n">name</span><span class="p">,</span>
+<a id="__codelineno-0-532" name="__codelineno-0-532"></a>                <span class="bp">self</span><span class="o">.</span><span class="n">revision_id</span><span class="p">,</span>
+<a id="__codelineno-0-533" name="__codelineno-0-533"></a>                <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">frozen</span><span class="p">,</span>
+<a id="__codelineno-0-534" name="__codelineno-0-534"></a>                <span class="nb">sorted</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_kept_schemas</span><span class="p">),</span>
+<a id="__codelineno-0-535" name="__codelineno-0-535"></a>            <span class="p">],</span>
+<a id="__codelineno-0-536" name="__codelineno-0-536"></a>        <span class="p">)</span>
 </code></pre></div></td></tr></table></div>
             </details>
     </div>

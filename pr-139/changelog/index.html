@@ -1144,6 +1144,16 @@ SPDX-License-Identifier: CC-BY-4.0
   which cache each manifest whole. <code>ws.con</code> is the cursor of the calling
   thread. The write and edit boundary rejects a relation from another
   connection or thread.</li>
+<li><code>Workspace(database, con=..., name=...)</code> attaches its database as <code>name</code>,
+  <code>datarecord</code> by default, on a connection of its own or on a caller's <code>con</code>,
+  such as a server's, whose default database it leaves alone. It creates its
+  tables there, so a user's file opened as a workspace gets datarecord's
+  tables beside its own. <code>ws.close()</code> closes its cursors and detaches the
+  database, and closes the connection only where it opened it. Its S3 secret
+  is named <code>datarecord_s3</code>, so it replaces no secret of the caller's.</li>
+<li>The prefix <code>_dr_</code> is reserved: a table or view whose name starts with it, in
+  the default database or temp schema of a workspace's connection, may stand
+  in for the data datarecord's SQL reads.</li>
 <li>Writing is <code>store.commit(source, parent=..., meta=...)</code>, with <code>parent=None</code>
   for a new root, and <code>ws.write(source, uri, meta=...)</code>.
   <code>store.claim(parent=, meta=)</code> hands out a layer id by a create-only
@@ -1263,14 +1273,16 @@ SPDX-License-Identifier: CC-BY-4.0
   builds the network its committed record does.</li>
 <li><code>Record.register(name)</code> creates DuckDB views of a record's dims, properties
   and attributes in the schemas <code>name.dims</code>, <code>name.properties</code> and
-  <code>name.attributes</code>. Over a <code>WorkingRecord</code> they are live and show every edit.
+  <code>name.attributes</code> of the workspace's database, as
+  <code>datarecord.name.dims.bus</code>. Over a <code>WorkingRecord</code> they are live and show
+  every edit.
   <code>Workspace.unregister(name)</code> drops them, and <code>Workspace.registered()</code> lists
   them.</li>
 <li><code>WorkingRecord.close()</code> drops the record's staging tables, as does
   garbage collection, and <code>with WorkingRecord(base) as w:</code> closes it on exit.
   A closed record raises <code>ValueError</code> on every read and edit. A registration
   of the record keeps the tables until <code>Workspace.unregister(name)</code>. The
-  workspace keeps its tables out of <code>main</code>: a revision's fold in
+  workspace keeps its tables out of its database's <code>main</code>: a revision's fold in
   <code>_fold."&lt;id&gt;"</code>, a <code>WorkingRecord</code>'s staging tables in <code>_staged."&lt;id&gt;"</code>, and
   a call's intermediate tables in <code>_scratch</code>, so <code>register</code> refuses these
   three names. A workspace reopened on a file can <code>unregister</code> the
@@ -1331,6 +1343,11 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Breaking: the workspace's database is never a cursor's default, so SQL
+  names its tables and registered views in full, <code>datarecord.main.registered</code>
+  or <code>datarecord.edit.dims.bus</code>, or runs <code>USE datarecord</code> once on its own
+  connection and writes <code>registered</code> or <code>edit.dims.bus</code>; <code>ws.registered()</code>
+  reads the table.</li>
 <li>Breaking: the schema models (<code>Schema</code>, <code>Dimension</code>, <code>AttributeSpec</code>,
   <code>PropertySpec</code>) are frozen; derive a changed one with
   <code>model_copy(update=...)</code>. <code>Schema.digest</code> is the sha256 of its manifest JSON.</li>

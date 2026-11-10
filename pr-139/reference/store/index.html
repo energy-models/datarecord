@@ -1652,12 +1652,20 @@ A store is one location, local or on S3, that contains the layers of a tree of r
 </thead>
 <tbody>
 <tr>
-<td><code>Workspace(database=":memory:")</code></td>
-<td>opens the DuckDB database, in memory or in a file</td>
+<td><code>Workspace(database=":memory:", *, con=None, name="datarecord")</code></td>
+<td>attaches the DuckDB database, in memory or in a file, as <code>name</code>, on a connection of its own or on <code>con</code></td>
+</tr>
+<tr>
+<td><code>name</code></td>
+<td>returns the database's name in SQL</td>
+</tr>
+<tr>
+<td><code>qualified(table)</code></td>
+<td>names a table of the database's <code>main</code> schema in full, <code>datarecord.main.&lt;table&gt;</code></td>
 </tr>
 <tr>
 <td><code>con</code></td>
-<td>returns the calling thread's cursor on the database</td>
+<td>returns the calling thread's cursor on the connection the database is attached to</td>
 </tr>
 <tr>
 <td><code>store(uri)</code></td>
@@ -1685,7 +1693,7 @@ A store is one location, local or on S3, that contains the layers of a tree of r
 </tr>
 <tr>
 <td><code>close()</code></td>
-<td>closes the database and every thread's cursor</td>
+<td>closes every thread's cursor, detaches the database and closes the connection only where the workspace opened it</td>
 </tr>
 </tbody>
 </table>
@@ -1704,7 +1712,20 @@ A write that fails leaves its data files at the URI and no manifest, so a second
 <p><code>ws.at</code> raises <code>FileNotFoundError</code> for a URI with no <code>manifest.json</code>, and <code>ValueError</code> for a manifest that lists a parent.
 <code>store.layer(id)</code> reads one layer of a store alone.</p>
 <h3 id="the-database">The database<a class="headerlink" href="#the-database" title="Permanent link">&para;</a></h3>
-<p>The tables that a workspace creates lie in DuckDB schemas of their own:</p>
+<p>The workspace attaches its database as <code>name</code>, <code>datarecord</code> by default, and never makes it a cursor's default database.
+It attaches it on a fresh in-memory connection of its own, or on a connection you pass as <code>con</code>, such as a server's, whose own default database stays as it was:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">(</span><span class="s2">"workspace.duckdb"</span><span class="p">)</span>  <span class="c1"># on a connection of its own</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">(</span><span class="n">con</span><span class="o">=</span><span class="n">server</span><span class="p">)</span>  <span class="c1"># on the server's connection, as `datarecord`</span>
+</code></pre></div>
+<p>The cursors of a passed connection see the attached database, and their transactions are their own, not the caller's.
+SQL names what lies there in full, <code>datarecord.main.revisions</code> or <code>datarecord.edit.dims.bus</code>, since a name without its database resolves in the cursor's default database.
+datarecord's own SQL always does and never runs <code>USE</code>.
+A relation or frame that datarecord's SQL reads goes by a Python local named <code>_dr_&lt;role&gt;</code>, because a table or view of the same name in the cursor's temp schema or default database binds first.
+So create no table or view whose name starts with <code>_dr_</code> in the default database or temp schema of the workspace's connection.
+One database also lets <code>register</code> write its schemas, its views and its row in one transaction, since a DuckDB transaction writes to one attached database.</p>
+<p><code>ws.close()</code> closes every thread's cursor and detaches the database, and closes the connection only where the workspace opened it.
+On a passed connection that ran <code>USE datarecord</code>, run <code>USE</code> on its own database again first, <code>USE memory</code> for an in-memory one, since every statement fails on a connection whose default database was detached.</p>
+<p>The tables that a workspace creates lie in DuckDB schemas of its database:</p>
 <table>
 <thead>
 <tr>
@@ -1741,7 +1762,8 @@ A write that fails leaves its data files at the URI and no manifest, so a second
 </tr>
 </tbody>
 </table>
-<p><code>&lt;id&gt;</code> is the 32-digit hex of the revision's or layer's UUID.
+<p><code>&lt;id&gt;</code> is the 32-digit hex of the revision's or layer's UUID, and SQL names each schema in full, <code>datarecord._fold.&lt;id&gt;</code>.
+The PyPSA exporter, which holds a record's connection but no workspace, keeps its joins in temporary tables of its cursor instead.
 <code>revisions</code> and <code>schemas</code> cache each manifest whole, and gain rows only, so the cache can be incomplete and never stale.</p>
 <p>The workspace keeps the <code>_fold</code> schemas of the layers a <code>Record</code> folds until <code>record.close()</code>, and a <code>WorkingRecord</code>'s <code>_staged</code> schema until it closes.
 It keeps the schemas of a registered record until <code>unregister</code>.
@@ -1750,25 +1772,26 @@ A closed record raises <code>ValueError</code> on every read, and a <code>Record
 <h3 id="files-local-and-remote">Files, local and remote<a class="headerlink" href="#files-local-and-remote" title="Permanent link">&para;</a></h3>
 <p>Manifests, claims, listing <code>layers/</code> and deleting a pending layer go through the workspace's <code>Files</code>, which datarecord picks by the URI's scheme.
 DuckDB reads and writes the parquet.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Files</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">class</span><span class="w"> </span><span class="nc">Files</span><span class="p">(</span><span class="n">Protocol</span><span class="p">):</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">read_text</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">create</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">text</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">list</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">list</span><span class="p">[</span><span class="nb">str</span><span class="p">]:</span> <span class="o">...</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">exists</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">uri</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">bool</span><span class="p">:</span> <span class="o">...</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>    <span class="k">def</span><span class="w"> </span><span class="nf">delete</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">prefix</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
 </code></pre></div>
 <p><code>create</code> writes only where nothing is, and raises <code>PreconditionFailedError</code> otherwise.
 Locally it writes under a temporary name and hard-links the file into place, so a read finds a whole file or none.</p>
 <p>An <code>s3://</code> URI needs the optional extra <code>datarecord[remote]</code>, which installs the boto3 package.
 Remotely, <code>create</code> is a <code>put_object</code> with <code>IfNoneMatch="*"</code>, which the server must honour, as AWS S3 does and SeaweedFS does from version 4.18 on.
 Credentials and the endpoint come from the AWS environment and config files.
-Where <code>AWS_ENDPOINT_URL</code> is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.</p>
+Where <code>AWS_ENDPOINT_URL</code> is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.
+The secret is named <code>datarecord_s3</code>, so on a connection shared with its caller it replaces none of the caller's secrets.</p>
 <h3 id="threads">Threads<a class="headerlink" href="#threads" title="Permanent link">&para;</a></h3>
 <p><code>ws.con</code> returns the calling thread's cursor, so every thread can share one workspace, one store and one <code>Record</code>.
 Tables, registered views and fold results are shared between cursors.
 A <code>DuckDBPyRelation</code> and a <code>WorkingRecord</code> belong to the thread that built them.
 A write or an edit refuses a relation from another thread or connection:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ValueError: this relation was built on another connection or thread; build it on `record.con` in this thread, or hand over a pandas, polars or arrow frame to land
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ValueError: this relation was built on another connection or thread; build it on `record.con` in this thread, or hand over a pandas, polars or arrow frame to land
 </code></pre></div>
 <p>When two threads fold one revision at once, both fold and datarecord keeps one of the two tables, so each reads the same answer.</p>
 <div class="admonition info">
@@ -1875,8 +1898,8 @@ A claim has one committer at a time.
 A commit raises <code>ValueError</code> once a cleanup deleted its claim.</p>
 <h3 id="cleanup">Cleanup<a class="headerlink" href="#cleanup" title="Permanent link">&para;</a></h3>
 <p>Only <code>cleanup</code> deletes, and only a pending layer:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="n">claim</span><span class="o">.</span><span class="n">id</span><span class="p">])</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">older_than</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="n">claim</span><span class="o">.</span><span class="n">id</span><span class="p">])</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">older_than</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>
 </code></pre></div>
 <p><code>cleanup</code> takes exactly one of <code>ids</code> and <code>older_than</code>, and raises <code>ValueError</code> before it deletes anything if an id is not pending.
 It checks each layer for a manifest again right before deleting it, without a lock.
@@ -1889,8 +1912,8 @@ Two writers that widen one parent's schema at once both commit, each child under
 <p>A <code>Revision</code> is the id of one layer in a store.
 <a href="../layers/#revisions">The layers page</a> lists its members.</p>
 <p>A revision serialises as its id and its store's location, and pickles the same way:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">()</span>  <span class="c1"># {"id": "4731e41b-…", "store": "/data/my-record"}</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">Revision</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>  <span class="c1"># in another process</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">()</span>  <span class="c1"># {"id": "4731e41b-…", "store": "/data/my-record"}</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">Revision</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>  <span class="c1"># in another process</span>
 </code></pre></div>
 <p>The second process loads the revision onto <code>Workspace.process()</code> and reads its manifest and each parent's, so <code>rev.ancestry()</code> returns there too.</p>
 <p><code>rev.record</code> builds the record once and returns the same one until you close it, then builds another.</p>

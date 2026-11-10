@@ -1772,7 +1772,7 @@ No manifest lists these files, a read opens each by name, and a layer's data sta
 <p>A revision is materialised once <code>owner_map.parquet</code> exists.
 <code>dim_owners.parquet</code> points into ancestor layers by UUID rather than copying their files.</p>
 <h2 id="registered-views">Registered views<a class="headerlink" href="#registered-views" title="Permanent link">&para;</a></h2>
-<p><code>record.register(name)</code> creates the DuckDB schema <code>name</code> in the workspace's database, with a view per dim, property subject and attribute.
+<p><code>record.register(name)</code> creates the DuckDB schema <code>name</code> in <a href="../store/#the-database">the workspace's database</a>, <code>datarecord</code> by default, with a view per dim, property subject and attribute.
 A SQL client of that database reads the record through these views.</p>
 <table>
 <thead>
@@ -1784,28 +1784,33 @@ A SQL client of that database reads the record through these views.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>name.dims.&lt;dim&gt;</code></td>
+<td><code>datarecord.name.dims.&lt;dim&gt;</code></td>
 <td>dim, a dim with <code>one_of</code> included</td>
 <td><code>record.dims[dim]</code></td>
 </tr>
 <tr>
-<td><code>name.properties.&lt;dim&gt;</code></td>
+<td><code>datarecord.name.properties.&lt;dim&gt;</code></td>
 <td>dim that declares properties</td>
 <td><code>record.properties[dim]</code></td>
 </tr>
 <tr>
-<td><code>name.attributes.&lt;a&gt;</code></td>
+<td><code>datarecord.name.attributes.&lt;a&gt;</code></td>
 <td>attribute the schema declares</td>
 <td><code>record.attributes[a]</code>, empty with no rows</td>
 </tr>
 </tbody>
 </table>
 <p>The views are the record's relations unsettled: a NULL coordinate means every label, two rows may cover one point and no default applies.
-Over a <code>WorkingRecord</code>, a view returns each edit once <code>set</code>, <code>add</code> or <code>remove</code> returns.</p>
-<p><code>register</code> raises if <code>name</code> exists, and refuses the name of a database attached to the workspace.
+Over a <code>WorkingRecord</code>, a view returns each edit once <code>set</code>, <code>add</code> or <code>remove</code> returns.
+A view reads the tables of its own database under any name a client attaches it as: a client that attaches the workspace's file as <code>r</code> reads <code>r.name.dims.&lt;dim&gt;</code>, and never a table of its own with the same name.</p>
+<p>Run <code>USE datarecord</code> once to write short names, <code>name.dims.bus</code> and <code>registered</code>.
+<code>USE</code> holds only for the connection or cursor that runs it, and a client that attached the file under another name runs <code>USE</code> with that name.
+datarecord never runs <code>USE</code> on its own cursors.</p>
+<p><code>register</code> raises if <code>name</code> exists in the workspace's database, or if another cursor registers it at the same time.
+The database is always named, so <code>name</code> may be that of another attached database.
 <code>Workspace.unregister(name)</code> drops the schema, its views and its row in the <code>registered</code> table.</p>
 <h3 id="the-registered-table">The <code>registered</code> table<a class="headerlink" href="#the-registered-table" title="Permanent link">&para;</a></h3>
-<p>Every registration is a row of the workspace's <code>registered</code> table, which <code>Workspace.registered()</code> returns.</p>
+<p>Every registration is a row of the workspace's <code>registered</code> table, <code>datarecord.main.registered</code>, which <code>Workspace.registered()</code> returns.</p>
 <table>
 <thead>
 <tr>
