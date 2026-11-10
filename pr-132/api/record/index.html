@@ -1880,11 +1880,11 @@ staged rows are one more source on the end.</p>
 
     <div class="doc doc-contents ">
 
-        <p>Create the schema <code>name</code> in the workspace's database with a view per dim, property subject and attribute.</p>
-<p>The views sit in <code>name.dims</code>, <code>name.properties</code> and <code>name.attributes</code>
-there, <code>datarecord.name.dims.bus</code> by default, each reading as its
-relation here; over a <code>WorkingRecord</code> they follow every edit. <code>name</code> is
-listed in the workspace's <code>registered()</code> table.</p>
+        <p>Create the schema <code>name</code> with a view per dim, property subject and attribute.</p>
+<p>The views sit in <code>name.dims</code>, <code>name.properties</code> and <code>name.attributes</code> of
+the workspace's database, as in <code>datarecord.name.dims.bus</code>, each reading as
+its relation here; over a <code>WorkingRecord</code> they follow every edit. <code>name</code> is
+listed in <code>Workspace.registered()</code>.</p>
 
 
 <p><span class="doc-section-title">Raises:</span></p>
@@ -1976,12 +1976,12 @@ cursor registers <code>name</code> at the same time.</p>
 <span class="normal"><a href="#__codelineno-0-446">446</a></span>
 <span class="normal"><a href="#__codelineno-0-447">447</a></span>
 <span class="normal"><a href="#__codelineno-0-448">448</a></span></pre></div></td><td class="code"><div><pre><span></span><code><a id="__codelineno-0-403" name="__codelineno-0-403"></a><span class="k">def</span><span class="w"> </span><span class="nf">register</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span>
-<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="w">    </span><span class="sd">"""Create the schema `name` in the workspace's database with a view per dim, property subject and attribute.</span>
+<a id="__codelineno-0-404" name="__codelineno-0-404"></a><span class="w">    </span><span class="sd">"""Create the schema `name` with a view per dim, property subject and attribute.</span>
 <a id="__codelineno-0-405" name="__codelineno-0-405"></a>
-<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">    The views sit in `name.dims`, `name.properties` and `name.attributes`</span>
-<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">    there, `datarecord.name.dims.bus` by default, each reading as its</span>
-<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    relation here; over a `WorkingRecord` they follow every edit. `name` is</span>
-<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    listed in the workspace's `registered()` table.</span>
+<a id="__codelineno-0-406" name="__codelineno-0-406"></a><span class="sd">    The views sit in `name.dims`, `name.properties` and `name.attributes` of</span>
+<a id="__codelineno-0-407" name="__codelineno-0-407"></a><span class="sd">    the workspace's database, as in `datarecord.name.dims.bus`, each reading as</span>
+<a id="__codelineno-0-408" name="__codelineno-0-408"></a><span class="sd">    its relation here; over a `WorkingRecord` they follow every edit. `name` is</span>
+<a id="__codelineno-0-409" name="__codelineno-0-409"></a><span class="sd">    listed in `Workspace.registered()`.</span>
 <a id="__codelineno-0-410" name="__codelineno-0-410"></a>
 <a id="__codelineno-0-411" name="__codelineno-0-411"></a><span class="sd">    Raises</span>
 <a id="__codelineno-0-412" name="__codelineno-0-412"></a><span class="sd">    ------</span>
