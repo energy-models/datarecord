@@ -46,8 +46,9 @@ The workspace attaches its `database` under a `name`, `datarecord` by default, a
 It attaches it on a fresh in-memory connection that it opens, or on a connection passed as `con`, such as a server's, whose own default database stays as it was:
 
 ```python
-ws = Workspace("workspace.duckdb")  # on a connection of its own
-ws = Workspace(con=server, name="datarecord")  # on the server's connection
+ws = Workspace()  # in memory, on a connection of its own
+ws = Workspace("cache.duckdb")  # a file, kept across runs
+ws = Workspace("cache.duckdb", con=server, name="datarecord")  # on the server's connection
 ```
 
 Every table datarecord shares between cursors lives in the `main` schema of that database: the `schemas`, `revisions` and `registered` tables, the tables a fold [shares between threads](concurrency.md#a-cursor-per-thread) and the [staging tables](../use/editing.md#staging).
