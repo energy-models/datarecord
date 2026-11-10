@@ -475,15 +475,39 @@ def test_closing_a_record_drops_its_fold_once_no_other_holds_it(
     )
 
 
-def test_a_record_collected_unclosed_leaves_its_fold_to_the_workspace(workspace, small):
-    """A chained read collects its record before fetching, so collection drops nothing."""
-    p_nom = small.store.revision(small.id).record.attributes["p_nom"]
+@pytest.mark.parametrize(
+    "record",
+    [
+        pytest.param(lambda small: small.store.revision(small.id).record, id="record"),
+        pytest.param(
+            lambda small: WorkingRecord(small.store.revision(small.id).record),
+            id="working",
+        ),
+    ],
+)
+@pytest.mark.parametrize(
+    "derive",
+    [
+        pytest.param(lambda rel: rel, id="taken"),
+        pytest.param(
+            lambda rel: rel.filter("value > 0").set_alias("d").aggregate("count(*)"),
+            id="derived",
+        ),
+    ],
+)
+def test_a_relation_keeps_its_collected_record_and_its_tables(
+    workspace, small, record, derive
+):
+    """A chained read collects its record before fetching, and the relation keeps what it reads."""
+    rel = derive(record(small).attributes["p_nom"])
     gc.collect()
-    assert len(p_nom.fetchall()) == 2, "the relation outlives its collected record"
-    _opened(small).close()
-    assert small.id.hex in _folds(workspace.con), (
-        "closing a later record leaves the fold the collected one gave up"
+    assert rel.fetchall(), "the relation reads past its record's last name"
+    del rel
+    gc.collect()
+    assert small.id.hex not in _folds(workspace.con), (
+        "the fold goes with the record and the last relation taken from it"
     )
+    assert _staging(workspace.con) == set(), "and so do the staging tables"
 
 
 @pytest.mark.parametrize(
@@ -504,14 +528,39 @@ def test_a_working_record_works_on_past_its_closed_base(workspace, small, use):
     assert small.id.hex not in _folds(workspace.con), "and drops it on close"
 
 
-def test_a_registration_holds_its_records_fold_past_close(workspace, small):
-    record = _opened(small)
+@pytest.mark.parametrize("discard", ["close", "collect"])
+def test_a_registration_holds_its_records_fold_past_the_record(
+    workspace, small, discard
+):
+    record = _opened(small.store.revision(small.id))
     declared, expected = _declared(record), _read_relations(record)
     record.register("plain")
-    record.close()
+    if discard == "close":
+        record.close()
+    del record
+    gc.collect()
     assert _read_views(workspace.con, "plain", declared) == expected
     workspace.unregister("plain")
     assert small.id.hex not in _folds(workspace.con), "the fold goes on unregister"
+
+
+def test_unregister_finishes_a_running_statement_and_fails_a_later_one(
+    workspace, small
+):
+    """A statement streaming over the views reads to its end; a relation over them run again finds no schema."""
+    with small.store.revision(small.id).record as record:
+        record.register("live")
+    reader = workspace.con.cursor()
+    query = "FROM datarecord.live.attributes.p_nom, range(100000)"
+    rel = reader.sql(query)
+    running = reader.execute(query)
+    first = running.fetchmany(10)
+    workspace.unregister("live")
+    assert len(first) + len(running.fetchall()) == 200_000, (
+        "the running statement reads on to its end"
+    )
+    with pytest.raises(duckdb.CatalogException, match="live"):
+        rel.fetchall()
 
 
 @pytest.mark.parametrize("name", ["_fold", "_staged", "_scratch"])

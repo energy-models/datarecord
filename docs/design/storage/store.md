@@ -82,11 +82,14 @@ The tables a workspace creates sit in schemas of its database, so its `main` hol
 SQL names each in full, `datarecord._fold.<rid>.owner_map`.
 `_fold`, `_staged` and `_scratch` are created with the workspace, so `register` refuses them as taken names.
 The id in a nested schema's name keys its tables, which do not carry it, and is its 32-digit hex, without dashes.
-A `Record` holds `_fold.<id>` of each layer it folds, its revision's among them, from construction until `close()`.
-A `WorkingRecord` holds its base's and its own `_staged.<layer>` until it is closed or collected.
+A `Record` holds `_fold.<id>` of each layer it folds, its revision's among them, from construction until it is closed or collected.
+A `WorkingRecord` holds its base's and its own `_staged.<layer>` the same way.
 A registration holds every schema its record holds, until `Workspace.unregister(name)`.
 The workspace drops a schema, with every table in it, once no holder keeps it.
-A `Record` collected unclosed gives its schemas to the workspace, which keeps them for its life: `store.revision(rid).record.attributes["p_nom"].df()` collects the record before `.df()` reads its fold.
+A record's tables live while the record or any relation taken from it lives: each relation it hands out keeps the record alive, and a relation derived from one by its methods, `filter` or `join`, keeps its inputs, so `store.revision(rid).record.attributes["p_nom"].df()` reads although no name keeps the record.
+SQL run over such a relation by a replacement scan, `con.sql("FROM rel")`, binds it at once and keeps neither, so where datarecord's own code does so it anchors the result to the relation it reads, and the chain back to the record holds.
+Only a caller's own `con.sql` over a record's relation breaks the chain; the caller keeps the relation it reads, the record or a `with` block alive until it has fetched.
+A record forgotten unclosed costs its tables only until it and its relations are collected, and the next record over the revision folds it again.
 A closed record refuses every read with `ValueError`, and `Revision.record` builds a new one once its cached record is closed.
 A workspace reopened on a file holds again, for every registration in `registered`, the schemas its `held` column lists, so its views read on and `unregister` drops them there too.
 The column names each schema inside the database, `_fold.<rid>`, so the file reads alike attached under another name.

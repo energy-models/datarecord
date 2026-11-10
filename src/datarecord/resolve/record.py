@@ -36,6 +36,7 @@ from duckdb._relation import _render
 
 from datarecord.duck import (
     FOLD,
+    anchored,
     empty_relation,
     fn,
     nested,
@@ -61,7 +62,7 @@ from datarecord.schema.categories import with_properties
 from datarecord.schema.schema import LAYER_COLUMN, Schema
 
 if TYPE_CHECKING:
-    from datarecord.store.store import Workspace, _Holds
+    from datarecord.store.store import Workspace
 
 
 def _living(
@@ -312,8 +313,8 @@ class Record:
     Nothing up to the last frozen source can go stale, so the fold over them is
     kept in shared tables. A source after it is folded onto those tables per
     read, so a staged edit reads back with nothing to invalidate. The record
-    holds those tables from construction until `close()`; one collected
-    unclosed leaves them to the workspace.
+    holds those tables from construction until `close()`, or until it and
+    every relation taken from it are collected.
 
     Parameters
     ----------
@@ -358,7 +359,7 @@ class Record:
     def __post_init__(self) -> None:
         holds = self.workspace._holds
         holds.hold(self._holder, self._kept_schemas)
-        release = weakref.finalize(self, self._collected(holds), self._holder)
+        release = weakref.finalize(self, holds.release, self._holder)
         object.__setattr__(self, "_release", release)
 
     def close(self) -> None:
@@ -390,14 +391,6 @@ class Record:
     def _holder(self) -> Hashable:
         """This record's key among the workspace's holders, one per instance."""
         return uuid4()
-
-    def _collected(self, holds: _Holds) -> Callable[[Hashable], None]:
-        """What collecting this record unclosed does with what it holds: abandon it, dropping nothing.
-
-        A chained read, `store.revision(rid).record.attributes["p_nom"].df()`,
-        collects its record before `.df()` runs, so a drop here would fail it.
-        """
-        return holds.abandon
 
     def _require_open(self) -> None:
         """Refuse a closed record before DuckDB finds its tables gone.
@@ -457,17 +450,37 @@ class Record:
     @_stable_cache
     def dims(self) -> LazyRelations:
         """Every dim the schema declares, an empty axis where no layer holds one."""
-        return LazyRelations(tuple(self.schema.dimensions), self._axis_frame)
+        return LazyRelations(
+            tuple(self.schema.dimensions), partial(self._handed, self._axis_frame)
+        )
 
     @_stable_cache
     def properties(self) -> LazyRelations:
         """Every subject the schema declares properties of, an empty axis where no layer holds one."""
-        return LazyRelations(tuple(self.schema.properties), self._property_frame)
+        return LazyRelations(
+            tuple(self.schema.properties), partial(self._handed, self._property_frame)
+        )
 
     @_stable_cache
     def attributes(self) -> LazyRelations:
         """Every attribute the schema declares, an empty relation where no layer holds a row."""
-        return LazyRelations(tuple(self.schema.attributes), self._relation)
+        return LazyRelations(
+            tuple(self.schema.attributes), partial(self._handed, self._relation)
+        )
+
+    def _handed(
+        self, build: Callable[[str], DuckDBPyRelation], key: str
+    ) -> DuckDBPyRelation:
+        """`build(key)`, keeping this record, and so the tables it holds, alive while the relation lives.
+
+        Only a relation handed to a caller is anchored: one cached on the
+        record would keep it alive for good.
+
+        Notes
+        -----
+        - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+        """
+        return anchored(build(key), self)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
         """Straight off the owner map, which folded these in for free.

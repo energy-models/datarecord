@@ -124,20 +124,15 @@ class _Cursors(threading.local):
             workspace._made.add(self.con)
 
 
-#: The holder an abandoned record's schemas pass to, which never releases them.
-_ABANDONED = object()
-
-
 class _Holds:
     """Which holders keep each schema, a schema dropped with its tables once none does.
 
     A holder is a record, by a key of its own, or a registration, by its
     name. A schema is named as SQL reads it inside the workspace's database,
     `"_fold"."<hex>"`, which `registered.held` persists whatever the database
-    is attached as, and may never have been created. A finaliser releases or
-    abandons on whichever thread the collector runs, maybe inside that
-    thread's open transaction, so drops run on a cursor of their own under
-    the lock. The lock is re-entrant, and a release fired while one drops
+    is attached as, and may never have been created. A finaliser releases on
+    whichever thread the collector runs, maybe inside that thread's open
+    transaction, so drops run on a cursor of their own under the lock. The lock is re-entrant, and a release fired while one drops
     leaves its schemas to the outer one, the cursor running one transaction
     at a time.
 
@@ -182,7 +177,10 @@ class _Holds:
             Where `holder` never held here.
         """
         with self._lock:
-            for schema in self._forget(holder):
+            if holder not in self._held:
+                msg = f"`{holder}` holds no schemas on this workspace"
+                raise KeyError(msg)
+            for schema in self._held.pop(holder):
                 holders = self._holders[schema]
                 holders.discard(holder)
                 if not holders:
@@ -195,33 +193,6 @@ class _Holds:
                 self._drop()
             finally:
                 self._dropping = False
-
-    def abandon(self, holder: Hashable) -> None:
-        """Keep what `holder` holds for the workspace's life, `holder` forgotten.
-
-        Raises
-        ------
-        KeyError
-            Where `holder` never held here.
-        """
-        with self._lock:
-            for schema in self._forget(holder):
-                holders = self._holders[schema]
-                holders.discard(holder)
-                holders.add(_ABANDONED)
-
-    def _forget(self, holder: Hashable) -> set[str]:
-        """The schemas `holder` held, `holder` no longer among the holders.
-
-        Raises
-        ------
-        KeyError
-            Where `holder` never held here.
-        """
-        if holder not in self._held:
-            msg = f"`{holder}` holds no schemas on this workspace"
-            raise KeyError(msg)
-        return self._held.pop(holder)
 
     def _drop(self) -> None:
         while self._unheld:

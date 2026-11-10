@@ -41,6 +41,7 @@ from duckdb import (
 from duckdb import StarExpression as star
 
 from datarecord.duck import (
+    anchored,
     empty_relation,
     ex_all,
     fn,
@@ -549,8 +550,11 @@ def _series_frame(
         col("k", "_pos").alias("_col"),
         col("r", "value"),
     )
-    piv = con.sql(
-        f"PIVOT _dr_positioned ON _col USING first(value) GROUP BY {', '.join(group_by)}"
+    piv = anchored(
+        con.sql(
+            f"PIVOT _dr_positioned ON _col USING first(value) GROUP BY {', '.join(group_by)}"
+        ),
+        _dr_positioned,
     )
 
     present = sorted(int(c) for c in set(piv.columns) - set(group_by))
@@ -2247,10 +2251,11 @@ class _NetworkSource:
         else:
             entity, scenario = "colname", "CAST(NULL AS VARCHAR)"
         labels = lit(self._snapshot_labels.tolist())
-        return con.sql(
+        melted = con.sql(
             f"SELECT {entity} AS entity, ({labels})[pos + 1] AS {SNAPSHOT}, "
             f"{scenario} AS scenario, value FROM _dr_melted"
         )
+        return anchored(melted, _dr_melted)
 
     def _scalar_rel(
         self,

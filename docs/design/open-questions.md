@@ -122,7 +122,7 @@ One that does would either refuse a change that alters a column or the fold of a
 
 [Registered views](storage/views.md) are raw, so a client applies the broadcast rule itself. [`settle`](use/reading.md#settling-rows) ported to the frontend, and a page on the raw format for SQL clients, are both still to write ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)).
 
-### Who drops an abandoned registration
+### Who drops a forgotten registration
 
 A server that crashes or forgets leaves its views and the folds they read. The `registered` table lists every registration with when it was `created`, but no one unregisters by any rule yet ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)). Unregistering frees the staging tables the registration [holds](storage/store.md#the-databases-schemas), so the rule also decides how long they stay. A workspace reopened on a file keeps an earlier run's `_staged` and `_fold` schemas, which no record holds; those no registration's `held` column lists could be swept, and nothing does yet ([DEP 35](proposals/dep-0035-a-record-holds-the-tables-it-reads.md#open-issues)).
 
@@ -176,7 +176,7 @@ They can, in the workspace's own database, one schema per registration with a ne
 
 ### When a server drops the folds it opened
 
-When the last open record reading one is closed, unless a registration still holds it. A record collected unclosed leaves its folds to the workspace for its life, so a server closes each record it opens ([the database's schemas](storage/store.md#the-databases-schemas)).
+When the last record reading one is closed, or collected with every relation taken from it, unless a registration still holds it. A server closes each record it opens, so it frees them at a point it chooses rather than the collector's ([the database's schemas](storage/store.md#the-databases-schemas)).
 
 ### When a `WorkingRecord`'s staging tables are dropped
 

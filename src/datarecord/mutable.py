@@ -21,7 +21,6 @@ from collections.abc import (
     Callable,
     Collection,
     Container,
-    Hashable,
     Iterable,
     Mapping,
     Sequence,
@@ -69,7 +68,7 @@ from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
-    from datarecord.store.store import Workspace, _Holds
+    from datarecord.store.store import Workspace
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/use/editing/#set) ----------------------------------------------
@@ -465,15 +464,6 @@ class WorkingRecord(Record):
             self._staged[_OWNERS, attribute] = name
         self.con.execute(f"DROP TABLE {shape}")
         self._frozen_owners  # noqa: B018 - built outside any edit's transaction
-
-    def _collected(self, holds: _Holds) -> Callable[[Hashable], None]:
-        """Release, unlike a `Record`: no chained read takes a relation off a `WorkingRecord`, and its staging tables are worth dropping.
-
-        Notes
-        -----
-        - [staging](https://energy-models.github.io/datarecord/design/use/editing/#staging)
-        """
-        return holds.release
 
     def _require_editable(self) -> None:
         """Refuse an edit or a write where this record or its base is closed: both read the base.

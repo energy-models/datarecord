@@ -26,7 +26,7 @@ from duckdb import ConstantExpression as lit
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 
-from datarecord.duck import as_relation, fn, null_safe, write_parquet
+from datarecord.duck import anchored, as_relation, fn, null_safe, write_parquet
 from datarecord.protocols import LayerData, RecordLike, Relations
 from datarecord.resolve.coords import (
     Coords,
@@ -635,7 +635,10 @@ class _RecordLikeAsLayerData:
                 *(col("p", c) for c in values),
             )
         )
-        return self._con.sql("SELECT * EXCLUDE (_row) FROM _dr_joined ORDER BY _row")
+        return anchored(
+            self._con.sql("SELECT * EXCLUDE (_row) FROM _dr_joined ORDER BY _row"),
+            _dr_joined,
+        )
 
     def attributes(self) -> set[str]:
         return set(self._attributes)

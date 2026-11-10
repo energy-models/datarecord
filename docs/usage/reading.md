@@ -144,7 +144,7 @@ else:
 ## Closing
 
 A record holds the tables its fold is kept in until you `close()` it, and a `with` block closes it on exit.
-Then the workspace drops them, unless another open record, a [registration](../design/storage/views.md) or a record collected without closing holds them.
+Then the workspace drops them, unless another open record or a [registration](../design/storage/views.md) holds them.
 The next record over the same revision folds its ancestry again, so a process reading one revision often keeps one record open rather than one per read.
 A closed record raises `ValueError` on any read, and a relation taken from it before fails with DuckDB's missing-table error, so fetch what you need first.
 `revision.record` hands out a new record once the one it cached is closed.
@@ -154,7 +154,8 @@ with store.revision(rev_id).record as record:
     p_nom = record.attributes["p_nom"].df()
 ```
 
-A record you never close keeps its tables for the workspace's life, so a chained read stays safe ([design](../design/storage/store.md#the-databases-schemas)).
+A record you never close keeps its tables while it or any relation taken from it lives, so a chained read, `store.revision(rev_id).record.attributes["p_nom"].df()`, stays safe, and so does a relation you derive with `filter` or `join`.
+SQL you write over such a relation, `con.sql("FROM rel")`, does not keep it, so keep the relation, the record or a `with` block alive until you have fetched ([design](../design/storage/store.md#the-databases-schemas)).
 
 ## Reading a directory
 

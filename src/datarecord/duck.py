@@ -25,6 +25,7 @@ Notes
 
 import sys
 import time
+import weakref
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import AbstractContextManager, contextmanager, suppress
 from functools import partial, reduce
@@ -79,6 +80,27 @@ def nested(parent: str, id: UUID) -> str:
 _PARQUET_OPTIONS = (
     "FORMAT parquet, COMPRESSION zstd, PARQUET_VERSION v2, DICTIONARY_SIZE_LIMIT 4096"
 )
+
+
+def _keep(owner: object) -> None:
+    """Do nothing: a finaliser's arguments live until it runs, so passing `owner` keeps it alive."""
+
+
+def anchored(rel: DuckDBPyRelation, owner: object) -> DuckDBPyRelation:
+    """`rel`, keeping `owner` alive for as long as it or a relation derived from it lives.
+
+    A relation derived by its methods (`filter`, `join`, `aggregate`, ...)
+    keeps its inputs, so keeps `owner` too. SQL run over `rel` by a
+    replacement scan (`con.sql("FROM rel")`) binds it at once and keeps
+    neither, so datarecord anchors such a result to the relation it reads,
+    and the chain from it back to `owner` holds.
+
+    Notes
+    -----
+    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    """
+    weakref.finalize(rel, _keep, owner)
+    return rel
 
 
 def write_parquet(
