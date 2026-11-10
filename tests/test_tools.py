@@ -841,12 +841,12 @@ class TestPyPSA:
 
     @pytest.mark.parametrize("series", [False, True], ids=["static", "series"])
     @pytest.mark.parametrize(
-        ("port", "ignored"), [(0, True), (1, False)], ids=["port-0", "port-1"]
+        ("port", "efficiency"), [(0, 1.0), (1, 0.7)], ids=["port-0", "port-1"]
     )
-    def test_a_value_at_a_port_without_its_column_is_reported_and_left_out(
-        self, store, series, port, ignored
+    def test_a_value_at_a_port_without_its_column_is_left_out(
+        self, store, series, port, efficiency
     ):
-        """A Link has no `efficiency0`, so `build` leaves a value at port 0 out and `verify` lists it.
+        """A Link has no `efficiency0`, so `build` leaves a value at port 0 out.
 
         Notes
         -----
@@ -859,19 +859,22 @@ class TestPyPSA:
         n.add("Link", "in_south", bus0="south", bus1="north")
         w = WorkingRecord(export_network(n, store).record)
         at = {"snapshot": list(n.snapshots)} if series else {}
-        value = [0.7, 0.7] if series else 0.7
-        w.set("efficiency", value, entity="in_south", port=port, **at)
+        w.set(
+            "efficiency",
+            [0.7, 0.7] if series else 0.7,
+            entity="in_south",
+            port=port,
+            **at,
+        )
 
-        report = PyPSA.verify(w)
-        assert not report, "a value PyPSA has no column for fails no build"
-        assert (("Link", "efficiency") in report.ignored) == ignored
+        assert not PyPSA.verify(w), "a value PyPSA has no column for fails no build"
         built = PyPSA.build(w).c.Link
-        efficiency = (
+        values = (
             built.dynamic["efficiency"]["in_south"].tolist()
-            if series and not ignored
+            if series and port == 1
             else [built.static.at["in_south", "efficiency"]]
         )
-        assert set(efficiency) == {1.0 if ignored else 0.7}
+        assert set(values) == {efficiency}
 
     @pytest.mark.parametrize(
         ("layers", "built"),
@@ -948,8 +951,9 @@ class TestPyPSA:
         assert {("Generator", "bus"), ("Load", "bus")} <= missing
         assert ("Link", "bus0") not in missing, "no link is at Manchester"
 
-    def test_verify_reports_a_one_port_type_at_a_port_but_0(self, store):
-        """A Generator has its `bus` at port 0 alone, so a connection at port 1 names no column.
+    @pytest.mark.parametrize("keep_port_0", [True, False], ids=["both", "port-1"])
+    def test_verify_reports_a_one_port_type_at_a_port_but_0(self, store, keep_port_0):
+        """A Generator has its `bus` at port 0 alone, so a connection at port 1 blocks the build.
 
         Notes
         -----
@@ -957,8 +961,12 @@ class TestPyPSA:
         """
         from datarecord.mutable import WorkingRecord
 
-        w = WorkingRecord(export_network(_north(), store).record)
-        w.add("connection", [{"entity": "gen", "port": 1}], bus="north")
+        n = _north()
+        n.add("Bus", "south")
+        w = WorkingRecord(export_network(n, store).record)
+        if not keep_port_0:
+            w.remove("connection", [{"entity": "gen", "port": 0}])
+        w.add("connection", [{"entity": "gen", "port": 1}], bus="south")
 
         assert ("Generator", "bus") in PyPSA.verify(w).unsupported_values
         with pytest.raises(UnsupportedRecordError, match="Generator"):

@@ -123,15 +123,15 @@ These are `active`, `build_year`, `committable`, `lifetime`, `weight`, `*_nom_ex
 
 `verify` takes a record or a [selection](#selecting-before-a-build), and reports in a `Requirements`:
 
-| Field                | Entries                                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `dims`               | `snapshot`, `period` or `scenario`, where the schema lacks it and no selection squeezes it                                            |
-| `unsupported_keys`   | `snapshot`, where it is in `partial`                                                                                                  |
-| `unsupported_dims`   | each dim of the record's own ([a collection](#a-collection))                                                                          |
-| `categories`         | each `ctype` that PyPSA's registry lacks                                                                                              |
-| `attributes`         | each required attribute with no row, property or declared default, a port's `bus` among them                                          |
-| `unsupported_values` | each attribute stored as a curve, or varying along a dim PyPSA holds it without, such as a one-port type's `bus` at a port but 0      |
-| `ignored`            | each attribute a type has a value for and does not take, or has at a port without its column, such as a Link's `efficiency` at port 0 |
+| Field                | Entries                                                                                                                          |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `dims`               | `snapshot`, `period` or `scenario`, where the schema lacks it and no selection squeezes it                                       |
+| `unsupported_keys`   | `snapshot`, where it is in `partial`                                                                                             |
+| `unsupported_dims`   | each dim of the record's own ([a collection](#a-collection))                                                                     |
+| `categories`         | each `ctype` that PyPSA's registry lacks                                                                                         |
+| `attributes`         | each required attribute with no row, property or declared default, a port's `bus` among them                                     |
+| `unsupported_values` | each attribute stored as a curve, or varying along a dim PyPSA holds it without, such as a one-port type's `bus` at a port but 0 |
+| `ignored`            | each attribute a type has a value for and does not take                                                                          |
 
 When `verify` finds an unsupported key or dim, it reports nothing else.
 It raises `ValueError` for a selection that `build` refuses.

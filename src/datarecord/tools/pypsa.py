@@ -1727,35 +1727,32 @@ def _retire(
 # -- network -> layer ---------------------------------------------------------
 
 _PORT_SUFFIX = re.compile(r"(.+?)(\d+)")
-#: The types of any number of ports, the only ones leaving a stem unsuffixed at port `1`.
-_EXTENSIBLE = ("Link", "Process")
 
 
 @cache
 def _per_port_stems() -> frozenset[str]:
     """Every attribute stem some PyPSA type carries once per port, inputs and results alike.
 
-    A name ending in one of its type's port indices (`bus0`, `p1`), and the
-    stems an `_EXTENSIBLE` type leaves unsuffixed at port `1` (`efficiency`).
+    A name PyPSA declares at each of its type's `bus` ports (`bus0`, `p1`),
+    and the stems a Link or Process leaves unsuffixed at port `1`
+    (`efficiency`).
 
     Notes
     -----
     - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
     """
-    import pypsa
+    from pypsa.components._types import Links, Processes
+    from pypsa.components.types import all_components
 
-    n = pypsa.Network()
-    stems: set[str] = set().union(
-        *(n.components[ctype]._unsuffixed_attrs for ctype in _EXTENSIBLE)
-    )
-    for ctype in n.all_components:
-        c = n.components[ctype]
-        ports = set(c.ports) - {""}
-        stems |= {
-            match.group(1)
-            for attr in c.defaults.index
-            if (match := _PORT_SUFFIX.fullmatch(attr)) and match.group(2) in ports
-        }
+    stems = {*Links._unsuffixed_attrs, *Processes._unsuffixed_attrs}
+    for ctype in all_components.values():
+        suffixed = [
+            match.groups()
+            for attr in _registered(ctype.name)
+            if (match := _PORT_SUFFIX.fullmatch(attr))
+        ]
+        ports = {port for stem, port in suffixed if stem == BUS}
+        stems |= {stem for stem, port in suffixed if port in ports}
     return frozenset(stems)
 
 
@@ -1765,49 +1762,48 @@ def _ports(c: pypsa.Components) -> list[int]:
 
 
 @cache
-def _registered_ports() -> frozenset[int]:
-    """The ports PyPSA's bare registry declares on any type, `0` and `1`."""
-    import pypsa
+def _one_port(ctype: str) -> bool:
+    """Whether PyPSA's `ctype` attaches at one bus, a Generator, Load, Store, StorageUnit or ShuntImpedance."""
+    from pypsa.components.types import get as get_component_type
 
-    n = pypsa.Network()
-    return frozenset(
-        port for ctype in n.all_components for port in _ports(n.components[ctype])
-    )
+    category = get_component_type(ctype).category
+    return category in {"controllable_one_port", "passive_one_port"}
 
 
-def _port_attribute(stem: str, port: int, registered: Container[str]) -> str:
-    """PyPSA's name for `stem` at `port`: `bus`, `p`, `bus0`, `p1`, `efficiency`, `efficiency2`, ...
+def _port_attribute(stem: str, port: int, ctype: str) -> str:
+    """PyPSA's name for `stem` at `port` of `ctype`: `bus`, `p`, `bus0`, `p1`, `efficiency`, `efficiency2`, ...
 
-    A one-port type, which registers no `bus0`, has the bare stem at port `0`.
-    A stem PyPSA registers at port `0` is suffixed from `0`; one it does not
-    leaves port `1` unsuffixed.
-
-    Parameters
-    ----------
-    registered
-        The type's attribute names, which say whether it is a one-port type
-        and whether `stem` starts at port `0`.
+    A one-port type has the bare stem. A stem PyPSA declares at port `0` is
+    suffixed from `0`, and one it does not leaves port `1` unsuffixed.
 
     Notes
     -----
     - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
     """
-    if f"{BUS}0" not in registered or (port == 1 and f"{stem}0" not in registered):
+    if _one_port(ctype) or (port == 1 and f"{stem}0" not in _registered(ctype)):
         return stem
     return f"{stem}{port}"
 
 
-def _carries(stem: str, port: int, registered: Container[str]) -> bool:
-    """Whether PyPSA has a `stem` column at `port`: a registered one, or any at an additional port."""
+def _carries(stem: str, port: int, ctype: str) -> bool:
+    """Whether PyPSA has a `stem` column at `port` of `ctype`.
+
+    A one-port type has columns at port `0` only. Any other type has the ones
+    PyPSA declares, and every per-port column at a port beyond those it
+    declares a `bus` for, as a Link's `bus2` and `efficiency2`.
+    """
+    registered = _registered(ctype)
+    if _one_port(ctype):
+        return port == 0 and stem in registered
     return (
-        _port_attribute(stem, port, registered) in registered
-        or _port_attribute(BUS, port, registered) not in registered
+        _port_attribute(stem, port, ctype) in registered
+        or f"{BUS}{port}" not in registered
     )
 
 
 @cache
 def _registered(ctype: str) -> frozenset[str]:
-    """`ctype`'s attribute names in PyPSA's bare registry, for `_port_attribute`."""
+    """`ctype`'s attribute names in PyPSA's bare registry, `bus0`, `bus1`, `efficiency`, `p0` for a Link."""
     from pypsa.components.types import get as get_component_type
 
     return frozenset(get_component_type(ctype).defaults.index)
@@ -1823,7 +1819,7 @@ def _connection_rows(c: pypsa.Components) -> pd.DataFrame | None:
     static = c.static
     frames = []
     for port in _ports(c):
-        column = _port_attribute(BUS, port, c.defaults.index)
+        column = _port_attribute(BUS, port, c.name)
         if column not in static.columns:
             continue
         attached = static[static[column].astype(str) != ""]
@@ -1930,8 +1926,8 @@ class PyPSATool(Tool):
         row, property or declared default, a port's bus where a member has no
         connection there, curves and values a network would hold one of
         (`_unheld`), a one-port type's `bus` at a port but `0`, and in
-        `ignored` stored attributes a type does not take, or has at a port
-        PyPSA has no column of them for, which `build` leaves out.
+        `ignored` stored attributes a type does not take,
+        which `build` leaves out.
 
         Raises
         ------
@@ -1990,16 +1986,11 @@ class PyPSATool(Tool):
                 or resolved[attr].varies.intersection(unheld.get(attr, ()))
             }
             read[ctype] = _TypeMembers.of(record, ctype, connection_frame)
-            if read[ctype].beyond_one_port(ctype):
+            connections = read[ctype].connections
+            if connections is not None and not all(
+                _carries(BUS, p, ctype) for p in connections[PORT]
+            ):
                 unsupported_values.add((ctype, BUS))
-            ignored |= {
-                (ctype, attr)
-                for attr in taken
-                if CONNECTION in declared.attributes[attr].dims
-                and read[ctype].uncarried(
-                    ctype, attr, record.attributes[attr], record.con
-                )
-            }
             static_cols = read[ctype].columns
             from_connections = read[ctype].port_attributes(ctype)
             for attr in _required_attributes(ctype):
@@ -2321,7 +2312,7 @@ def _port_names(c: pypsa.Components) -> dict[str, tuple[str, int]]:
         name: (stem, port)
         for stem in sorted(_per_port_stems())
         for port in _ports(c)
-        if (name := _port_attribute(stem, port, registered)) in registered
+        if (name := _port_attribute(stem, port, c.name)) in registered
     }
 
 
@@ -2753,9 +2744,9 @@ class _NetworkSource:
         """Every labelled axis with its properties, by dim, in PyPSA's order; empty where the network has none.
 
         A carrier named but not in `n.carriers` is added after those listed,
-        its properties NULL. The ports are `_registered_ports` and those the
-        connections have beyond them, in ascending order, so a connection
-        staged at port `0` or `1` names a label the axis has.
+        its properties NULL. The ports run from `0` to the highest a connection
+        has, at least `1`, so a connection staged at port `0` or `1` names a
+        label the axis has.
         """
         snapshots = self._snapshots
         timesteps = (
@@ -2785,9 +2776,7 @@ class _NetworkSource:
             BUS: buses,
             CARRIER: pd.concat([listed, added], ignore_index=True),
             SUB_NETWORK: self._sub_networks,
-            PORT: pd.DataFrame(
-                {PORT: sorted({*_registered_ports(), *self._connections[PORT]})}
-            ),
+            PORT: pd.DataFrame({PORT: range(max([1, *self._connections[PORT]]) + 1)}),
             **{dim: self._labels(ctype) for ctype, dim in _CATALOG_TYPES.items()},
             **{dim: self._shapes[dim] for dim in self._shape_dims},
         }
@@ -3402,7 +3391,7 @@ class _NetworkSource:
         - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
         static = c.static
-        bus_column = _port_attribute(BUS, port, c.defaults.index)
+        bus_column = _port_attribute(BUS, port, c.name)
         if bus_column not in static.columns:
             return None
         named = static.index.get_level_values(-1)[static[bus_column].astype(str) != ""]
@@ -4157,57 +4146,11 @@ class _TypeMembers:
         if self.connections is None or self.members is None:
             return frozenset()
         members = {entity for (entity,) in self.members.project(col(ENTITY)).fetchall()}
-        registered = _registered(ctype)
         return frozenset(
-            _port_attribute(BUS, port, registered)
+            _port_attribute(BUS, port, ctype)
             for port, rows in self.connections.groupby(PORT)
             if members <= set(rows[ENTITY])
         )
-
-    def uncarried(
-        self, ctype: str, attr: str, rows: DuckDBPyRelation, con: DuckDBPyConnection
-    ) -> bool:
-        """Whether `rows` of the per-port `attr` set a member's connection at a port where PyPSA has no `attr` column (`_carries`).
-
-        `build` drops such a row (`_port_columns`). A row with `connection`
-        NULL sets no port and is not counted.
-
-        Notes
-        -----
-        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
-        """
-        if self.connections is None:
-            return False
-        registered = _registered(ctype)
-        at = self.connections[[ENTITY, PORT]]
-        _dr_uncarried = at[[not _carries(attr, p, registered) for p in at[PORT]]]
-        if _dr_uncarried.empty:
-            return False
-        pairs = con.sql("FROM _dr_uncarried").set_alias("u")
-        hit = (
-            rows.filter(col(CONNECTION).isnotnull())
-            .set_alias("r")
-            .join(
-                pairs,
-                ex_all(
-                    fn.struct_extract(col("r", CONNECTION), lit(c)) == col("u", c)
-                    for c in (ENTITY, PORT)
-                ),
-                how="semi",
-            )
-        )
-        return bool(hit.limit(1).fetchall())
-
-    def beyond_one_port(self, ctype: str) -> bool:
-        """Whether `ctype` is a one-port type, which registers no `bus0`, with a connection at a port but `0`.
-
-        Notes
-        -----
-        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
-        """
-        if self.connections is None or f"{BUS}0" in _registered(ctype):
-            return False
-        return bool((self.connections[PORT] != 0).any())
 
 
 def _collapse_connections(
@@ -4229,13 +4172,12 @@ def _collapse_connections(
     """
     if connections is None:
         return static
-    registered = _registered(ctype)
     stems = [BUS, *(s for s in sorted(_per_port_stems() - {BUS}) if s in connections)]
     pieces = []
     for stem in stems:
         piece = connections.pivot(index=ENTITY, columns=PORT, values=stem)
-        piece = piece[[p for p in piece if _carries(stem, p, registered)]]
-        piece.columns = [_port_attribute(stem, port, registered) for port in piece]
+        piece = piece[[p for p in piece if _carries(stem, p, ctype)]]
+        piece.columns = [_port_attribute(stem, port, ctype) for port in piece]
         pieces.append(piece if stem == BUS else piece.dropna(axis=1, how="all"))
     _dr_wide = pd.concat(pieces, axis=1).reset_index()
     ports = con.sql("FROM _dr_wide").set_alias("ports")
@@ -4291,11 +4233,10 @@ def _port_columns(
         ex_all(col("v", c) == col("ports", c) for c in (ENTITY, PORT)),
         how="semi",
     )
-    registered = _registered(ctype)
     columns = {
-        _port_attribute(stem, port, registered): int(port)
+        _port_attribute(stem, port, ctype): int(port)
         for port in connections[PORT].unique()
-        if _carries(stem, port, registered)
+        if _carries(stem, port, ctype)
     }
     return {
         column: placed.filter(col(PORT) == lit(port))
