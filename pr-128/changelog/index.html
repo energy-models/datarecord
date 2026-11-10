@@ -1124,19 +1124,21 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>Workspace.unregister(name)</code> drops them, and <code>Workspace.registered()</code> lists
   them.</li>
 <li><code>WorkingRecord.close()</code> drops the record's staging tables, as does
-  garbage collection, and <code>with WorkingRecord(base) as w:</code> closes it on exit.
+  garbage collection once no relation taken from it lives, and
+  <code>with WorkingRecord(base) as w:</code> closes it on exit.
   A closed record raises <code>ValueError</code> on every read and edit. A registration
   of the record keeps the tables until <code>Workspace.unregister(name)</code>. The
   workspace keeps its tables out of its database's <code>main</code>: a revision's fold in
-  <code>_fold."&lt;id&gt;"</code>, a <code>WorkingRecord</code>'s staging tables in <code>_staged."&lt;id&gt;"</code>, and
-  a call's intermediate tables in <code>_scratch</code>, so <code>register</code> refuses these
-  three names. A workspace reopened on a file can <code>unregister</code> the
+  <code>_fold."&lt;id&gt;"</code> and a <code>WorkingRecord</code>'s staging tables in <code>_staged."&lt;id&gt;"</code>,
+  so <code>register</code> refuses these two names. A call's intermediate tables are
+  temporary tables of its cursor. A workspace reopened on a file can <code>unregister</code> the
   registrations it lists.</li>
 <li><code>Record.close()</code> releases the record's folds, and <code>with record:</code> closes it
   on exit. The workspace drops a revision's fold once no open record or
-  registration holds it. A record collected unclosed keeps its folds for the
-  workspace's life, so a chained read stays valid. A closed record raises
-  <code>ValueError</code> on every read, and <code>Revision.record</code> builds a new one once its
+  registration holds it. Each relation a record hands out keeps the record,
+  and its tables, alive, as does a relation derived from it by its methods,
+  so a chained read stays valid; a caller's own SQL over one does not. A
+  closed record raises <code>ValueError</code> on every read, and <code>Revision.record</code> builds a new one once its
   cached record is closed. <code>Workspace.registered()</code> lists the schemas each
   registration <code>held</code>, which a reopened workspace holds for it again.</li>
 </ul>
