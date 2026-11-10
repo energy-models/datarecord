@@ -34,11 +34,6 @@ Writing into an open record invalidates its owner-map cache.
 A mutable record would need the same invalidation per edit, or to stage against a snapshot taken at construction.
 The second is simpler and arguably more correct, since an edit sequence should not see another writer's changes mid-flight. It means a record can go stale.
 
-### Registering a record's relations as named views
-
-A frontend issuing ad-hoc SQL needs names in a catalog, which `CREATE VIEW` against a file-backed catalog provides. Each view's definition is the resolved overlay and materialises nothing.
-Creating a view binds its schema, so registering N attributes costs N footer reads. Catalog reopen cost is linear in view count, which argues for one catalog per record.
-
 ### What else a `Record` should answer about its labels without handing over a frame
 
 [`flags`](use/reading.md#flags) sets the shape: cheap derived metadata a consumer plans against before opening a file. It answers only per attribute.
@@ -122,6 +117,35 @@ An edit runs in [its own transaction](use/editing.md#edits), and DuckDB nests no
 
 A `WorkingRecord` creates every [staging table](use/editing.md#staging) when it is created, one per axis holding a copy of the base's and two per attribute, and `rollback()` empties them rather than dropping them. Nothing drops them when the record is discarded, so a long-lived workspace that opens many records keeps their tables for the life of its connection: about 310 for a PyPSA record. A finaliser or an explicit `close()` would drop them; which one, and whether a view registered on them outlives it, is open.
 
+### What a schema change on a `WorkingRecord` does to its registered views
+
+A `WorkingRecord` has no method that changes its schema; the schema changes only at commit.
+One that does would either refuse a change that alters a column or the fold of an existing [registered view](storage/views.md) — widening an attribute's `dims`, adding a property, adding a dim to `partial` — or replace the views it reaches, which a client's query would then see change under it. Adding an attribute or a dim would add its view ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#schema-changes)).
+
+### How a SQL client settles rows
+
+[Registered views](storage/views.md) are raw, so a client applies the broadcast rule itself. [`settle`](use/reading.md#settling-rows) ported to the frontend, and a page on the raw format for SQL clients, are both still to write ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)).
+
+### Who drops an abandoned registration
+
+A server that crashes or forgets leaves its views and the folds they read. The `registered` table lists every registration with when it was `created`, but no one unregisters by any rule yet ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)).
+
+### A public `create_view` taking a qualified name
+
+`register` calls DuckDB's private `_render` and `_create_view`, since `DuckDBPyRelation.create_view` takes one identifier and no nested path ([building the views](storage/views.md#building-the-views)). That caps DuckDB at the newest release the suite passed on until a public method takes a qualified name, which is to be requested upstream.
+
+### A reader seeing part of a large committed transaction
+
+DuckDB 2.0 lets a reader on another cursor see part of a committed transaction once it writes about 300,000 rows or more, in 0.1–1% of reads. No edit can rule it out until DuckDB does, so the [consistent states](storage/views.md#consistent-states) hold for smaller edits only. It is to be reported upstream ([DEP 34](proposals/dep-0034-a-record-registers-as-views.md#open-issues)).
+
+### Who pays the cold fold of a registered revision
+
+`register`, or the first read of a view, pays the [cold fold](layers/resolution.md#a-fold-starts-from-the-nearest-fold-at-hand) of a deep revision, once per lineage in a workspace. It stays linear in depth until a revision's map is [materialised](#when-a-deep-ancestry-materialises-its-map).
+
+### When a server drops the folds it opened
+
+The fold of every revision a server opens is held in shared tables for the life of its connection. Who drops them, and when, is open, as for [a `WorkingRecord`'s staging tables](#when-a-workingrecords-staging-tables-are-dropped).
+
 ## Settled
 
 ### What a pointwise `set` leaving one of two dims outside `partial` NULL reaches
@@ -153,3 +177,7 @@ It may, by the rule a dim follows: `connection.role: {one_of: role}` categorizes
 Nothing. The call is [rejected](use/editing.md#set).
 `{entity: dc, bus: NULL}` is [no multi-dim value](model/attributes.md#the-broadcast-rule), a multi-dim value being a whole tuple or NULL, so it is refused wherever a row comes in.
 The alternative, "every connection of this entity", would broadcast over part of a tuple. A multi-dim's column broadcasts only whole, and a NULL struct means every tuple.
+
+### Whether a record's relations can be named views
+
+They can, in the workspace's own database, one schema per registration with a nested schema per kind ([registered views](storage/views.md)). Over a `WorkingRecord` the views are created once and follow every edit, since a relation's plan never reads a staged row.

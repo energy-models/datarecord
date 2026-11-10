@@ -11,11 +11,16 @@ Nothing here knows about a modelling framework: every column is typed as the
 *schema* declares it, whatever a tool's registry holds, so a record whose labels
 no tool recognises still reads and it is a tool's `verify` that reports them.
 
+SQL reads a Python relation or frame by a replacement scan of a local
+`_dr_<role>`, bound in the function that runs it. One underscore, since two
+would be name-mangled inside a class.
+
 Notes
 -----
 - [the schema](https://energy-models.github.io/datarecord/design/model/schema/)
 - [consuming a record](https://energy-models.github.io/datarecord/design/tools/)
 - [module layout](https://energy-models.github.io/datarecord/design/package/)
+- [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
 """
 
 import sys
@@ -35,6 +40,7 @@ from duckdb import (
     DuckDBPyRelation,
     Expression,
     FunctionExpression,
+    TransactionException,
 )
 from duckdb import SQLExpression as sql
 from duckdb.sqltypes import DuckDBPyType
@@ -72,7 +78,41 @@ def write_parquet(
     which spills tens of GB for a series melted into hundreds of millions of rows.
     """
     order = "" if ordered else ", PRESERVE_ORDER false"
-    con.execute(f"COPY (FROM rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
+    _dr_rel = rel
+    con.execute(f"COPY (FROM _dr_rel) TO {lit(uri)} ({_PARQUET_OPTIONS}{order})")
+
+
+@contextmanager
+def transaction(con: DuckDBPyConnection, operation: str, url: str) -> Iterator[None]:
+    """Run the block in one transaction on `con`, committed where it returns, rolled back where it raises.
+
+    Parameters
+    ----------
+    operation
+        What runs, named in the refusal.
+    url
+        The design page the refusal links to, as a URL.
+
+    Raises
+    ------
+    TransactionException
+        Where `con` already holds an open transaction, which DuckDB cannot nest
+        and the block could not roll back alone.
+    """
+    try:
+        con.begin()
+    except TransactionException as e:
+        msg = (
+            f"`{operation}` runs in its own transaction, and this cursor already "
+            f"holds one open; commit or roll it back before calling it ({url})"
+        )
+        raise TransactionException(msg) from e
+    try:
+        yield
+    except BaseException:
+        con.rollback()
+        raise
+    con.commit()
 
 
 def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
@@ -149,10 +189,10 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     - [the write API](https://energy-models.github.io/datarecord/design/use/editing/#set)
     """
-    # `FROM frame` is a replacement scan, binding the local `frame` by name.
+    _dr_frame = frame
     if isinstance(frame, DuckDBPyRelation):
         try:
-            con.sql("FROM frame")
+            con.sql("FROM _dr_frame")
         except duckdb.InvalidInputException as e:
             msg = (
                 "this relation was built on another connection or thread; build "
@@ -162,7 +202,7 @@ def as_relation(frame: Any, con: DuckDBPyConnection) -> DuckDBPyRelation:
             raise ValueError(msg) from e
         rel = frame
     elif is_frame(frame):
-        rel = con.sql("FROM frame")
+        rel = con.sql("FROM _dr_frame")
     else:
         msg = (
             f"a {type(frame).__name__} is no frame; hand over a DuckDB relation, "
@@ -296,13 +336,14 @@ def shared_table(
 def scratch_table(
     con: DuckDBPyConnection, rel: DuckDBPyRelation
 ) -> Iterator[DuckDBPyRelation]:
-    """`rel` collected into a table of its own, read as one, and dropped on exit.
+    """`rel` collected into a temporary table of `con`, read as one, and dropped on exit.
 
     A table both pins what `rel` reads, where a later write would change it,
     and stops each step over it from binding `rel`'s whole tree again.
     """
-    name = f"_scratch_{uuid4().hex}"
-    rel.create(name)
+    name = f"temp.main._scratch_{uuid4().hex}"
+    _dr_rel = rel
+    con.execute(f"CREATE TEMP TABLE {name} AS FROM _dr_rel")
     try:
         yield con.table(name)
     finally:

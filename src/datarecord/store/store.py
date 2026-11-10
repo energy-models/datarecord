@@ -30,9 +30,12 @@ from pathlib import Path
 from typing import Annotated, Any, overload
 from urllib.parse import urlparse
 from uuid import UUID, uuid4, uuid5
+from weakref import WeakSet
 
 import duckdb
-from duckdb import DuckDBPyConnection
+from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
+from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -42,6 +45,7 @@ from pydantic import (
     model_validator,
 )
 
+from datarecord.duck import transaction
 from datarecord.mutable import StagedSource, WorkingRecord
 from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
@@ -59,18 +63,21 @@ from datarecord.store.manifest import (
 )
 from datarecord.store.write import layer_data, write_layer
 
+#: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
+_SECRET = "datarecord_s3"
+
 #: Seconds `Store._insert` retries a write-write conflict before giving up.
 _INSERT_TIMEOUT = 10.0
 
 _SCHEMAS = """
-CREATE TABLE IF NOT EXISTS schemas (
+CREATE TABLE IF NOT EXISTS {schemas} (
   hash   VARCHAR PRIMARY KEY,
   schema JSON
 )
 """
 
 _REVISIONS = """
-CREATE TABLE IF NOT EXISTS revisions (
+CREATE TABLE IF NOT EXISTS {revisions} (
   location VARCHAR,
   id       UUID,
   parent   UUID,
@@ -81,20 +88,38 @@ CREATE TABLE IF NOT EXISTS revisions (
 )
 """
 
+_REGISTERED = """
+CREATE TABLE IF NOT EXISTS {registered} (
+  name     VARCHAR PRIMARY KEY,
+  revision UUID,
+  working  BOOLEAN,
+  created  TIMESTAMPTZ DEFAULT now()
+)
+"""
+
+
+def _in(workspace: Workspace, query: str) -> str:
+    """`query` with each metadata table it names in braces, `{revisions}`, named in `workspace`'s database."""
+    return query.format_map(
+        {t: workspace.qualified(t) for t in ("schemas", "revisions", "registered")}
+    )
+
 
 class _Cursors(threading.local):
-    """The calling thread's cursor on one database.
+    """The calling thread's cursor on `workspace`'s connection.
 
-    `threading.local` reruns `__init__` in each thread that first touches it, so
-    there is no existence check and no lock, and a thread's cursor goes with it.
+    `threading.local` reruns `__init__` in each thread that first touches it;
+    the workspace holds each cursor weakly, for `Workspace.close`.
 
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
-    def __init__(self, db: DuckDBPyConnection) -> None:
-        self.con = db.cursor()
+    def __init__(self, workspace: Workspace) -> None:
+        self.con = workspace._db.cursor()
+        with workspace._made_lock:
+            workspace._made.add(self.con)
 
 
 class Workspace:
@@ -108,18 +133,41 @@ class Workspace:
     database
         DuckDB database, `:memory:` by default. What lives there is a workspace
         and never the record: deleting it loses at most uncommitted edits.
+    con
+        A connection to attach `database` on, such as a server's; its default
+        database and transactions stay its own. A fresh in-memory one by default.
+    name
+        What `database` is attached as, and named by in SQL.
+
+    Raises
+    ------
+    duckdb.BinderException
+        If `name` is a database already attached to the connection.
 
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/design/storage/store/#the-store)
+    - [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
-    def __init__(self, database: str = ":memory:") -> None:
-        self._db = duckdb.connect(database)
-        self._db.execute(_SCHEMAS)
-        self._db.execute(_REVISIONS)
-        self._cursors = _Cursors(self._db)
+    def __init__(
+        self,
+        database: str = ":memory:",
+        *,
+        con: DuckDBPyConnection | None = None,
+        name: str = "datarecord",
+    ) -> None:
+        self.name = name
+        self._owned = con is None
+        self._db = duckdb.connect() if con is None else con
+        with self._db.cursor() as setup:
+            setup.execute(f"ATTACH {lit(database)} AS {col(name)}")
+            for ddl in (_SCHEMAS, _REVISIONS, _REGISTERED):
+                setup.execute(_in(self, ddl))
+        self._made: WeakSet[DuckDBPyConnection] = WeakSet()
+        self._made_lock = threading.Lock()
+        self._cursors = _Cursors(self)
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
@@ -130,6 +178,54 @@ class Workspace:
     def con(self) -> DuckDBPyConnection:
         """The calling thread's cursor, made on its first use in that thread."""
         return self._cursors.con
+
+    def qualified(self, table: str) -> str:
+        """`table` in the `main` schema of the workspace's database, named in full.
+
+        Notes
+        -----
+        - [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
+        """
+        return str(col(self.name, "main", table))
+
+    def unregister(self, name: str) -> None:
+        """Drop the schema `name` a record registered, with its views and its `registered()` row.
+
+        Raises
+        ------
+        duckdb.CatalogException
+            If `name` is not registered, so a schema no record registered is
+            never dropped.
+        duckdb.TransactionException
+            Where the cursor already holds an open transaction.
+
+        Notes
+        -----
+        - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
+        """
+        con = self.con
+        with transaction(
+            con,
+            "unregister",
+            "https://energy-models.github.io/datarecord/design/storage/views/",
+        ):
+            deleted = con.execute(
+                _in(self, "DELETE FROM {registered} WHERE name = ? RETURNING name"),
+                [name],
+            ).fetchall()
+            if not deleted:
+                msg = f"no record is registered as `{name}` (`Workspace.registered()`)"
+                raise duckdb.CatalogException(msg)
+            con.execute(f"DROP SCHEMA {col(self.name, name)} CASCADE")
+
+    def registered(self) -> DuckDBPyRelation:
+        """Every registered name, with the `revision` it reads, whether it is `working`, and when it was `created`.
+
+        Notes
+        -----
+        - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
+        """
+        return self.con.table(_in(self, "{registered}"))
 
     @classmethod
     def process(cls) -> Workspace:
@@ -195,8 +291,9 @@ class Workspace:
                 f"USE_SSL {str(url.scheme == 'https').lower()}",
                 "CHAIN 'env;config'",
             ]
-        self._db.execute("INSTALL httpfs; LOAD httpfs;")
-        self._db.execute(f"CREATE OR REPLACE SECRET ({', '.join(options)})")
+        with self._db.cursor() as setup:
+            setup.execute("INSTALL httpfs; LOAD httpfs;")
+            setup.execute(f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})")
         return files
 
     def store(self, uri: str) -> Store:
@@ -290,8 +387,18 @@ class Workspace:
         return self.at(base)
 
     def close(self) -> None:
-        """Close the database, and every thread's cursor with it."""
-        self._db.close()
+        """Close every thread's cursor and detach the database.
+
+        The connection is closed with them only where the workspace opened it;
+        one passed in stays open for its owner.
+        """
+        with self._made_lock:
+            for cursor in list(self._made):
+                cursor.close()
+        with self._db.cursor() as teardown:
+            teardown.execute(f"DETACH {col(self.name)}")
+        if self._owned:
+            self._db.close()
 
 
 _process: Workspace | None = None
@@ -514,11 +621,14 @@ class Store:
                 "attributes": list(manifest.files.attributes),
             }
             self._insert(
-                "INSERT OR IGNORE INTO schemas VALUES (?, ?)",
+                _in(self.workspace, "INSERT OR IGNORE INTO {schemas} VALUES (?, ?)"),
                 [digest, schema.model_dump_json()],
             )
             self._insert(
-                "INSERT OR IGNORE INTO revisions VALUES (?, ?, ?, ?, ?, ?)",
+                _in(
+                    self.workspace,
+                    "INSERT OR IGNORE INTO {revisions} VALUES (?, ?, ?, ?, ?, ?)",
+                ),
                 [
                     self.uri,
                     manifest.id,
@@ -578,7 +688,10 @@ class Store:
 
     def _held(self, id: UUID) -> tuple[UUID] | None:
         return self.workspace.con.execute(
-            "SELECT id FROM revisions WHERE location = ? AND id = ?",
+            _in(
+                self.workspace,
+                "SELECT id FROM {revisions} WHERE location = ? AND id = ?",
+            ),
             [self.uri, id],
         ).fetchone()
 
@@ -629,7 +742,8 @@ class Store:
         held = {
             row[0]
             for row in self.workspace.con.execute(
-                "SELECT id FROM revisions WHERE location = ?", [self.uri]
+                _in(self.workspace, "SELECT id FROM {revisions} WHERE location = ?"),
+                [self.uri],
             ).fetchall()
         }
         listed = {UUID(name) for name in self.files.list(f"{self.uri}/layers/")}
@@ -658,7 +772,10 @@ class Store:
         wanted = json.dumps(validate_meta(meta))
         self._scan()
         rows = self.workspace.con.execute(
-            "SELECT id FROM revisions WHERE location = ? AND json_contains(meta, ?)",
+            _in(
+                self.workspace,
+                "SELECT id FROM {revisions} WHERE location = ? AND json_contains(meta, ?)",
+            ),
             [self.uri, wanted],
         ).fetchall()
         return [Revision(id=id, store=self) for (id,) in rows]
@@ -942,15 +1059,15 @@ class Claim(_OfStore):
 
 _MANIFESTS = """
 SELECT r.id, r.parent, r.meta, r.files, s.hash, s.schema
-FROM revisions r JOIN schemas s ON s.hash = r.schema
+FROM {revisions} r JOIN {schemas} s ON s.hash = r.schema
 """
 
 _ANCESTORS = """
 WITH RECURSIVE ancestors(id, parent, depth) AS (
-  SELECT id, parent, 0 FROM revisions WHERE location = $location AND id = $id
+  SELECT id, parent, 0 FROM {revisions} WHERE location = $location AND id = $id
   UNION ALL
   SELECT d.id, d.parent, ancestors.depth + 1
-  FROM revisions d
+  FROM {revisions} d
   JOIN ancestors ON d.id = ancestors.parent
   WHERE d.location = $location
 )
@@ -996,8 +1113,9 @@ def lineage(store: Store, revision_id: UUID) -> list[Manifest]:
         cut the path short.
     """
     store.revision(revision_id)
-    rows = store.workspace.con.execute(
-        _LINEAGE, {"location": store.uri, "id": revision_id}
+    ws = store.workspace
+    rows = ws.con.execute(
+        _in(ws, _LINEAGE), {"location": store.uri, "id": revision_id}
     ).fetchall()
     manifests = _manifests(rows, store.workspace._schemas)
     first = manifests[0]
@@ -1101,7 +1219,8 @@ class Revision(_OfStore):
         if self._manifest is None:
             self.store.revision(self.id)
             rows = self.store.workspace.con.execute(
-                _MANIFESTS + "WHERE r.location = ? AND r.id = ?",
+                _in(self.store.workspace, _MANIFESTS)
+                + "WHERE r.location = ? AND r.id = ?",
                 [self.store.uri, self.id],
             ).fetchall()
             self._manifest = _manifests(rows, self.store.workspace._schemas)[0]

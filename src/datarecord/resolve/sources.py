@@ -26,7 +26,7 @@ from uuid import UUID
 from datarecord.resolve.fold import Fold
 
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyConnection, DuckDBPyRelation
+    from duckdb import DuckDBPyRelation
 
     from datarecord.schema.schema import Schema
     from datarecord.store.manifest import LayerFiles, Manifest
@@ -76,12 +76,12 @@ class LayerSource(Protocol):
     def frozen(self) -> bool: ...
 
     @property
-    def con(self) -> DuckDBPyConnection:
-        """The calling thread's cursor, which this layer's relations are planned on.
+    def workspace(self) -> Workspace:
+        """The workspace this layer is read through, whose database holds its fold's shared tables.
 
         Notes
         -----
-        - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
+        - [the workspace's database](https://energy-models.github.io/datarecord/design/storage/store/#the-workspaces-database)
         """
         ...
 
@@ -176,7 +176,7 @@ class _FileLayer:
     unchanged - which is what keeps "a directory read as a layer" from being a
     second reading of the format.
 
-    No cursor is held: each read takes the calling thread's (`con`), so a
+    No cursor is held: each read takes the calling thread's (`workspace.con`), so a
     source serves every thread.
 
     Notes
@@ -187,6 +187,13 @@ class _FileLayer:
 
     manifest: Manifest
     frozen: bool = True
+
+    # Typed only: at runtime a subclass's dataclass field would take the
+    # property as its default.
+    if TYPE_CHECKING:
+
+        @property
+        def workspace(self) -> Workspace: ...
 
     @property
     def schema(self) -> Schema:
@@ -203,14 +210,9 @@ class _FileLayer:
         """
         raise NotImplementedError
 
-    @property
-    def con(self) -> DuckDBPyConnection:
-        """The calling thread's cursor on the workspace this layer is read through."""
-        raise NotImplementedError
-
     def _read(self, kind: str, names: list[str]) -> DuckDBPyRelation:
         uris = [self.uri(f"{kind}/{name}.parquet") for name in names]
-        return self.con.read_parquet(uris, union_by_name=True)
+        return self.workspace.con.read_parquet(uris, union_by_name=True)
 
     def axes(self) -> set[str]:
         return set(self.files.dims)
@@ -302,8 +304,8 @@ class ParquetLayer(_FileLayer):
         return self.manifest.id
 
     @property
-    def con(self) -> DuckDBPyConnection:
-        return self.store.workspace.con
+    def workspace(self) -> Workspace:
+        return self.store.workspace
 
     def uri(self, path: str = "") -> str:
         return self.store.layer_dir(self.layer_id) + path
@@ -354,10 +356,6 @@ class DirectorySource(_FileLayer):
     @property
     def layer_id(self) -> UUID:
         return self.id
-
-    @property
-    def con(self) -> DuckDBPyConnection:
-        return self.workspace.con
 
     def uri(self, path: str = "") -> str:
         return self.base + path

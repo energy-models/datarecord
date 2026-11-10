@@ -14,12 +14,13 @@ Two writers to one store never write the same file, and each checks its schema a
 ## A cursor per thread
 
 A DuckDB connection is unsafe to use from two threads at once, and DuckDB's answer is a cursor per thread.
-The workspace's `con` is the calling thread's cursor on the workspace's one database.
+The workspace's `con` is the calling thread's cursor on the connection that [the workspace's database](store.md#the-workspaces-database) is attached to.
 A `threading.local` subclass makes it on first use in each thread.
 Its `__init__` reruns in each new thread, so the lookup needs no existence check and no lock, and a cursor goes away with its thread.
 A dict keyed by thread id would reuse ids, and a `ContextVar` would be copied into a task runner's workers, which would then share the parent's cursor.
 
-Tables are shared between cursors: the `revisions` cache, the staging tables and the folded caches.
+Tables in the workspace's database are shared between cursors: the `revisions` cache, the staging tables and the folded caches.
+So are a record's [registered views](views.md), which every cursor reads and which show an edit once its transaction commits.
 A `DuckDBPyRelation` is bound to the cursor that built it.
 The line between thread-bound and shared objects runs around relations alone.
 

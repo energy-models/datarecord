@@ -29,7 +29,9 @@ classifiers = [
 requires-python = ">=3.12"
 readme = "README.md"
 dependencies = [
-  "duckdb>=2.0",
+  # Capped at the newest release the suite passed on: `register` calls the
+  # private `_create_view` and `_render`. Renovate raises the cap.
+  "duckdb>=2.0.0,<=2.0.0",
   "pydantic>=2.12",
   "mathspec @ git+https://github.com/energy-models/mathspec.git@8982c556114992d149a83b3c6f3604c72e569829",
 ]
@@ -95,8 +97,9 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 markers = [
   "slow: long-running checks (large fixtures); deselect with -m \"not slow\"",
+  "benchmark: timing checks, run with `pixi run bench`",
 ]
-addopts = '-m "not slow"'
+addopts = '-m "not slow and not benchmark"'
 
 [tool.coverage.run]
 branch = true

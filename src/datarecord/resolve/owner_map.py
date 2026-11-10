@@ -630,7 +630,7 @@ def _fold_map(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    schema, con = sources[-1].schema, sources[-1].con
+    schema, con = sources[-1].schema, sources[-1].workspace.con
     base, above = _base_and_above(sources, _fold_at_hand)
     rel: DuckDBPyRelation | None = None
     keyed, held, dead = schema, dict.fromkeys(_pruned(schema)), {}
@@ -657,14 +657,17 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
         yield _fold_map(sources, made=made)
     finally:
         for name in made:
-            sources[-1].con.execute(f"DROP TABLE IF EXISTS {name}")
+            sources[-1].workspace.con.execute(f"DROP TABLE IF EXISTS {name}")
 
 
 def _checkpoint(
-    rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
+    rel: DuckDBPyRelation,
+    made: list[str],
+    con: DuckDBPyConnection,
+    qualified: Callable[[str], str],
 ) -> DuckDBPyRelation:
-    """`rel` as a table, its name appended to `made`."""
-    name = f"_fold_{uuid4().hex}"
+    """`rel` as a table of the database `qualified` names it in, its name appended to `made`."""
+    name = qualified(f"_fold_{uuid4().hex}")
     rel.create(name)
     made.append(name)
     return con.table(name)
@@ -740,7 +743,11 @@ def _fold_onto(
         return source_for(sources, layer)
 
     def keep(rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        return rel if made is None else _checkpoint(rel, made, con)
+        return (
+            rel
+            if made is None
+            else _checkpoint(rel, made, con, sources[-1].workspace.qualified)
+        )
 
     for source in sources:
         if rel is not None:
@@ -760,7 +767,7 @@ def _fold_onto(
         refuse = source.layer_id if source.frozen else None
         rel = fold_layer(rel, own, removed, keyed, attribute, refuse=refuse, keep=keep)
         if made is not None and rel is not None:
-            rel = _checkpoint(rel, made, con)
+            rel = keep(rel)
             _drop_but_last(made, con)
     if rel is None:
         return _empty_relation(keyed, con, *keyed.owner_map_columns)
@@ -838,6 +845,8 @@ def _table(
     sources: Sequence[LayerSource],
     frozen_coords: Coords,
     attribute: str | None = None,
+    *,
+    in_frozen: bool = True,
 ) -> DuckDBPyRelation:
     """The owner map for `revision_id`, materialised as far as `frozen` allows.
 
@@ -848,7 +857,9 @@ def _table(
     staging table reads whatever the table holds when it is collected.
     `frozen_coords` are the frozen layers' coords, which a restatement above
     them removes labels from. Where `attribute` is given, only its rows,
-    folded one attribute at a time above the frozen layers (`_fold_onto`).
+    folded one attribute at a time above the frozen layers (`_fold_onto`),
+    and onto no map unless `in_frozen`, which says whether the frozen layers'
+    map holds rows of it: a write-once table answers that for good.
 
     Notes
     -----
@@ -861,13 +872,13 @@ def _table(
     rel = _frozen_table(revision_id, frozen)
     keyed = frozen[-1].schema if frozen else schema
     if attribute is not None and rel is not None:
-        rel = rel.filter(col("attribute") == lit(attribute))
+        rel = rel.filter(col("attribute") == lit(attribute)) if in_frozen else None
     held = {name: frozen_coords.axes.get(name) for name in _pruned(schema)}
     return _fold_onto(
         rel,
         above,
         held,
-        sources[-1].con,
+        sources[-1].workspace.con,
         keyed=keyed,
         dead=frozen_coords.dead,
         attribute=attribute,
@@ -897,13 +908,13 @@ def _frozen_table(
     if not sources:
         return None
     last = sources[-1]
-    con = last.con
+    con = last.workspace.con
     if isinstance(last, ParquetLayer) and last.layer_id == revision_id:
         rel = read_owner_map(revision_id, con, last.store)
         if rel is not None:
             return cast_declared(last.schema, rel)
     return shared_table(
         con,
-        _table_name(revision_id),
+        _table_name(last.workspace, revision_id),
         lambda: _checkpointed(sources),
     )

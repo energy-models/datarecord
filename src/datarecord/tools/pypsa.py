@@ -365,8 +365,10 @@ class Index:
         keys: pd.DataFrame | None = None,
     ) -> Index:
         """`index` keyed by its own levels, or by `keys`, one row per entry in its order."""
-        df = index.to_frame(index=False) if keys is None else keys  # noqa: F841 - queried by name below
-        return cls(index, con.sql("SELECT *, row_number() OVER () AS _pos FROM df"))
+        _dr_keys = index.to_frame(index=False) if keys is None else keys
+        return cls(
+            index, con.sql("SELECT *, row_number() OVER () AS _pos FROM _dr_keys")
+        )
 
     def expand(self, rel: DuckDBPyRelation, column: str) -> DuckDBPyRelation:
         """Broadcast rows with a null `column` across this index, others as-is.
@@ -540,7 +542,7 @@ def _series_frame(
     keys = shape.index_names
     columns = Index.of(static_index.set_names(keys), con).rel.set_alias("k")
     rows = rows.set_alias("r")
-    positioned = rows.join(  # noqa: F841 - bound by name for the query below
+    _dr_positioned = rows.join(
         columns, ex_all(col("r", k) == col("k", k) for k in keys)
     ).project(
         *(col("r", g) for g in group_by),
@@ -548,7 +550,7 @@ def _series_frame(
         col("r", "value"),
     )
     piv = con.sql(
-        f"PIVOT positioned ON _col USING first(value) GROUP BY {', '.join(group_by)}"
+        f"PIVOT _dr_positioned ON _col USING first(value) GROUP BY {', '.join(group_by)}"
     )
 
     present = sorted(int(c) for c in set(piv.columns) - set(group_by))
@@ -2229,20 +2231,14 @@ class _NetworkSource:
         if not valcols or wide.empty:
             return None
         positional = [f"s{i}" for i in range(len(wide.index))]
-        w = (
+        _dr_wide = (
             wide.T.set_axis(positional, axis=1)
             .set_axis(pd.Index(valcols, name="colname"))
             .reset_index()
         )
-        # `from_df` captures the frame into the relation's own plan, so a later
-        # call reusing the frame variable cannot rebind this one (unlike a named
-        # registered view).
-        wide_rel = con.from_df(w)  # noqa: F841 - bound by name for the query below
         inlist = ", ".join(f"{p} AS {lit(str(i))}" for i, p in enumerate(positional))
-        # Two steps rather than one nested query: the local-relation replacement
-        # scan does not compose through a subquery, so melt first, then project.
-        melted = con.sql(  # noqa: F841 - bound by name for the query below
-            "SELECT colname, CAST(pos AS INTEGER) AS pos, value FROM wide_rel "
+        _dr_melted = con.sql(
+            "SELECT colname, CAST(pos AS INTEGER) AS pos, value FROM _dr_wide "
             f"UNPIVOT INCLUDE NULLS (value FOR pos IN ({inlist}))"
         )
         if stochastic:
@@ -2253,7 +2249,7 @@ class _NetworkSource:
         labels = lit(self._snapshot_labels.tolist())
         return con.sql(
             f"SELECT {entity} AS entity, ({labels})[pos + 1] AS {SNAPSHOT}, "
-            f"{scenario} AS scenario, value FROM melted"
+            f"{scenario} AS scenario, value FROM _dr_melted"
         )
 
     def _scalar_rel(
@@ -2285,7 +2281,10 @@ class _NetworkSource:
             static = _drop_default_rows(static, c.defaults.at[attr, "default"])
         if static.empty:
             return None
-        return con.sql("SELECT entity, NULL AS snapshot, scenario, value FROM static")
+        _dr_static = static
+        return con.sql(
+            "SELECT entity, NULL AS snapshot, scenario, value FROM _dr_static"
+        )
 
     @property
     def attributes(self) -> LazyRelations:
@@ -2331,12 +2330,10 @@ class _NetworkSource:
         """One axis weighting as long rows over its axis."""
         weighting = _WEIGHTINGS[attribute]
         table = self._weighting_table(weighting.dim)
-        weights = (  # noqa: F841 - bound by name for the query below
-            table[weighting.column].rename("value").reset_index()
-        )
+        _dr_weights = table[weighting.column].rename("value").reset_index()
         return self.con.sql(
             f"SELECT * EXCLUDE (value), {lit(attribute)} AS attribute, "
-            "NULL AS breakpoint, CAST(value AS DOUBLE) AS value FROM weights"
+            "NULL AS breakpoint, CAST(value AS DOUBLE) AS value FROM _dr_weights"
         )
 
     @cached_property
@@ -2605,10 +2602,8 @@ class _NetworkSource:
             buses = buses.droplevel(SCENARIO)
             buses = buses[~buses.index.duplicated()]
         buses = buses[buses.astype(str) != ""]
-        bus_df = buses.rename("bus").rename_axis("entity").reset_index()  # noqa: F841
-        bus_rel = con.sql(  # noqa: F841 - bound by name for the join below
-            "SELECT CAST(entity AS VARCHAR) entity, bus FROM bus_df"
-        )
+        _dr_buses = buses.rename("bus").rename_axis("entity").reset_index()
+        bus_rel = con.sql("SELECT CAST(entity AS VARCHAR) entity, bus FROM _dr_buses")
         v = self._tagged_long_rel(c, attribute, column, drop_defaults=drop_defaults)
         if v is None:
             return None
@@ -2965,8 +2960,8 @@ def _collapse_connections(
         piece = piece[[p for p in piece if _carries(stem, p, registered)]]
         piece.columns = [_port_attribute(stem, port, registered) for port in piece]
         pieces.append(piece if stem == BUS else piece.dropna(axis=1, how="all"))
-    wide = pd.concat(pieces, axis=1).reset_index()  # noqa: F841 - queried by name below
-    ports = con.sql("FROM wide").set_alias("ports")
+    _dr_wide = pd.concat(pieces, axis=1).reset_index()
+    ports = con.sql("FROM _dr_wide").set_alias("ports")
     on = ["entity", *(d for d in varying if d in static.columns)]
     joined = static.set_alias("s").join(
         ports, ex_all(col("s", c) == col("ports", c) for c in on), how="left"
@@ -3042,8 +3037,8 @@ def _port_columns(
     """
     if connections is None:
         return {}
-    keyed = connections[[ENTITY, BUS, "port"]]  # noqa: F841 - queried by name below
-    ports = con.sql("FROM keyed").set_alias("ports")
+    _dr_keyed = connections[[ENTITY, BUS, "port"]]
+    ports = con.sql("FROM _dr_keyed").set_alias("ports")
     placed = (
         long.set_alias("v")
         .join(ports, ex_all(col("v", c) == col("ports", c) for c in (ENTITY, BUS)))

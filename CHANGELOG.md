@@ -49,6 +49,16 @@ All notable changes to datarecord are documented here. The format follows
   which cache each manifest whole. `ws.con` is the cursor of the calling
   thread. The write and edit boundary rejects a relation from another
   connection or thread.
+- `Workspace(database, con=..., name=...)` attaches its database as `name`,
+  `datarecord` by default, on a connection of its own or on a caller's `con`,
+  such as a server's, whose default database it leaves alone. It creates its
+  tables there, so a user's file opened as a workspace gets datarecord's
+  tables beside its own. `ws.close()` closes its cursors and detaches the
+  database, and closes the connection only where it opened it. Its S3 secret
+  is named `datarecord_s3`, so it replaces no secret of the caller's.
+- The prefix `_dr_` is reserved: a table or view whose name starts with it, in
+  the default database or temp schema of a workspace's connection, may stand
+  in for the data datarecord's SQL reads.
 - Writing is `store.commit(source, parent=..., meta=...)`, with `parent=None`
   for a new root, and `ws.write(source, uri, meta=...)`.
   `store.claim(parent=, meta=)` hands out a layer id by a create-only
@@ -147,9 +157,21 @@ All notable changes to datarecord are documented here. The format follows
   value on export leaves the component at its static value.
 - `PyPSA.build` takes any `RecordLike`, so `PyPSA.build(PyPSA.to_datarecord(n, con))`
   builds the network its committed record does.
+- `Record.register(name)` creates DuckDB views of a record's dims, properties
+  and attributes in the schemas `name.dims`, `name.properties` and
+  `name.attributes` of the workspace's database, as
+  `datarecord.name.dims.bus`. Over a `WorkingRecord` they are live and show
+  every edit.
+  `Workspace.unregister(name)` drops them, and `Workspace.registered()` lists
+  them.
 
 ### Changed
 
+- Breaking: the workspace's database is never a cursor's default, so SQL
+  names its tables and registered views in full, `datarecord.main.registered`
+  or `datarecord.edit.dims.bus`, or runs `USE datarecord` once on its own
+  connection and writes `registered` or `edit.dims.bus`; `ws.registered()`
+  reads the table.
 - Breaking: the schema models (`Schema`, `Dimension`, `AttributeSpec`,
   `PropertySpec`) are frozen; derive a changed one with
   `model_copy(update=...)`. `Schema.digest` is the sha256 of its manifest JSON.
@@ -178,6 +200,7 @@ All notable changes to datarecord are documented here. The format follows
   materialise it again.
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
   relation: it re-runs on every fetch and has no `fetchone()`.
+- `duckdb` is capped at 2.0.0, the newest release the suite passed on.
 
 - The PyPSA tool melts a time series one entity at a time, so a parquet row
   group holds few entity names and encodes them by dictionary. The

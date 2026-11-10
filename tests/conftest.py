@@ -4,6 +4,7 @@
 
 import os
 
+import duckdb
 import pytest
 
 from datarecord import Workspace
@@ -34,6 +35,28 @@ def workspace():
     ws = Workspace()
     yield ws
     ws.close()
+
+
+DECOYS = (
+    *("edit", "rel", "gone", "frame", "j", "df", "positioned", "wide_rel"),
+    *("melted", "static", "weights", "bus_df", "wide", "keyed"),
+)
+"""Names datarecord's SQL once read a relation or frame by, which a caller's table may hold."""
+
+
+@pytest.fixture
+def caller_workspace():
+    """A workspace on a caller's connection, whose default database holds a table of each of `DECOYS`."""
+    caller = duckdb.connect()
+    for name in DECOYS:
+        caller.execute(
+            f"CREATE TABLE {name} AS "
+            "SELECT 'Manchester Wind' AS entity, 'Norway' AS bus, 0.0 AS value"
+        )
+    ws = Workspace(con=caller)
+    yield ws
+    ws.close()
+    caller.close()
 
 
 @pytest.fixture

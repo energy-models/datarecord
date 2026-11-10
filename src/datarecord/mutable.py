@@ -19,7 +19,7 @@ import operator
 import sys
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from functools import reduce, wraps
+from functools import cached_property, reduce, wraps
 from hashlib import sha256
 from typing import TYPE_CHECKING, Any, Concatenate, cast
 from uuid import UUID, uuid4
@@ -27,7 +27,7 @@ from uuid import UUID, uuid4
 from duckdb import CoalesceOperator as coalesce
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression, TransactionException, sqltypes
+from duckdb import DuckDBPyRelation, Expression, sqltypes
 from duckdb import SQLExpression as sql
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
@@ -42,6 +42,7 @@ from datarecord.duck import (
     null_safe,
     scratch_table,
     struct_of,
+    transaction,
     union_all_by_name,
 )
 from datarecord.protocols import RecordLike
@@ -49,13 +50,13 @@ from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import owner_keys
 from datarecord.resolve.owner_map import named_sets, names_exactly, unsettled
-from datarecord.resolve.record import Record, _empty_long
+from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyConnection
+    from datarecord.store.store import Workspace
 
 
 # -- value normalisation (https://energy-models.github.io/datarecord/design/use/editing/#set) ----------------------------------------------
@@ -204,9 +205,9 @@ class StagedSource:
         return self.record._base.revision_id
 
     @property
-    def con(self) -> DuckDBPyConnection:
-        """The calling thread's cursor, its record's."""
-        return self.record.con
+    def workspace(self) -> Workspace:
+        """Its record's workspace, whose database holds the staging tables."""
+        return self.record.workspace
 
     def materialised(self) -> Fold | None:
         """A staging area has no `resolved/` cache: it is never a fold's base."""
@@ -261,6 +262,14 @@ class StagedSource:
         return union_all_by_name(arms)
 
 
+class _StagedPerCursor(_PerCursor):
+    """What a `WorkingRecord` keeps per thread besides a `Record`'s."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.labels: dict[str, DuckDBPyRelation] = {}
+
+
 def _atomic[**P](
     edit: Callable[Concatenate[WorkingRecord, P], None],
 ) -> Callable[Concatenate[WorkingRecord, P], None]:
@@ -282,24 +291,14 @@ def _atomic[**P](
 
     @wraps(edit)
     def run(self: WorkingRecord, *args: P.args, **kwargs: P.kwargs) -> None:
-        con = self.con
-        try:
-            con.begin()
-        except TransactionException as e:
-            msg = (
-                f"`{edit.__name__}` runs in its own transaction, and this cursor "
-                f"already holds one open; commit or roll it back before the edit "
-                f"(https://energy-models.github.io/datarecord/design/use/editing/#edits)"
-            )
-            raise TransactionException(msg) from e
-        try:
+        with transaction(
+            self.con,
+            edit.__name__,
+            "https://energy-models.github.io/datarecord/design/use/editing/#edits",
+        ):
             self._dirty.clear()
             edit(self, *args, **kwargs)
             self._refresh_owners()
-        except BaseException:
-            con.rollback()
-            raise
-        con.commit()
 
     return run
 
@@ -423,7 +422,7 @@ class WorkingRecord(Record):
     # -- staging tables -----------------------------------------------------
 
     def _table(self, kind: str, attribute: str | None = None) -> str:
-        """A staging table's name, unique per record and per attribute.
+        """A staging table's name in the workspace's database, unique per record and per attribute.
 
         The attribute is hashed rather than spelled: it is a caller's string,
         and a table name is the one thing here that cannot be an expression, so
@@ -433,11 +432,13 @@ class WorkingRecord(Record):
             # Hashed for the same reason the attribute is: a dim name is a
             # caller's string, and this becomes an identifier.
             digest = sha256(kind[len(_AXIS_PREFIX) :].encode()).hexdigest()[:16]
-            return f"staged_axis_{digest}_{self._layer_id.hex}"
-        if attribute is None:
-            return f"staged_{kind}_{self._layer_id.hex}"
-        digest = sha256(attribute.encode()).hexdigest()[:16]
-        return f"staged_{kind}_{digest}_{self._layer_id.hex}"
+            name = f"staged_axis_{digest}_{self._layer_id.hex}"
+        elif attribute is None:
+            name = f"staged_{kind}_{self._layer_id.hex}"
+        else:
+            digest = sha256(attribute.encode()).hexdigest()[:16]
+            name = f"staged_{kind}_{digest}_{self._layer_id.hex}"
+        return self.workspace.qualified(name)
 
     def _ensure(self, kind: str, attribute: str | None = None) -> str:
         """The staging table for `kind`, marked as touched by an edit.
@@ -730,9 +731,10 @@ class WorkingRecord(Record):
         table = self._ensure(kind)
         # Raw SQL because `UPDATE ... FROM` is a join-update, which the relational
         # `update` cannot express (https://duckdb.org/docs/stable/clients/python/relational_api).
+        _dr_edit = edit
         self.con.execute(
             f"UPDATE {table} AS t SET {col(name)} = {col('e', name)} "
-            f"FROM edit e "
+            f"FROM _dr_edit e "
             f"WHERE {col('t', key)} IS NOT DISTINCT FROM {col('e', key)}"
         )
 
@@ -1500,8 +1502,9 @@ class WorkingRecord(Record):
         """
         open_ = [c for c in key if c in broadcast]
         flags = ", ".join(f"{col(c)} IS NULL" for c in open_)
+        _dr_rel = rel
         patterns = (
-            self.con.sql(f"SELECT DISTINCT {flags} FROM rel").fetchall()
+            self.con.sql(f"SELECT DISTINCT {flags} FROM _dr_rel").fetchall()
             if open_
             else [()]
         )
@@ -1510,9 +1513,9 @@ class WorkingRecord(Record):
             part = " AND ".join(
                 f"({col('p', c)} IS NULL) = {c in nulls}" for c in open_
             )
-            on = null_safe(table, "p", [c for c in key if c not in nulls])
+            on = null_safe("t", "p", [c for c in key if c not in nulls])
             where = f"{part} AND {on}" if part else str(on)
-            self.con.execute(f"DELETE FROM {table} USING rel p WHERE {where}")
+            self.con.execute(f"DELETE FROM {table} AS t USING _dr_rel p WHERE {where}")
 
     def _long_key(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one long table is keyed on - what an edit replaces.
@@ -1736,7 +1739,7 @@ class WorkingRecord(Record):
                 return
             rel = self._tuples(dim, self._tuple_frame(dim, labels, {}, call), call)
             table = self._ensure(f"{_AXIS_PREFIX}{dim}")
-            self._delete(table, rel, dim, col(table, dim))
+            self._delete(table, rel, dim, col("t", dim))
             return
         labels = _plain_labels(dim, labels, call)
         if not labels:
@@ -1759,9 +1762,9 @@ class WorkingRecord(Record):
                 continue
             table = self._ensure(f"{_AXIS_PREFIX}{m}")
             for f in fields:
-                self._delete(table, gone, dim, fn.struct_extract(col(table, m), lit(f)))
+                self._delete(table, gone, dim, fn.struct_extract(col("t", m), lit(f)))
         table = self._ensure(f"{_AXIS_PREFIX}{dim}")
-        self._delete(table, gone, dim, col(table, dim))
+        self._delete(table, gone, dim, col("t", dim))
 
     def _refuse_one_of(self, dim: str, call: str) -> None:
         """Refuse an edit to the axis of `dim` where it has `one_of`.
@@ -1896,9 +1899,10 @@ class WorkingRecord(Record):
     def _delete(
         self, table: str, gone: DuckDBPyRelation, key: str, target: Expression
     ) -> None:
-        """Delete the rows of `table` whose `target` is one of `gone`'s `key` values."""
+        """Delete the rows of `table`, aliased `t`, whose `target` is one of `gone`'s `key` values."""
+        _dr_gone = gone
         self.con.execute(
-            f"DELETE FROM {table} USING gone g "
+            f"DELETE FROM {table} AS t USING _dr_gone g "
             f"WHERE {target} IS NOT DISTINCT FROM {col('g', key)}"
         )
 
@@ -2031,17 +2035,32 @@ class WorkingRecord(Record):
         rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
         for name in self.schema.dimensions:
-            held = self._rows(f"{_AXIS_PREFIX}{name}")
-            if held is None or name not in columns:
+            if name in self.schema.one_of_dims or name not in columns:
                 continue
-            kept = held.project(col(name), lit(True).alias("_kept"))  # noqa: FBT003
             rel = (
                 rel.set_alias("l")
-                .join(kept.set_alias("k"), null_safe("l", "k", [name]), how="left")
+                .join(self._labels(name), null_safe("l", "k", [name]), how="left")
                 .filter(col("l", name).isnull() | col("k", "_kept").isnotnull())
                 .project(*(col("l", c) for c in columns))
             )
         return rel
+
+    @cached_property
+    def _per_cursor(self) -> _StagedPerCursor:
+        return _StagedPerCursor()
+
+    def _labels(self, dim: str) -> DuckDBPyRelation:
+        """The labels of `dim`'s staged axis, each flagged `_kept`, aliased `k`.
+
+        Built once per thread (`_collapsed_attribute` joins it per attribute):
+        it reads the staging table by name, so it reads every later edit.
+        """
+        labels = self._per_cursor.labels
+        if dim not in labels:
+            held = self.con.table(self._staged[f"{_AXIS_PREFIX}{dim}", None])
+            kept = held.project(col(dim), lit(True).alias("_kept"))  # noqa: FBT003
+            labels[dim] = kept.set_alias("k")
+        return labels[dim]
 
     # -- what edits write (https://energy-models.github.io/datarecord/design/use/editing/#edits) ------------------------------------------
 
