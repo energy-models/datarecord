@@ -386,7 +386,7 @@ def _require_living_references(
     whole = any(r[4] for r in references)
     killed = {}
     for dim in layer.axes() & referenced:
-        before = _parent_axis(parent, schema, dim, layer.con)
+        before = _parent_axis(parent, schema, dim, layer.workspace.con)
         now = layer.axis(dim)
         if before is None or now is None:
             continue

@@ -575,7 +575,7 @@ class Coords:
         - [one fold for every axis](https://energy-models.github.io/datarecord/design/layers/resolution/#one-fold-for-every-axis)
         - [deletion](https://energy-models.github.io/datarecord/design/layers/removal/)
         """
-        schema, con = sources[-1].schema, sources[-1].con
+        schema, con = sources[-1].schema, sources[-1].workspace.con
         base, above = split or _base_and_above(sources, _coords_at_hand)
         restated = {d for d in schema.dimensions if d not in schema.one_of_dims}
         held_files = [source.axes() if source.frozen else restated for source in above]

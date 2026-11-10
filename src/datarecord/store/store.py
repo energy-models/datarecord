@@ -106,35 +106,27 @@ def _in(workspace: Workspace, query: str) -> str:
 
 
 class _Cursors(threading.local):
-    """The calling thread's cursor on one connection, each one made kept in `made`.
+    """The calling thread's cursor on `workspace`'s connection.
 
-    `threading.local` reruns `__init__` in each thread that first touches it, so
-    there is no existence check, and a thread's cursor goes with it: `made`
-    holds it weakly, for `Workspace.close` to close those still open.
+    `threading.local` reruns `__init__` in each thread that first touches it;
+    the workspace holds each cursor weakly, for `Workspace.close`.
 
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/design/storage/concurrency/#a-cursor-per-thread)
     """
 
-    def __init__(
-        self,
-        db: DuckDBPyConnection,
-        made: WeakSet[DuckDBPyConnection],
-        lock: threading.Lock,
-    ) -> None:
-        self.con = db.cursor()
-        with lock:
-            made.add(self.con)
+    def __init__(self, workspace: Workspace) -> None:
+        self.con = workspace._db.cursor()
+        with workspace._made_lock:
+            workspace._made.add(self.con)
 
 
 class Workspace:
     """A DuckDB database and the files it reaches, shared by every store on it.
 
     `con` is the calling thread's cursor: one workspace serves every thread, and
-    their work shares one database - its tables, never its relations. The
-    database is attached as `name` and is never the cursor's default, so SQL
-    names what lives there in full, `datarecord.edit.dims.bus`.
+    their work shares one database - its tables, never its relations.
 
     Parameters
     ----------
@@ -142,16 +134,10 @@ class Workspace:
         DuckDB database, `:memory:` by default. What lives there is a workspace
         and never the record: deleting it loses at most uncommitted edits.
     con
-        A connection to attach `database` on, such as a server's, whose own
-        default database stays as it is; a fresh in-memory one by default.
-        Only cursors of it do the work.
+        A connection to attach `database` on, such as a server's; its default
+        database and transactions stay its own. A fresh in-memory one by default.
     name
-        What `database` is attached as.
-
-    Attributes
-    ----------
-    name
-        The database's name in SQL.
+        What `database` is attached as, and named by in SQL.
 
     Raises
     ------
@@ -181,7 +167,7 @@ class Workspace:
                 setup.execute(_in(self, ddl))
         self._made: WeakSet[DuckDBPyConnection] = WeakSet()
         self._made_lock = threading.Lock()
-        self._cursors = _Cursors(self._db, self._made, self._made_lock)
+        self._cursors = _Cursors(self)
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
@@ -194,7 +180,7 @@ class Workspace:
         return self._cursors.con
 
     def qualified(self, table: str) -> str:
-        """`table` of the workspace's database, named in full as SQL reads it.
+        """`table` in the `main` schema of the workspace's database, named in full.
 
         Notes
         -----
@@ -224,7 +210,7 @@ class Workspace:
             "https://energy-models.github.io/datarecord/design/storage/views/",
         ):
             deleted = con.execute(
-                f"DELETE FROM {self.qualified('registered')} WHERE name = ? RETURNING name",
+                _in(self, "DELETE FROM {registered} WHERE name = ? RETURNING name"),
                 [name],
             ).fetchall()
             if not deleted:
@@ -239,7 +225,7 @@ class Workspace:
         -----
         - [registered views](https://energy-models.github.io/datarecord/design/storage/views/)
         """
-        return self.con.table(self.qualified("registered"))
+        return self.con.table(_in(self, "{registered}"))
 
     @classmethod
     def process(cls) -> Workspace:
@@ -635,11 +621,14 @@ class Store:
                 "attributes": list(manifest.files.attributes),
             }
             self._insert(
-                f"INSERT OR IGNORE INTO {self.workspace.qualified('schemas')} VALUES (?, ?)",
+                _in(self.workspace, "INSERT OR IGNORE INTO {schemas} VALUES (?, ?)"),
                 [digest, schema.model_dump_json()],
             )
             self._insert(
-                f"INSERT OR IGNORE INTO {self.workspace.qualified('revisions')} VALUES (?, ?, ?, ?, ?, ?)",
+                _in(
+                    self.workspace,
+                    "INSERT OR IGNORE INTO {revisions} VALUES (?, ?, ?, ?, ?, ?)",
+                ),
                 [
                     self.uri,
                     manifest.id,
@@ -699,7 +688,10 @@ class Store:
 
     def _held(self, id: UUID) -> tuple[UUID] | None:
         return self.workspace.con.execute(
-            f"SELECT id FROM {self.workspace.qualified('revisions')} WHERE location = ? AND id = ?",
+            _in(
+                self.workspace,
+                "SELECT id FROM {revisions} WHERE location = ? AND id = ?",
+            ),
             [self.uri, id],
         ).fetchone()
 
@@ -750,7 +742,7 @@ class Store:
         held = {
             row[0]
             for row in self.workspace.con.execute(
-                f"SELECT id FROM {self.workspace.qualified('revisions')} WHERE location = ?",
+                _in(self.workspace, "SELECT id FROM {revisions} WHERE location = ?"),
                 [self.uri],
             ).fetchall()
         }
@@ -780,7 +772,10 @@ class Store:
         wanted = json.dumps(validate_meta(meta))
         self._scan()
         rows = self.workspace.con.execute(
-            f"SELECT id FROM {self.workspace.qualified('revisions')} WHERE location = ? AND json_contains(meta, ?)",
+            _in(
+                self.workspace,
+                "SELECT id FROM {revisions} WHERE location = ? AND json_contains(meta, ?)",
+            ),
             [self.uri, wanted],
         ).fetchall()
         return [Revision(id=id, store=self) for (id,) in rows]

@@ -630,7 +630,7 @@ def _fold_map(
     - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
     - [the owner map](https://energy-models.github.io/datarecord/design/layers/resolution/#owner-map)
     """
-    schema, con = sources[-1].schema, sources[-1].con
+    schema, con = sources[-1].schema, sources[-1].workspace.con
     base, above = _base_and_above(sources, _fold_at_hand)
     rel: DuckDBPyRelation | None = None
     keyed, held, dead = schema, dict.fromkeys(_pruned(schema)), {}
@@ -657,7 +657,7 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
         yield _fold_map(sources, made=made)
     finally:
         for name in made:
-            sources[-1].con.execute(f"DROP TABLE IF EXISTS {name}")
+            sources[-1].workspace.con.execute(f"DROP TABLE IF EXISTS {name}")
 
 
 def _checkpoint(
@@ -767,7 +767,7 @@ def _fold_onto(
         refuse = source.layer_id if source.frozen else None
         rel = fold_layer(rel, own, removed, keyed, attribute, refuse=refuse, keep=keep)
         if made is not None and rel is not None:
-            rel = _checkpoint(rel, made, con, sources[-1].workspace.qualified)
+            rel = keep(rel)
             _drop_but_last(made, con)
     if rel is None:
         return _empty_relation(keyed, con, *keyed.owner_map_columns)
@@ -878,7 +878,7 @@ def _table(
         rel,
         above,
         held,
-        sources[-1].con,
+        sources[-1].workspace.con,
         keyed=keyed,
         dead=frozen_coords.dead,
         attribute=attribute,
@@ -908,7 +908,7 @@ def _frozen_table(
     if not sources:
         return None
     last = sources[-1]
-    con = last.con
+    con = last.workspace.con
     if isinstance(last, ParquetLayer) and last.layer_id == revision_id:
         rel = read_owner_map(revision_id, con, last.store)
         if rel is not None:

@@ -270,7 +270,7 @@ class Fold:
         -----
         - [materialised node caches](https://energy-models.github.io/datarecord/design/layers/resolution/#materialised-node-caches)
         """
-        revision_id, store, con = layer.layer_id, layer.store, layer.con
+        revision_id, store, con = layer.layer_id, layer.store, layer.workspace.con
         owner_map = read_owner_map(revision_id, con, store)
         if owner_map is None:
             return None
@@ -291,7 +291,9 @@ class Fold:
         looked up (`Coords.held`).
         """
         try:
-            owner_map = source.con.table(_table_name(source.workspace, source.layer_id))
+            owner_map = source.workspace.con.table(
+                _table_name(source.workspace, source.layer_id)
+            )
         except duckdb.CatalogException:
             return None
         coords = Coords.held(source)

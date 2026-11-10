@@ -401,12 +401,12 @@ class Record:
         return self._fold.flags(**categories)
 
     def register(self, name: str) -> None:
-        """Create the schema `name` in the workspace's database with a view per dim, property subject and attribute.
+        """Create the schema `name` with a view per dim, property subject and attribute.
 
-        The views sit in `name.dims`, `name.properties` and `name.attributes`
-        there, `datarecord.name.dims.bus` by default, each reading as its
-        relation here; over a `WorkingRecord` they follow every edit. `name` is
-        listed in the workspace's `registered()` table.
+        The views sit in `name.dims`, `name.properties` and `name.attributes` of
+        the workspace's database, as in `datarecord.name.dims.bus`, each reading as
+        its relation here; over a `WorkingRecord` they follow every edit. `name` is
+        listed in `Workspace.registered()`.
 
         Raises
         ------

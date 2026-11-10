@@ -2960,8 +2960,8 @@ def _collapse_connections(
         piece = piece[[p for p in piece if _carries(stem, p, registered)]]
         piece.columns = [_port_attribute(stem, port, registered) for port in piece]
         pieces.append(piece if stem == BUS else piece.dropna(axis=1, how="all"))
-    wide = pd.concat(pieces, axis=1).reset_index()
-    ports = con.from_df(wide).set_alias("ports")
+    _dr_wide = pd.concat(pieces, axis=1).reset_index()
+    ports = con.sql("FROM _dr_wide").set_alias("ports")
     on = ["entity", *(d for d in varying if d in static.columns)]
     joined = static.set_alias("s").join(
         ports, ex_all(col("s", c) == col("ports", c) for c in on), how="left"
@@ -3037,8 +3037,8 @@ def _port_columns(
     """
     if connections is None:
         return {}
-    keyed = connections[[ENTITY, BUS, "port"]]
-    ports = con.from_df(keyed).set_alias("ports")
+    _dr_keyed = connections[[ENTITY, BUS, "port"]]
+    ports = con.sql("FROM _dr_keyed").set_alias("ports")
     placed = (
         long.set_alias("v")
         .join(ports, ex_all(col("v", c) == col("ports", c) for c in (ENTITY, BUS)))

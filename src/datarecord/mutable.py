@@ -56,8 +56,6 @@ from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema
 
 if TYPE_CHECKING:
-    from duckdb import DuckDBPyConnection
-
     from datarecord.store.store import Workspace
 
 
@@ -210,11 +208,6 @@ class StagedSource:
     def workspace(self) -> Workspace:
         """Its record's workspace, whose database holds the staging tables."""
         return self.record.workspace
-
-    @property
-    def con(self) -> DuckDBPyConnection:
-        """The calling thread's cursor, its record's."""
-        return self.record.con
 
     def materialised(self) -> Fold | None:
         """A staging area has no `resolved/` cache: it is never a fold's base."""
@@ -1450,7 +1443,7 @@ class WorkingRecord(Record):
                 how="anti",
             )
         )
-        with scratch_table(self.con, meets, self.workspace.qualified) as snapshot:
+        with scratch_table(self.con, meets) as snapshot:
             self._insert(snapshot, table, {})
 
     def _refuse_crossing(self, attribute: str) -> None:
@@ -1961,7 +1954,7 @@ class WorkingRecord(Record):
         Snapshotted into a table first: the replace-by-key delete would
         otherwise change what `rel` reads.
         """
-        with scratch_table(self.con, rel, self.workspace.qualified) as snapshot:
+        with scratch_table(self.con, rel) as snapshot:
             self._insert(snapshot, table, supplied, key=key)
 
     def _reject_undeclared(

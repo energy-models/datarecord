@@ -11,13 +11,9 @@ Nothing here knows about a modelling framework: every column is typed as the
 *schema* declares it, whatever a tool's registry holds, so a record whose labels
 no tool recognises still reads and it is a tool's `verify` that reports them.
 
-SQL that reads a Python relation or frame reads it by a replacement scan of a
-local named `_dr_<role>`, say `_dr_rel`, bound in the function that calls
-`.sql` or `.execute`: DuckDB scans only that calling frame. A table or view of
-the same name in the cursor's temp schema or default database wins over the
-local, so datarecord reserves the prefix `_dr_`, where a bare name such as
-`rel` would read a caller's table. One leading underscore, since two would have
-Python mangle the name inside a class.
+SQL reads a Python relation or frame by a replacement scan of a local
+`_dr_<role>`, bound in the function that runs it. One underscore, since two
+would be name-mangled inside a class.
 
 Notes
 -----
@@ -338,24 +334,16 @@ def shared_table(
 
 @contextmanager
 def scratch_table(
-    con: DuckDBPyConnection,
-    rel: DuckDBPyRelation,
-    qualified: Callable[[str], str] = str,
+    con: DuckDBPyConnection, rel: DuckDBPyRelation
 ) -> Iterator[DuckDBPyRelation]:
-    """`rel` collected into a table of its own, read as one, and dropped on exit.
+    """`rel` collected into a temporary table of `con`, read as one, and dropped on exit.
 
     A table both pins what `rel` reads, where a later write would change it,
     and stops each step over it from binding `rel`'s whole tree again.
-
-    Parameters
-    ----------
-    qualified
-        Names the table in the database it goes to, `Workspace.qualified` for
-        the workspace's, which a transaction that writes there needs; the
-        cursor's default database by default.
     """
-    name = qualified(f"_scratch_{uuid4().hex}")
-    rel.create(name)
+    name = f"temp.main._scratch_{uuid4().hex}"
+    _dr_rel = rel
+    con.execute(f"CREATE TEMP TABLE {name} AS FROM _dr_rel")
     try:
         yield con.table(name)
     finally:
