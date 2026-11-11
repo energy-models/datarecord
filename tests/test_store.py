@@ -835,7 +835,7 @@ def _read_all(record):
 def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
     """A record on a commit's child folds onto the fold its workspace holds of the parent.
 
-    The edits read before the commit leave the parent's coords, and with an
+    The edits read before the commit leave the parent's axes, and with an
     attribute its owner map, as the workspace's tables.
 
     Notes

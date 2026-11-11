@@ -199,7 +199,7 @@ def test_a_name_shared_by_attribute_property_and_dim_reaches_its_own(record):
     assert bus == [{"bus": "b0", "x": 10.2}], "`bus.x` is a column of the bus axis"
     efficiency = staged.attributes["efficiency"].to_arrow_table().to_pylist()
     assert [r["value"] for r in efficiency] == [0.7], (
-        "`bus=` is the connection's coordinate, not `entity.bus`"
+        "`bus=` is the connection's field, not `entity.bus`"
     )
 
 

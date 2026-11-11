@@ -40,11 +40,11 @@ A `Selection` is itself a `RecordLike`, with three more members:
 A keyword is the name of one of three things:
 
 - A dim, such as `snapshot=1` or `bus=["north"]`.
-- A coordinate of a multi-dim that is no dim, such as `from=` of a corridor, which narrows the multi-dim's tuples.
+- A field of a multi-dim that is no dim, such as `from=` of a corridor, which narrows the multi-dim's tuples.
 - A property by its plain name, which narrows its subject to the labels whose value, its default applied, is selected. A label whose value is NULL goes.
 
-A coordinate or property keyword never squeezes, so `labels` has its value as a list.
-A tuple is selected through its coordinates, never by the multi-dim's own name.
+A field or property keyword never squeezes, so `labels` has its value as a list.
+A tuple is selected through its fields, never by the multi-dim's own name.
 
 ## Values
 
@@ -62,8 +62,8 @@ The labels a selection keeps are in axis order.
 
 `select` raises `ValueError` at the call, naming the keyword, for:
 
-- a name that the schema declares as no dim, coordinate or property, or as a multi-dim
-- a property name that several subjects declare, or a coordinate name that several multi-dims declare
+- a name that the schema declares as no dim, field or property, or as a multi-dim
+- a property name that several subjects declare, or a field name that several multi-dims declare
 - a label the axis lacks, or an empty list
 - a slice with a step, of an axis of text, with an end the axis cannot compare, or covering no label
 - a squeezed label that another keyword's selection drops
@@ -86,7 +86,7 @@ Squeezing a dim `d` at a label `l` changes the schema and the rows:
 
 - `d` leaves the schema with its axis and its properties, and so does every property that refers to `d`.
 - A `default_by` keyed on a property that refers to `d` applies its entry for `l` as the default. A `default_by` keyed on a property of `d` applies the entry for the category that `l` has.
-- A multi-dim that draws on `d` loses that coordinate. One left with no coordinate is squeezed too.
+- A multi-dim that draws on `d` loses that field. One left with no field is squeezed too.
 - An attribute over squeezed dims alone becomes one value over no dim.
 - `partial` and every `Flags` lose `d`.
 
@@ -126,7 +126,7 @@ Over a `WorkingRecord`, a narrowed axis keeps the labels it had at the call, and
 ## `lift`
 
 **To lift** is to put the squeezed labels back on rows written over a selection, with `Selection.lift`.
-`view.lift(attribute, rel)` adds a column at its label for each squeezed dim of the attribute, and puts a squeezed coordinate back into its struct:
+`view.lift(attribute, rel)` adds a column at its label for each squeezed dim of the attribute, and puts a squeezed field back into its struct:
 
 <figure class="diagram">
 --8<-- "docs/static/selecting-lift.svg"
@@ -136,7 +136,7 @@ The rows of `p_max_pu` over `select(record, snapshot=1)` come back with `snapsho
 
 `lift` reads only `labels` and the base's schema.
 It returns an attribute that the base declares over no squeezed dim unchanged, so `lift("p_nom", rel)` returns `rel`.
-The coordinates come back in the base's column order.
+The fields come back in the base's field order.
 A row NULL on the squeezed dim in the base was settled to the label, so it comes back at the label.
 `lift` raises `KeyError` when the base declares no such attribute.
 

@@ -59,13 +59,13 @@ datarecord stores it and compares nothing against it.
 
 `dimensions` maps each dim's name to a `Dimension`, multi-dims among them.
 
-| Key           | Value                                                         | Default |
-| ------------- | ------------------------------------------------------------- | ------- |
-| `over`        | a multi-dim's coordinates, each mapped to the dim it draws on | `None`  |
-| `dtype`       | `"float"`, `"int"`, `"str"` or `"datetime"`                   | `"str"` |
-| `one_of`      | the dim's labels, in order                                    | `None`  |
-| `unit`        | what the labels measure                                       | `None`  |
-| `description` | what the dim is, in prose                                     | `None`  |
+| Key           | Value                                                    | Default |
+| ------------- | -------------------------------------------------------- | ------- |
+| `over`        | a multi-dim's fields, each mapped to the dim it draws on | `None`  |
+| `dtype`       | `"float"`, `"int"`, `"str"` or `"datetime"`              | `"str"` |
+| `one_of`      | the dim's labels, in order                               | `None`  |
+| `unit`        | what the labels measure                                  | `None`  |
+| `description` | what the dim is, in prose                                | `None`  |
 
 A schema that declares attributes declares at least one dim, because attribute data over no dim is no record.
 
@@ -73,8 +73,8 @@ A schema that declares attributes declares at least one dim, because attribute d
 
 `over` declares a [multi-dim](data-model.md#multi-dims).
 A list is short for the dict whose keys equal its values, so `over=["entity", "bus"]` is `over={"entity": "entity", "bus": "bus"}`.
-The keys are the coordinate names, in field order, and `Schema.over("connection")` returns them.
-datarecord refuses a multi-dim that also declares `dtype` or `one_of`, and a coordinate that draws on an undeclared dim or on a multi-dim.
+The keys are the field names, in field order, and `Schema.over("connection")` returns them.
+datarecord refuses a multi-dim that also declares `dtype` or `one_of`, and a field that draws on an undeclared dim or on a multi-dim.
 
 ### `one_of`
 
@@ -91,14 +91,14 @@ One name is one spec, one file and one `value` dtype, record-wide.
 | ------------- | ------------------------------------------------- | ------------- |
 | `dtype`       | `"float"`, `"int"`, `"bool"` or `"str"`           | required      |
 | `dims`        | the dims and multi-dims that address a value      | `frozenset()` |
-| `default`     | the value at a point no row covers                | `None`        |
+| `default`     | the value at a coordinate no row covers           | `None`        |
 | `default_by`  | a default per category, which overrides `default` | `{}`          |
 | `breakpoints` | whether a row may have a piecewise-linear curve   | `False`       |
 | `unit`        | what the values measure                           | `None`        |
 | `description` | what the attribute is, in prose                   | `None`        |
 
 datarecord refuses a `dims` entry that is not a declared dim.
-It also refuses a multi-dim in `dims` beside a dim named like one of its coordinates, such as `{"connection", "bus"}`.
+It also refuses a multi-dim in `dims` beside a dim named like one of its fields, such as `{"connection", "bus"}`.
 
 ### `default_by`
 
@@ -115,7 +115,7 @@ attribute 'p_nom''s `default_by` is keyed by 'entity.carrier', which refers to '
 
 It also refuses a category that the referred dim's `one_of` does not list.
 It refuses a key on a dim that the attribute or property is not [indexed over](data-model.md#attributes).
-A property is indexed over its subject and the dims that the subject's coordinates draw on.
+A property is indexed over its subject and the dims that the subject's fields draw on.
 
 ## `properties`
 
@@ -139,7 +139,7 @@ datarecord refuses a property:
 - that declares both `dtype` and `one_of`, or neither
 - of an undeclared subject, or of a dim with `one_of`
 - that refers to an undeclared dim or to a multi-dim
-- named like its subject's key column, or like a coordinate of its multi-dim
+- named like its subject's key column, or like a field of its multi-dim
 - that categorises its subject and declares `default_by`
 
 ## `partial`
@@ -165,16 +165,16 @@ datarecord stores both and reads neither, so it converts no unit.
 A dtype is mathspec's `DimensionDtype` or `ParameterDtype`, written as its string.
 Each declaration maps to one DuckDB type:
 
-| Declares                 | Declaration        | DuckDB type                                       |
-| ------------------------ | ------------------ | ------------------------------------------------- |
-| dim, attribute, property | `dtype: float`     | `DOUBLE`                                          |
-| dim, attribute, property | `dtype: int`       | `BIGINT`                                          |
-| attribute, property      | `dtype: bool`      | `BOOLEAN`                                         |
-| dim, attribute, property | `dtype: str`       | `VARCHAR`                                         |
-| dim                      | `dtype: datetime`  | `TIMESTAMP` (no time zone)                        |
-| dim                      | `one_of: [labels]` | `ENUM` of the labels                              |
-| multi-dim                | `over: {...}`      | `STRUCT`, a field per coordinate typed as its dim |
-| property                 | `one_of: <dim>`    | that dim's type                                   |
+| Declares                 | Declaration        | DuckDB type                                   |
+| ------------------------ | ------------------ | --------------------------------------------- |
+| dim, attribute, property | `dtype: float`     | `DOUBLE`                                      |
+| dim, attribute, property | `dtype: int`       | `BIGINT`                                      |
+| attribute, property      | `dtype: bool`      | `BOOLEAN`                                     |
+| dim, attribute, property | `dtype: str`       | `VARCHAR`                                     |
+| dim                      | `dtype: datetime`  | `TIMESTAMP` (no time zone)                    |
+| dim                      | `one_of: [labels]` | `ENUM` of the labels                          |
+| multi-dim                | `over: {...}`      | `STRUCT` of its fields, each typed as its dim |
+| property                 | `one_of: <dim>`    | that dim's type                               |
 
 An attribute takes no `one_of`, and no attribute or property is `datetime`.
 A property whose values are times refers to a `datetime` dim.
@@ -182,14 +182,14 @@ The format fixes three more columns: `attribute VARCHAR`, `breakpoint DOUBLE` an
 
 ## Names
 
-A declared dim, coordinate, attribute or property name becomes a column, and datarecord refuses a name that cannot be one:
+A declared dim, field, attribute or property name becomes a column, and datarecord refuses a name that cannot be one:
 
 - a name that is not ASCII letters, digits and `_`, starting with a letter, which is mathspec's rule for a name
 - a column datarecord writes, compared ignoring case: `attribute`, `breakpoint`, `breakpoints`, `broadcast`, `layer_uuid`, `order_key`, `value` and `varies`
 - a name that starts with `_`
 - two names that differ only in case, which DuckDB reads as one column
 
-One spelling declared twice is one column and passes, as when a coordinate shares its dim's name.
+One spelling declared twice is one column and passes, as when a field shares its dim's name.
 Labels are data, and these rules do not apply to them.
 
 ## Compatibility

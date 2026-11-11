@@ -158,8 +158,8 @@ class RecordLike(Protocol):
     def dims(self) -> Relations:
         """Axis relations keyed by dim, each holding only the dim's label column.
 
-        A multi-dim's label column is its struct column, a field per
-        coordinate. Properties are in `properties`, attributes in
+        A multi-dim's label column is its struct column of its
+        fields. Properties are in `properties`, attributes in
         `attributes`.
 
         Notes
@@ -183,7 +183,7 @@ class RecordLike(Protocol):
     def attributes(self) -> Relations:
         """Long attribute relations, keyed by attribute name - one per file.
 
-        A row carries its coordinates alone; select by category through
+        A row carries its dim columns alone; select by category through
         `properties`.
 
         Notes

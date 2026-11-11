@@ -46,15 +46,15 @@ class Dimension(_Declared):
     file's row order, undeclared.
 
     A dim declaring `over` is a multi-dim: its labels are tuples of other dims'
-    labels, carried in a row as one struct column named for it, a field per
-    coordinate (`Schema.multi_dim_type`). Coordinates rather than dims because
-    two of them may draw on one dim: a corridor between two buses is
+    labels, carried in a row as one struct column named for it, of one field
+    per entry of `over` (`Schema.multi_dim_type`). Fields rather than dims
+    because two of them may draw on one dim: a corridor between two buses is
     `(from, to)`.
 
     Attributes
     ----------
     over
-        Coordinate name -> the dim it draws its labels from, or None for a dim
+        Field name -> the dim it draws its labels from, or None for a dim
         that is no multi-dim. A list is sugar for the dict with identical keys
         and values. Declared without `dtype` and `one_of`.
     dtype
@@ -100,7 +100,7 @@ class Dimension(_Declared):
             if typed:
                 msg = (
                     f"a dim declaring `over` is a multi-dim, whose labels are "
-                    f"tuples of its coordinates' labels, and takes no {typed}"
+                    f"tuples of its fields' labels, and takes no {typed}"
                 )
                 raise ValueError(msg)
         return data
@@ -219,7 +219,7 @@ class AttributeSpec(_ValueSpec):
         of those declared. Whatever they are, its values are long rows of
         `attributes/<attr>.parquet`.
     default
-        The value a coordinate no row covers takes.
+        The value at a coordinate no row covers.
     default_by
         A categorizing property, as `subject.name`, -> category -> the default
         for labels of that category, overriding `default`; the first key, in

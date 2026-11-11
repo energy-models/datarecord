@@ -114,7 +114,7 @@ class LayerSource(Protocol):
         """Which dims this layer has an axis file for.
 
         Asked once per source rather than probed per declared dim:
-        `Coords.resolve` folds only the dims some source holds.
+        `Axes.resolve` folds only the dims some source holds.
         """
         ...
 

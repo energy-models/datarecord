@@ -112,7 +112,7 @@ def test_partial_dims_is_the_union_over_attributes():
 def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
     attribute, addresses
 ):
-    """`efficiency` is over `connection`, whose coordinates include `entity`."""
+    """`efficiency` is over `connection`, whose fields include `entity`."""
     s = _schema(
         attributes={
             **_schema().attributes,
@@ -223,19 +223,19 @@ def test_a_dim_with_one_of_carries_no_property():
         )
 
 
-def test_a_coordinate_is_addressed_as_a_property_is():
-    """`connection.bus` resolves to the dim the coordinate draws on, and carries no default.
+def test_a_field_is_addressed_as_a_property_is():
+    """`connection.bus` resolves to the dim the field draws on, and carries no default.
 
     Notes
     -----
-    - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
     s = _schema()
     assert s.resolve("connection.bus") == ("connection", s.dimensions["bus"])
     assert s.column_type("connection") == DuckDBPyType(
         "STRUCT(entity VARCHAR, bus VARCHAR)"
-    ), "a multi-dim's column is the struct of its coordinates"
-    with pytest.raises(KeyError, match="is a coordinate"):
+    ), "a multi-dim's column is the struct of its fields"
+    with pytest.raises(KeyError, match="is a field"):
         s.default_for("connection.bus")
     with pytest.raises(KeyError, match="declares no property 'connection.port'"):
         s.resolve("connection.port")
@@ -267,7 +267,7 @@ def test_a_coordinate_is_addressed_as_a_property_is():
     ],
 )
 def test_a_multi_dim_draws_on_dims(dimensions, match):
-    """`over` is a multi-dim's whole declaration, each coordinate on a dim that is no multi-dim."""
+    """`over` is a multi-dim's whole declaration, each field on a dim that is no multi-dim."""
     with pytest.raises(ValidationError, match=match):
         Schema.model_validate({"dimensions": dimensions})
 
@@ -329,8 +329,8 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
                 },
                 properties={"corridor": {"from": PropertySpec(dtype="str")}},
             ),
-            "share their names with its coordinates",
-            id="a-multi-dim-coordinates-name",
+            "share their names with its fields",
+            id="a-multi-dim-fields-name",
         ),
         pytest.param(
             lambda: _schema(properties={"nope": {"kind": PropertySpec(dtype="str")}}),
@@ -555,8 +555,8 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     partial=frozenset({"entity", "scenario", "connection"}), **kw
                 ),
             ),
-            "is a coordinate of the multi-dim 'connection'",
-            id="a-coordinate",
+            "is a field of the multi-dim 'connection'",
+            id="a-field",
         ),
     ],
 )
@@ -859,7 +859,7 @@ def _declaring(position: str, name: str) -> Schema:
     attr = AttributeSpec(dtype="float", dims={"entity"})
     if position == "dim":
         return Schema(dimensions={"entity": dim, name: dim}, partial={name})
-    if position == "coordinate":
+    if position == "field":
         return Schema(
             dimensions={
                 "entity": dim,
@@ -882,7 +882,7 @@ WRITTEN = {
     ("name", "position"),
     [
         ("value", "dim"),
-        ("value", "coordinate"),
+        ("value", "field"),
         ("value", "attribute"),
         ("Value", "dim"),
         ("_row", "dim"),

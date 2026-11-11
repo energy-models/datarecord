@@ -203,7 +203,7 @@ def test_a_multi_dim_is_categorized_by_its_property(ports):
         (("l", "b"), 0): 0.5,
         (("g", "b"), 0): 0.8,
         (("g", "b"), 1): 0.8,
-    }, "the role selects the tuples, a coordinate keyword narrows them"
+    }, "the role selects the tuples, a field keyword narrows them"
     assert set(record.flags(role="output")) == {"efficiency"}
     assert record.flags(role="input") == {}, "the input's value was narrowed away"
     assert record.schema.categorizing("connection") == ("role",)
@@ -221,7 +221,7 @@ def test_a_multi_dims_category_selects_only_for_an_attribute_over_it(ports):
         staged.set("p_nom", 1.0, role="output")
 
 
-def test_a_multi_dims_category_combines_with_a_category_of_its_coordinate(ports):
+def test_a_multi_dims_category_combines_with_a_category_of_its_field(ports):
     staged = WorkingRecord(ports.record)
     staged.set("efficiency", 0.5, role=["output", "attached"], ctype="Generator")
     record = ports.store.commit(staged).record
@@ -248,7 +248,7 @@ def _noted(record, subject: str) -> set:
         ),
         ("connection", {"ctype": "Link"}, {("l", "a"), ("l", "b")}),
     ],
-    ids=["multi-dim-several", "coordinate-category"],
+    ids=["multi-dim-several", "field-category"],
 )
 def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
     ports, subject, keywords, selected

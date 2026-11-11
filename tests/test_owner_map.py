@@ -132,7 +132,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     assert not any("resolved" in p.parts for p in reachable)
 
 
-def _coords(store, revision):
+def _axes(store, revision):
     """`revision`'s resolved axes and dead labels, read through a workspace of its own.
 
     A fresh workspace holds no fold of an earlier read, so it reads whatever
@@ -142,7 +142,7 @@ def _coords(store, revision):
     try:
         record = workspace.store(store.uri).revision(revision.id).record
         dims = record.dims
-        dead = record._fold.coords.dead
+        dead = record._fold.axes.dead
         return (
             {d: dims[d].df().to_dict("records") for d in dims},
             {d: sorted(rel.fetchall()) for d, rel in dead.items()},
@@ -187,7 +187,7 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropp
         drop_entities(leaf_layer, dropped)
     leaf = leaf_layer.commit()
     reader = empty_child(leaf).commit()
-    full = _coords(store, reader)
+    full = _axes(store, reader)
 
     nodes = {"root": root, "middle": middle}
     for name in cached:
@@ -204,7 +204,7 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropp
     assert {d for d, _, has_dead in owners if has_dead} == set(full[1]), (
         "`has_dead` marks exactly the dims the full fold finds dead labels for"
     )
-    assert _coords(store, reader) == full, "the cache changes no answer"
+    assert _axes(store, reader) == full, "the cache changes no answer"
     assert not list(Path(store.uri, "layers").glob("*/resolved/dims")), (
         "no axis is copied into a cache"
     )
@@ -594,7 +594,9 @@ def test_a_deeper_entity_wins_over_a_series_it_crosses(store, entity_series_sche
         assert broadcast(record, "p_max_pu", "entity", "snapshot") == expected
 
 
-def test_a_pointwise_set_leaving_a_dim_outside_partial_null_keeps_the_series(store):
+def test_a_set_at_one_snapshot_leaving_a_dim_outside_partial_null_keeps_the_series(
+    store,
+):
     """A child naming one of two dims outside `partial` leaves the rest of the series.
 
     The root sets `x` at every `(period, snapshot)` of `a`; the child sets `a`

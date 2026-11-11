@@ -26,8 +26,8 @@ from duckdb import StarExpression as star
 
 from datarecord.duck import anchored, as_relation, fn, null_safe, write_parquet
 from datarecord.protocols import LayerData, RecordLike, Relations
-from datarecord.resolve.coords import (
-    Coords,
+from datarecord.resolve.axes import (
+    Axes,
     one_of_axis,
     refuse_one_of_file,
     refuse_twice,
@@ -112,7 +112,7 @@ def write_layer(
         If a multi-dim's tuple has some fields NULL and not all, naming the
         file, judged on the file as written.
         If a multi-dim's tuple names a label that the layer's final axis of
-        that dim does not hold, naming the multi-dim, the coordinate and up to
+        that dim does not hold, naming the multi-dim, the field and up to
         three such labels.
         If an attribute row names a label or a tuple that the layer's final
         axis of that dim does not hold, naming the dim and up to three such
@@ -163,14 +163,14 @@ def write_layer(
         manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
         layer = DirectorySource(base, manifest, workspace, manifest.id)
         parents = [] if parent is None else parent.sources
-        coords = Coords.resolve([*parents, layer])
-        held = coords.axes.get
+        axes = Axes.resolve([*parents, layer])
+        held = axes.get
         for key in written["dims"]:
             if key not in schema.multi_dims:
                 continue
             file = f"dims/{key}.parquet"
             refuse_unheld(
-                coords.axes[key],
+                axes[key],
                 schema,
                 [key],
                 held,
@@ -191,7 +191,7 @@ def write_layer(
         dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
     )
     if data.axes():
-        _require_living_references(parent, layer, coords)
+        _require_living_references(parent, layer, axes)
     return files
 
 
@@ -249,7 +249,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     holds such a row wherever two of them cross. `breakpoint` is part of a
     row, so the rows of one curve are no such pair.
 
-    Rows naming the same dims are found by `refuse_twice` over the coordinates,
+    Rows naming the same dims are found by `refuse_twice` over the dims,
     crossing ones by `unsettled`. `rel` is the file as written, so the source
     is built only once, and only its dims and `breakpoint` are read.
 
@@ -352,11 +352,11 @@ def _parent_axis(
 
 
 def _require_living_references(
-    parent: Record | None, layer: LayerSource, coords: Coords
+    parent: Record | None, layer: LayerSource, axes: Axes
 ) -> None:
     """Reject a layer leaving a reference to a dead label in a subject it touches.
 
-    A reference is a multi-dim tuple's coordinate over a dim, or a property
+    A reference is a multi-dim tuple's field over a dim, or a property
     that refers to a dim. A property's subject the layer restates is
     checked whole, in its final state, against every dead label; any other
     reference only for the labels the layer removes, its parent's axis minus
@@ -376,7 +376,7 @@ def _require_living_references(
     -----
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
-    schema = coords.schema
+    schema = axes.schema
     touched = layer.axes()
     references = [
         *(
@@ -404,8 +404,8 @@ def _require_living_references(
         return
     problems = []
     for subject, column, label, dim, restated in references:
-        dead = coords.dead.get(dim)
-        resolved = coords.axes.get(subject)
+        dead = axes.dead.get(dim)
+        resolved = axes.get(subject)
         stored = subject if subject in schema.multi_dims else column
         if dead is None or resolved is None or stored not in resolved.columns:
             continue
@@ -434,13 +434,13 @@ def _require_living_references(
 def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) -> None:
     """Check one frame is shaped for the fold to resolve it.
 
-    Structural only: a long frame carries its own attribute's coordinates, and a
+    Structural only: a long frame carries its own attribute's dim columns, and a
     `dims/` frame carries every dim the schema declares it keyed by. Values
     are not checked - which labels and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
 
-    An attribute's coordinates are what its `dims` declare, so one file's column
+    An attribute's dim columns are what its `dims` declare, so one file's column
     set is not another's and neither is every declared dim.
 
     Reads the schema rather than the rows, so validating an unmaterialised
@@ -473,7 +473,7 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
                 f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)"
             )
             raise ValueError(msg)
-        # Nor anything else: a coordinate the attribute is not addressed by
+        # Nor anything else: a dim the attribute is not addressed by
         # would be a column the read path never projects, written as a fact
         # about a value that does not have one. Reported rather than dropped,
         # since a source emitting one disagrees with the schema about what the

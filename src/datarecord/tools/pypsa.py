@@ -79,13 +79,13 @@ SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 #: The values in one batch of a melted series, about a parquet row group.
 _MELT_BATCH = 122_880
 #: PyPSA's name for a multi-period snapshot's inner level: the dim of those
-#: timesteps, a coordinate of the multi-dim `snapshot` beside `period`.
+#: timesteps, a field of the multi-dim `snapshot` beside `period`.
 TIMESTEP = "timestep"
 #: A scenario's weight, not PyPSA's `weight`: that name is a Generator attribute,
 #: and a name holds one spec record-wide.
 SCENARIO_WEIGHT = "scenario_weight"
 ENTITY, BUS, CARRIER, CONNECTION = "entity", "bus", "carrier", "connection"
-#: A coordinate of `connection`: PyPSA's number in `bus0`, `bus1`, ..., and a one-port type's `bus` port `0`.
+#: A field of `connection`: PyPSA's number in `bus0`, `bus1`, ..., and a one-port type's `bus` port `0`.
 PORT = "port"
 SUB_NETWORK = "sub_network"
 LINE_TYPE, TRANSFORMER_TYPE = "line_type", "transformer_type"
@@ -242,7 +242,7 @@ class NetworkShape:
 
     @cached_property
     def snapshots(self) -> pd.DataFrame:
-        """The `snapshot` axis in axis order, a multi-dim's tuples as a column per coordinate."""
+        """The `snapshot` axis in axis order, a multi-dim's tuples as a column per field."""
         rel = self.dims.get(SNAPSHOT)
         if rel is None:
             return pd.DataFrame(columns=[SNAPSHOT])
@@ -714,7 +714,7 @@ def _series_frame(
     every column given as a series, so completing them would move a static
     component into `dynamic`. A row is placed by the positions of its
     snapshot and entity, so a name never becomes an SQL identifier. A
-    multi-dim snapshot is matched by its coordinates (`NetworkShape.snapshots`).
+    multi-dim snapshot is matched by its fields (`NetworkShape.snapshots`).
     """
     group_by = list(shape.snapshots.columns)
     keys = shape.index_names
@@ -1258,7 +1258,7 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
 def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFrame:
     """`table`, PyPSA's weightings of `dim` by label, with each one `record` stores in place.
 
-    A multi-dim's label is matched by its coordinates, as PyPSA's index levels.
+    A multi-dim's label is matched by its fields, as PyPSA's index levels.
 
     Notes
     -----

@@ -24,7 +24,6 @@ from pydantic import ValidationError
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.protocols import EMPTY, LazyRelations
-from datarecord.resolve import coords
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
@@ -137,7 +136,7 @@ _CTYPES = list(_SCHEMA.dimensions["ctype"].one_of or ())
 
 
 def _long(**overrides) -> pd.DataFrame:
-    """One long row carrying its attribute's own coordinates, and no others.
+    """One long row carrying its attribute's own dim columns, and no others.
 
     Shaped from the spec rather than spelled: a source handing over a column
     the attribute is not addressed by is what the writer rejects, so a
@@ -496,7 +495,7 @@ def _nothing_reachable(store) -> None:
     ]
 
 
-def test_a_file_carries_only_its_own_attributes_coordinates(store):
+def test_a_file_carries_only_its_own_attributes_dims(store):
     """One attribute is one file, so one column set - not every declared dim.
 
     A component attribute has no `bus` column, a connection attribute does, and
@@ -544,7 +543,7 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
 
     efficiency = columns("efficiency")
     assert "connection" in efficiency, "a connection attribute carries the multi-dim"
-    assert "bus" not in efficiency, "as one struct column, not its coordinates"
+    assert "bus" not in efficiency, "as one struct column, not its fields"
     assert columns("weight") & {"entity", "period"} == set(), (
         "and no dim it is not addressed by"
     )
@@ -583,10 +582,10 @@ def test_a_write_rejects_an_undeclared_attribute_or_dim(store, source, match):
         store.commit(source, parent=None)
 
 
-def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
+def test_a_write_rejects_a_dim_the_attribute_lacks(store):
     """A column the attribute is not addressed by is a disagreement, not a spare.
 
-    The read path projects an attribute's own coordinates, so a `bus` on a
+    The read path projects an attribute's own dim columns, so a `bus` on a
     component attribute would be written and never read - and a source emitting
     one means something different by the attribute than the schema does.
     Reported rather than dropped, since silently narrowing would hide that.
@@ -605,7 +604,7 @@ def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
 
 
 def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
-    """A multi-dim's column is a struct of exactly its coordinates.
+    """A multi-dim's column is a struct of exactly its fields.
 
     DuckDB casts a struct by field name, so a missing field would be written as
     NULL rather than refused, re-keying every row.
@@ -694,7 +693,7 @@ def test_a_write_rejects_a_missing_long_column(store):
 
 
 def test_a_write_rejects_a_multi_dim_frame_not_keyed_by_its_struct(store):
-    """A multi-dim's axis file is keyed by the struct of its coordinates, named for it.
+    """A multi-dim's axis file is keyed by the struct of its fields, named for it.
 
     Notes
     -----
@@ -763,7 +762,7 @@ def _read_axis(store, frame):
 def split_passes(request, monkeypatch):
     """Find a row held twice in one pass over the file, or across one pass per row."""
     if request.param:
-        monkeypatch.setattr(coords, "_ROWS_PER_PASS", 1)
+        monkeypatch.setattr("datarecord.resolve.axes._ROWS_PER_PASS", 1)
 
 
 @pytest.mark.parametrize(
@@ -874,12 +873,12 @@ def axes(tmp_path_factory):
 def _rows_staged(base, rows: list[dict], attribute: str):
     """Return a staging area over `base` holding `rows` of `attribute`.
 
-    A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
+    A dim a row leaves out is NULL there; a `connection` is set by its fields.
     """
     staged = WorkingRecord(base.record)
     for row in rows:
-        coords = {c: v for c, v in row.items() if c not in ("value", "connection")}
-        staged.set(attribute, row["value"], **coords, **row.get("connection", {}))
+        keywords = {c: v for c, v in row.items() if c not in ("value", "connection")}
+        staged.set(attribute, row["value"], **keywords, **row.get("connection", {}))
     return staged
 
 
@@ -888,7 +887,7 @@ def _rows_layer(
 ):
     """Return a revision whose top layer holds `rows` of `attribute`, written `via` `set` or a source.
 
-    A coordinate a row leaves out is NULL there. Written in `axes`' store, over
+    A dim a row leaves out is NULL there. Written in `axes`' store, over
     `axes` itself where `tuples` are its own.
     """
     store = axes.store
@@ -1351,7 +1350,7 @@ def test_a_curve_is_no_pair_of_rows(axes):
     """The rows of one curve differ in `breakpoint`, so each is its own row."""
     rows: list[dict] = [{"entity": "a", "breakpoint": b, "value": b} for b in (0, 1)]
     df = _rows_layer(axes, rows, "write_layer").record.attributes["p_nom"].df()
-    assert sorted(df["breakpoint"]) == [0, 1], "both points held as written"
+    assert sorted(df["breakpoint"]) == [0, 1], "both breakpoints held as written"
 
 
 def test_a_stored_pair_naming_the_same_dims_fails_the_read(axes):

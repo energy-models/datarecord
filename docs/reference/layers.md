@@ -110,9 +110,9 @@ It refuses any other type, naming the attribute, property or dim and its dtype.
 ### Attribute files
 
 - The writer refuses an attribute that the schema does not declare.
-- An attribute file has exactly its attribute's own coordinates, then `attribute`, `breakpoint` and `value` ([the long schema](format.md#attributesattrparquet)). The writer refuses a file that lacks a coordinate, or that has a column the attribute is not over.
-- A multi-dim's column is a struct with exactly its coordinates as fields, and the writer refuses a tuple with some fields NULL and not all.
-- The writer refuses two rows of one attribute at one point that set the same dims. It also refuses two rows there where each row leaves NULL a dim that the other row sets, unless a third row sets both.
+- An attribute file has exactly a column per dim of its attribute, then `attribute`, `breakpoint` and `value` ([the long schema](format.md#attributesattrparquet)). The writer refuses a file that lacks a dim's column, or that has a column the attribute is not over.
+- A multi-dim's column is a struct with exactly its fields, and the writer refuses a tuple with some fields NULL and not all.
+- The writer refuses two rows of one attribute at one coordinate that set the same dims. It also refuses two rows there where each row leaves NULL a dim that the other row sets, unless a third row sets both.
 
 ### Axis files
 
@@ -130,7 +130,7 @@ ValueError: dims/entity.parquet puts entity 'wind' out of its parent's order; a 
 The labels and tuples in every row of a layer are on the layer's final axes.
 The final axis of a dim is the layer's own file, or else the parent's resolved axis.
 The writer refuses an attribute row with a label or tuple outside the final axes.
-It refuses a multi-dim's tuple that contains a label outside its coordinate's final axis the same way:
+It refuses a multi-dim's tuple that contains a label outside its field's final axis the same way:
 
 ```text
 ValueError: attributes/p_max_pu.parquet names 'entity' labels ['coal'], which the layer's dims/entity.parquet does not hold; add them there or drop those rows (https://energy-models.github.io/datarecord/reference/layers/)

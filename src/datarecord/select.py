@@ -135,7 +135,7 @@ class Selection:
         """`rel`, rows of `attribute` over this view, with the squeezed labels put back.
 
         Each squeezed dim the base declares `attribute` over is added as a
-        column at its label, and each squeezed coordinate back into its
+        column at its label, and each squeezed field back into its
         multi-dim's struct; a NULL struct stays NULL. An attribute the base
         declares over no squeezed dim comes back as it came.
 
@@ -180,7 +180,7 @@ class Selection:
         return schema.duck_type(schema.dimensions[dim])
 
     def _shrunk(self, dim: str) -> bool:
-        """Whether `dim` is a multi-dim the view keeps with some coordinates squeezed."""
+        """Whether `dim` is a multi-dim the view keeps with some fields squeezed."""
         if dim not in self.schema.multi_dims:
             return False
         return self.schema.over(dim) != self.base.schema.over(dim)
@@ -199,13 +199,13 @@ class Selection:
         return self._reduced(rel)
 
     def _reduced(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`rel` with each struct of a multi-dim the view keeps reduced to the view's coordinates."""
+        """`rel` with each struct of a multi-dim the view keeps reduced to the view's fields."""
         if not any(self._shrunk(c) for c in rel.columns):
             return rel
         return rel.project(*(self._column(c) for c in rel.columns))
 
     def _column(self, c: str) -> Expression:
-        """Column `c`, a multi-dim's struct reduced to the view's coordinates."""
+        """Column `c`, a multi-dim's struct reduced to the view's fields."""
         if not self._shrunk(c):
             return col(c)
         fields = {f: col(c)[f] for f in self.schema.over(c)}
@@ -238,7 +238,7 @@ class Selection:
 def select(record: RecordLike, /, **labels: Any) -> Selection:
     """`record` at the labels named, as xarray's `sel` takes them.
 
-    A keyword names a dim; one naming a multi-dim's coordinate that is no dim
+    A keyword names a dim; one naming a multi-dim's field that is no dim
     narrows its tuples, and any other names a property by its bare name and
     narrows its subject to the labels whose value, its default applied, is
     selected. One label squeezes its dim. A list, a slice (both ends
@@ -256,8 +256,8 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
     Raises
     ------
     ValueError
-        Naming the keyword: one naming no dim, coordinate or property, a
-        multi-dim, a coordinate of several multi-dims or a property several
+        Naming the keyword: one naming no dim, field or property, a
+        multi-dim, a field of several multi-dims or a property several
         subjects declare; a label the axis lacks; an empty list; a slice with
         a step, of an axis neither numeric nor datetime, with an end the axis
         cannot compare or covering no label; a squeezed label another
@@ -282,7 +282,7 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
             raise _refusal(
                 keyword,
                 value,
-                "names a multi-dim, whose tuples are selected through its coordinates",
+                "names a multi-dim, whose tuples are selected through its fields",
             )
         if keyword in schema.dimensions:
             matched = _match(
@@ -375,7 +375,7 @@ def _narrowing(
 ) -> tuple[str, set[Any], list[Any]]:
     """The subject a keyword naming no dim narrows, the keys of its labels kept, and the values matched.
 
-    A coordinate of a multi-dim keeps the tuples holding a matched label
+    A field of a multi-dim keeps the tuples holding a matched label
     there; a property keeps the labels whose value, its default applied, is
     matched. The values a property is matched against are the axis of the dim
     it refers to, else the values its labels hold, sorted.
@@ -383,7 +383,7 @@ def _narrowing(
     Raises
     ------
     ValueError
-        If `keyword` is a coordinate of several multi-dims, a property of
+        If `keyword` is a field of several multi-dims, a property of
         several subjects or neither, or as `_match` does.
     """
     multis = [m for m in schema.multi_dims if keyword in schema.over(m)]
@@ -391,7 +391,7 @@ def _narrowing(
         raise _refusal(
             keyword,
             value,
-            f"names a coordinate of each of {multis}; select through a dim instead",
+            f"names a field of each of {multis}; select through a dim instead",
         )
     if multis:
         (multi,) = multis
@@ -404,7 +404,7 @@ def _narrowing(
         return multi, {_key(t) for t in tuples if _key(t[keyword]) in wanted}, matched
     owners = [s for s, specs in schema.properties.items() if keyword in specs]
     if not owners:
-        raise _refusal(keyword, value, "names no dim, coordinate or property")
+        raise _refusal(keyword, value, "names no dim, field or property")
     if len(owners) > 1:
         raise _refusal(
             keyword,
@@ -429,7 +429,7 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
     """Narrow `kept` until no kept label refers to one dropped.
 
     A label goes where a property, its default applied, names a dropped label,
-    and a tuple where one of its coordinates does; a NULL names none.
+    and a tuple where one of its fields does; a NULL names none.
 
     Notes
     -----
@@ -452,7 +452,7 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
                 }
                 _narrow(kept, subject, set(values) - gone)
         for multi in schema.multi_dims:
-            for coordinate, dim in schema.over(multi).items():
+            for f, dim in schema.over(multi).items():
                 if dropped.get(dim):
                     _narrow(
                         kept,
@@ -460,7 +460,7 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
                         {
                             _key(t)
                             for t in read.axis(multi)
-                            if _key(t[coordinate]) not in dropped[dim]
+                            if _key(t[f]) not in dropped[dim]
                         },
                     )
         if {d: len(keys) for d, keys in kept.items()} == before:
@@ -515,7 +515,7 @@ def _schema(
 ) -> Schema:
     """`schema` without the `squeezed` dims, their properties and the properties referring to one.
 
-    A multi-dim loses the coordinates drawing on a squeezed dim, and an
+    A multi-dim loses the fields drawing on a squeezed dim, and an
     attribute its squeezed dims. A `default_by` keyed on a property that goes
     applies its entry for the squeezed label's category as the default, which
     the keys before it still override, and the keys after it never reach.

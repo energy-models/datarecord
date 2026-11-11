@@ -21,7 +21,7 @@ from uuid import UUID, uuid4
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord.duck import ensure_local_dir, write_parquet
-from datarecord.resolve.coords import Coords
+from datarecord.resolve.axes import Axes
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import _checkpointed
 from datarecord.resolve.sources import LayerSource, ParquetLayer
@@ -98,7 +98,7 @@ def materialise(
     Safe to call more than once, and safe to call on any node - layers are
     write-once, so what is folded here cannot later become stale. Two writers
     write the same content, so racing is harmless. Where the workspace holds
-    the node's fold as tables (`Coords.held`), they are written rather than folded
+    the node's fold as tables (`Axes.held`), they are written rather than folded
     again.
 
     `owner_map.parquet` is what `materialised` reads as the whole
@@ -145,9 +145,9 @@ def _materialise_dims(
     - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     con = store.workspace.con
-    coords = Coords.held(sources[-1]) or Coords.resolve(sources)
+    axes = Axes.held(sources[-1]) or Axes.resolve(sources)
     dead = f"{store.resolved_dir(revision_id)}dead/"
-    ensure_local_dir(dead if coords.dead else store.resolved_dir(revision_id))
-    for name, rel in coords.dead.items():
+    ensure_local_dir(dead if axes.dead else store.resolved_dir(revision_id))
+    for name, rel in axes.dead.items():
         _to_parquet(rel, f"{dead}{name}.parquet", con)
-    _to_parquet(coords.owners(con), store.dim_owners_uri(revision_id), con)
+    _to_parquet(axes.owners(con), store.dim_owners_uri(revision_id), con)

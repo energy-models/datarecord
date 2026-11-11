@@ -71,7 +71,7 @@ A `Requirements` is truthy when any field but `ignored` has an entry.
 
 A tool's `Schema` lists, per category, the tool attributes that are renamed or computed, each an `Attr` that lists its source attributes.
 An attribute with no entry keeps its name, so an empty `Schema` maps every name to itself.
-`Attr.resolve` [settles](record.md) each source attribute before it renames or computes, so a computed attribute combines one row per point of each source.
+`Attr.resolve` [settles](record.md) each source attribute before it renames or computes, so a computed attribute combines one row per coordinate of each source.
 
 !!! info "See also"
 

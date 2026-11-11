@@ -167,7 +167,7 @@ print(solved.record.attributes["p_nom"].df())
 1     None   gas1     p_nom         NaN   80.0
 ```
 
-`p_nom` comes from `inputs`, with the `scenario` coordinate that the tool's schema declares left NULL.
+`p_nom` comes from `inputs`, with the `scenario` dim that the tool's schema declares left NULL.
 
 ## What you have built
 

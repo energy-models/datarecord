@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 This page describes how datarecord reads the layers of a revision as one record.
 It covers axes, the owner map, crossing rows, what a read returns, flags, materialised revisions and a directory.
 
-A read returns one row at each point, by two rules.
+A read returns one row at each coordinate, by two rules.
 Within one layer, datarecord keeps the more specific row, by [the broadcast rule](data-model.md).
 Across layers, a read returns the deeper layer's row where rows of two layers meet.
 
@@ -20,7 +20,7 @@ Across layers, a read returns the deeper layer's row where rows of two layers me
 The step that folds a revision's [layers](layers.md) one at a time, root first (the fold), builds the owner map.
 The map lists, for each attribute, each key a layer wrote and the layer it assigns the key to.
 A read of an attribute joins to the map the files of the layers it lists, and returns the rows as written.
-A [reader](record.md) settles each point by the broadcast rule.
+A [reader](record.md) settles each coordinate by the broadcast rule.
 
 ## Axes
 
@@ -65,7 +65,7 @@ Three terms describe how the rows of two layers meet:
 | ------- | ------------------------------------------------------------------------------------------------------------------------ |
 | sets    | a row sets a dim in `partial` where its key has a label, and any other dim of the attribute where its rows vary along it |
 | covers  | on each dim in `partial`, the two rows have the same label, or one of them has NULL                                      |
-| crosses | the two rows cover a common point, and each row leaves NULL a dim that the other row sets                                |
+| crosses | the two rows cover a common coordinate, and each row leaves NULL a dim that the other row sets                           |
 
 The fold runs three steps, in this order:
 
@@ -89,8 +89,8 @@ A child that writes only `(gas, high) = 70` leaves the root's `(gas, NULL)` in t
 
 ## Crossing rows
 
-Two rows of two layers cross where they cover a common point and each row leaves NULL a dim that the other row sets.
-At such a point neither row is more specific, so the broadcast rule alone does not settle it.
+Two rows of two layers cross where they cover a common coordinate and each row leaves NULL a dim that the other row sets.
+At such a coordinate neither row is more specific, so the broadcast rule alone does not settle it.
 The fold therefore adds an overlap row, which the owner map assigns to the deeper layer, with every label that either row sets.
 
 <figure class="diagram">
@@ -109,8 +109,8 @@ A NULL on a dim in `partial` means every label of that dim's axis as resolved at
 A row therefore applies to a label added below the revision that wrote it, or one staged in a `WorkingRecord`.
 In the example above, a child that adds the scenario `mid` has `(gas, mid)` at 50.
 
-A row applies at every point that no more specific row covers, whichever layer wrote it.
-So a read returns a deeper layer's value only at the points its rows apply to.
+A row applies at every coordinate that no more specific row covers, whichever layer wrote it.
+So a read returns a deeper layer's value only at the coordinates its rows apply to.
 With `p_max_pu` over `entity`, `scenario` and `snapshot`, a root row `(gas, NULL, 1) = 1.0` and a child row `(NULL, high, 0) = 2.0` leave `(gas, high, 1)` at 1.0, from the root.
 
 ## Reading an attribute
@@ -118,13 +118,13 @@ With `p_max_pu` over `entity`, `scenario` and `snapshot`, a root row `(gas, NULL
 `record.attributes[name]` returns the attribute's rows from the layers that the map assigns a key to, as written.
 A key left NULL stays NULL.
 Where the map has an overlap row, the read also returns a value at the overlap row's labels. That value comes from the layer the map assigns the overlap row to.
-The read expands no NULL, settles no point, and returns rows in no fixed order.
+The read expands no NULL, settles no coordinate, and returns rows in no fixed order.
 An attribute that no layer wrote is an empty relation, typed as declared, and the reader applies the schema's `default`.
 
 A layer may contain rows of one attribute that set different dims in `partial`.
 The child above is one: its `(gas, NULL)`, `(NULL, high)` and `(gas, high)` all apply at `(gas, high)`.
-At such a point the read keeps the layer's row that leaves no dim NULL that another row there sets.
-Where no row does, the read fails, naming the attribute and the point.
+At such a coordinate the read keeps the layer's row that leaves no dim NULL that another row there sets.
+Where no row does, the read fails, naming the attribute and the coordinate.
 A curve is kept or dropped whole.
 
 !!! info "See also"
