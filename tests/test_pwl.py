@@ -49,7 +49,7 @@ def _root_with_curve(store) -> HandBuilt:
 
 
 def test_a_child_curve_replaces_the_parents_value_whole(store):
-    """`breakpoint` is not in `owner_map_index`: one layer owns every breakpoint of a key.
+    """`breakpoint` is not in `owner_map_index`: one layer owns every breakpoint of a map row.
 
     So a child's curve replaces a parent's curve entirely - never a mix of the
     two.
@@ -80,7 +80,7 @@ def test_a_child_curve_replaces_the_parents_value_whole(store):
 
 
 def test_breakpoints_distinguishes_curve_from_scalar(store):
-    """The owner map says which keys are curves, without opening the file.
+    """The owner map says which map rows are curves, without opening the file.
 
     Notes
     -----
@@ -109,4 +109,4 @@ def test_breakpoints_distinguishes_curve_from_scalar(store):
         (0.0, 20.0),
         (50.0, 35.0),
         (80.0, 60.0),
-    ], "a curve is N rows of one key, ordered by sorting on `breakpoint`"
+    ], "a curve is N rows of one coordinate, ordered by sorting on `breakpoint`"

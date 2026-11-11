@@ -39,7 +39,7 @@ from duckdb import DuckDBPyRelation, Expression
 from datarecord.duck import FOLD, fn, tables_in, union_all_by_name
 from datarecord.protocols import Flags
 from datarecord.resolve.axes import Axes, _fold_name
-from datarecord.resolve.owner_keys import _empty_relation, owner_keys
+from datarecord.resolve.owner_map_rows import _empty_relation, owner_map_rows
 from datarecord.schema.categories import (
     categorized_dim,
     matching,
@@ -115,7 +115,7 @@ class Fold:
         record is read under, which says which dims the flags carry.
     owner_map
         The resolved owner map: `(owner_map_index, layer_uuid, varies,
-        broadcast, breakpoints)`, one row per key as its layer wrote it,
+        broadcast, breakpoints)`, one map row as its layer wrote it,
         expanded along a dim only where a deeper layer crossed it there.
     """
 
@@ -123,7 +123,7 @@ class Fold:
     owner_map: DuckDBPyRelation
 
     def owners(self, attribute: str) -> DuckDBPyRelation:
-        """The owner-map rows for one attribute - which layer owns each of its keys.
+        """The owner-map rows for one attribute - which layer owns each of its map rows.
 
         Notes
         -----
@@ -233,7 +233,7 @@ class Fold:
         that is no `Record`, a tool presenting a framework object among them,
         can answer them. The owner map is collected once, so each `flags` call
         aggregates it alone. A layered `Record` passed here is flattened: the
-        keys each of its layers wrote are lost.
+        map rows each of its layers wrote are lost.
 
         Notes
         -----
@@ -242,7 +242,7 @@ class Fold:
         """
         schema, attributes, con = record.schema, record.attributes, record.con
         layer = uuid4()
-        owned = [owner_keys(attributes[a], schema, layer, (a,)) for a in attributes]
+        owned = [owner_map_rows(attributes[a], schema, layer, (a,)) for a in attributes]
         owner_map = (
             union_all_by_name(owned)
             if owned

@@ -300,7 +300,7 @@ class Schema(_Declared):
         subject, _, prop = name.partition(".")
         field = prop in self.over(subject) if subject in self.dimensions else False
         if field:
-            reason = f"is a field of the multi-dim {subject!r}, part of its key"
+            reason = f"is a field of the multi-dim {subject!r}, not a property"
         elif prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
         elif (one_of := self.properties[subject][prop].one_of) is None:
@@ -442,11 +442,11 @@ class Schema(_Declared):
             if why is not None:
                 problems.append(f"{kind} {name!r} {why}")
         for subject, specs in self.properties.items():
-            keyed = sorted(set(specs) & self._key_of(subject))
-            if keyed:
+            clashing = sorted(set(specs) & self._column_of(subject))
+            if clashing:
                 msg = (
-                    f"properties {keyed} of {subject!r} are named like a column "
-                    f"of its key, which they would collide with - rename the "
+                    f"properties {clashing} of {subject!r} are named like its column "
+                    f"{subject!r}, which they would collide with - rename the "
                     f"properties"
                 )
                 raise ValueError(msg)
@@ -455,7 +455,7 @@ class Schema(_Declared):
             if shared:
                 msg = (
                     f"properties {shared} of multi-dim {subject!r} share their "
-                    f"names with its fields, which are part of its key - "
+                    f"names with its fields, so `{subject}.<name>` would name both - "
                     f"rename the properties"
                 )
                 raise ValueError(msg)
@@ -475,14 +475,14 @@ class Schema(_Declared):
             )
             raise ValueError(msg)
 
-    def _key_of(self, subject: str) -> set[str]:
-        """Return the key column of the file of `subject`, a name no property of it may take.
+    def _column_of(self, subject: str) -> set[str]:
+        """Return the column of the file of `subject`, a name no property of it may take.
 
         That is the dim's own column, a multi-dim's struct column.
         """
         return {subject}
 
-    # -- derived key sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
+    # -- derived dim sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
 
     @property
     def flat_dims(self) -> tuple[str, ...]:
@@ -654,21 +654,21 @@ class Schema(_Declared):
         """
         types = dict(zip(rel.columns, rel.types, strict=True))
         for multi in multi_dims:
-            key = list(self.over(multi))
-            flat = [c for c in key if c in types]
+            over = list(self.over(multi))
+            flat = [c for c in over if c in types]
             dtype = types.get(multi)
             fields = (
-                key
+                over
                 if dtype is None
                 else [name for name, _ in dtype.children]
                 if dtype.id == "struct"
                 else None
             )
-            if flat or fields is None or set(fields) != set(key):
+            if flat or fields is None or set(fields) != set(over):
                 carried = f"{flat} flat" if flat else f"{multi!r} as {dtype}"
                 msg = (
                     f"{carrier} carries {carried}; pass {multi!r} as one struct "
-                    f"column of its fields, {key} (https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
+                    f"column of its fields, {over} (https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
                 )
                 raise ValueError(msg)
 
@@ -845,9 +845,7 @@ class Schema(_Declared):
         resolved = self.resolve(name)
         spec = resolved[1] if isinstance(resolved, tuple) else resolved
         if isinstance(spec, Dimension):
-            msg = (
-                f"{name!r} is a field, part of its multi-dim's key, and has no default"
-            )
+            msg = f"{name!r} is a field of a multi-dim, not a property, and has no default"
             raise KeyError(msg)
         for key, by in spec.default_by.items():
             category = categories.get(key.partition(".")[2])
@@ -940,9 +938,9 @@ class Schema(_Declared):
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
-        attribute may vary over, `partial_dims` the fold key (the `partial`
-        dims), and ownership is their intersection. A
-        dim in `dims` but not the fold key - a non-`partial` value axis like
+        attribute may vary over, `partial_dims` the owner map's index (the
+        `partial` dims), and ownership is their intersection. A
+        dim in `dims` but not the owner map's index - a non-`partial` value axis like
         `timestep` - is owned whole, so a patch to one of its values restates the
         attribute's entire extent along it (`_owned_whole`).
 
@@ -958,10 +956,10 @@ class Schema(_Declared):
 
     @property
     def partial_dims(self) -> tuple[str, ...]:
-        """The fold key's dims, in declaration order.
+        """The dims of the owner map's index, in declaration order.
 
-        The dims a layer may patch per value (`partial`). The fold's
-        key is one fixed tuple over all attributes, so it carries every axis *any* layer may patch by value or
+        The dims a layer may patch per value (`partial`). The owner map's
+        index is one fixed tuple over all attributes, so it carries every axis *any* layer may patch by value or
         by row, not only those some currently declared attribute varies over. An
         attribute not owned per one of them writes NULL there, the "NULL means
         all values" rule - which also lets a schema declare an axis before any
@@ -976,7 +974,7 @@ class Schema(_Declared):
         partial = self.partial or frozenset()
         return tuple(d for d in self.dims if d in partial)
 
-    # -- key and column sets (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map) -----------------------------------
+    # -- index and column sets (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map) -----------------------------------
 
     @property
     def long_columns(self) -> tuple[str, ...]:
@@ -1275,7 +1273,7 @@ def packed(
         return lit(None).cast(struct)
     if missing:
         msg = (
-            f"{multi!r} is keyed by {list(over)}, and {missing} was not given; "
+            f"{multi!r} has the fields {list(over)}, and {missing} was not given; "
             f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
         )
         raise ValueError(msg)

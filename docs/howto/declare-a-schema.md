@@ -126,7 +126,7 @@ print(schema.dims_of("efficiency"))
 ('connection',)
 ```
 
-`efficiency` is keyed by the one dim `connection`, a multi-dim whose tuples are structs of `entity` and `bus`. datarecord refuses a dim in `dims` that the schema does not declare:
+`efficiency` is over the one dim `connection`, a multi-dim whose tuples are structs of `entity` and `bus`. datarecord refuses a dim in `dims` that the schema does not declare:
 
 ```python
 Schema(

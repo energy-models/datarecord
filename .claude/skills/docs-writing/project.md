@@ -98,7 +98,7 @@ boxes and arrows.
 - Every attribute or axis is a table, one row per row of its file. This is a
   table view, not a grid of dims. The note where no row exists reads like "no
   row: `coal` is removed".
-- A second dim is a second key column, such as `scenario` beside `entity` in a
+- A second dim is a second column, such as `scenario` beside `entity` in a
   crossing.
 - A table's header band has the tint of its kind. In a result table where
   the owner map is the point, each body row has the tint of the layer the

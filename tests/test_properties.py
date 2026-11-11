@@ -88,7 +88,7 @@ def _rows(rel: DuckDBPyRelation) -> dict:
     return {r.pop("entity"): r for r in rows}
 
 
-def test_an_axis_frame_is_its_key_only(record):
+def test_an_axis_frame_is_its_column_only(record):
     assert record.dims["entity"].columns == ["entity"]
 
 

@@ -46,7 +46,7 @@ print(record.attributes["p_max_pu"].filter("entity = 'wind1'").df())
 2  wind1         0  p_max_pu         NaN    0.3
 ```
 
-Each row is one value of `wind1`'s series. A NULL in a dim's column means every label of its dim ([the broadcast rule](../reference/data-model.md)). An attribute row has no property column, so join `properties` on the key to filter by category.
+Each row is one value of `wind1`'s series. A NULL in a dim's column means every label of its dim ([the broadcast rule](../reference/data-model.md)). An attribute row has no property column, so join `properties` on the dim's column to filter by category.
 
 ## Plan a read with `flags`
 

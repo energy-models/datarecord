@@ -34,8 +34,8 @@ from datarecord.resolve.axes import (
     refuse_unheld,
     removed_labels,
 )
-from datarecord.resolve.owner_keys import cast_declared
 from datarecord.resolve.owner_map import unsettled
+from datarecord.resolve.owner_map_rows import cast_declared
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
 from datarecord.schema.schema import DERIVED, Schema
@@ -93,7 +93,7 @@ def write_layer(
     ------
     ValueError
         If a long frame is missing a long-schema column, or the schema
-        declares a key dim no frame carries - either would make the fold
+        declares a dim no frame carries - either would make the fold
         misresolve the layer.
         If a multi-dim's tuple or a property that refers to a dim names
         a label dead after the layer, in a subject the layer restates or whose
@@ -129,33 +129,35 @@ def write_layer(
     written: dict[str, list[str]] = {"dims": [], "attributes": []}
 
     def _written(
-        read: Callable[[str], DuckDBPyRelation | None], kind: str, key: str
+        read: Callable[[str], DuckDBPyRelation | None], kind: str, name: str
     ) -> DuckDBPyRelation | None:
-        """`read(key)`, called once, validated, written and read back; `None` where it is."""
-        rel = read(key)
+        """`read(name)`, called once, validated, written and read back; `None` where it is."""
+        rel = read(name)
         if rel is None:
             return None
-        _validate_frame(rel, kind, key, schema)
-        frame = con.read_parquet(_write_frame(rel, base, kind, key, schema, con))
+        _validate_frame(rel, kind, name, schema)
+        frame = con.read_parquet(_write_frame(rel, base, kind, name, schema, con))
         multi_dims = (
-            schema.multi_dims_of(key)
+            schema.multi_dims_of(name)
             if kind == "attributes"
-            else {key} & set(schema.multi_dims)
+            else {name} & set(schema.multi_dims)
         )
-        schema.refuse_partial_tuples(multi_dims, frame, carrier=f"{kind}/{key}.parquet")
+        schema.refuse_partial_tuples(
+            multi_dims, frame, carrier=f"{kind}/{name}.parquet"
+        )
         return frame
 
     refuse_one_of_file(schema, data.axes(), "the layer")
-    for key in sorted(data.axes(), key=schema.multi_dims.__contains__):
-        frame = _written(data.axis, "dims", key)
+    for dim in sorted(data.axes(), key=schema.multi_dims.__contains__):
+        frame = _written(data.axis, "dims", dim)
         if frame is None:
             continue
-        written["dims"].append(key)
-        file = f"dims/{key}.parquet"
-        refuse_twice(frame, [key], file)
-        before = _parent_axis(parent, schema, key, con)
+        written["dims"].append(dim)
+        file = f"dims/{dim}.parquet"
+        refuse_twice(frame, [dim], file)
+        before = _parent_axis(parent, schema, dim, con)
         if before is not None:
-            _refuse_reordered(frame, before, key, file)
+            _refuse_reordered(frame, before, dim, file)
     held: Callable[[str], DuckDBPyRelation | None]
     held = partial(_parent_axis, parent, schema, con=con)
     if data.axes():
@@ -165,28 +167,29 @@ def write_layer(
         parents = [] if parent is None else parent.sources
         axes = Axes.resolve([*parents, layer])
         held = axes.get
-        for key in written["dims"]:
-            if key not in schema.multi_dims:
+        for dim in written["dims"]:
+            if dim not in schema.multi_dims:
                 continue
-            file = f"dims/{key}.parquet"
+            file = f"dims/{dim}.parquet"
             refuse_unheld(
-                axes[key],
+                axes[dim],
                 schema,
-                [key],
+                [dim],
                 held,
                 file,
                 staged=False,
-                subject=key,
+                subject=dim,
             )
-    for key in data.attributes():
-        frame = _written(data.attribute, "attributes", key)
+    for attribute in data.attributes():
+        frame = _written(data.attribute, "attributes", attribute)
         if frame is None:
             continue
-        written["attributes"].append(key)
-        file = f"attributes/{key}.parquet"
-        _refuse_unordered(frame, key, schema)
-        key_dims = schema.dims_of(key)
-        refuse_unheld(frame, schema, key_dims, held, file, staged=False)
+        written["attributes"].append(attribute)
+        file = f"attributes/{attribute}.parquet"
+        _refuse_unordered(frame, attribute, schema)
+        refuse_unheld(
+            frame, schema, schema.dims_of(attribute), held, file, staged=False
+        )
     files = LayerFiles(
         dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
     )
@@ -199,11 +202,11 @@ def _write_frame(
     rel: DuckDBPyRelation,
     base: str,
     kind: str,
-    key: str,
+    name: str,
     schema: Schema,
     con: DuckDBPyConnection,
 ) -> str:
-    """Write `rel` as `{kind}/{key}.parquet` under `base`, unmaterialised; return its URI.
+    """Write `rel` as `{kind}/{name}.parquet` under `base`, unmaterialised; return its URI.
 
     Columns are cast to their declared types on the way out, so a reader can
     trust them. Before that, a column whose type does not fit its declared
@@ -222,15 +225,15 @@ def _write_frame(
     - [relations](https://energy-models.github.io/datarecord/reference/record/#relations)
     - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
-    file = f"{kind}/{key}.parquet"
+    file = f"{kind}/{name}.parquet"
     uri = f"{base}{file}"
     if "://" not in uri:
         Path(uri).parent.mkdir(parents=True, exist_ok=True)
     unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
-    subject = key if kind == "dims" else None
-    attribute = key if kind == "attributes" else None
+    subject = name if kind == "dims" else None
+    attribute = name if kind == "attributes" else None
     rel = schema.require_takes(rel, file, subject, attribute)
     rel = cast_declared(schema, rel, subject, attribute)
     write_parquet(rel, uri, con, ordered=kind == "dims")
@@ -289,7 +292,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
 
 
 def _refuse_reordered(
-    rel: DuckDBPyRelation, parent: DuckDBPyRelation, key: str, file: str
+    rel: DuckDBPyRelation, parent: DuckDBPyRelation, dim: str, file: str
 ) -> None:
     """Refuse a restatement ordering the labels it shares with `parent` otherwise.
 
@@ -307,15 +310,15 @@ def _refuse_reordered(
     -----
     - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
     """
-    mine = rel.project(col(key), fn.row_number().over().alias("_mine"))
-    theirs = parent.project(col(key), fn.row_number().over().alias("_theirs"))
+    mine = rel.project(col(dim), fn.row_number().over().alias("_mine"))
+    theirs = parent.project(col(dim), fn.row_number().over().alias("_theirs"))
     shared = (
         mine.set_alias("m")
-        .join(theirs.set_alias("t"), col("m", key) == col("t", key))
-        .project(col("m", key).alias(key), col("_mine"), col("_theirs"))
+        .join(theirs.set_alias("t"), col("m", dim) == col("t", dim))
+        .project(col("m", dim).alias(dim), col("_mine"), col("_theirs"))
     )
     ranked = shared.project(
-        col(key),
+        col(dim),
         col("_mine"),
         fn.row_number().over(order_by=[col("_mine")]).alias("_a"),
         fn.row_number().over(order_by=[col("_theirs")]).alias("_b"),
@@ -323,13 +326,13 @@ def _refuse_reordered(
     first = (
         ranked.filter(col("_a") != col("_b"))
         .order("_mine")
-        .project(col(key))
+        .project(col(dim))
         .limit(1)
         .fetchall()
     )
     if first:
         msg = (
-            f"{file} puts {key} {first[0][0]!r} out of its parent's order; a "
+            f"{file} puts {dim} {first[0][0]!r} out of its parent's order; a "
             f"restatement keeps the order of the labels its parent holds and "
             f"places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)"
         )
@@ -431,11 +434,13 @@ def _require_living_references(
         raise ValueError(msg)
 
 
-def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) -> None:
+def _validate_frame(
+    rel: DuckDBPyRelation, kind: str, name: str, schema: Schema
+) -> None:
     """Check one frame is shaped for the fold to resolve it.
 
     Structural only: a long frame carries a column per dim of its attribute, and a
-    `dims/` frame carries every dim the schema declares it keyed by. Values
+    `dims/` frame carries its dim's column. Values
     are not checked - which labels and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
@@ -459,17 +464,17 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         # An attribute's shape comes from its spec, so one the schema does not
         # declare has no shape to check it against - and writing it would put a
         # file in `attributes/` that no read path knows the columns of.
-        if key not in schema.attributes:
+        if name not in schema.attributes:
             msg = (
-                f"attributes/{key}.parquet is not a declared attribute; its `dims` "
+                f"attributes/{name}.parquet is not a declared attribute; its `dims` "
                 f"are what say which columns the file carries (https://energy-models.github.io/datarecord/reference/schema/#attributes)"
             )
             raise ValueError(msg)
-        required = set(schema.long_columns_for(key))
+        required = set(schema.long_columns_for(name))
         missing = sorted(required - columns)
         if missing:
             msg = (
-                f"attributes/{key}.parquet is missing long-schema columns {missing}; "
+                f"attributes/{name}.parquet is missing long-schema columns {missing}; "
                 f"the resolved relation needs {sorted(required)} (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)"
             )
             raise ValueError(msg)
@@ -481,30 +486,30 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
         extra = sorted(columns - required)
         if extra:
             msg = (
-                f"attributes/{key}.parquet carries columns {extra} the attribute is "
+                f"attributes/{name}.parquet carries columns {extra} the attribute is "
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)"
             )
             raise ValueError(msg)
         schema.check_multi_dim_columns(
-            schema.multi_dims_of(key), rel, carrier=f"attributes/{key}.parquet"
+            schema.multi_dims_of(name), rel, carrier=f"attributes/{name}.parquet"
         )
         return
 
     if kind == "dims":
-        if key not in schema.dimensions:
+        if name not in schema.dimensions:
             msg = (
-                f"dims/{key}.parquet is not a declared dim; a descendant "
+                f"dims/{name}.parquet is not a declared dim; a descendant "
                 f"declaring it would read these labels (https://energy-models.github.io/datarecord/reference/layers/#what-a-layer-may-contain)"
             )
             raise ValueError(msg)
-        if key not in columns:
-            msg = f"dims/{key}.parquet is missing its key column {key!r} (https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)"
+        if name not in columns:
+            msg = f"dims/{name}.parquet is missing its column {name!r} (https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)"
             raise ValueError(msg)
         refuse_foreign_columns(
-            columns, {key, "order_key"}, schema, key, f"dims/{key}.parquet"
+            columns, {name, "order_key"}, schema, name, f"dims/{name}.parquet"
         )
-        if key in schema.multi_dims:
-            schema.check_multi_dim_columns([key], rel, carrier=f"dims/{key}.parquet")
+        if name in schema.multi_dims:
+            schema.check_multi_dim_columns([name], rel, carrier=f"dims/{name}.parquet")
 
 
 class _RecordLikeAsLayerData:

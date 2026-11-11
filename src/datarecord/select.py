@@ -319,12 +319,12 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
         d: numbered_relation(
             record.con,
             d,
-            [label for label in read.axis(d) if _key(label) in keys],
+            [label for label in read.axis(d) if _key(label) in held],
             _dtype(schema, d),
             _AT,
         )
-        for d, keys in kept.items()
-        if d in squeezed or len(keys) < len(read.axis(d))
+        for d, held in kept.items()
+        if d in squeezed or len(held) < len(read.axis(d))
     }
     view = _schema(schema, squeezed, read.category(squeezed))
     return Selection(record, asked, view, squeezed, narrowed)
@@ -437,10 +437,10 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
     """
     referring = schema.one_of_properties()
     while True:
-        before = {d: len(keys) for d, keys in kept.items()}
+        before = {d: len(held) for d, held in kept.items()}
         dropped = {
-            d: {_key(label) for label in read.axis(d)} - keys
-            for d, keys in kept.items()
+            d: {_key(label) for label in read.axis(d)} - held
+            for d, held in kept.items()
         }
         for (subject, name), dim in referring.items():
             if dropped.get(dim):
@@ -463,7 +463,7 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
                             if _key(t[f]) not in dropped[dim]
                         },
                     )
-        if {d: len(keys) for d, keys in kept.items()} == before:
+        if {d: len(held) for d, held in kept.items()} == before:
             return
 
 
@@ -506,7 +506,7 @@ def _refuse_uncategorized(
 
 
 def _narrow(kept: dict[str, set[Any]], dim: str, allowed: set[Any]) -> None:
-    """Keep of `dim` only the keys in `allowed` too."""
+    """Keep of `dim` only the labels in `allowed` too."""
     kept[dim] = kept[dim] & allowed if dim in kept else set(allowed)
 
 

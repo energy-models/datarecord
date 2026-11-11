@@ -33,7 +33,7 @@ A dim with `one_of` returns its list, and a dim that no layer has labels for ret
 
 ## `properties`
 
-`properties` maps every subject that declares properties to a relation of the subject's key and one column per property, named by the property's plain name.
+`properties` maps every subject that declares properties to a relation of the subject's column and one column per property, named by the property's plain name.
 The values are as stored, with no default applied, so NULL means that no layer wrote a value.
 `Schema.default_for("entity.carrier", **categories)` returns a property's default.
 
