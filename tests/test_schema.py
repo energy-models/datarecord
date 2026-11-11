@@ -814,7 +814,7 @@ def test_column_types_cover_structural_dims_and_flags():
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
-        assert column_type == flag_type(s.broadcast_dims)
+        assert column_type == flag_type(s.dims)
         assert "scenario BOOLEAN" in str(column_type)
     assert s.column_type("value") is None
     assert s.value_type("p_nom") == sqltypes.DOUBLE

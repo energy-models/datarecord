@@ -43,7 +43,7 @@ print(view.properties["entity"].df())
 ```
 
 ```text
-('entity', 'ctype', 'bus', 'snapshot')
+('entity', 'ctype', 'bus', 'snapshot', 'connection')
   entity      ctype
 0  wind1  Generator
 ```

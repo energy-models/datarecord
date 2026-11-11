@@ -485,8 +485,8 @@ class Schema(_Declared):
     # -- derived key sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
 
     @property
-    def dims(self) -> tuple[str, ...]:
-        """Every declared dim but the multi-dims, in declaration order.
+    def flat_dims(self) -> tuple[str, ...]:
+        """Every dim that is not a multi-dim (a flat dim), in declaration order.
 
         Notes
         -----
@@ -529,22 +529,20 @@ class Schema(_Declared):
         return self.dimensions[dim].over or {}
 
     @property
-    def broadcast_dims(self) -> tuple[str, ...]:
-        """The coordinates a NULL broadcasts over: every declared dim, the multi-dims last.
+    def dims(self) -> tuple[str, ...]:
+        """The coordinates a NULL broadcasts over: every declared dim, the flat dims first.
 
-        A NULL here means "every value of this dim", which the fold expands
-        against the axis; a NULL struct means every tuple of the resolved
-        multi-dim.
-
-        What the `varies`/`broadcast` structs have a field per, and what
-        `expand_dims` joins.
+        A NULL means "every label of this dim", which the fold expands against
+        the axis; a NULL struct means every tuple of the resolved multi-dim.
+        The `varies` and `broadcast` structs have one field per dim, in this
+        order.
 
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
-        return (*self.dims, *self.multi_dims)
+        return (*self.flat_dims, *self.multi_dims)
 
     def coordinates_of(self, attribute: str) -> tuple[str, ...]:
         """The coordinate columns one attribute's rows carry, multi-dims first.
@@ -573,7 +571,7 @@ class Schema(_Declared):
         spec = self.attributes[attribute]
         return (
             *self.multi_dims_of(attribute),
-            *(d for d in self.dims if d in spec.dims),
+            *(d for d in self.flat_dims if d in spec.dims),
         )
 
     def duck_type(self, spec: Dimension | AttributeSpec | PropertySpec) -> DuckDBPyType:
@@ -941,7 +939,7 @@ class Schema(_Declared):
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         partial = self.partial or frozenset()
-        return tuple(d for d in self.broadcast_dims if d in partial)
+        return tuple(d for d in self.dims if d in partial)
 
     # -- key and column sets (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map) -----------------------------------
 
@@ -958,7 +956,7 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        return (*self.multi_dims, *self.dims, *LONG_TAIL)
+        return (*self.multi_dims, *self.flat_dims, *LONG_TAIL)
 
     @property
     def owner_map_key(self) -> tuple[str, ...]:
@@ -1036,7 +1034,7 @@ class Schema(_Declared):
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
         if column in ("varies", "broadcast"):
-            return flag_type(self.broadcast_dims) if self.broadcast_dims else None
+            return flag_type(self.dims) if self.dims else None
         return None
 
     def declared(

@@ -647,7 +647,7 @@ class Record:
     def _relation(self, attribute: str) -> DuckDBPyRelation:
         """Return the resolved long relation of one attribute, folded over every layer.
 
-        Joins the owning layers' rows to the owner map; a broadcast dim stored
+        Joins the owning layers' rows to the owner map; a dim stored
         NULL takes each value it is owned for. Unmaterialised, in the long
         schema (`schema.long_columns_for`), and empty where no layer owns a
         row of `attribute`. Above the frozen layers the plan is fixed: the
