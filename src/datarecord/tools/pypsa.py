@@ -774,7 +774,7 @@ def _names(index: pd.Index) -> pd.Index:
 
 
 def _series_labels(columns: pd.Index) -> dict[str, pd.Index]:
-    """The entity of each column of a dynamic frame, and its scenario on a stochastic network, by the key they are."""
+    """The entity of each column of a dynamic frame, and its scenario on a stochastic network."""
     labels = {ENTITY: columns.get_level_values(-1)}
     if isinstance(columns, pd.MultiIndex):
         labels[SCENARIO] = columns.get_level_values(0).astype(str)
@@ -3000,8 +3000,8 @@ class _NetworkSource:
         """
         wide = c.dynamic[attr]
         if held is not None and not wide.empty:
-            keys = self._series_keys(wide.columns, _dim_of(c.name))
-            wide = wide.loc[:, self._differing(held.rel, wide.to_numpy(), keys)]
+            coordinates = self._series_coordinates(wide.columns, _dim_of(c.name))
+            wide = wide.loc[:, self._differing(held.rel, wide.to_numpy(), coordinates)]
         if wide.empty:
             return None
         labels = _series_labels(wide.columns)
@@ -3029,27 +3029,27 @@ class _NetworkSource:
             col("value"),
         )
 
-    def _series_keys(self, columns: pd.Index, dim: str) -> DuckDBPyRelation:
-        """The keys of each column of a dynamic frame of `dim`'s type, its 1-based position as `_col`: its label of `dim`, and its scenario where stochastic."""
+    def _series_coordinates(self, columns: pd.Index, dim: str) -> DuckDBPyRelation:
+        """The coordinate of each column of a dynamic frame of `dim`'s type on every dim but `snapshot`, with its 1-based position as `_col`: its label of `dim`, and its scenario where stochastic."""
         labels = _series_labels(columns)
         frame = pd.DataFrame({**labels, "_col": np.arange(1, len(columns) + 1)})
-        key = col(ENTITY).cast(sqltypes.VARCHAR).alias(dim)
+        column = col(ENTITY).cast(sqltypes.VARCHAR).alias(dim)
         scenario = [col(SCENARIO)] if SCENARIO in labels else []
-        return self.con.from_df(frame).project(key, *scenario, col("_col"))
+        return self.con.from_df(frame).project(column, *scenario, col("_col"))
 
     def _differing(
         self,
         held: DuckDBPyRelation,
         values: np.ndarray,
-        keys: DuckDBPyRelation,
+        coordinates: DuckDBPyRelation,
     ) -> np.ndarray:
         """Whether each column of `values`, a series over `n.snapshots` in order, differs from `base`'s series in `held`.
 
-        A column is matched on its row of `keys`, by its 1-based position
+        A column is matched on its row of `coordinates`, by its 1-based position
         `_col`, NULL equal to NULL. It differs where `base` holds no row at
         one of the network's snapshots or another value there, NULL equal to
-        NaN, and wholly where `held` lacks such keys. `base`'s rows at
-        other snapshots, or set on a key `keys` lacks, are not compared.
+        NaN, and wholly where `held` lacks such a coordinate. `base`'s rows at
+        other snapshots, or at a coordinate `coordinates` lacks, are not compared.
 
         Notes
         -----
@@ -3057,7 +3057,7 @@ class _NetworkSource:
         - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
         steps, width = values.shape
-        on = [k for k in keys.columns if k != "_col"]
+        on = [c for c in coordinates.columns if c != "_col"]
         if not {SNAPSHOT, *on} <= set(held.columns):
             return np.ones(width, dtype=bool)
         unset = [
@@ -3068,14 +3068,14 @@ class _NetworkSource:
         series = held.filter(ex_all([col(SNAPSHOT).isnotnull(), *unset]))
         series = series.set_alias("h")
         matched = join_on(
-            series, keys.set_alias("k"), [null_safe("h", "k", on)] if on else []
+            series, coordinates.set_alias("c"), [null_safe("h", "c", on)] if on else []
         )
         positions = self._snapshot_positions.set_alias("s")
         placed = matched.join(
             positions, col("h", SNAPSHOT) == col("s", SNAPSHOT)
         ).project(
             (col("s", "_pos") - lit(1)).cast(sqltypes.INTEGER).alias("_pos"),
-            (col("k", "_col") - lit(1)).cast(sqltypes.INTEGER).alias("_col"),
+            (col("c", "_col") - lit(1)).cast(sqltypes.INTEGER).alias("_col"),
             col("h", "value").cast(sqltypes.DOUBLE).alias("value"),
         )
         seen = np.zeros(width, dtype=np.int64)

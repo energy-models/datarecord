@@ -551,7 +551,7 @@ class WorkingRecord(Record):
         )
 
     def _positioned(
-        self, rel: DuckDBPyRelation, table: str, kind: str, key: str
+        self, rel: DuckDBPyRelation, table: str, kind: str, dim: str
     ) -> DuckDBPyRelation:
         """`rel` with each row's position in the staged axis `table`.
 
@@ -567,14 +567,14 @@ class WorkingRecord(Record):
         )
         numbered = rel.project(star(), fn.row_number().over().alias("_n"))
         held = [
-            staged.project(col(key), col(_POSITION)),
-            base.project(col(key), fn.row_number().over().alias(_POSITION)),
+            staged.project(col(dim), col(_POSITION)),
+            base.project(col(dim), fn.row_number().over().alias(_POSITION)),
         ]
         joined = numbered.set_alias("r")
         for i, positions in enumerate(held):
             alias = f"h{i}"
             joined = joined.join(
-                positions.set_alias(alias), null_safe("r", alias, [key]), how="left"
+                positions.set_alias(alias), null_safe("r", alias, [dim]), how="left"
             )
         position = coalesce(
             *(col(f"h{i}", _POSITION) for i in range(len(held))),
