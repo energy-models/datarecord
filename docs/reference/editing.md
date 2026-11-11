@@ -37,7 +37,7 @@ a `WorkingRecord` folds its staged rows over a `Record`'s layers, and a Selectio
 
 Each edit stages rows of one file of the [format](format.md):
 
-| Edit                      | Stages                                                                               | Keyed by             |
+| Edit                      | Stages                                                                               | Matched on           |
 | ------------------------- | ------------------------------------------------------------------------------------ | -------------------- |
 | `set` an attribute        | rows of `attributes/<attr>.parquet`                                                  | the attribute's dims |
 | `set` a property          | the subject's axis, with one column of the labels set changed                        | the subject's label  |
@@ -92,7 +92,7 @@ A property of a multi-dim selects its tuples the same way, and a field keyword s
 | sequence | aligned by position                | exactly one list keyword, of the same length     |
 | mapping  | keys are labels of one keyword     | the one keyword not given                        |
 | series   | index is labels of one keyword     | the index's name, else the one keyword not given |
-| frame    | supplies its own keys              | single labels that complete it                   |
+| frame    | supplies its own labels            | single labels that complete it                   |
 
 A frame is a DuckDB relation, or a pandas, polars or arrow frame that DuckDB scans.
 Over a multi-dim, a frame has the struct column, such as `connection STRUCT(entity, bus)`, and `set` refuses one with the fields as flat columns.
@@ -107,10 +107,10 @@ It casts a smaller integer to `BIGINT`, a number to `DOUBLE`, a timestamp of any
 `set("entity.carrier", value, ...)` changes one column of the subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with keywords that select the labels, or a scalar for every label.
 A categorising property is set the same way, and the label keeps its attribute values under its new category.
-`set` refuses a field, such as `connection.bus`, because a field is part of the key:
+`set` refuses a field, such as `connection.bus`, because a field is part of the label:
 
 ```text
-`set('connection.bus', ...)` names a field of the multi-dim 'connection', part of its key rather than a value; `remove` the tuples and `add` them with the new label instead
+`set('connection.bus', ...)` names a field of the multi-dim 'connection', which `set` cannot change; `remove` the tuples and `add` them with the new label instead
 ```
 
 ### A later `set`
@@ -135,7 +135,7 @@ w.edits.attribute("p_max_pu").order("entity, snapshot").fetchall()
 
 `gas` at snapshot 1 is 0.7, the later value, so the order of two edits sets a value and never makes an edit fail.
 
-A `set` of one value along a dim outside [`partial`](layers.md#partial) also stages the key's other values, as the record reads them.
+A `set` of one value along a dim outside [`partial`](layers.md#partial) also stages the map row's other values, as the record reads them.
 `w.set("p_max_pu", series, entity="gas")` with a series over snapshots 0 and 1 stages snapshot 2 as well, at the 1.0 that `gas` read before.
 
 ## `add` and `remove`
@@ -165,7 +165,7 @@ A frame may have property columns beside the tuples, and then each property keyw
 `add` refuses a frame that has both the struct column and a field column, and a tuple with a field missing or NULL.
 
 `remove(dim, labels)` stages the axis without `labels`.
-Every value keyed by a removed label goes, and so does every tuple, of any multi-dim, that contains one, with the tuple's values.
+Every value at a removed label goes, and so does every tuple, of any multi-dim, that contains one, with the tuple's values.
 `remove("bus", ["south"])` removes every connection at `south`.
 `remove` refuses a label that is still the value of a property referring to `dim`, on the record as staged:
 

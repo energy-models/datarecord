@@ -53,8 +53,8 @@ from datarecord.duck import (
 )
 from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_keys import cast_declared
 from datarecord.resolve.owner_map import uncovered
+from datarecord.resolve.owner_map_rows import cast_declared
 from datarecord.schema.categories import matching, with_defaults
 from datarecord.schema.schema import Schema as RecordSchema
 from datarecord.schema.schema import packed, unpacked
@@ -105,8 +105,8 @@ _TYPE_OF = {dim: ctype for ctype, dim in _AXIS_TYPES.items()}
 _SHAPE = "Shape"
 #: What names a property as a shape's geometry, the shape's `type` after it.
 _SHAPE_PREFIX = "shape_"
-#: The dims a record's rows are keyed on, which no custom column may be named like.
-_KEYS = frozenset({SNAPSHOT, TIMESTEP, PERIOD, SCENARIO, ENTITY, CONNECTION})
+#: The dims of a record's rows, which no custom column may be named like.
+_ROW_DIMS = frozenset({SNAPSHOT, TIMESTEP, PERIOD, SCENARIO, ENTITY, CONNECTION})
 #: The registry inputs declared as properties, by subject: what describes a
 #: label rather than data a model optimises against. `entity` also has
 #: `ctype`, a `carrier` property is one of the `carrier` dim, and a
@@ -913,7 +913,7 @@ class _Custom:
         ValueError
             If types of one dim carry a custom property with different dtypes,
             a custom column is named like a shape's geometry (`shape_`) or a
-            dim keying the record's rows (`_KEYS`), or a Shape carries one.
+            dim of the record's rows (`_ROW_DIMS`), or a Shape carries one.
         """
         columns: dict[str, dict[str, str]] = {}
         for c in n.components:
@@ -928,11 +928,11 @@ class _Custom:
                     f"no other column is named `{_SHAPE_PREFIX}...`"
                 )
                 raise ValueError(msg)
-            keyed = sorted(_KEYS.intersection(names))
-            if keyed:
+            clashing = sorted(_ROW_DIMS.intersection(names))
+            if clashing:
                 msg = (
-                    f"The custom columns {keyed} of {c.name} have no place: "
-                    f"{sorted(_KEYS)} key a record's rows, so no property or "
+                    f"The custom columns {clashing} of {c.name} have no place: "
+                    f"{sorted(_ROW_DIMS)} are dims of a record's rows, so no property or "
                     "attribute is named like one"
                 )
                 raise ValueError(msg)
@@ -1920,7 +1920,7 @@ class PyPSATool(Tool):
     def verify(self, record: RecordLike) -> Requirements:
         """What this record, a selection narrowed as `build` narrows it, fails to supply for a PyPSA build; falsy if it is usable.
 
-        Reports PyPSA's axes the schema lacks, keys and dims of its own this
+        Reports PyPSA's axes the schema lacks, `partial` dims and dims of its own this
         tool cannot honour (and nothing else where it finds any), component
         types PyPSA does not know, required attributes (by source) with no
         row, property or declared default, a port's bus where a member has no
@@ -1944,7 +1944,7 @@ class PyPSATool(Tool):
     def _verify(
         self, record: RecordLike
     ) -> tuple[Requirements, dict[str, _TypeMembers]]:
-        """`verify`, with the members it read for each known type, for `build` to reuse; empty where a key check failed."""
+        """`verify`, with the members it read for each known type, for `build` to reuse; empty where a `partial` or dim check failed."""
         dims = REQUIRED_DIMS - set(record.schema.dimensions) - _squeezed(record)
         unsupported_partial = self._unsupported_partial(record)
         unsupported_dims = self._unsupported_dims(record)
@@ -2709,7 +2709,7 @@ class _NetworkSource:
         positions = np.arange(1, len(self._snapshots) + 1)
         rel = self.con.from_df(self._snapshots.assign(_pos=positions))
         return cast_declared(
-            self.schema, rel.project(self._snapshot_key, col("_pos")), SNAPSHOT
+            self.schema, rel.project(self._snapshot_column, col("_pos")), SNAPSHOT
         )
 
     @cached_property
@@ -2720,7 +2720,7 @@ class _NetworkSource:
         )
 
     @cached_property
-    def _snapshot_key(self) -> Expression:
+    def _snapshot_column(self) -> Expression:
         """The one `snapshot` column the schema declares, over the columns of `_snapshots`."""
         if SNAPSHOT not in self.schema.multi_dims:
             return col(SNAPSHOT)
@@ -2997,12 +2997,12 @@ class _NetworkSource:
         on = [k for k in keys.columns if k != "_col"]
         if held is None or not {SNAPSHOT, *on} <= set(held.columns):
             return np.ones(width, dtype=bool)
-        unkeyed = [
+        unset = [
             col(c).isnull()
             for c in held.columns
             if c not in {*on, SNAPSHOT, "attribute", "value"}
         ]
-        series = held.filter(ex_all([col(SNAPSHOT).isnotnull(), *unkeyed]))
+        series = held.filter(ex_all([col(SNAPSHOT).isnotnull(), *unset]))
         series = series.set_alias("h")
         matched = join_on(
             series, keys.set_alias("k"), [null_safe("h", "k", on)] if on else []
@@ -3137,7 +3137,7 @@ class _NetworkSource:
     def _base_static(self, attribute: str, dim: str) -> pd.DataFrame | None:
         """`base`'s rows of `attribute` keyed by `dim`, one `(entity, scenario, value, static)` per entity and scenario, a connection's with its `bus` after `entity`; `None` where it has none.
 
-        A row is static where no key but `dim` and `scenario` is set, and an
+        A row is static where no dim but `dim` and `scenario` is set, and an
         entity at a scenario where each of its rows is; only then is `value`
         its one row's. Aggregated in DuckDB: a series' rows never reach pandas.
         """
@@ -3147,20 +3147,20 @@ class _NetworkSource:
         others = [
             c for c in rel.columns if c not in (dim, SCENARIO, "attribute", "value")
         ]
-        keys = {ENTITY: col(dim)}
+        fields = {ENTITY: col(dim)}
         if dim == CONNECTION:
-            keys = {k: fn.struct_extract(col(dim), lit(k)) for k in (ENTITY, BUS)}
+            fields = {f: fn.struct_extract(col(dim), lit(f)) for f in (ENTITY, BUS)}
         scenario = col(SCENARIO) if SCENARIO in rel.columns else lit(None)
         static = ex_all([lit(True), *(col(c).isnull() for c in others)])
         keyed = rel.filter(col(dim).isnotnull()).project(
-            *(key.cast(sqltypes.VARCHAR).alias(k) for k, key in keys.items()),
+            *(e.cast(sqltypes.VARCHAR).alias(f) for f, e in fields.items()),
             scenario.cast(sqltypes.VARCHAR).alias(SCENARIO),
             col("value"),
             static.alias("static"),
         )
         return keyed.aggregate(
             [
-                *map(col, [*keys, SCENARIO]),
+                *map(col, [*fields, SCENARIO]),
                 fn.any_value(col("value")).alias("value"),
                 fn.bool_and(col("static")).alias("static"),
             ]
@@ -3212,11 +3212,13 @@ class _NetworkSource:
             one = self.con.from_df(pd.DataFrame({"_col": [1]}))
             if not self._differing(attribute, values, one)[0]:
                 weights = weights.iloc[:0]
-        keys = (
-            self._snapshot_key if weighting.dim == SNAPSHOT else star(exclude=["value"])
+        at = (
+            self._snapshot_column
+            if weighting.dim == SNAPSHOT
+            else star(exclude=["value"])
         )
         return self.con.from_df(weights).project(
-            keys,
+            at,
             lit(attribute).alias("attribute"),
             lit(None).alias("breakpoint"),
             col("value").cast(sqltypes.DOUBLE).alias("value"),
@@ -3626,7 +3628,7 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _holds(self) -> dict[str, DuckDBPyRelation]:
-        """The labels the network holds of each dim a result is keyed by, to which it restates `base`'s results."""
+        """The labels the network holds of each dim a result is over, to which it restates `base`'s results."""
         frames = {ENTITY: self._entity_frame[[ENTITY]], BUS: self._labels("Bus")[[BUS]]}
         if self.n.has_scenarios:
             frames[SCENARIO] = self.n.scenarios.to_frame(index=False)
@@ -3712,13 +3714,13 @@ class _ResultsSource(_NetworkSource):
         restated = dict(written)
         for attr in sorted(outputs & set(self.base.attributes)):
             columns = self.schema.long_columns_for(attr)
-            keys = [c for c in columns if c != "value"]
+            matched = [c for c in columns if c != "value"]
             rows = self._live_only(attr, self._base_rows(attr))
-            for dim in self._holds.keys() & set(keys):
+            for dim in self._holds.keys() & set(matched):
                 rows = _null_or_in(rows, col(dim), self._holds[dim], dim)
             parts = [written[attr]] if attr in written else []
             elsewhere = self._elsewhere
-            if SNAPSHOT in keys and elsewhere is not None:
+            if SNAPSHOT in matched and elsewhere is not None:
                 over = frozenset({SNAPSHOT})
                 parts.append(settle(rows, {SNAPSHOT: elsewhere}, Flags(over, over)))
                 rows = rows.set_alias("r").join(
@@ -3726,8 +3728,8 @@ class _ResultsSource(_NetworkSource):
                     col("r", SNAPSHOT) == col("e", SNAPSHOT),
                     how="anti",
                 )
-            stale = _stale(rows, written.get(attr), keys)
-            if dead is not None and SUB_NETWORK in keys:
+            stale = _stale(rows, written.get(attr), matched)
+            if dead is not None and SUB_NETWORK in matched:
                 stale = stale.set_alias("s").join(
                     dead, col("s", SUB_NETWORK) == col("d", SUB_NETWORK), how="anti"
                 )
@@ -3787,15 +3789,15 @@ def _null_or_in(
 
 
 def _stale(
-    rows: DuckDBPyRelation, written: DuckDBPyRelation | None, keys: Sequence[str]
+    rows: DuckDBPyRelation, written: DuckDBPyRelation | None, columns: Sequence[str]
 ) -> DuckDBPyRelation:
-    """The distinct `keys` of `rows` that `written` does not write again.
+    """The distinct `columns` of `rows` that `written` does not write again.
 
     A row is written again where a row of `written` covers it (`uncovered`),
     as a row NULL on `scenario` covers `base`'s at every scenario. A row
     over no snapshot is stale where no row over no snapshot covers it. A row
     at a snapshot is stale where none covers it but on `snapshot`: a melted
-    series writes every snapshot of each key it holds, so the keys are
+    series writes every snapshot of each coordinate it holds, so the rows are
     matched once per series, not once per snapshot.
 
     Notes
@@ -3803,10 +3805,10 @@ def _stale(
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     if written is None:
-        return rows.select(*map(col, keys)).distinct()
-    if SNAPSHOT not in keys:
-        return uncovered(rows.select(*map(col, keys)).distinct(), written, keys)
-    whole = [k for k in keys if k != SNAPSHOT]
+        return rows.select(*map(col, columns)).distinct()
+    if SNAPSHOT not in columns:
+        return uncovered(rows.select(*map(col, columns)).distinct(), written, columns)
+    whole = [c for c in columns if c != SNAPSHOT]
     over_none = col(SNAPSHOT).isnull()
     held = rows.select(*map(col, whole), over_none.alias("_over_none")).distinct()
     statics = written.filter(over_none).select(*map(col, whole)).distinct()
@@ -3820,7 +3822,7 @@ def _stale(
     return (
         rows.set_alias("r")
         .join(stale.set_alias("s"), on, how="semi")
-        .select(*map(col, keys))
+        .select(*map(col, columns))
         .distinct()
     )
 
@@ -3863,12 +3865,12 @@ def _differs(held: Mapping[Any, DuckDBPyRelation], labels: Sequence[Any]) -> boo
     if any(label not in held for label in labels):
         return True
     first, *rest = held.values()
-    keys = [col(c) for c in first.columns if c != "value"]
+    matched = [col(c) for c in first.columns if c != "value"]
 
     def apart(other: DuckDBPyRelation) -> bool:
         stacked = first.union(other.select(*map(col, first.columns)))
         clash = ((fn.count() < lit(2)) | _clash(stacked)).alias("clash")
-        clashing = stacked.group_by(*keys).agg(clash).filter(col("clash"))
+        clashing = stacked.group_by(*matched).agg(clash).filter(col("clash"))
         return bool(clashing.limit(1).fetchall())
 
     return any(apart(other) for other in rest)
@@ -3906,21 +3908,21 @@ def _axis_union(
 
     Its labels are in one order (`_ordered_union`), each column's values agreed (`_agreed`).
     """
-    keys = list(schema.over(subject)) or [subject]
-    keyed = {
-        label: unpacked(schema, subject, rel).df().set_index(keys)
+    fields = list(schema.over(subject)) or [subject]
+    frames = {
+        label: unpacked(schema, subject, rel).df().set_index(fields)
         for label, rel in held.items()
     }
-    order = _ordered_union(subject, {label: f.index for label, f in keyed.items()}, by)
-    columns = next(iter(keyed.values())).columns
+    order = _ordered_union(subject, {label: f.index for label, f in frames.items()}, by)
+    columns = next(iter(frames.values())).columns
     agreed = {
-        c: _agreed(subject, c, {label: f[c] for label, f in keyed.items()}, by, con)
+        c: _agreed(subject, c, {label: f[c] for label, f in frames.items()}, by, con)
         for c in columns
     }
     frame = pd.DataFrame(agreed, index=order, columns=columns)
-    rel = con.from_df(frame.reset_index(names=keys))
+    rel = con.from_df(frame.reset_index(names=fields))
     if subject in schema.multi_dims:
-        struct = packed(schema, subject, keys, {}).alias(subject)
+        struct = packed(schema, subject, fields, {}).alias(subject)
         rel = rel.project(struct, *map(col, columns))
     return cast_declared(schema, rel, subject)
 

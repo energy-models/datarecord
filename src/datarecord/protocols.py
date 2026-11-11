@@ -171,7 +171,7 @@ class RecordLike(Protocol):
 
     @property
     def properties(self) -> Relations:
-        """Per dim declaring properties, its key and their stored values, no default applied.
+        """Per dim declaring properties, its column and their stored values, no default applied.
 
         Notes
         -----

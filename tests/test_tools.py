@@ -1007,8 +1007,8 @@ class TestPyPSA:
         with pytest.raises(UnsupportedRecordError, match="Widget"):
             PyPSA.build(revision.record)
 
-    def test_verify_reports_a_snapshot_key(self, exported):
-        """`snapshot` as a key is reported, not crashed on.
+    def test_verify_reports_snapshot_in_partial(self, exported):
+        """`snapshot` in `partial` is reported, not crashed on.
 
         A limit of this tool's *representation*, not of the layer format: PyPSA's
         static/series split needs a component's whole series for an attribute to
@@ -1347,8 +1347,8 @@ class TestPyPSA:
             PyPSA.to_datarecord(n, workspace.con)
 
     @pytest.mark.parametrize("name", ["scenario", "period", "entity"])
-    def test_a_custom_column_named_like_a_key_is_refused(self, workspace, name):
-        """A key of the record's rows names no property or attribute, text or not.
+    def test_a_custom_column_named_like_a_row_dim_is_refused(self, workspace, name):
+        """A dim of the record's rows names no property or attribute, text or not.
 
         Notes
         -----
@@ -1356,7 +1356,7 @@ class TestPyPSA:
         """
         n = _north()
         _with_bus_column(n, name, "x")
-        with pytest.raises(ValueError, match="key a record's rows"):
+        with pytest.raises(ValueError, match="are dims of a record's rows"):
             PyPSA.to_datarecord(n, workspace.con)
 
     @pytest.mark.parametrize(
@@ -2469,7 +2469,7 @@ class TestPyPSA:
             "no positional names on the members"
         )
         assert set(record.properties["connection"].columns) == {"connection", "role"}, (
-            "a connection row carries its key and its property"
+            "a connection row carries its column and its property"
         )
         rows = unpacked(record.attributes["delay"])
         delay = rows.set_index(["entity", "bus"])["value"].dropna().to_dict()
@@ -2509,7 +2509,7 @@ class TestPyPSA:
     def test_a_name_is_never_an_identifier_between_long_and_wide(self, store):
         """Each name is stored and comes back as its own series.
 
-        `wind "north"` would end a quoted identifier, `snapshot` names a key
+        `wind "north"` would end a quoted identifier, `snapshot` names a dim's
         column, and `Gen` and `gen` one case-insensitive identifier.
 
         Notes
@@ -2549,8 +2549,8 @@ class TestPyPSA:
         """`Axes` carries a dim PyPSA knows nothing about; axis names live in the tool, which reports it as a dim of the record's own.
 
         Declared but not `partial`, so the record's files need no column for it.
-        Keying it would be a different matter, reported by the tool against the
-        real record - see `test_verify_reports_a_snapshot_key`.
+        Putting it in `partial` would be a different matter, reported by the tool
+        against the real record - see `test_verify_reports_snapshot_in_partial`.
         """
         revision = _with_schema(exported, dims={**_DIMS, "vintage": "str"})
         record = revision.record

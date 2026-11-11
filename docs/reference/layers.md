@@ -67,14 +67,14 @@ A read opens exactly the files the manifest lists, and ignores any other file in
 ## `partial`
 
 `partial` is the set of dims, declared as `Schema.partial`, along which a layer overrides one value per label.
-Along any other dim, a layer restates the whole extent of each key it touches.
-The owner map assigns an attribute's values to a layer per key. The key is the attribute's dims that are in `partial`, with the attribute's name:
+Along any other dim, a layer restates the whole extent of each map row it touches.
+The owner map assigns an attribute's values to a layer per map row. Its index is the attribute's dims that are in `partial`, with the attribute's name:
 
 ```text
-key(attribute) = (attribute.dims ∩ partial, attribute)
+index(attribute) = (attribute.dims ∩ partial, attribute)
 ```
 
-With `partial = {"entity"}`, `p_max_pu` over `entity` and `snapshot` is keyed per entity. The owner map assigns the snapshot series of each entity whole to one layer:
+With `partial = {"entity"}`, `p_max_pu` over `entity` and `snapshot` has a map row per entity. The owner map assigns the snapshot series of each entity whole to one layer:
 
 <figure class="diagram">
 --8<-- "docs/static/layers-partial.svg"
@@ -84,8 +84,8 @@ The child changes wind at snapshot 1 and so writes wind's whole series.
 The read takes gas from the root, since the child writes no gas row, and wind from the child.
 A [`WorkingRecord`](editing.md) stages the rest of the series for you: `set("p_max_pu", 0.9, entity="wind", snapshot=1)` also stages wind's row at snapshot 0.
 
-- A multi-dim in `partial` is in the key as its struct column, so a layer overrides one tuple's value. With `connection` outside `partial`, a layer that changes one connection's `efficiency` restates every connection's.
-- The owner map assigns a curve whole to one layer, because `breakpoint` is in no key.
+- A multi-dim in `partial` is in the index as its struct column, so a layer overrides one tuple's value. With `connection` outside `partial`, a layer that changes one connection's `efficiency` restates every connection's.
+- The owner map assigns a curve whole to one layer, because `breakpoint` is not in the index.
 - `partial` applies to attribute values alone. A layer that changes an axis restates the whole axis, whatever `partial` contains ([removing labels](#removing-labels)).
 - Only a property of a dim in `partial` can be categorising ([the data model](data-model.md)).
 - The fold reads each layer under the schema in its own manifest, so a child may add a dim to `partial` ([a wider schema](resolution.md#a-wider-schema)).
@@ -118,7 +118,7 @@ It refuses any other type, naming the attribute, property or dim and its dtype.
 
 A `dims/<dim>.parquet` file contains the whole axis at the new revision, in order, with each label's properties.
 The writer refuses a file for an undeclared dim or a [dim with `one_of`](data-model.md), and a file with a label twice.
-It refuses a column other than the key and the subject's declared properties.
+It refuses a column other than the dim's column and the subject's declared properties.
 It also refuses a file with its parent's labels in a different order from the parent's, and a new label may sit anywhere:
 
 ```text
@@ -168,7 +168,7 @@ To remove a label is to restate its dim's axis without it, which removes its val
 
 The child writes no `p_nom` file, and the read still has no `p_nom` row for coal.
 A removal applies to every attribute.
-On a dim in `partial` the fold drops each parent row that has the label, and on any other dim [the read drops it](resolution.md#labels-outside-the-key).
+On a dim in `partial` the fold drops each parent row that has the label, and on any other dim [the read drops it](resolution.md#labels-outside-the-index).
 A row that leaves the dim NULL stays, and applies to the labels that remain.
 
 - A removed tuple takes its values. The labels in it keep their other rows, so removing `(gas, north)` leaves `gas`.

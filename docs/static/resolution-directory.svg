@@ -4,7 +4,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 150" width="700" height="150" style="max-width: 100%; height: auto" role="img" aria-labelledby="rd-t rd-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rd-t">Reading a directory as a fold over one layer</title>
-  <desc id="rd-d">The directory out contains manifest.json, dims and attributes, the layout of one layer. Read with ws.at, it is a fold over that one layer, so the owner map assigns every key to that layer.</desc>
+  <desc id="rd-d">The directory out contains manifest.json, dims and attributes, the layout of one layer. Read with ws.at, it is a fold over that one layer, so the owner map assigns every map row to that layer.</desc>
   <defs>
     <marker id="rd-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>

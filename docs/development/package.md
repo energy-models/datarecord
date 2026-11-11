@@ -25,7 +25,7 @@ datarecord/
 │   ├── __init__.py    # re-exports Record
 │   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
 │   ├── axes.py        # Axes, mortal: folded axes and dead labels
-│   ├── owner_keys.py  # owner_keys: one layer's keys as it wrote them
+│   ├── owner_map_rows.py  # owner_map_rows: one layer's map rows as it wrote them
 │   ├── fold.py        # Fold: a revision's folded axes, owner map and reads
 │   ├── owner_map.py   # fold_layer, uncovered: the owner map folded one layer at a time
 │   └── record.py      # Record

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The typed schema: declarations, derived keys, validation, versioning.
+"""The typed schema: declarations, derived dim sets, validation, versioning.
 
 Notes
 -----
@@ -64,7 +64,7 @@ def _listing_dims(**labels: list[str]) -> dict[str, Dimension]:
     }
 
 
-# -- derived keys (https://energy-models.github.io/datarecord/reference/layers/#partial) -----------------------------------------------------
+# -- derived dim sets (https://energy-models.github.io/datarecord/reference/layers/#partial) -----------------------------------------------------
 
 
 def test_ownership_is_derived_not_declared():
@@ -82,13 +82,13 @@ def test_ownership_is_derived_not_declared():
 
 
 def test_partial_dims_is_the_union_over_attributes():
-    """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
+    """The owner map's index is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
     assert s.partial_dims == ("entity", "scenario"), "only what `partial` lists"
 
     wider = _schema(partial=frozenset({"entity", "scenario", "timestep", "connection"}))
     assert wider.partial_dims == ("entity", "timestep", "scenario", "connection"), (
-        "a `partial` dim joins the key"
+        "a `partial` dim joins the index"
     )
 
     dims = {
@@ -97,7 +97,7 @@ def test_partial_dims_is_the_union_over_attributes():
     }
     unlisted = Schema(dimensions=dims, partial=frozenset({"scenario"}))
     assert unlisted.partial_dims == ("scenario",), (
-        "no dim is keyed by name: `entity` is owned whole where not partial"
+        "no dim is in the index by name: `entity` is owned whole where not partial"
     )
 
 
@@ -311,7 +311,7 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
             lambda: _schema(
                 properties=_with_entity_property("entity", PropertySpec(dtype="str"))
             ),
-            "named like a column of its key",
+            "named like its column 'entity'",
             id="its-dims-name",
         ),
         pytest.param(

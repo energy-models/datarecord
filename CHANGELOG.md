@@ -181,7 +181,7 @@ All notable changes to datarecord are documented here. The format follows
   CRS.
   `to_datarecord` refuses a shape without a `component`, `idx` or `type`, two
   sharing `(component, idx, type)`, one naming no member of its PyPSA type, a
-  custom column named `shape_...` or like a key dim (`scenario`, `entity`,
+  custom column named `shape_...` or like a dim of a record's rows (`scenario`, `entity`,
   ...) and a custom value naming no label of the dim it refers to. `build`
   names each shape `"{component} {idx} {type}"`.
 - `PyPSA.to_datarecord(n, con, results_only=True, base=record)` writes a solve
@@ -448,7 +448,7 @@ All notable changes to datarecord are documented here. The format follows
   column stays NULL, rows of two layers may cover one coordinate, and the row order
   is unspecified. A consumer settles each coordinate by the broadcast rule,
   the row setting every dim the others there set winning. The owner map holds
-  each layer's keys as written, plus one row setting the dims of both wherever
+  each layer's map rows as written, plus one row setting the dims of both wherever
   a deeper layer's row crosses a parent's, so it grows with the rows layers
   write rather than with the labels a broadcast covers.
 - A deeper layer owns only the coordinates its rows cover. A shallower row
@@ -460,7 +460,7 @@ All notable changes to datarecord are documented here. The format follows
 - `WorkingRecord.set` writes a row that leaves a dim outside `partial` NULL
   out along the labels a parent row sets there. The fold refuses a layer
   written otherwise that leaves such a crossing, naming the layer, the
-  attribute, the dim and the key.
+  attribute, the dim and the labels the two rows share.
 - The writer refuses a `dims/` file of a dim that the schema does not declare,
   as it refuses an undeclared attribute. A descendant declaring the dim would
   read its labels.
@@ -472,7 +472,7 @@ All notable changes to datarecord are documented here. The format follows
   deeper layer's schema is wider, the map folded so far, materialised or not,
   is extended to it, so a materialised node keeps counting after a descendant
   adds a dim to `partial`, and a workspace holds one fold table per node,
-  `owner_map_<id>`. A layer that restates a key along a dim outside `partial`
+  `owner_map_<id>`. A layer that restates a map row along a dim outside `partial`
   and omits a label its parent held there deletes that value, and a later
   widening of `partial` no longer brings it back.
 - The fold of a layer onto the map below it is one query whose joins its

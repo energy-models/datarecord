@@ -10,11 +10,11 @@ datarecord stores each construct as flat as it can, so that datarecord and a rea
 
 ## Why a dim is flat
 
-A dim is a set of unique labels, stored as one key column, and every dim is declared in the schema ([the data model](../reference/data-model.md)). datarecord fixes no list of axes, so a record with `region`, `technology` or `vintage` needs a schema entry and no code change.
+A dim is a set of unique labels, stored as one column, and every dim is declared in the schema ([the data model](../reference/data-model.md)). datarecord fixes no list of axes, so a record with `region`, `technology` or `vintage` needs a schema entry and no code change.
 
-The rejected alternative is a nested dim, keyed by its parent's label and its own. A multi-period snapshot would be `(period, snapshot)`, and every series over `snapshot` would contain its period. Each check that placed a label by one column would need a branch for two. mathspec, which supplies datarecord's dtypes, gives every dimension one flat list of labels, so a tool would flatten the key anyway.
+The rejected alternative is a nested dim, labelled by its parent's label and its own. A multi-period snapshot would be `(period, snapshot)`, and every series over `snapshot` would contain its period. Each check that placed a label by one column would need a branch for two. mathspec, which supplies datarecord's dtypes, gives every dimension one flat list of labels, so a tool would flatten the label anyway.
 
-datarecord states the nesting in one of two flat forms instead. A property maps each label to a label of another dim: `bus.country` names each bus's country, and you read it as you read `bus.carrier`. A multi-dim names both in each label: PyPSA's multi-period `snapshot` is a multi-dim over `(period, timestep)`, one struct column ([below](#why-a-multi-dim-is-one-struct-column)). With one key column either way, datarecord applies one rule to the axis, the fold key and the broadcast rule. No dim has a parent, so no series can leave a parent's label NULL.
+datarecord states the nesting in one of two flat forms instead. A property maps each label to a label of another dim: `bus.country` names each bus's country, and you read it as you read `bus.carrier`. A multi-dim names both in each label: PyPSA's multi-period `snapshot` is a multi-dim over `(period, timestep)`, one struct column ([below](#why-a-multi-dim-is-one-struct-column)). With one column per dim either way, datarecord applies one rule to the axis, the owner map's index and the broadcast rule. No dim has a parent, so no series can leave a parent's label NULL.
 
 A source whose labels repeat across parents takes the multi-dim form. PyPSA reuses its timesteps in every period, so the PyPSA tool makes each snapshot the tuple of its period and timestep. "The same timestep in every period" is then the field keyword `timestep=[t]`, which selects that tuple in every period.
 
@@ -26,7 +26,7 @@ The rejected alternative flattens the tuple into a column per field, so an attri
 
 With one struct column, the two stay apart. A NULL `connection` means every connection, a NULL `bus` means every bus, and the column's name states which multi-dim a row belongs to. A struct is a whole tuple or NULL, so a row cannot set only part of a tuple.
 
-The other alternatives lose more. Without multi-dims, with valid pairs stated by a condition, the record loses the whole-or-NULL broadcast and the axis file that contains `connection.role`. A surrogate dim with one label per tuple makes you write a value against a port label and look up its entity and bus. Then the port label, not the tuple, is the value's key.
+The other alternatives lose more. Without multi-dims, with valid pairs stated by a condition, the record loses the whole-or-NULL broadcast and the axis file that contains `connection.role`. A surrogate dim with one label per tuple makes you write a value against a port label and look up its entity and bus. Then the port label, not the tuple, is the value's label.
 
 datarecord applies every rule for a dim to a multi-dim. It is declared under `dimensions`, has its file under `dims/`, takes `add` and `remove`, and may sit in `partial`. Each of those rules is stated once for both.
 
@@ -40,7 +40,7 @@ datarecord checks a category against the schema's list wherever a `default_by`, 
 
 The rejected alternatives each declare the same closed set a second way. An `Enum` dtype beside a reference to a dim would make a closed set categorise or not by how you declared it. A `one_of` list that only bounds an axis a layer writes would make every PyPSA export restate the schema in a file.
 
-A property categorises its subject only where the subject is in `partial`, the set of dims along which a layer overrides one value per label. A default per category is a default per label, so the owner map must assign the subject's keys label by label.
+A property categorises its subject only where the subject is in `partial`, the set of dims along which a layer overrides one value per label. A default per category is a default per label, so the owner map must assign the subject's map rows label by label.
 
 The cost is that a new category is a schema change. A custom PyPSA component type needs a new schema, not a data edit. [Open questions](open-questions.md) lists whether such a dim may grow in a layer.
 

@@ -139,7 +139,7 @@ datarecord refuses a property:
 - that declares both `dtype` and `one_of`, or neither
 - of an undeclared subject, or of a dim with `one_of`
 - that refers to an undeclared dim or to a multi-dim
-- named like its subject's key column, or like a field of its multi-dim
+- named like its subject's column, or like a field of its multi-dim
 - that categorises its subject and declares `default_by`
 
 ## `partial`

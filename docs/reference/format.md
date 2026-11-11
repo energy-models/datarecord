@@ -62,7 +62,7 @@ A layer that restates only the entity axis and writes only `p_nom` lists those t
 ## `dims/<dim>.parquet`
 
 An axis file contains every label of one dim at the layer's revision, in axis order, one row per label.
-Its first column is the key, named for the dim, and each further column is one [property](data-model.md) of the dim.
+Its first column is the dim's column, named for it, and each further column is one [property](data-model.md) of the dim.
 
 ```text
 dims/entity.parquet       entity | ctype | carrier | sign | type
@@ -70,7 +70,7 @@ dims/connection.parquet   connection STRUCT(entity, bus) | role
 ```
 
 - A property is NULL in a row where no layer wrote a value for that label.
-- A [multi-dim](data-model.md)'s file is keyed by one struct column named for it, with its fields. Its rows are every tuple of the multi-dim at the layer's revision.
+- A [multi-dim](data-model.md)'s file has one struct column named for it, with its fields, as its first column. Its rows are every tuple of the multi-dim at the layer's revision.
 - A [dim with `one_of`](data-model.md) has no file. The writer refuses a layer that has one.
 - A layer removes a label or tuple by writing the file without it ([removing labels](layers.md#removing-labels)).
 

@@ -603,11 +603,11 @@ def test_a_write_rejects_a_dim_the_attribute_lacks(store):
         store.commit(source, parent=None)
 
 
-def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
+def test_a_write_rejects_a_multi_dim_column_not_of_its_fields(store):
     """A multi-dim's column is a struct of exactly its fields.
 
     DuckDB casts a struct by field name, so a missing field would be written as
-    NULL rather than refused, re-keying every row.
+    NULL rather than refused, relabelling every row.
 
     Notes
     -----
@@ -692,8 +692,8 @@ def test_a_write_rejects_a_missing_long_column(store):
     _nothing_reachable(store)
 
 
-def test_a_write_rejects_a_multi_dim_frame_not_keyed_by_its_struct(store):
-    """A multi-dim's axis file is keyed by the struct of its fields, named for it.
+def test_a_write_rejects_a_multi_dim_frame_without_its_struct_column(store):
+    """A multi-dim's axis file has the struct of its fields as its column, named for it.
 
     Notes
     -----
@@ -702,7 +702,7 @@ def test_a_write_rejects_a_multi_dim_frame_not_keyed_by_its_struct(store):
     frame = pd.DataFrame({"entity": ["steel_dri"], "bus": ["h2"]})
     source = _Source(_SCHEMA, connections={"connection": frame})
 
-    with pytest.raises(ValueError, match="missing its key column 'connection'"):
+    with pytest.raises(ValueError, match="missing its column 'connection'"):
         store.commit(source, parent=None)
 
 
@@ -1148,7 +1148,7 @@ def test_a_label_removed_after_its_set_takes_the_value_with_it(axes):
 
 
 def test_a_later_layer_overrides_a_layer_holding_both_rows(axes):
-    """The lower layer still picks its more specific row where it keeps the key.
+    """The lower layer still picks its more specific row where it keeps the map row.
 
     Notes
     -----

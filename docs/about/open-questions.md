@@ -12,7 +12,7 @@ This page lists what the design of datarecord leaves open, and below it the ques
 
 ### Should `partial` ever be per attribute?
 
-`partial` sits on the dim because it applies to every attribute over that dim ([layers](layers.md)). A counter-example would be an attribute whose series a reader can take in pieces while others cannot, and none is known. Allowing it would make the fold's key vary per attribute, where the owner map has one fixed key.
+`partial` sits on the dim because it applies to every attribute over that dim ([layers](layers.md)). A counter-example would be an attribute whose series a reader can take in pieces while others cannot, and none is known. Allowing it would make the owner map's index vary per attribute, where the owner map has one fixed index.
 
 ### Should a later input edit invalidate results?
 
@@ -74,13 +74,13 @@ mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier
 
 `bus.carrier` defaults to `AC` in PyPSA's schema. datarecord never stores a default, so it does not check that `AC` is a label of `carrier` ([the schema](../reference/schema.md)). A selection applies the default when it drops labels. `select` drops a bus whose default carrier it drops, and keeps one whose default is on no axis ([selecting](../reference/selecting.md)).
 
-### Does `bus` earn its place in the fold key?
+### Does `bus` earn its place in the owner map's index?
 
-PyPSA's `partial` includes `bus` so that a layer can patch one bus's `v_nom`, and every read scans every `partial` dim in the fold key ([layers](layers.md)). Measuring it on a record the size of PyPSA-Eur would settle it.
+PyPSA's `partial` includes `bus` so that a layer can patch one bus's `v_nom`, and every read scans every `partial` dim in the owner map's index ([layers](layers.md)). Measuring it on a record the size of PyPSA-Eur would settle it.
 
 ### May `partial` name a field of a multi-dim?
 
-`partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a field in `partial`, `p` would be keyed by `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider fold key on every read of every attribute over `snapshot`.
+`partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a field in `partial`, `p`'s index would be `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider index on every read of every attribute over `snapshot`.
 
 ### Do selector keywords need a qualified form?
 
@@ -92,11 +92,11 @@ A snapshot mapped to its period is a dim plus a property that refers to the peri
 
 ### May a `WorkingRecord` delete one value along a dim outside `partial`?
 
-A layer that restates a key along such a dim and leaves out a label its parent had there deletes that value ([layers](../reference/layers.md)). A `WorkingRecord` stages the label's whole extent, so today only a hand-written layer can.
+A layer that restates a map row along such a dim and leaves out a label its parent had there deletes that value ([layers](../reference/layers.md)). A `WorkingRecord` stages the label's whole extent, so today only a hand-written layer can.
 
 ### May a layer remove a dim from `partial`?
 
-Schema versioning refuses it ([the schema](../reference/schema.md)). To allow it, the layer would restate as resolved each key of its `partial` where a parent's map row sets a label of the dim. The fold would then project the dim out of the parent's map, dropping every row that set it. It would refuse a layer that leaves one uncovered ([resolution](../reference/resolution.md)). `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
+Schema versioning refuses it ([the schema](../reference/schema.md)). To allow it, the layer would restate as resolved each map row of its `partial` where a parent's map row sets a label of the dim. The fold would then project the dim out of the parent's map, dropping every row that set it. It would refuse a layer that leaves one uncovered ([resolution](../reference/resolution.md)). `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
 
 ### What does PyPSA#1474 land as?
 
@@ -154,7 +154,7 @@ Every label of the dim it leaves NULL, at the label it names. The rest of the se
 
 ### Does a broadcast survive materialisation?
 
-It does. The owner map contains keys as written and the fold reads no axis. A NULL therefore means every label the axis has at the revision you read. That includes a label added below a materialised revision or staged in a `WorkingRecord` ([layers](layers.md)). A map materialised before `partial` widened is extended to the wider key, as a map folded live is ([resolution](../reference/resolution.md)).
+It does. The owner map contains map rows as written and the fold reads no axis. A NULL therefore means every label the axis has at the revision you read. That includes a label added below a materialised revision or staged in a `WorkingRecord` ([layers](layers.md)). A map materialised before `partial` widened is extended to the wider index, as a map folded live is ([resolution](../reference/resolution.md)).
 
 ### Does `flags` need a record-level counterpart?
 

@@ -50,15 +50,15 @@ def _fold_name(workspace: Workspace, revision_id: UUID, table: str) -> str:
 def _fold_axis(
     seed: DuckDBPyRelation | None,
     files: Sequence[tuple[LayerSource, DuckDBPyRelation]],
-    key: str,
+    dim: str,
     file: str,
 ) -> DuckDBPyRelation | None:
     """Return the deepest of `files`, else `seed`: one node's resolved axis.
 
     The one fold for every axis: a layer that changes
     one restates it whole, so the deepest restatement is the answer, in its
-    own row order. `files` is root first. A frozen file holding `key` twice is
-    refused; a staging area's table is keyed, so it holds no key twice.
+    own row order. `files` is root first. A frozen file holding a label of `dim`
+    twice is refused; a staging area's table holds no label twice.
 
     Notes
     -----
@@ -69,7 +69,7 @@ def _fold_axis(
         return seed
     source, rel = files[-1]
     if source.frozen:
-        refuse_twice(rel, [key], file)
+        refuse_twice(rel, [dim], file)
     return rel
 
 
@@ -120,23 +120,23 @@ def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
 _ROWS_PER_PASS = 100_000_000
 
 
-def _twin(rel: DuckDBPyRelation, keys: Sequence[str]) -> tuple | None:
-    """Return the values of `keys` two rows of `rel` share and their row count, else None.
+def _twin(rel: DuckDBPyRelation, columns: Sequence[str]) -> tuple | None:
+    """Return the values of `columns` two rows of `rel` share and their row count, else None.
 
-    A hash table over every distinct key outgrows memory and spill on a file
-    of hundreds of millions of rows, so the rows are bucketed by `hash(keys)`
+    A hash table over every distinct combination outgrows memory and spill on a file
+    of hundreds of millions of rows, so the rows are bucketed by `hash(columns)`
     into passes of at most `_ROWS_PER_PASS` rows, each grouping 64-bit hashes
     only. A hash held twice is a candidate, confirmed by grouping its few rows
-    on the keys themselves, so a hash collision is never reported.
+    on the columns themselves, so a hash collision is never reported.
     """
-    h = fn.hash(*map(col, keys))
+    h = fn.hash(*map(col, columns))
     passes = -(-rel.count("*").fetchall()[0][0] // _ROWS_PER_PASS) or 1
     for p in range(passes):
         bucket = rel.filter(h % lit(passes) == lit(p))
         counted = bucket.aggregate([h.alias("_h"), fn.count_star().alias("_rows")])
         for candidate, _ in counted.filter(col("_rows") > lit(1)).fetchall():
             exact = rel.filter(h == lit(candidate)).aggregate(
-                [*map(col, keys), fn.count_star().alias("_rows")]
+                [*map(col, columns), fn.count_star().alias("_rows")]
             )
             twin = exact.filter(col("_rows") > lit(1)).limit(1).fetchall()
             if twin:
@@ -146,12 +146,12 @@ def _twin(rel: DuckDBPyRelation, keys: Sequence[str]) -> tuple | None:
 
 def refuse_twice(
     rel: DuckDBPyRelation,
-    keys: Sequence[str],
+    columns: Sequence[str],
     file: str,
     why: str = "an axis file holds each of its labels once "
     "(https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)",
 ) -> None:
-    """Refuse `file`, read as `rel`, holding two rows that agree on every one of `keys`.
+    """Refuse `file`, read as `rel`, holding two rows that agree on every one of `columns`.
 
     NULL agrees with NULL.
 
@@ -164,12 +164,12 @@ def refuse_twice(
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
-    twin = _twin(rel, keys)
+    twin = _twin(rel, columns)
     if twin is None:
         return
     *values, rows = twin
     at = ", ".join(
-        f"{k}={v}" for k, v in zip(keys, values, strict=True) if v is not None
+        f"{c}={v}" for c, v in zip(columns, values, strict=True) if v is not None
     )
     msg = f"{file} holds {rows} rows at {at or 'every coordinate'}; {why}"
     raise ValueError(msg)
@@ -268,16 +268,16 @@ def _first_unheld(
 
     `named` maps a name to the expression over `rows` giving a label or a
     tuple, the axis relation that holds them, and that relation's
-    key column. A `None` relation holds nothing. NULL is no label and
+    column. A `None` relation holds nothing. NULL is no label and
     passes. The labels come back as text, in sorted order. `rows` is
     anti-joined against every relation in one query.
     """
     parts = []
-    for i, (label, held, key) in enumerate(named.values()):
+    for i, (label, held, column) in enumerate(named.values()):
         part = rows.project(label.alias("_label")).filter(col("_label").isnotnull())
         if held is not None:
             part = part.set_alias("r").join(
-                held.project(col(key).alias("_held")).set_alias("h"),
+                held.project(col(column).alias("_held")).set_alias("h"),
                 col("r", "_label") == col("h", "_held"),
                 how="anti",
             )
@@ -315,10 +315,10 @@ def removed_labels(
     )
 
 
-def _dead_keys(
+def _dead_labels(
     held: Sequence[DuckDBPyRelation],
     final: DuckDBPyRelation,
-    key: str,
+    dim: str,
     *,
     fixed: bool,
 ) -> DuckDBPyRelation | None:
@@ -335,11 +335,11 @@ def _dead_keys(
     -----
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
-    labels = [rel.project(col(key)) for rel in held]
+    labels = [rel.project(col(dim)) for rel in held]
     union = reduce(DuckDBPyRelation.union, labels).distinct().set_alias("h")
     dead = union.join(
-        final.project(col(key)).set_alias("f"),
-        col("h", key) == col("f", key),
+        final.project(col(dim)).set_alias("f"),
+        col("h", dim) == col("f", dim),
         how="anti",
     )
     if fixed:
@@ -384,10 +384,10 @@ def _axes_at_hand(source: LayerSource) -> Axes | None:
 def mortal(schema: Schema) -> tuple[str, ...]:
     """The dims a fold keeps the dead labels of.
 
-    One the owner map does not key, whose values naming a dead label only the
+    One outside the owner map's index, whose values naming a dead label only the
     read can drop (`_living`), and a dim a multi-dim's tuples range over or a
     property refers to, which the writer checks them against
-    (`write._require_living_references`). A keyed dim's values the fold
+    (`write._require_living_references`). An index dim's values the fold
     drops itself (`fold_layer`). A dim with `one_of` has no dead labels,
     its axis being the schema's list.
 
@@ -399,8 +399,8 @@ def mortal(schema: Schema) -> tuple[str, ...]:
         *(d for m in schema.multi_dims for d in schema.over(m).values()),
         *schema.one_of_properties().values(),
     }
-    unkeyed = set(schema.dims) - set(schema.partial_dims)
-    kept = (drawn | unkeyed) - set(schema.one_of_dims)
+    outside_index = set(schema.dims) - set(schema.partial_dims)
+    kept = (drawn | outside_index) - set(schema.one_of_dims)
     return tuple(c for c in schema.dims if c in kept)
 
 
@@ -417,8 +417,8 @@ class Axes(Mapping[str, DuckDBPyRelation]):
     schema : Schema
         The record's schema.
     relations : dict of str to DuckDBPyRelation
-        Each declared dim's folded axis relation, full row rather than the key
-        column alone - its properties ride along; a multi-dim's is keyed by
+        Each declared dim's folded axis relation, full row rather than the dim's
+        column alone - its properties ride along; a multi-dim's column is
         its struct column. A dim with no rows anywhere is absent rather than
         present-and-empty.
     dim_owners : dict of str to UUID
@@ -621,7 +621,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
                     r for r in (before, seed, *(r for _, r in files)) if r is not None
                 ]
                 fixed = not all(s.frozen for s, _ in files)
-                before = _dead_keys(held, rel, name, fixed=fixed)
+                before = _dead_labels(held, rel, name, fixed=fixed)
             if before is not None:
                 dead[name] = before
         return cls(schema=schema, relations=relations, dead=dead, dim_owners=dim_owners)

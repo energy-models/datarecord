@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Connections as bus-keyed rows, and `bus` in the owner-map key.
+"""Connections as bus-keyed rows, and `bus` in the owner map's index.
 
 Notes
 -----
@@ -274,7 +274,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
 def test_a_multi_dim_outside_partial_is_owned_whole(store):
     """Not `partial`, a layer touching one connection owns them all.
 
-    A removed tuple's values still go, though no owner key names it.
+    A removed tuple's values still go, though no map row names it.
 
     Notes
     -----

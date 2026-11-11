@@ -18,7 +18,7 @@ Across layers, a read returns the deeper layer's row where rows of two layers me
 </figure>
 
 The step that folds a revision's [layers](layers.md) one at a time, root first (the fold), builds the owner map.
-The map lists, for each attribute, each key a layer wrote and the layer it assigns the key to.
+The map lists, for each attribute, each map row a layer wrote and the layer it assigns that row to.
 A read of an attribute joins to the map the files of the layers it lists, and returns the rows as written.
 A [reader](record.md) settles each coordinate by the broadcast rule.
 
@@ -33,39 +33,39 @@ A layer with no file for a dim leaves its parent's axis as it is.
 
 The child's entity file is the resolved entity axis, and the root's scenario file is the resolved scenario axis.
 
-- A multi-dim's axis resolves the same way, from its file keyed by its struct column.
+- A multi-dim's axis resolves the same way, from its file, whose column is its struct column.
 - The labels of an axis come in the deepest file's row order, the axis order. A label added again after its removal sits where the file that adds it puts it.
 - A property is a column of its subject's axis file, so its values change only when a layer restates the axis.
 - A [dim with `one_of`](data-model.md) has no file, and its axis is the schema's list at every revision.
 
 ## The owner map
 
-The owner map is the fold's result: per attribute, each key a layer wrote and the layer the map assigns it to.
-A key is the attribute's dims in [`partial`](layers.md#partial) and the attribute's name.
+The owner map is the fold's result: per attribute, each map row a layer wrote and the layer the map assigns it to.
+Its index is the attribute's dims in [`partial`](layers.md#partial) and the attribute's name.
 The map contains no values, so its size does not depend on the length of a series or a curve.
 
-| Column                   | Contains                                                                                     |
-| ------------------------ | -------------------------------------------------------------------------------------------- |
-| one per dim in `partial` | the key's label, or NULL where the row leaves the dim NULL. A multi-dim is one struct column |
-| `attribute`              | the attribute's name                                                                         |
-| `layer_uuid`             | the layer the map assigns the key to                                                         |
-| `varies`                 | a struct with a boolean per dim: whether the layer's rows of this key set the dim            |
-| `broadcast`              | a struct with a boolean per dim: whether the layer's rows of this key leave the dim NULL     |
-| `breakpoints`            | whether the layer's rows of this key form a curve                                            |
+| Column                   | Contains                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| one per dim in `partial` | the map row's label, or NULL where the row leaves the dim NULL. A multi-dim is one struct column |
+| `attribute`              | the attribute's name                                                                             |
+| `layer_uuid`             | the layer the map assigns the row to                                                             |
+| `varies`                 | a struct with a boolean per dim: whether the layer's rows of this map row set the dim            |
+| `broadcast`              | a struct with a boolean per dim: whether the layer's rows of this map row leave the dim NULL     |
+| `breakpoints`            | whether the layer's rows of this map row form a curve                                            |
 
-The map has each key as its layer wrote it, a NULL included.
-It has one row per layer and distinct key, and one overlap row for each pair of rows that [cross](#crossing-rows).
+The map has each map row as its layer wrote it, a NULL included.
+It has one row per layer and distinct labels on its index, and one overlap row for each pair of rows that [cross](#crossing-rows).
 
 ## Folding a layer onto its parent
 
-The fold takes the parent's map and the layer's own keys, and returns the layer's map.
+The fold takes the parent's map and the layer's own map rows, and returns the layer's map.
 Three terms describe how the rows of two layers meet:
 
-| Term    | Of two rows, means                                                                                                       |
-| ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| sets    | a row sets a dim in `partial` where its key has a label, and any other dim of the attribute where its rows vary along it |
-| covers  | on each dim in `partial`, the two rows have the same label, or one of them has NULL                                      |
-| crosses | the two rows cover a common coordinate, and each row leaves NULL a dim that the other row sets                           |
+| Term    | Of two rows, means                                                                                                           |
+| ------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| sets    | a row sets a dim in `partial` where its map row has a label, and any other dim of the attribute where its rows vary along it |
+| covers  | on each dim in `partial`, the two rows have the same label, or one of them has NULL                                          |
+| crosses | the two rows cover a common coordinate, and each row leaves NULL a dim that the other row sets                               |
 
 The fold runs three steps, in this order:
 
@@ -115,8 +115,8 @@ With `p_max_pu` over `entity`, `scenario` and `snapshot`, a root row `(gas, NULL
 
 ## Reading an attribute
 
-`record.attributes[name]` returns the attribute's rows from the layers that the map assigns a key to, as written.
-A key left NULL stays NULL.
+`record.attributes[name]` returns the attribute's rows from the layers that the map assigns a map row to, as written.
+A dim a map row leaves NULL stays NULL.
 Where the map has an overlap row, the read also returns a value at the overlap row's labels. That value comes from the layer the map assigns the overlap row to.
 The read expands no NULL, settles no coordinate, and returns rows in no fixed order.
 An attribute that no layer wrote is an empty relation, typed as declared, and the reader applies the schema's `default`.
@@ -130,11 +130,11 @@ A curve is kept or dropped whole.
 !!! info "See also"
 
     [The record page](record.md) describes `RecordLike` and settling rows.
-    [Why the owner map contains keys as written](../about/layers.md#why-the-owner-map-contains-keys-as-written) gives the reasons for the map's shape.
+    [Why the owner map contains map rows as written](../about/layers.md#why-the-owner-map-contains-map-rows-as-written) gives the reasons for the map's shape.
 
-## Labels outside the key
+## Labels outside the index
 
-A dim outside `partial` is in no key, so the fold reads none of its labels.
+A dim outside `partial` is not in the index, so the fold reads none of its labels.
 The read drops each row that has a removed label on such a dim, or a removed tuple of such a multi-dim.
 A removed label is one that a layer's restatement dropped and the revision's axis lacks.
 
@@ -146,12 +146,12 @@ Take `partial = {"entity"}`, a root with `p_max_pu` for wind at snapshots 0, 1 a
 
 The child writes no `p_max_pu` file, yet the read drops the root's row at snapshot 2 and returns its other two rows.
 
-With `connection` outside `partial`, a connection attribute's key is the attribute's name alone.
+With `connection` outside `partial`, a connection attribute's index is the attribute's name alone.
 Removing a tuple then removes its values at read, as it does for a multi-dim in `partial` at the fold.
 
 ## A dim outside `partial`
 
-A crossing along a dim outside `partial` has no key column for an overlap row to set.
+A crossing along a dim outside `partial` has no index column for an overlap row to set.
 A `WorkingRecord` settles such a crossing as it stages.
 Where a staged row leaves the dim NULL over a parent row that sets it, the commit also writes the value along the parent's labels.
 
@@ -187,7 +187,7 @@ The read gives `(gas, low) 1` and `(gas, high) 3`.
 
 ## Flags
 
-The fold computes `varies`, `broadcast` and `breakpoints` for each row of the map from the layer's rows of that key.
+The fold computes `varies`, `broadcast` and `breakpoints` for each row of the map from the layer's rows of that map row.
 An overlap row takes the flags of the layer row it comes from.
 `record.flags()` unions them per attribute:
 
@@ -222,7 +222,7 @@ It reads nothing of `root`, `a` or `b`.
 
 - A read gives the same answers after you materialise, and opens fewer layers.
 - datarecord never starts a revision's fold from that revision's own cache.
-- A materialised map has keys as written, so a NULL in it applies to a label that a descendant adds.
+- A materialised map has map rows as written, so a NULL in it applies to a label that a descendant adds.
 - A read under a wider schema extends a materialised map as it extends one folded live.
 
 !!! info "See also"
@@ -238,7 +238,7 @@ It reads nothing of `root`, `a` or `b`.
 --8<-- "docs/static/resolution-directory.svg"
 </figure>
 
-The owner map assigns every key to the one layer, the axis order is each file's row order, and `partial` has no effect.
+The owner map assigns every map row to the one layer, the axis order is each file's row order, and `partial` has no effect.
 One `Record` reads both a directory and a revision, so a reader cannot tell them apart.
 `store.layer(id)` reads one layer of a store alone in the same way.
 

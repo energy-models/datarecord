@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""One layer's owner-map keys, as it wrote them, before any fold.
+"""One layer's owner-map rows, as it wrote them, before any fold.
 
 Notes
 -----
@@ -119,13 +119,13 @@ def _per_schema[**P, T](
     return memo
 
 
-def owner_keys(
+def owner_map_rows(
     rel: DuckDBPyRelation,
     schema: Schema,
     layer_id: UUID,
     attributes: tuple[str, ...],
 ) -> DuckDBPyRelation:
-    """One layer's owner-map keys, as it wrote them: one row per key of its attribute rows `rel`, under its `schema`.
+    """One layer's owner-map rows, as it wrote them: one per distinct index of its attribute rows `rel`, under its `schema`.
 
     `attributes` are those `rel` holds rows of.
 
@@ -155,7 +155,7 @@ def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelat
 
 @_per_schema
 def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...]:
-    """The aggregates giving one key's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
+    """The aggregates giving one map row's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
 
     `attributes` are those the rows are of.
 

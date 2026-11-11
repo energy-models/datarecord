@@ -142,15 +142,15 @@ def _combinations(
     schema: Schema, subject: str, rel: DuckDBPyRelation
 ) -> tuple[list[str], list[tuple[Any, ...]]]:
     """`subject`'s categorizing columns in `rel`, and their distinct value combinations."""
-    keys = [k for k in schema.categorizing(subject) if k in rel.columns]
-    if not keys:
-        return keys, [()]
-    return keys, rel.project(*(col(k) for k in keys)).distinct().fetchall()
+    props = [p for p in schema.categorizing(subject) if p in rel.columns]
+    if not props:
+        return props, [()]
+    return props, rel.project(*(col(p) for p in props)).distinct().fetchall()
 
 
-def _categories_of(keys: Sequence[str], combo: Sequence[Any]) -> dict[str, str]:
-    """`combo` by key, a NULL category left out, so it matches no `default_by` keyed on it."""
-    return {k: c for k, c in zip(keys, combo, strict=True) if c is not None}
+def _categories_of(props: Sequence[str], combo: Sequence[Any]) -> dict[str, str]:
+    """`combo` by property, a NULL category left out, so it matches no `default_by` keyed on it."""
+    return {p: c for p, c in zip(props, combo, strict=True) if c is not None}
 
 
 def _per_combination(
@@ -165,14 +165,14 @@ def _per_combination(
     `t` is built eagerly, one row per category combination `rel` holds when
     called, so the default rules stay the schema's.
     """
-    keys, combos = _combinations(schema, subject, rel)
+    props, combos = _combinations(schema, subject, rel)
     types = dict(zip(rel.columns, rel.types, strict=True))
 
     def row(combo: Sequence[Any]) -> dict[str, Expression]:
-        keyed = {k: lit(c).cast(types[k]) for k, c in zip(keys, combo, strict=True)}
-        return keyed | columns(_categories_of(keys, combo))
+        typed = {p: lit(c).cast(types[p]) for p, c in zip(props, combo, strict=True)}
+        return typed | columns(_categories_of(props, combo))
 
-    rows = [row(c) for c in combos or [(None,) * len(keys)]]
+    rows = [row(c) for c in combos or [(None,) * len(props)]]
     table = values_relation(con, list(rows[0]), [list(r.values()) for r in rows])
     table = (table if combos else table.limit(0)).set_alias("t")
-    return join_on(rel.set_alias("r"), table, [null_safe("r", "t", [k]) for k in keys])
+    return join_on(rel.set_alias("r"), table, [null_safe("r", "t", [p]) for p in props])

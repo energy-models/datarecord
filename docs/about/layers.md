@@ -20,13 +20,13 @@ The cost is depth. Every change is a new layer, and a read folds the layers from
 
 ## Why `partial` sits on the axis
 
-`partial` is the set of dims along which a layer overrides one value per label. Along any other dim, a layer restates the whole extent of each key it touches. With `snapshot` outside `partial`, changing one hour of a generator's `p_max_pu` restates that generator's whole series.
+`partial` is the set of dims along which a layer overrides one value per label. Along any other dim, a layer restates the whole extent of each map row it touches. With `snapshot` outside `partial`, changing one hour of a generator's `p_max_pu` restates that generator's whole series.
 
 The reason lies in how a framework reads a series. A framework that stores a constant apart from a series, as PyPSA does, cannot receive half a series. If a layer could patch one snapshot, a read would mix the layer's values at the snapshots it wrote with its parent's at the rest. That holds for every attribute over `snapshot`, so the rule belongs to the dim and not to each attribute.
 
 `partial` and an attribute's `dims` set different things. `dims` states which dims an attribute varies over, so `p_nom_opt`, a capacity an optimiser fixes before the scenario is known, is declared over `entity` alone. `partial` states how finely a layer may patch. A flag on the dim alone would make every attribute vary per scenario, the first-stage decision included. Keeping the two apart lets the writer refuse a `p_nom_opt` row that sets a scenario.
 
-The rejected alternatives are `partial` per attribute, and every dim in `partial`. Per attribute, the fold's key would vary by attribute, where the fold needs one fixed key. Each dim in `partial` widens that key, and every read of every attribute scans the wider key. A dim left out adds work once per edit, bounded by the length of its axis. The PyPSA tool puts `entity`, `bus`, `scenario` and `connection` in `partial`, and leaves `snapshot` and `carrier` out.
+The rejected alternatives are `partial` per attribute, and every dim in `partial`. Per attribute, the owner map's index would vary by attribute, where the fold needs one fixed index. Each dim in `partial` widens that index, and every read of every attribute scans the wider index. A dim left out adds work once per edit, bounded by the length of its axis. The PyPSA tool puts `entity`, `bus`, `scenario` and `connection` in `partial`, and leaves `snapshot` and `carrier` out.
 
 ## Why a layer restates an axis whole
 
@@ -38,9 +38,9 @@ With one file per axis, a cache or a staged fold always lists the same labels, i
 
 The cost is storage that grows with the axis and not with the edit. On a record of 60,000 entities and 150,000 connections, a one-entity property edit wrote 0.30 MB where a label patch wrote 0.8 kB. An axis is small beside the series over it, so the cost stays small beside a solve's results.
 
-## Why the owner map contains keys as written
+## Why the owner map contains map rows as written
 
-The owner map is the fold's result: per attribute, each key a layer wrote and the layer the map assigns it to ([resolution](../reference/resolution.md)). datarecord keeps each key as the layer wrote it, NULL included. Where rows of two layers cross, the fold adds one overlap row that sets the labels of both. The map assigns that row to the deeper layer.
+The owner map is the fold's result: per attribute, each map row a layer wrote and the layer the map assigns it to ([resolution](../reference/resolution.md)). datarecord keeps each map row as the layer wrote it, NULL included. Where rows of two layers cross, the fold adds one overlap row that sets the labels of both. The map assigns that row to the deeper layer.
 
 The rejected alternative expands each NULL to the labels of its dim when the fold runs. The map then grows with those labels, so one broadcast over 60,000 entities and two scenarios takes 120,000 rows. A materialised map also contains the expansion, so it has no row for a label a child adds later:
 

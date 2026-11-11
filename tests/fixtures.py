@@ -110,7 +110,7 @@ def write_attribute(
 
 
 def _hashable(value: Any) -> Any:
-    """A key value as a dict key: a struct's fields as a tuple."""
+    """A label as a dict key: a struct's fields as a tuple."""
     return tuple(value.values()) if isinstance(value, dict) else value
 
 
@@ -147,8 +147,8 @@ def restate(
 ) -> None:
     """Write `{kind}/{name}.parquet` of `layer` whole, as a layer restates it.
 
-    It starts from `_as_written`. A row of `rows` replaces the row of its key
-    in place, a new key is appended, and a key in `drop` is left out.
+    It starts from `_as_written`. A row of `rows` replaces the row of its label
+    in place, a new label is appended, and a label in `drop` is left out.
 
     Notes
     -----
@@ -554,11 +554,9 @@ def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
     labels = {d: [label(c) for (c,) in axis(d).project(d).fetchall()] for d in dims}
     reaching: dict[tuple, list[tuple[frozenset, Any]]] = defaultdict(list)
     for *raw, value in record.attributes[attribute].project(*dims, "value").fetchall():
-        key = [label(c) for c in raw]
-        named = frozenset(d for d, c in zip(dims, key, strict=True) if c is not None)
-        reach = [
-            labels[d] if c is None else [c] for d, c in zip(dims, key, strict=True)
-        ]
+        at = [label(c) for c in raw]
+        named = frozenset(d for d, c in zip(dims, at, strict=True) if c is not None)
+        reach = [labels[d] if c is None else [c] for d, c in zip(dims, at, strict=True)]
         for full in product(*reach):
             reaching[full].append((named, value))
     resolved = {}

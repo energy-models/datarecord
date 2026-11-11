@@ -4,7 +4,7 @@
 
 """The `Record`: a record's layers folded, and the resolved reads gated by its owner map.
 
-The map answers which layer owns each key; `Record` exposes the reads over
+The map answers which layer owns each map row; `Record` exposes the reads over
 it - one long relation per attribute. Tool-agnostic: turning
 these into a framework's object is `datarecord.tools`.
 
@@ -47,7 +47,6 @@ from datarecord.duck import (
 from datarecord.protocols import Flags, LazyRelations
 from datarecord.resolve.axes import Axes
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_keys import with_columns
 from datarecord.resolve.owner_map import (
     _frozen_table,
     _table,
@@ -55,6 +54,7 @@ from datarecord.resolve.owner_map import (
     source_for,
     split_frozen,
 )
+from datarecord.resolve.owner_map_rows import with_columns
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties
 from datarecord.schema.schema import LAYER_COLUMN, Schema
@@ -66,12 +66,14 @@ if TYPE_CHECKING:
 
 
 def _living(
-    rel: DuckDBPyRelation, dead: dict[str, DuckDBPyRelation], unkeyed: Sequence[str]
+    rel: DuckDBPyRelation,
+    dead: dict[str, DuckDBPyRelation],
+    outside_index: Sequence[str],
 ) -> DuckDBPyRelation:
-    """`rel` without the rows naming, in one of `unkeyed`, a dead label.
+    """`rel` without the rows naming, in one of `outside_index`, a dead label.
 
     The fold drops a removed label's rows by anti-joining the owner map on its
-    key. A dim outside `partial` is no key column, so the fold cannot
+    index. A dim outside `partial` is no index column, so the fold cannot
     reach the rows naming a label there: they are dropped here instead, against
     that dim's `dead` labels (`Axes.dead`).
 
@@ -80,7 +82,7 @@ def _living(
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
-    for c in unkeyed:
+    for c in outside_index:
         labels = dead.get(c)
         if labels is None or c not in rel.columns:
             continue
@@ -97,10 +99,10 @@ def _owned(dim: str) -> str:
 def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     """`om` with each of `dims` as its owning layer stored it, the owned label in `__owned_<dim>`.
 
-    A raw row then finds its owned keys by NULL-safe equality, which hashes where
-    `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A key NULL on a
+    A raw row then finds its owned map rows by NULL-safe equality, which hashes where
+    `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A map row NULL on a
     dim stays NULL, the read returning it as written. The flags then say how
-    the layer stored it, and a key its layer wrote both ways appears once per
+    the layer stored it, and a map row its layer wrote both ways appears once per
     way.
 
     Notes
@@ -130,9 +132,9 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
 
 
 def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID], bool]]:
-    """Return per attribute in `om`: its owning layers, and whether one holds keys both ways.
+    """Return per attribute in `om`: its owning layers, and whether one holds map rows both ways.
 
-    A layer holds keys both ways where its rows of the attribute name
+    A layer holds map rows both ways where its rows of the attribute name
     different sets of `partial` dims, read off `varies`.
     """
     dims = schema.partial_dims
@@ -148,7 +150,7 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
 
 
 def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
-    """`stored` with `_contested` set on each row of a layer whose keys name different sets of `dims`.
+    """`stored` with `_contested` set on each row of a layer whose map rows name different sets of `dims`.
 
     `stored` is one attribute's map rows as `_as_stored` gives them. Only a
     value row of such a layer can meet another at one coordinate, so only
@@ -177,7 +179,7 @@ def _empty_long(
 
 
 def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
-    """A row-less relation shaped like `dims/<dim>.parquet`: its key and its properties.
+    """A row-less relation shaped like `dims/<dim>.parquet`: its column and its properties.
 
     Notes
     -----
@@ -195,7 +197,7 @@ def _most_specific(
     """`most_specific` over one layer's rows of `attribute`, refusing twins too.
 
     One layer may hold a row naming a label of a `partial` dim beside a row
-    leaving that dim NULL, and both join the key that label names. Two rows
+    leaving that dim NULL, and both join the map row that label names. Two rows
     crossing, or two at one breakpoint naming the same dims, are a layer
     `write_layer` refuses, so it was written another way, and the read fails
     at that coordinate.
@@ -635,7 +637,7 @@ class Record:
     def _source_for(self, layer_uuid: UUID) -> LayerSource:
         """Return the source the fold stamped `layer_uuid` from.
 
-        How a winning row is read back: the map names which layer owns a key,
+        How a winning row is read back: the map names which layer owns a map row,
         and the row itself comes from that layer's own member.
 
         Notes
@@ -653,14 +655,14 @@ class Record:
         row of `attribute`. Above the frozen layers the plan is fixed: the
         staged layers fold onto their map one attribute at a time, onto none
         where the frozen layers hold no row of it, and only the rows of a
-        layer holding keys both ways are ranked (`_contested`).
+        layer holding map rows both ways are ranked (`_contested`).
 
         Raises
         ------
         ValueError
             If a frozen layer the owner map names holds no file of `attribute`.
         duckdb.Error
-            When fetched, where one layer holds two rows covering a key and
+            When fetched, where one layer holds two rows covering a coordinate and
             neither is the more specific there (`_most_specific`).
 
         Notes
@@ -689,7 +691,7 @@ class Record:
         # This attribute's own columns, not every declared dim: one file per
         # attribute is one column set per attribute (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet).
         columns = schema.long_columns_for(attribute)
-        # The join's arms are the map's key columns this attribute's file also
+        # The join's arms are the map's index columns this attribute's file also
         # carries. A dim outside `partial` is in neither: it is not in the map
         # at all, so it constrains nothing and passes straight through.
         #
@@ -707,13 +709,13 @@ class Record:
             layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
         if not layers:
             return _empty_long(schema, attribute, con)
-        unkeyed = [c for c in columns if c not in partial_dims]
+        outside_index = [c for c in columns if c not in partial_dims]
         values = union_all_by_name(layers).set_alias("l")
         stored = _as_stored(om, broadcast_over)
 
-        def joined(keys: DuckDBPyRelation, *named: Expression) -> DuckDBPyRelation:
+        def joined(owned: DuckDBPyRelation, *named: Expression) -> DuckDBPyRelation:
             return values.join(
-                keys.set_alias("o"),
+                owned.set_alias("o"),
                 null_safe("l", "o", (LAYER_COLUMN, *broadcast_over)),
             ).project(
                 *(
@@ -726,7 +728,7 @@ class Record:
             )
 
         if not broadcast_over or not contested:
-            return _living(joined(stored), dead, unkeyed)
+            return _living(joined(stored), dead, outside_index)
         stored = _contested(stored, broadcast_over)
         alone = joined(stored.filter(~col("_contested")))
         ranked = _most_specific(
@@ -737,14 +739,14 @@ class Record:
             dims,
             attribute,
         )
-        return _living(alone.union(ranked), dead, unkeyed)
+        return _living(alone.union(ranked), dead, outside_index)
 
     def _owners(self, attribute: str) -> tuple[list[UUID], bool]:
-        """Return the layers that may own a key of `attribute`, and whether `_relation` ranks rows.
+        """Return the layers that may own a map row of `attribute`, and whether `_relation` ranks rows.
 
         Where every source is frozen, one scan of the map answers every
         attribute and is kept, and rows are ranked only where a layer holds
-        keys both ways, its rows naming different sets of `partial` dims.
+        map rows both ways, its rows naming different sets of `partial` dims.
         Otherwise the layers above the frozen ones may change under the
         reader, so each is a possible owner and every attribute is planned for
         ranking, which `_contested` restricts to such layers' rows as data.

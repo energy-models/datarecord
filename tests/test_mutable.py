@@ -360,7 +360,7 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
 def test_an_edit_at_one_coordinate_keeps_the_rest_of_the_series(staged):
     """An edit at one coordinate displaces that one only.
 
-    Keying the overlay on the owner-map key alone would drop the whole series here,
+    Matching the overlay on the owner map's index alone would drop the whole series here,
     since it excludes the dims an attribute is not owned per.
 
     Notes
@@ -476,14 +476,14 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
     staged.set("p_nom", 22.0, entity=["Manchester Wind"])
     assert p_nom("Manchester Wind") == [22.0], "the read re-folds the staged layer"
 
-    # A key the second edit never named, to pin that re-folding is not
+    # A map row the second edit never named, to pin that re-folding is not
     # re-resolving from scratch and dropping what the first edit staged.
     staged.set("p_nom", 33.0, entity=["Norway Wind"])
     assert p_nom("Manchester Wind") == [22.0]
     assert p_nom("Norway Wind") == [33.0]
 
     committed = _entity_values(root.store.commit(staged).record, "p_nom")
-    assert committed["Manchester Wind"] == 22.0, "the later edit to a key commits"
+    assert committed["Manchester Wind"] == 22.0, "the later edit to a map row commits"
 
 
 def _rows(rel):
@@ -556,7 +556,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     Writing the edits as a child folds every layer from its files, which the
     seeded fold has to match: the same labels, tuples, properties and values,
     in axis order. One case materialises the root, below every removal, and
-    one the base, above them, where its node cache keeps a removed key at most
+    one the base, above them, where its node cache keeps a removed label at most
     as a dead label. In every case a child over the base reads the same once
     the base is materialised.
 
@@ -638,9 +638,9 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
 
     The case `staging-without-seq` leans on hardest: a `set` on a whole-owned
     axis stages the touched value plus the untouched coordinates as fills, and a
-    second `set` at another coordinate must replace only the fill on *its* key -
+    second `set` at another coordinate must replace only the fill at *its* coordinate -
     the first edit's value and its fills have to survive. Idempotence of
-    `_complete_owned_whole` and replace-by-key are what make it hold with
+    `_complete_owned_whole` and replace-by-coordinate are what make it hold with
     no ordering column to rank a fill below an edit.
 
     Notes
@@ -671,7 +671,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
         "every untouched snapshot keeps the base value"
     )
     assert set(rows["entity"]) == {"Manchester Wind"}, (
-        "an axis owned whole restates the touched key's extent, not every key's"
+        "an axis owned whole restates the touched map row's extent, not every map row's"
     )
 
 
@@ -964,7 +964,7 @@ def test_an_add_undone_by_a_remove_writes_nothing(staged, root, set_value):
 
 
 def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
-    """Per `(entity, bus)`, the multi-dim's own key.
+    """Per `(entity, bus)`, the multi-dim's own label.
 
     Notes
     -----
@@ -1011,7 +1011,7 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
 
 
 def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
-    """A packed struct passes through, one key replacing the last.
+    """A packed struct passes through, one coordinate replacing the last.
 
     Notes
     -----
@@ -1025,7 +1025,7 @@ def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
                 f"AS connection, {value} AS value"
             ),
         )
-    assert _efficiency(staged)["Manchester"] == 0.25, "one key, replaced"
+    assert _efficiency(staged)["Manchester"] == 0.25, "one coordinate, replaced"
 
 
 def test_set_takes_a_frame_duckdb_scans(staged):
@@ -1285,7 +1285,7 @@ def test_set_addresses_a_multi_dim_by_its_fields(staged):
 
 
 def test_set_refuses_a_field(staged):
-    """A field is part of the key, which `remove` and `add` change.
+    """A field is part of the label, which `remove` and `add` change.
 
     Notes
     -----
@@ -1415,7 +1415,7 @@ def test_a_multi_dim_property_refuses_what_is_no_field(over_roles):
 
 
 def test_add_refuses_an_attribute(over_roles):
-    """An axis row carries properties and keys; an attribute is long rows of `attributes/`."""
+    """An axis row carries its label and properties; an attribute is long rows of `attributes/`."""
     staged = over_roles
     with pytest.raises(ValueError, match=r"attributes \['efficiency'\].*`set"):
         staged.add("entity", ["l2"], efficiency=0.5)
@@ -1724,7 +1724,7 @@ def test_an_edit_over_a_directory_base_reads_back(small):
     assert p_nom() == [80.0], "the base holds a value for the edit to displace"
     staged.set("p_nom", 4242.0, entity=["Manchester Wind"])
     assert p_nom() == [4242.0], (
-        "the staged layer owns the key, so the read takes its value"
+        "the staged layer owns the map row, so the read takes its value"
     )
 
     # The base's id is derived from its revision's rather than allocated, so

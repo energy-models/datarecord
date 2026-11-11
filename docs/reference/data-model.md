@@ -69,7 +69,7 @@ A struct with some fields NULL, such as `{entity: dc, bus: NULL}`, matches no tu
 
 `connection.bus` is the `bus` field wherever a dotted `subject.name` stands.
 `Schema.resolve("connection.bus")` returns `connection` and the dim `bus` that the field draws on.
-A field is part of the key and has no value of its own, so datarecord refuses `set("connection.bus", ...)`.
+A field is part of the label and has no value of its own, so datarecord refuses `set("connection.bus", ...)`.
 A tuple changes only through a `remove` of the old tuple and an `add` of the new one.
 
 Removing a label that a tuple contains removes the tuple and its values ([layers](layers.md)).
@@ -80,7 +80,7 @@ For a multi-dim with no tuples, `record.dims` returns an empty relation.
 A **property** is a value per label of its subject dim, declared by a `PropertySpec` under `properties`.
 It is stored as a column of that dim's axis file, so it has no `dims` of its own.
 You name it `subject.name`, such as `entity.carrier` or `connection.role`, and a plain name always means an attribute.
-`record.properties[subject]` returns the subject's key and every property declared for it:
+`record.properties[subject]` returns the subject's column and every property declared for it:
 
 ```python
 record.properties["entity"].fetchall()
@@ -117,7 +117,7 @@ A property categorises its subject when two conditions hold:
 `entity.carrier` refers to `carrier`, which has no `one_of`, so it categorises nothing.
 `Schema.categorizing("entity")` lists `("ctype",)`, the categorising properties in declaration order.
 
-A category selects labels and keys a default:
+A category selects labels and picks a default:
 
 - `flags(ctype="Generator")`, a `set` keyword and a `select` keyword each apply to the labels with that category.
 - `default_by` keyed `entity.ctype` gives a default per category, which `Schema.default_for(name, ctype="Load")` returns.
@@ -131,7 +131,7 @@ When `set` changes a label's category, the label keeps its attribute values, and
 An **attribute** is the values at coordinates over the dims its `AttributeSpec` lists, stored as long rows, one file per attribute.
 A **coordinate** is one label on each dim of an attribute, such as `(wind, 1)`, which is where a value applies.
 Each row has a column per dim of the attribute, then `attribute`, `breakpoint` and `value`.
-A row's labels on those columns are its key, which covers one coordinate or, with a NULL, many:
+A row's labels on those columns cover one coordinate or, with a NULL, many:
 
 ```python
 record.attributes["p_max_pu"].order("snapshot").fetchall()

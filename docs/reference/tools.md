@@ -131,7 +131,7 @@ These are `active`, `build_year`, `committable`, `lifetime`, `weight`, `*_nom_ex
 | `unsupported_values`  | each attribute stored as a curve, or varying along a dim PyPSA holds it without              |
 | `ignored`             | each attribute a type has a value for and does not take                                      |
 
-When `verify` finds an unsupported key or dim, it reports nothing else.
+When `verify` finds a dim in `partial` or a dim it cannot take, it reports nothing else.
 It raises `ValueError` for a selection that `build` refuses.
 
 ### Entities

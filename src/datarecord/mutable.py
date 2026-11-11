@@ -58,13 +58,13 @@ from datarecord.duck import (
 from datarecord.protocols import RecordLike
 from datarecord.resolve.axes import refuse_unheld
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_keys import owner_keys
 from datarecord.resolve.owner_map import (
     has_pattern,
     null_patterns,
     uncovered,
     unsettled,
 )
+from datarecord.resolve.owner_map_rows import owner_map_rows
 from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
@@ -147,10 +147,10 @@ def normalise_value(
 
     Returns
     -------
-    keys
+    labels
         The label each value belongs to, or None for a scalar.
     values
-        One value per key, or the scalar alone.
+        One value per label, or the scalar alone.
 
     Raises
     ------
@@ -185,8 +185,9 @@ class StagedSource:
     """A staging area as one layer's rows - the last source the fold reads.
 
     "The layer as it would be written": each member reads its staging table,
-    which an edit replaces by key rather than appending to (`_insert`), so the
-    table is already one row per key and what a write would persist. An axis
+    in which an edit replaces the rows it covers rather than appending to them
+    (`_insert`), so the table already holds one row per label or coordinate and
+    is what a write would persist. An axis
     is staged whole, and handed over in position order.
 
     Unfrozen, which is the whole of what distinguishes it: a `set` changes these
@@ -458,7 +459,7 @@ class WorkingRecord(Record):
         shape = self._table(_OWNERS)
         empty = empty_relation(self.con, attribute=sqltypes.VARCHAR)
         create_table(
-            self.con, shape, owner_keys(empty, self.schema, self._layer_id, ())
+            self.con, shape, owner_map_rows(empty, self.schema, self._layer_id, ())
         )
         for attribute in self.schema.attributes:
             name = self._table(_OWNERS, attribute)
@@ -619,7 +620,7 @@ class WorkingRecord(Record):
             insert_into(
                 self.con,
                 table,
-                owner_keys(rows, self.schema, self._layer_id, (attribute,)),
+                owner_map_rows(rows, self.schema, self._layer_id, (attribute,)),
             )
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:
@@ -649,7 +650,7 @@ class WorkingRecord(Record):
     # committed layer, so there is no second overlay to keep in step.
 
     def _owned_whole(self, attribute: str) -> tuple[str, ...]:
-        """`AttributeSpec.dims` minus the fold key - the value axes owned whole.
+        """`AttributeSpec.dims` minus the owner map's index - the value axes owned whole.
 
         The complement of `owned_per`: a dim the attribute varies over
         but that is not in `partial_dims` (a non-`partial` `timestep`, or
@@ -749,8 +750,8 @@ class WorkingRecord(Record):
         if unknown:
             msg = (
                 f"`set({f'{dim}.{name}'!r}, ...)` names {unknown}, but {name!r} is a "
-                f"property of {dim!r} - a column of dims/{dim}.parquet, keyed "
-                f"by nothing else"
+                f"property of {dim!r} - a column of dims/{dim}.parquet, set per label "
+                f"of {dim!r} alone"
             )
             raise ValueError(msg)
         if not isinstance(value, Mapping) and (
@@ -760,10 +761,10 @@ class WorkingRecord(Record):
             picked = (
                 None if given is None else list(given) if _is_labels(given) else [given]
             )
-            keys, values = normalise_value(value, picked)
-            if keys is None:
-                keys, values = cast("list[Any]", picked), values * len(picked or ())
-            value = dict(zip(keys, values, strict=True))
+            at, values = normalise_value(value, picked)
+            if at is None:
+                at, values = cast("list[Any]", picked), values * len(picked or ())
+            value = dict(zip(at, values, strict=True))
         elif is_frame(value) or _is_labels(value):
             msg = (
                 f"`set({f'{dim}.{name}'!r}, <sequence>)` has no labels to align to; "
@@ -800,11 +801,11 @@ class WorkingRecord(Record):
         )
         self._patch(f"{_AXIS_PREFIX}{dim}", dim, name, edit)
 
-    def _patch(self, kind: str, key: str, name: str, edit: DuckDBPyRelation) -> None:
+    def _patch(self, kind: str, column: str, name: str, edit: DuckDBPyRelation) -> None:
         """Set property `name` on each label or tuple `edit` names, in the staged `kind`.
 
-        `key` is the one column a row is keyed by: a dim, a multi-dim's struct
-        column. The first edit stages the base's axis whole, so the
+        `column` is the dim's column a row is matched on: a flat dim's, or a
+        multi-dim's struct column. The first edit stages the base's axis whole, so the
         row is there to update, its other properties with it.
 
         Notes
@@ -819,7 +820,7 @@ class WorkingRecord(Record):
         self.con.execute(
             f"UPDATE {table} AS t SET {col(name)} = {col('e', name)} "
             f"FROM _dr_edit e "
-            f"WHERE {col('t', key)} IS NOT DISTINCT FROM {col('e', key)}"
+            f"WHERE {col('t', column)} IS NOT DISTINCT FROM {col('e', column)}"
         )
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
@@ -841,8 +842,8 @@ class WorkingRecord(Record):
                 f"change their tuples"
             )
             raise KeyError(msg)
-        keys = {c for m in self.schema.multi_dims for c in self.schema.over(m)}
-        unknown = sorted(set(dims) - set(self.schema.flat_dims) - keys)
+        fields = {c for m in self.schema.multi_dims for c in self.schema.over(m)}
+        unknown = sorted(set(dims) - set(self.schema.flat_dims) - fields)
         if unknown:
             msg = f"the schema declares no dims {unknown}"
             raise KeyError(msg)
@@ -900,7 +901,7 @@ class WorkingRecord(Record):
         - a mapping or a one-dimensional labelled series, keyed by labels of
           the series' `index.name` where that names a keyword, else of the
           one keyword not given;
-        - a long frame supplying its own keys, which keywords may complete with
+        - a long frame supplying its own labels, which keywords may complete with
           single labels.
 
         An attribute's values are long rows, whatever its `dims`. A property -
@@ -908,7 +909,7 @@ class WorkingRecord(Record):
         mapping or series from label to value, a `dim=` keyword naming the
         labels, or a scalar for every label the axis has. A multi-dim's
         property takes a scalar, its fields as keywords selecting the
-        tuples, none selecting every tuple. A field is part of the key,
+        tuples, none selecting every tuple. A field is part of the label,
         which `add` and `remove` change, and is refused here.
 
         A property is named `subject.name` - `set("entity.carrier", ...)` -
@@ -960,7 +961,7 @@ class WorkingRecord(Record):
         if is_frame(value) and not keyed:
             if listed or tuples:
                 msg = (
-                    f"`set({attribute!r}, <frame>)` supplies its own keys, so "
+                    f"`set({attribute!r}, <frame>)` supplies its own labels, so "
                     f"keywords {sorted(listed)} may give one label each, not a "
                     f"list, and none may select the tuples of {sorted(tuples)}"
                 )
@@ -1047,8 +1048,8 @@ class WorkingRecord(Record):
         if name in self.schema.over(subject):
             msg = (
                 f"`set({dotted!r}, ...)` names a field of the multi-dim "
-                f"{subject!r}, part of its key rather than a value; `remove` "
-                f"the tuples and `add` them with the new label instead"
+                f"{subject!r}, which `set` cannot change; `remove` the tuples and "
+                f"`add` them with the new label instead"
             )
             raise ValueError(msg)
         rest, tuples = self._select(dotted, labels)
@@ -1367,7 +1368,7 @@ class WorkingRecord(Record):
         rel: DuckDBPyRelation,
         table: str,
         supplied: Mapping[str, Expression],
-        key: Sequence[str] | None = None,
+        on: Sequence[str] | None = None,
         broadcast: Container[str] = (),
     ) -> None:
         """Project `rel` into `table`'s column order and insert it.
@@ -1379,8 +1380,8 @@ class WorkingRecord(Record):
         otherwise a NULL typed from the table, which is what spares the insert a
         coercion.
 
-        `key` given, the rows `rel` names by it are deleted first, so the table
-        holds one row per key and *is* the file it becomes - no fold on the way
+        `on` given, the rows `rel` covers on those columns are deleted first, so
+        the table holds one row per coordinate and *is* the file it becomes - no fold on the way
         out (`_delete_covered`).
         `rel` must not read `table`, or the delete changes what the insert then
         reads: a caller deriving from the staged rows snapshots them first
@@ -1406,8 +1407,8 @@ class WorkingRecord(Record):
                 for c, t in zip(staging.columns, staging.types, strict=True)
             )
         )
-        if key is not None:
-            self._delete_covered(projected, table, key, broadcast)
+        if on is not None:
+            self._delete_covered(projected, table, on, broadcast)
         insert_into(self.con, table, projected)
 
     def _insert_long(
@@ -1444,23 +1445,23 @@ class WorkingRecord(Record):
                 return packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
-        key_dims = self.schema.dims_of(attribute)
+        own_dims = self.schema.dims_of(attribute)
         shaped = rel.project(
-            *(column(d) for d in key_dims),
+            *(column(d) for d in own_dims),
             lit(attribute).alias("attribute"),
             lit(None).cast(sqltypes.DOUBLE).alias("breakpoint"),
             col("value"),
         )
         call = f"`set({attribute!r}, ...)`"
-        refuse_unheld(shaped, self.schema, key_dims, self._held, call, staged=True)
+        refuse_unheld(shaped, self.schema, own_dims, self._held, call, staged=True)
         self._insert(
             shaped,
             table,
             {},
-            key=tuple(
+            on=tuple(
                 c for c in self.schema.long_columns_for(attribute) if c != "value"
             ),
-            broadcast=key_dims,
+            broadcast=own_dims,
         )
         self._complete_owned_whole(attribute, table)
         self._overwrite_crossing(attribute, shaped, table)
@@ -1562,12 +1563,12 @@ class WorkingRecord(Record):
         self,
         rel: DuckDBPyRelation,
         table: str,
-        key: Sequence[str],
+        on: Sequence[str],
         broadcast: Container[str],
     ) -> None:
         """Delete every row of `table` that a row of `rel` covers.
 
-        A row covers another where each `key` column is equal, NULL-safe so a
+        A row covers another where each `on` column is equal, NULL-safe so a
         broadcast NULL replaces the same NULL rather than sitting beside it, or
         is a `broadcast` column the covering row leaves NULL, every label by the
         broadcast rule. `rel` is split by which `broadcast` columns it leaves
@@ -1578,7 +1579,7 @@ class WorkingRecord(Record):
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
-        open_ = [c for c in key if c in broadcast]
+        open_ = [c for c in on if c in broadcast]
         _dr_rel = rel
         patterns = (
             rel.project(*(col(c).isnull() for c in open_)).distinct().fetchall()
@@ -1590,8 +1591,8 @@ class WorkingRecord(Record):
             part = " AND ".join(
                 f"({col('p', c)} IS NULL) = {c in nulls}" for c in open_
             )
-            on = null_safe("t", "p", [c for c in key if c not in nulls])
-            where = f"{part} AND {on}" if part else str(on)
+            equal = null_safe("t", "p", [c for c in on if c not in nulls])
+            where = f"{part} AND {equal}" if part else str(equal)
             self.con.execute(f"DELETE FROM {table} AS t USING _dr_rel p WHERE {where}")
 
     def _complete_owned_whole(self, attribute: str, table: str) -> None:
@@ -1599,13 +1600,13 @@ class WorkingRecord(Record):
 
         Done as the rows are staged rather than at write, so the staging table
         *is* the layer: touching one snapshot of a series makes
-        this layer the owner of that key's whole extent along the dim, and the
+        this layer the owner of that map row's whole extent along the dim, and the
         untouched coordinates have to be carried or the written layer would
         report a loss.
 
-        Scoped by the keys already staged, not by the attribute: only the base
-        rows reaching a key some edit named are carried (`_reaching`), so an
-        entity this record never touched stays in the parent. A key NULL on a
+        Scoped by the map rows already staged, not by the attribute: only the
+        base rows reaching a map row some edit named are carried (`_reaching`), so
+        an entity this record never touched stays in the parent. A map row NULL on a
         dim the base holds labels of carries nothing.
 
         A carried row is expanded along the whole-owned dims it leaves NULL, and
@@ -1619,7 +1620,7 @@ class WorkingRecord(Record):
         edit to the same attribute carries only what the first did not. That
         anti-join is also the whole of what keeps a fill off an edited
         coordinate - it covers as a later `set` deletes (`_delete_covered`),
-        so the fill it excludes and the row that replaces one are one key, and
+        so the fill it excludes and the row that replaces one cover one coordinate, and
         no ordering column is needed to rank them.
 
         Notes
@@ -1632,7 +1633,7 @@ class WorkingRecord(Record):
         if not whole:
             return
 
-        # Intersected with the attribute's own columns: a key column its file
+        # Intersected with the attribute's own columns: an index column its file
         # does not carry is absent from both sides rather than NULL in them,
         # and joining on it would fail to bind (`long_columns_for`).
         columns = set(self.schema.long_columns_for(attribute))
@@ -1642,7 +1643,7 @@ class WorkingRecord(Record):
         present = [d for d in whole if d in columns]
         if not present:
             # No column for any whole-owned dim, so the file holds one row per
-            # key and there is no extent to complete.
+            # map row and there is no extent to complete.
             return
         dims = [*self.schema.dims_of(attribute), "attribute"]
         staged = self.con.table(table)
@@ -1653,11 +1654,11 @@ class WorkingRecord(Record):
             for c in scope
             if c in self.schema.dimensions and self._base.dims[c].limit(1).fetchall()
         ]
-        keys = staged.filter(
+        named = staged.filter(
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
         base = self._base.attributes[attribute]
-        carried = uncovered(_reaching(base, keys, scope, axes), staged, dims)
+        carried = uncovered(_reaching(base, named, scope, axes), staged, dims)
         self._insert(carried, table, {})
         spread = _spread(self.con.table(table), base, scope, present, dims)
         if spread is not None:
@@ -1761,7 +1762,7 @@ class WorkingRecord(Record):
         rel = self._columns_relation(data, {c: self._column_type(c, dim) for c in data})
         table = self._ensure(kind)
         self._insert_snapshot(
-            self._positioned(rel, table, kind, dim), table, {}, key=(dim,)
+            self._positioned(rel, table, kind, dim), table, {}, on=(dim,)
         )
 
     @_atomic
@@ -1876,7 +1877,7 @@ class WorkingRecord(Record):
         kind = f"{_AXIS_PREFIX}{multi}"
         table = self._ensure(kind)
         self._insert_snapshot(
-            self._positioned(rel, table, kind, multi), table, {}, key=(multi,)
+            self._positioned(rel, table, kind, multi), table, {}, on=(multi,)
         )
 
     def _tuple_frame(
@@ -2011,15 +2012,15 @@ class WorkingRecord(Record):
         rel: DuckDBPyRelation,
         table: str,
         supplied: Mapping[str, Expression],
-        key: Sequence[str],
+        on: Sequence[str],
     ) -> None:
         """`_insert`, for a `rel` read from `table` itself.
 
-        Snapshotted into a table first: the replace-by-key delete would
+        Snapshotted into a table first: the delete of the rows it covers would
         otherwise change what `rel` reads.
         """
         with scratch_table(self.con, rel) as snapshot:
-            self._insert(snapshot, table, supplied, key=key)
+            self._insert(snapshot, table, supplied, on=on)
 
     def _reject_undeclared(
         self, call: str, known: Collection[str], columns: Iterable[str]
@@ -2079,8 +2080,8 @@ class WorkingRecord(Record):
     def _collapsed_attribute(self, attribute: str) -> DuckDBPyRelation:
         """One attribute's staged rows, without those naming a label its staged axis lacks.
 
-        The rows are already one per coordinate - an edit replaced its key rather
-        than appending beside it (`_insert`) - so this is the table scan minus
+        The rows are already one per coordinate - an edit replaced the row at its
+        coordinate rather than appending beside it (`_insert`) - so this is the table scan minus
         the rows naming a label, or a tuple of one of the attribute's
         multi-dims, that the staged axis does not hold. `set` refuses a label the
         staged axis lacks, so a row is dropped here only where `remove` took
@@ -2238,7 +2239,7 @@ def _unpacked(
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
-    """One axis's columns - the shape of `dims/{dim}.parquet`: its key and its properties.
+    """One axis's columns - the shape of `dims/{dim}.parquet`: its column and its properties.
 
     Notes
     -----
@@ -2282,10 +2283,10 @@ def _reaching(
     scope: Sequence[str],
     axes: Mapping[str, DuckDBPyRelation | None],
 ) -> DuckDBPyRelation:
-    """`base`'s value at each coordinate of the `scope` keys `staged` holds, by the broadcast rule.
+    """`base`'s value at each coordinate of the `scope` labels `staged` holds, by the broadcast rule.
 
-    A base row NULL on a `scope` column reaches every staged key there and
-    takes its label; NULL on a dim of `axes`, every label of that axis, and
+    A base row NULL on a `scope` column reaches every staged label there and
+    takes it; NULL on a dim of `axes`, every label of that axis, and
     stays NULL where the dim holds none. Of the rows covering one coordinate
     the one naming the most of those columns is kept. A match on "NULL or equal" cannot hash, so `base` is split by which
     `scope` columns it leaves NULL and each part joins on the columns it
@@ -2295,7 +2296,7 @@ def _reaching(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    keys = staged.project(*(col(c).alias(f"_k_{c}") for c in scope)).distinct()
+    staged_at = staged.project(*(col(c).alias(f"_s_{c}") for c in scope)).distinct()
     named = reduce(
         operator.add,
         (col(c).isnotnull().cast(sqltypes.INTEGER) for c in (*scope, *axes)),
@@ -2304,11 +2305,11 @@ def _reaching(
     for pattern in null_patterns(base, scope):
         part = base.filter(has_pattern(scope, pattern))
         part = part.project(star(), named.alias("_named"))
-        on = [col(c) == col(f"_k_{c}") for c in scope if c in pattern]
+        on = [col(c) == col(f"_s_{c}") for c in scope if c in pattern]
         parts.append(
-            part.join(keys, ex_all(on)).project(
+            part.join(staged_at, ex_all(on)).project(
                 *(
-                    col(f"_k_{c}").alias(c) if c in scope else col(c)
+                    col(f"_s_{c}").alias(c) if c in scope else col(c)
                     for c in base.columns
                 ),
                 col("_named"),
@@ -2356,21 +2357,21 @@ def _spread(
     - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    keys = [*scope, *whole]
+    matched = [*scope, *whole]
     open_ = reduce(operator.or_, (col(c).isnull() for c in whole))
     named = reduce(operator.or_, (col(c).isnotnull() for c in whole))
     parts = []
-    for staged_pattern in null_patterns(staged.filter(open_), keys):
-        for base_pattern in null_patterns(base.filter(named), keys):
+    for staged_pattern in null_patterns(staged.filter(open_), matched):
+        for base_pattern in null_patterns(base.filter(named), matched):
             base_only = base_pattern - staged_pattern
             if staged_pattern & set(scope) <= base_pattern or base_only.isdisjoint(
                 whole
             ):
                 continue
-            left = staged.filter(has_pattern(keys, staged_pattern)).set_alias("s")
-            right = base.filter(has_pattern(keys, base_pattern)).set_alias("b")
+            left = staged.filter(has_pattern(matched, staged_pattern)).set_alias("s")
+            right = base.filter(has_pattern(matched, base_pattern)).set_alias("b")
             shared = staged_pattern & base_pattern
-            on = [col("s", c) == col("b", c) for c in keys if c in shared]
+            on = [col("s", c) == col("b", c) for c in matched if c in shared]
             parts.append(
                 join_on(left, right, on).project(
                     *(
