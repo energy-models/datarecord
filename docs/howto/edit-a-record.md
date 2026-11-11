@@ -95,7 +95,7 @@ w.add("entity", ["pv1"], ctype="Generator", carrier="solar")
 w.add("connection", [{"entity": "pv1", "bus": "south"}])
 w.set("p_nom", 40.0, entity="pv1")
 w.remove("bus", ["north"])
-print(w.dims["connection"].df())
+print(w.dimensions["connection"].df())
 ```
 
 ```text
@@ -154,7 +154,7 @@ print(rel.filter("entity = 'pv1'").df())
 child = store.commit(w)
 w.close()
 print(child.parent == rev.id)
-print(child.record.dims["bus"].df())
+print(child.record.dimensions["bus"].df())
 ```
 
 ```text

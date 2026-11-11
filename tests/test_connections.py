@@ -42,10 +42,10 @@ PROCESS = "Process"
 def _connections(revision):
     """The resolved `connection` multi-dim, which these tests need a row of.
 
-    No type: one `dims/connection.parquet` holds every type's rows, and these
+    No type: one `dimensions/connection.parquet` holds every type's rows, and these
     tests declare a single one.
     """
-    return revision.record.dims["connection"]
+    return revision.record.dimensions["connection"]
 
 
 def _root(store, declared: Schema | None = None) -> HandBuilt:
@@ -335,7 +335,7 @@ def _disconnect_steel(staged):
     staged.remove("connection", pairs)
 
 
-_DANGLING = r"dims/connection.parquet names 'entity' labels \['steel_dri'\]"
+_DANGLING = r"dimensions/connection.parquet names 'entity' labels \['steel_dri'\]"
 
 
 @pytest.mark.parametrize(
@@ -492,7 +492,7 @@ def test_remove_reaches_a_multi_dims_second_entity_before_and_after_commit(store
 
     child = root.store.commit(staged)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
-    contracts = child.record.dims["contract"]
+    contracts = child.record.dimensions["contract"]
     assert len(contracts) == 1, "its tuple went with it"
 
 

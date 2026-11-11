@@ -47,7 +47,7 @@ class Selection:
     """A record at the labels `select` names, itself a `RecordLike`.
 
     A dim given one label is squeezed out of `schema`; every other dim keeps
-    the labels that refer to no label the selection drops. `dims` and
+    the labels that refer to no label the selection drops. `dimensions` and
     `properties` keep the base's order, and every relation is a plan on the
     base's connection.
 
@@ -79,9 +79,9 @@ class Selection:
         return self.base.con
 
     @property
-    def dims(self) -> LazyRelations:
+    def dimensions(self) -> LazyRelations:
         """The axes of the dims left, each at its kept labels in axis order."""
-        names = _declared(self.base.dims, self.schema.dimensions)
+        names = _declared(self.base.dimensions, self.schema.dimensions)
         return LazyRelations(names, self._axis)
 
     @property
@@ -149,7 +149,7 @@ class Selection:
         - [lifting rows back](https://energy-models.github.io/datarecord/reference/selecting/#lift)
         """
         base = self.base.schema
-        dims = base.dims_of(attribute)
+        dims = base.dimensions_of(attribute)
         changed = [
             c
             for c in dims
@@ -181,7 +181,7 @@ class Selection:
 
     def _shrunk(self, dim: str) -> bool:
         """Whether `dim` is a multi-dim the view keeps with some fields squeezed."""
-        if dim not in self.schema.multi_dims:
+        if dim not in self.schema.multi_dimensions:
             return False
         return self.schema.over(dim) != self.base.schema.over(dim)
 
@@ -212,7 +212,7 @@ class Selection:
         return _tuple(c, fields, self.schema.duck_type(self.schema.dimensions[c]))
 
     def _axis(self, dim: str) -> DuckDBPyRelation:
-        return self._keyed(dim, self.base.dims[dim])
+        return self._keyed(dim, self.base.dimensions[dim])
 
     def _subject(self, subject: str) -> DuckDBPyRelation:
         rel = self._keyed(subject, self.base.properties[subject])
@@ -278,7 +278,7 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
     squeezed: dict[str, Any] = {}
     kept: dict[str, set[Any]] = {}
     for keyword, value in labels.items():
-        if keyword in schema.multi_dims:
+        if keyword in schema.multi_dimensions:
             raise _refusal(
                 keyword,
                 value,
@@ -295,7 +295,7 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
             continue
         subject, allowed, asked[keyword] = _narrowing(schema, read, keyword, value)
         _narrow(kept, subject, allowed)
-    for m in schema.multi_dims:
+    for m in schema.multi_dimensions:
         over = schema.over(m)
         if all(d in squeezed for d in over.values()):
             squeezed[m] = {c: squeezed[d] for c, d in over.items()}
@@ -341,7 +341,9 @@ class _Read:
     def axis(self, dim: str) -> list[Any]:
         """The labels of `dim` in axis order, a tuple as a dict."""
         if dim not in self._axes:
-            self._axes[dim] = [label for (label,) in self.record.dims[dim].fetchall()]
+            self._axes[dim] = [
+                label for (label,) in self.record.dimensions[dim].fetchall()
+            ]
         return self._axes[dim]
 
     def values(self, subject: str, name: str) -> dict[Any, Any]:
@@ -386,7 +388,7 @@ def _narrowing(
         If `keyword` is a field of several multi-dims, a property of
         several subjects or neither, or as `_match` does.
     """
-    multis = [m for m in schema.multi_dims if keyword in schema.over(m)]
+    multis = [m for m in schema.multi_dimensions if keyword in schema.over(m)]
     if len(multis) > 1:
         raise _refusal(
             keyword,
@@ -451,7 +453,7 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
                     if v is not None and _key(v) in dropped[dim]
                 }
                 _narrow(kept, subject, set(values) - gone)
-        for multi in schema.multi_dims:
+        for multi in schema.multi_dimensions:
             for f, dim in schema.over(multi).items():
                 if dropped.get(dim):
                     _narrow(

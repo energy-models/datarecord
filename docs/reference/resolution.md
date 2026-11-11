@@ -24,7 +24,7 @@ A [reader](record.md) settles each coordinate by the broadcast rule.
 
 ## Axes
 
-A layer that changes an axis restates it whole, so a revision's axis is the deepest `dims/<dim>.parquet` on its path from the root.
+A layer that changes an axis restates it whole, so a revision's axis is the deepest `dimensions/<dim>.parquet` on its path from the root.
 A layer with no file for a dim leaves its parent's axis as it is.
 
 <figure class="diagram">

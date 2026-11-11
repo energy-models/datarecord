@@ -18,10 +18,10 @@ It has the entities `wind`, `gas` and `dc`, the buses `north` and `south`, and t
 
 A **dim** is a set of unique labels that values vary along, declared by a `Dimension` under `dimensions`.
 A **label** is one value of a dim, unique within it, typed by the dim's `dtype`.
-An **axis** is the labels one dim has in one record, in order, which `record.dims[dim]` returns:
+An **axis** is the labels one dim has in one record, in order, which `record.dimensions[dim]` returns:
 
 ```python
-record.dims["entity"].fetchall()
+record.dimensions["entity"].fetchall()
 ```
 
 ```text
@@ -37,7 +37,7 @@ A record's data is the data each of its revisions adds (a [layer](layers.md)), a
 ### A dim with `one_of`
 
 A dim with `one_of` has exactly the labels its list declares, in list order.
-Its axis comes from the schema and from no file, so `record.dims["ctype"]` returns `Generator`, `Link` and `Load` in every record of the schema.
+Its axis comes from the schema and from no file, so `record.dimensions["ctype"]` returns `Generator`, `Link` and `Load` in every record of the schema.
 Its column is an `ENUM` of the labels.
 A dim with `one_of` has no properties, and [`add` and `remove`](editing.md#add-and-remove) refuse it: a new label is a schema change.
 Otherwise it is a dim like any other, which an attribute may range over and a property may refer to.
@@ -48,7 +48,7 @@ A **multi-dim** is a dim declared with `over`, whose labels are tuples of other 
 `connection` over `(entity, bus)` lists which entity attaches to which bus:
 
 ```python
-record.dims["connection"].fetchall()
+record.dimensions["connection"].fetchall()
 ```
 
 ```text
@@ -73,7 +73,7 @@ A field is part of the label and has no value of its own, so datarecord refuses 
 A tuple changes only through a `remove` of the old tuple and an `add` of the new one.
 
 Removing a label that a tuple contains removes the tuple and its values ([layers](layers.md)).
-For a multi-dim with no tuples, `record.dims` returns an empty relation.
+For a multi-dim with no tuples, `record.dimensions` returns an empty relation.
 
 ## Properties
 
@@ -196,12 +196,12 @@ An attribute's `dims` may not list a multi-dim beside a dim with the name of one
 
 ## Wide and long rows
 
-A record returns `dims` and `properties` wide, with one row per label or tuple, and `attributes` long, with one row per value:
+A record returns `dimensions` and `properties` wide, with one row per label or tuple, and `attributes` long, with one row per value:
 
 | Relation                       | Columns                                                  |
 | ------------------------------ | -------------------------------------------------------- |
-| `dims["entity"]`               | `entity`                                                 |
-| `dims["connection"]`           | `connection STRUCT(entity, bus)`                         |
+| `dimensions["entity"]`         | `entity`                                                 |
+| `dimensions["connection"]`     | `connection STRUCT(entity, bus)`                         |
 | `properties["entity"]`         | `entity`, then one column per property                   |
 | `attributes["p_max_pu"]`       | `entity`, `snapshot`, `attribute`, `breakpoint`, `value` |
 | an attribute over `connection` | `connection`, `attribute`, `breakpoint`, `value`         |

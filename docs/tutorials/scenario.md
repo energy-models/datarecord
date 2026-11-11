@@ -56,7 +56,7 @@ schema = Schema(
 class Empty:
     schema: Schema
     con: DuckDBPyConnection
-    dims: dict = field(default_factory=dict)
+    dimensions: dict = field(default_factory=dict)
     properties: dict = field(default_factory=dict)
     attributes: dict = field(default_factory=dict)
 
@@ -181,7 +181,7 @@ print(sorted(os.listdir(store.resolved_dir(high.id))))
 ```
 
 ```text
-['dim_owners.parquet', 'owner_map.parquet']
+['dimension_owners.parquet', 'owner_map.parquet']
 ```
 
 The two files are the fold's result for `high`. Read the revision again:

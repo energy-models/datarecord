@@ -86,10 +86,10 @@ def test_child_overwrites_component(parent):
 
 
 def test_closed_child_reads_its_own_resolved_files(store, parent):
-    """Reading a closed non-root record uses its own persisted dims/manifest/map.
+    """Reading a closed non-root record uses its own persisted dimensions/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
-    no `dims/` or `manifest.json` of its own here) cannot be the source.
+    no `dimensions/` or `manifest.json` of its own here) cannot be the source.
 
     Notes
     -----
@@ -100,7 +100,7 @@ def test_closed_child_reads_its_own_resolved_files(store, parent):
     child.commit().materialise()
 
     reloaded = store.revision(child.id)
-    assert set(reloaded.record.dims["entity"].df()["entity"]) == {
+    assert set(reloaded.record.dimensions["entity"].df()["entity"]) == {
         "Manchester Wind",
         "Norway Wind",
     }, "the entity axis comes from the root through the resolved files"
@@ -160,8 +160,8 @@ def test_resolved_reads_same_as_unresolved(store, parent):
         "the owner map folded through the base matches folding from the root"
     )
 
-    assert set(truncated.dims["entity"].df()["entity"]) == set(
-        unresolved.dims["entity"].df()["entity"]
+    assert set(truncated.dimensions["entity"].df()["entity"]) == set(
+        unresolved.dimensions["entity"].df()["entity"]
     ), "the resolved entity axis is the same either way"
 
     for attr in truncated.attributes:

@@ -155,7 +155,7 @@ class RecordLike(Protocol):
         ...
 
     @property
-    def dims(self) -> Relations:
+    def dimensions(self) -> Relations:
         """Axis relations keyed by dim, each holding only the dim's label column.
 
         A multi-dim's label column is its struct column of its

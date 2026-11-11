@@ -25,9 +25,9 @@ A `Record` returns the schema of the deepest revision's data (its last [layer](l
 A `Record` returns the calling thread's cursor of its workspace, so a relation belongs to the thread that built it ([store](store.md)).
 A reader plans its own frames and SQL on `con` beside the record's relations.
 
-## `dims`
+## `dimensions`
 
-`dims` maps every dim the schema declares to a relation of its axis: the label column alone, one row per label, in axis order.
+`dimensions` maps every dim the schema declares to a relation of its axis: the label column alone, one row per label, in axis order.
 A multi-dim's relation is its one struct column, such as `connection STRUCT(entity, bus)`.
 A dim with `one_of` returns its list, and a dim that no layer has labels for returns an empty relation with its declared column.
 
@@ -85,7 +85,7 @@ The flags describe the rows as written, so a NULL row that more specific rows co
 
 ## Relations
 
-`Relations` is `Mapping[str, DuckDBPyRelation]`, the type of `dims`, `properties` and `attributes`.
+`Relations` is `Mapping[str, DuckDBPyRelation]`, the type of `dimensions`, `properties` and `attributes`.
 A `Record` returns `LazyRelations`, which builds each relation when a reader first looks it up.
 Listing the keys reads no file, and building a relation reads the file's footer, which is one round trip on a remote store.
 
@@ -146,7 +146,7 @@ rows.order("entity, snapshot").fetchall()
 
 `dc` is no generator, so its rows are gone.
 `snapshot` is not in `labels`, so `gas` keeps one constant row, and `wind` keeps its series beside a row at `snapshot` NULL.
-Passing `"snapshot": record.dims["snapshot"]` as well gives one row per generator and snapshot.
+Passing `"snapshot": record.dimensions["snapshot"]` as well gives one row per generator and snapshot.
 
 `labels` maps each dim to a relation of its labels, or of a multi-dim's tuples, in a column of the dim's name.
 `flags` sets how much work the query does, and flags that overstate the rows give the same result more slowly:

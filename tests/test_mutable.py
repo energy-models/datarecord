@@ -95,7 +95,7 @@ def _layer_rows(revision, attribute):
 
 
 def _layer_axis(revision, dim):
-    """One committed layer's own `dims/<dim>.parquet`, as pandas - `_layer_rows` for an axis."""
+    """One committed layer's own `dimensions/<dim>.parquet`, as pandas - `_layer_rows` for an axis."""
     rel = ParquetLayer(revision.manifest, revision.store).axis(dim)
     return rel.to_df() if rel is not None else pd.DataFrame()
 
@@ -335,7 +335,7 @@ def test_a_label_of_a_type_that_does_not_fit_its_dim_is_refused(staged, edit, ma
 def test_a_label_its_dtype_widens_is_taken(staged, dim, labels):
     """A label of a type its dtype widens, as a frame's column is, is staged."""
     staged.add(dim, labels)
-    assert set(labels) <= set(staged.dims[dim].df()[dim]), "staged as given"
+    assert set(labels) <= set(staged.dimensions[dim].df()[dim]), "staged as given"
 
 
 def test_set_accepts_a_name_staged_by_add(staged, root):
@@ -504,10 +504,10 @@ def _rows(rel):
             "entity",
             lambda w: w.set("entity.carrier", {"Norway Gas": "wind"}),
         ),
-        ("dims", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
-        ("dims", "scenario", lambda w: w.add("scenario", ["high"])),
+        ("dimensions", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
+        ("dimensions", "scenario", lambda w: w.add("scenario", ["high"])),
         (
-            "dims",
+            "dimensions",
             "connection",
             lambda w: w.add(
                 "connection", [{"entity": "Norway Gas", "bus": "Manchester"}]
@@ -602,7 +602,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
 
     def read(record):
         return (
-            {d: record.dims[d].fetchall() for d in record.dims},
+            {d: record.dimensions[d].fetchall() for d in record.dimensions},
             {s: record.properties[s].fetchall() for s in record.properties},
             {
                 a: sorted(record.attributes[a].fetchall(), key=str)
@@ -610,12 +610,12 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
             },
         )
 
-    assert w.dims["entity"].fetchall() == [
+    assert w.dimensions["entity"].fetchall() == [
         ("Norway Wind",),
         ("Solar",),
         ("Norway",),
     ], "a staged removal goes, and a label added back comes where it is added again"
-    assert [c for (c,) in w.dims["connection"].fetchall()] == [
+    assert [c for (c,) in w.dimensions["connection"].fetchall()] == [
         {"entity": "Solar", "bus": "Oslo"},
         {"entity": "Norway Wind", "bus": "Norway"},
     ], "a tuple added back comes where it is added again"
@@ -830,7 +830,7 @@ def test_a_dim_with_one_of_is_the_schemas_list(units):
         ValueError, match=r"`add\('tech', ...\)` is refused: 'tech' lists its labels"
     ):
         units.add("tech", ["node"])
-    assert units.dims["tech"].df()["tech"].tolist() == ["plant", "node"], (
+    assert units.dimensions["tech"].df()["tech"].tolist() == ["plant", "node"], (
         "the axis is the list"
     )
     assert "tech" not in units.edits.axes(), "nothing is staged for it"
@@ -905,7 +905,7 @@ def test_a_staged_axis_is_the_whole_axis_in_order(staged, root):
     - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
     - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
     """
-    labels = [*root.record.dims["entity"].df()["entity"], "NewSolar"]
+    labels = [*root.record.dimensions["entity"].df()["entity"], "NewSolar"]
     staged.remove("entity", ["Norway Gas"])
     staged.add("entity", ["NewSolar"], ctype=GEN)
     staged.add("entity", ["Norway Gas"], ctype=GEN)
@@ -932,7 +932,7 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     assert "Norway Gas" not in _entity_axis(staged).index, "it reads back at once"
 
     child = root.store.commit(staged)
-    assert "Norway Gas" not in set(child.record.dims["entity"].df()["entity"])
+    assert "Norway Gas" not in set(child.record.dimensions["entity"].df()["entity"])
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
@@ -971,13 +971,13 @@ def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
     """
     staged.remove("connection", [{"entity": "Norwich Converter", "bus": "Norwich"}])
-    before = unpacked(staged.dims["connection"])
+    before = unpacked(staged.dimensions["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = root.store.commit(staged)
-    rows = unpacked(child.record.dims["connection"])
+    rows = unpacked(child.record.dimensions["connection"])
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     assert "Norwich DC" in left, "the component's other port survives the commit"
@@ -1233,7 +1233,7 @@ def _as_mappings(pairs):
 
 @pytest.mark.parametrize("shape", [_as_flat, _as_mappings], ids=["flat", "mappings"])
 def test_add_and_remove_take_tuples_in_any_shape(over_roles, shape):
-    """The struct column `dims` reads, a column per field, or a list of mappings.
+    """The struct column `dimensions` reads, a column per field, or a list of mappings.
 
     Notes
     -----
@@ -1246,8 +1246,8 @@ def test_add_and_remove_take_tuples_in_any_shape(over_roles, shape):
     assert _roles(staged) == {("l1", "b1"): "out", ("l2", "b0"): "mid"}
 
 
-def test_add_takes_back_what_dims_reads(roles, over_roles):
-    """`dims["connection"]` is a frame `add` takes as it stands.
+def test_add_takes_back_what_dimensions_reads(roles, over_roles):
+    """`dimensions["connection"]` is a frame `add` takes as it stands.
 
     Notes
     -----
@@ -1257,7 +1257,7 @@ def test_add_takes_back_what_dims_reads(roles, over_roles):
     staged.remove("entity", ["l1"])
     assert _roles(staged) == {}
     staged.add("entity", ["l1"])
-    staged.add("connection", roles.record.dims["connection"], role="back")
+    staged.add("connection", roles.record.dimensions["connection"], role="back")
     assert _roles(staged) == {("l1", "b0"): "back", ("l1", "b1"): "back"}
 
 
@@ -1319,12 +1319,12 @@ def test_every_declared_multi_dim_reads_its_staged_rows(store):
     staged.add("connection", [{"entity": "Manchester Wind", "bus": "Norway"}])
     staged.add("corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}]))
 
-    connections = unpacked(staged.dims["connection"])
+    connections = unpacked(staged.dimensions["connection"])
     assert "Norway" in set(
         connections[connections["entity"] == "Manchester Wind"]["bus"]
     )
 
-    corridors = unpacked(staged.dims["corridor"], "corridor")
+    corridors = unpacked(staged.dimensions["corridor"], "corridor")
     assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
         ("Manchester Wind", "Norway")
     ], "the second multi-dim reads its own rows, not the first's"
@@ -1385,7 +1385,9 @@ def test_a_multi_dim_property_is_a_column_of_its_axis_file(roles, over_roles):
     - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     store = roles.store
-    on_disk = pd.read_parquet(f"{store.layer_dir(roles.id)}dims/connection.parquet")
+    on_disk = pd.read_parquet(
+        f"{store.layer_dir(roles.id)}dimensions/connection.parquet"
+    )
     assert "role" in on_disk.columns
 
     staged = over_roles
@@ -1394,7 +1396,7 @@ def test_a_multi_dim_property_is_a_column_of_its_axis_file(roles, over_roles):
 
     child = store.commit(staged)
     assert _roles(child.record) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
-    patch = pd.read_parquet(f"{store.layer_dir(child.id)}dims/connection.parquet")
+    patch = pd.read_parquet(f"{store.layer_dir(child.id)}dimensions/connection.parquet")
     assert patch["role"].tolist() == ["in", "both"], (
         "the layer restates the multi-dim whole"
     )
@@ -1468,7 +1470,7 @@ def connected(_over_connected):
 def _relations(record):
     return {
         (member, name): rel
-        for member in ("dims", "properties", "attributes")
+        for member in ("dimensions", "properties", "attributes")
         for name, rel in getattr(record, member).items()
     }
 
@@ -1780,7 +1782,7 @@ def test_a_standalone_write_of_the_record_is_flattened(small, tmp_path):
     }, "flattened: the parent's values are written, not left to a parent"
 
     written = sorted(Path(out).rglob("*.parquet"))
-    assert {"dims/entity.parquet", "dims/connection.parquet"} <= {
+    assert {"dimensions/entity.parquet", "dimensions/connection.parquet"} <= {
         path.relative_to(out).as_posix() for path in written
     }, "the frames the fold orders must be among those written"
     for path in written:
@@ -1923,7 +1925,7 @@ def test_a_discarded_working_record_drops_its_staging_tables(small, discard):
 
 
 READS = [
-    pytest.param(lambda r: r.dims["entity"], id="dims"),
+    pytest.param(lambda r: r.dimensions["entity"], id="dimensions"),
     pytest.param(lambda r: r.properties["entity"], id="properties"),
     pytest.param(lambda r: r.attributes["p_nom"], id="attributes"),
     pytest.param(lambda r: r.flags(), id="flags"),

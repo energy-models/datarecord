@@ -489,7 +489,7 @@ class WorkingRecord(Record):
             *(
                 (f"{_AXIS_PREFIX}{d}", None)
                 for d in self.schema.dimensions
-                if d not in self.schema.one_of_dims
+                if d not in self.schema.one_of_dimensions
             ),
             *((_ATTRIBUTES, a) for a in self.schema.attributes),
         ]
@@ -537,7 +537,9 @@ class WorkingRecord(Record):
         """The base's resolved axis `kind` stands for, with its properties."""
         dim = kind[len(_AXIS_PREFIX) :]
         rows = (
-            self._base.properties if dim in self.schema.properties else self._base.dims
+            self._base.properties
+            if dim in self.schema.properties
+            else self._base.dimensions
         )
         return rows[dim]
 
@@ -639,7 +641,7 @@ class WorkingRecord(Record):
 
     # -- Record, one fold deeper (https://energy-models.github.io/datarecord/reference/editing/) --------------------------------
 
-    # `schema`, `dims`, `properties`, `attributes` and `flags` are
+    # `schema`, `dimensions`, `properties`, `attributes` and `flags` are
     # inherited from `Record` unchanged, which is the property this design
     # exists to have: a staged edit is read by the same fold that reads a
     # committed layer, so there is no second overlay to keep in step.
@@ -648,7 +650,7 @@ class WorkingRecord(Record):
         """`AttributeSpec.dims` minus the owner map's index - the value axes outside `partial`.
 
         The complement of `owned_per`: along a dim the attribute varies over
-        but that is not in `partial_dims` (a `timestep` or `connection`
+        but that is not in `partial_dimensions` (a `timestep` or `connection`
         outside `partial`), a patch to one value restates the attribute's
         whole extent along it.
 
@@ -659,7 +661,9 @@ class WorkingRecord(Record):
         """
         spec = self.schema.attributes.get(attribute)
         outside = (
-            frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
+            frozenset()
+            if spec is None
+            else spec.dims - set(self.schema.partial_dimensions)
         )
         return tuple(d for d in self.schema.dimensions if d in outside)
 
@@ -743,7 +747,7 @@ class WorkingRecord(Record):
         if unknown:
             msg = (
                 f"`set({f'{dim}.{name}'!r}, ...)` names {unknown}, but {name!r} is a "
-                f"property of {dim!r} - a column of dims/{dim}.parquet, set per label "
+                f"property of {dim!r} - a column of dimensions/{dim}.parquet, set per label "
                 f"of {dim!r} alone"
             )
             raise ValueError(msg)
@@ -826,7 +830,7 @@ class WorkingRecord(Record):
         -----
         - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
-        multi = sorted(set(dims) & set(self.schema.multi_dims))
+        multi = sorted(set(dims) & set(self.schema.multi_dimensions))
         if multi:
             over = list(self.schema.over(multi[0]))
             msg = (
@@ -835,8 +839,8 @@ class WorkingRecord(Record):
                 f"change their tuples"
             )
             raise KeyError(msg)
-        fields = {c for m in self.schema.multi_dims for c in self.schema.over(m)}
-        unknown = sorted(set(dims) - set(self.schema.flat_dims) - fields)
+        fields = {c for m in self.schema.multi_dimensions for c in self.schema.over(m)}
+        unknown = sorted(set(dims) - set(self.schema.flat_dimensions) - fields)
         if unknown:
             msg = f"the schema declares no dims {unknown}"
             raise KeyError(msg)
@@ -868,7 +872,7 @@ class WorkingRecord(Record):
 
     def _held(self, name: str) -> DuckDBPyRelation | None:
         """Return the staged axis `name`, `None` where there is none."""
-        return self.dims.get(name)
+        return self.dimensions.get(name)
 
     @_atomic
     def set(
@@ -961,13 +965,13 @@ class WorkingRecord(Record):
                 raise ValueError(msg)
             call = f"`set({attribute!r}, <frame>)`"
             rel = as_relation(value, self.con)
-            multi_dims = self.schema.multi_dims_of(attribute)
-            self.schema.check_multi_dim_columns(multi_dims, rel, carrier=call)
+            multi_dims = self.schema.multi_dimensions_of(attribute)
+            self.schema.check_multi_dimension_columns(multi_dims, rel, carrier=call)
             self.schema.refuse_partial_tuples(multi_dims, rel, carrier=call)
             self._validate_input(attribute, labels)
             table = self._ensure(_ATTRIBUTES, attribute)
             known = [
-                *self.schema.dims_of(attribute),
+                *self.schema.dimensions_of(attribute),
                 *self.schema.fields_of(attribute),
                 "value",
             ]
@@ -1046,7 +1050,7 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
         rest, tuples = self._select(dotted, labels)
-        if subject in self.schema.multi_dims:
+        if subject in self.schema.multi_dimensions:
             self._set_multi_dim_property(
                 subject, name, value, rest, tuples.get(subject)
             )
@@ -1122,7 +1126,7 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         self.schema.require_one_of(multi, {name: [value]}, f"`{call}`")
         self._require_live(multi, {name: [value]}, f"`{call}`")
-        tuples = self.dims.get(multi) if chosen is None else chosen
+        tuples = self.dimensions.get(multi) if chosen is None else chosen
         if tuples is None:
             msg = f"`{call}` finds no tuple of {multi!r}; `add` them first"
             raise KeyError(msg)
@@ -1229,7 +1233,7 @@ class WorkingRecord(Record):
             over: tuple[str, ...] = (subject,)
         else:
             flat = self.schema.fields_of(name)
-            over = self.schema.multi_dims_of(name)
+            over = self.schema.multi_dimensions_of(name)
         reached = {*flat.values(), *over}
         by_dim: dict[str, dict[str, list[Any]]] = {}
         rest: dict[str, Any] = {}
@@ -1259,7 +1263,7 @@ class WorkingRecord(Record):
             by_dim.setdefault((among or owners)[0], {})[c] = values
         tuples = {
             m: self._tuples_matching(m, by_dim.pop(m), name)
-            for m in self.schema.multi_dims
+            for m in self.schema.multi_dimensions
             if m in by_dim
         }
         drawn = []
@@ -1282,8 +1286,8 @@ class WorkingRecord(Record):
             self.schema.require_one_of(dim, wanted, f"`{call}`")
             rest[keyword] = self._labels_matching(dim, wanted)
             drawn.append(keyword)
-        if dot and drawn and subject in self.schema.multi_dims:
-            held = self.dims.get(subject)
+        if dot and drawn and subject in self.schema.multi_dimensions:
+            held = self.dimensions.get(subject)
             if held is not None:
                 tuples.setdefault(subject, held)
         for multi, chosen in tuples.items():
@@ -1307,9 +1311,9 @@ class WorkingRecord(Record):
             property of it, or a value is a label its dim does not list.
         """
         call = f"set({name!r}, ...)"
-        if multi != name.partition(".")[0] and multi not in self.schema.multi_dims_of(
-            name
-        ):
+        if multi != name.partition(".")[
+            0
+        ] and multi not in self.schema.multi_dimensions_of(name):
             msg = (
                 f"`{call}` selects by {sorted(wanted)}, properties of the "
                 f"multi-dim {multi!r}, which {name!r} is not over"
@@ -1434,11 +1438,11 @@ class WorkingRecord(Record):
         def column(d: str) -> Expression:
             if d in present:
                 return col(d)
-            if d in self.schema.multi_dims_of(attribute):
+            if d in self.schema.multi_dimensions_of(attribute):
                 return packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
-        own_dims = self.schema.dims_of(attribute)
+        own_dims = self.schema.dimensions_of(attribute)
         shaped = rel.project(
             *(column(d) for d in own_dims),
             lit(attribute).alias("attribute"),
@@ -1477,7 +1481,7 @@ class WorkingRecord(Record):
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
         """
-        dims = self.schema.dims_of(attribute)
+        dims = self.schema.dimensions_of(attribute)
         if not dims:
             return
         staged = self._collapsed_attribute(attribute)
@@ -1537,7 +1541,7 @@ class WorkingRecord(Record):
         - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
         """
         rel = self._collapsed_attribute(attribute)
-        dims = self.schema.dims_of(attribute)
+        dims = self.schema.dimensions_of(attribute)
         for a, b, meets in unsettled(rel, dims):
             row = meets.limit(1).fetchall()
             if not row:
@@ -1638,14 +1642,17 @@ class WorkingRecord(Record):
             # No column for any dim outside `partial`, so the file holds one row per
             # map row and there is no extent to complete.
             return
-        dims = [*self.schema.dims_of(attribute), "attribute"]
+        dims = [*self.schema.dimensions_of(attribute), "attribute"]
         staged = self.con.table(table)
 
-        axes: dict[str, DuckDBPyRelation | None] = {d: self.dims[d] for d in present}
+        axes: dict[str, DuckDBPyRelation | None] = {
+            d: self.dimensions[d] for d in present
+        }
         labelled = [
             c
             for c in scope
-            if c in self.schema.dimensions and self._base.dims[c].limit(1).fetchall()
+            if c in self.schema.dimensions
+            and self._base.dimensions[c].limit(1).fetchall()
         ]
         named = staged.filter(
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
@@ -1735,7 +1742,7 @@ class WorkingRecord(Record):
             raise KeyError(msg)
         call = f"add({dim!r}, ...)"
         self._refuse_one_of(dim, f"`{call}`")
-        if dim in self.schema.multi_dims:
+        if dim in self.schema.multi_dimensions:
             self._add_tuples(dim, labels, columns)
             return
         kind = f"{_AXIS_PREFIX}{dim}"
@@ -1792,7 +1799,7 @@ class WorkingRecord(Record):
         """
         call = f"`remove({dim!r}, ...)`"
         self._refuse_one_of(dim, call)
-        if dim in self.schema.multi_dims:
+        if dim in self.schema.multi_dimensions:
             if not is_frame(labels) and not labels:
                 return
             rel = self._tuples(dim, self._tuple_frame(dim, labels, {}, call), call)
@@ -1807,8 +1814,8 @@ class WorkingRecord(Record):
         gone = self._columns_relation(
             {dim: list(labels)}, {dim: self._column_type(dim)}
         )
-        staged = self.dims
-        for m in self.schema.multi_dims:
+        staged = self.dimensions
+        for m in self.schema.multi_dimensions:
             fields = [f for f, d in self.schema.over(m).items() if d == dim]
             if not fields or m not in staged:
                 continue
@@ -1836,7 +1843,7 @@ class WorkingRecord(Record):
         -----
         - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
         """
-        if dim not in self.schema.one_of_dims:
+        if dim not in self.schema.one_of_dimensions:
             return
         msg = (
             f"{call} is refused: {dim!r} lists its labels with `one_of`, "
@@ -2093,7 +2100,7 @@ class WorkingRecord(Record):
         rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
         for name in self.schema.dimensions:
-            if name in self.schema.one_of_dims or name not in columns:
+            if name in self.schema.one_of_dimensions or name not in columns:
                 continue
             rel = (
                 rel.set_alias("l")
@@ -2232,7 +2239,7 @@ def _unpacked(
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:
-    """One axis's columns - the shape of `dims/{dim}.parquet`: its column and its properties.
+    """One axis's columns - the shape of `dimensions/{dim}.parquet`: its column and its properties.
 
     Notes
     -----

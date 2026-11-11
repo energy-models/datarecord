@@ -266,13 +266,13 @@ def test_a_category_keyword_selects_what_a_dotted_property_set_reaches(
 
 def test_a_one_of_dim_a_child_declares_is_on_its_record(root, categorized):
     """A parent read once keeps its fold; the `one_of` dim's axis comes from the child's schema."""
-    assert set(root.record.dims) >= {"ctype", "carrier"}
+    assert set(root.record.dimensions) >= {"ctype", "carrier"}
     dimensions = {**categorized.dimensions, "sector": Dimension(one_of=["power"])}
     child = empty_child(
         root, categorized.model_copy(update={"dimensions": dimensions})
     ).commit()
-    assert child.record.dims["sector"].df()["sector"].tolist() == ["power"]
-    assert "sector" not in root.record.dims, "the parent keeps its own schema"
+    assert child.record.dimensions["sector"].df()["sector"].tolist() == ["power"]
+    assert "sector" not in root.record.dimensions, "the parent keeps its own schema"
 
 
 def test_with_defaults_keeps_the_order_of_a_relation_filtered_by_subqueries(

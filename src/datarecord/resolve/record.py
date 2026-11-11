@@ -136,7 +136,7 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     A layer holds map rows both ways where its rows of the attribute name
     different sets of `partial` dims, read off `varies`.
     """
-    dims = schema.partial_dims
+    dims = schema.partial_dimensions
     contested = "false"
     if dims:
         named = fn.struct_pack(**{d: col("varies")[d] for d in dims})
@@ -178,7 +178,7 @@ def _empty_long(
 
 
 def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
-    """A row-less relation shaped like `dims/<dim>.parquet`: its column and its properties.
+    """A row-less relation shaped like `dimensions/<dim>.parquet`: its column and its properties.
 
     Notes
     -----
@@ -433,7 +433,7 @@ class Record:
         return not self.frozen
 
     @_stable_cache
-    def dims(self) -> LazyRelations:
+    def dimensions(self) -> LazyRelations:
         """Every dim the schema declares, an empty axis where no layer holds one."""
         return LazyRelations(
             tuple(self.schema.dimensions), partial(self._handed, self._axis_frame)
@@ -493,8 +493,8 @@ class Record:
     def register(self, name: str) -> None:
         """Create the schema `name` with a view per dim, property subject and attribute.
 
-        The views sit in `name.dims`, `name.properties` and `name.attributes` of
-        the workspace's database, as in `datarecord.name.dims.bus`, each reading as
+        The views sit in `name.dimensions`, `name.properties` and `name.attributes` of
+        the workspace's database, as in `datarecord.name.dimensions.bus`, each reading as
         its relation here; over a `WorkingRecord` they follow every edit. They hold
         the tables the record reads, its folds and a `WorkingRecord`'s staging
         tables, until `unregister(name)`, whether the record is closed or not.
@@ -515,7 +515,7 @@ class Record:
         """
         ws = self.workspace
         kinds = {
-            "dims": self.dims,
+            "dimensions": self.dimensions,
             "properties": self.properties,
             "attributes": self.attributes,
         }
@@ -686,7 +686,7 @@ class Record:
             fold = self._fold
             om = fold.owners(attribute)
             dead = fold.axes.dead
-        partial_dims = schema.partial_dims
+        partial_dimensions = schema.partial_dimensions
         # This attribute's own columns, not every declared dim: one file per
         # attribute is one column set per attribute (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet).
         columns = schema.long_columns_for(attribute)
@@ -696,8 +696,8 @@ class Record:
         #
         # Of those that are, each matches NULL-aware
         # (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule).
-        dims = schema.dims_of(attribute)
-        broadcast_over = tuple(d for d in partial_dims if d in dims)
+        dims = schema.dimensions_of(attribute)
+        broadcast_over = tuple(d for d in partial_dimensions if d in dims)
         owners, contested = self._owners(attribute)
         layers: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
@@ -708,7 +708,7 @@ class Record:
             layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
         if not layers:
             return _empty_long(schema, attribute, con)
-        outside_index = [c for c in columns if c not in partial_dims]
+        outside_index = [c for c in columns if c not in partial_dimensions]
         values = union_all_by_name(layers).set_alias("l")
         stored = _as_stored(om, broadcast_over)
 

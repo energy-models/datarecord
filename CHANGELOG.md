@@ -29,7 +29,7 @@ All notable changes to datarecord are documented here. The format follows
   over: the names `set` and `select` take labels by.
 - Properties. The schema has a `properties` section (`PropertySpec`) that
   declares, per dim or multi-dim, the values that describe one label. A record
-  stores them as columns of `dims/<dim>.parquet`.
+  stores them as columns of `dimensions/<dim>.parquet`.
   A caller names a property as `subject.name`, as in `set("bus.x", ...)` and
   `default_by` keys such as `{"entity.ctype": {...}}`. `Schema.resolve(name)`
   returns the spec of a name, and `Schema.column_type` takes the property's
@@ -108,7 +108,7 @@ All notable changes to datarecord are documented here. The format follows
   and its order is the file's row order. The deepest file for an axis
   is the answer for a node. A `WorkingRecord` stages an edited axis
   whole, copied from the base at its first edit. A materialised node names
-  the layer holding each axis's deepest file in `resolved/dim_owners.parquet`.
+  the layer holding each axis's deepest file in `resolved/dimension_owners.parquet`.
 - `WorkingRecord.set` checks that each label of an attribute row is on its
   dim's axis as staged, a multi-dim's tuple among them. `add` checks that each label of a tuple is on its axis
   as staged, and that a value of a property with `refers` is a label of that
@@ -190,9 +190,9 @@ All notable changes to datarecord are documented here. The format follows
 - `PyPSA.build` takes any `RecordLike`, so `PyPSA.build(PyPSA.to_datarecord(n, con))`
   builds the network its committed record does.
 - `Record.register(name)` creates DuckDB views of a record's dims, properties
-  and attributes in the schemas `name.dims`, `name.properties` and
+  and attributes in the schemas `name.dimensions`, `name.properties` and
   `name.attributes` of the workspace's database, as
-  `datarecord.name.dims.bus`. Over a `WorkingRecord` they are live and show
+  `datarecord.name.dimensions.bus`. Over a `WorkingRecord` they are live and show
   every edit.
   `Workspace.unregister(name)` drops them, and `Workspace.registered()` lists
   them.
@@ -235,11 +235,11 @@ All notable changes to datarecord are documented here. The format follows
   called. `build` takes the record's dim of its own, else `period`, and
   `verify` reports what any member, narrowed on its own, lacks, and each
   dim of its own of a record declaring more than one in
-  `Requirements.unsupported_dims`, a new field for dims a tool has no place
+  `Requirements.unsupported_dimensions`, a new field for dims a tool has no place
   for; `Requirements` merge with `|`. A record has at most one dim of its
   own: a collection over another is refused over a `base` that has one.
   `PyPSA` builds no record with a dim of its own, `verify` reporting it in
-  `unsupported_dims`, and refuses to write results over one.
+  `unsupported_dimensions`, and refuses to write results over one.
 - A collection's results over a `base` holding labels of its dim the
   collection lacks write every result at each member's label and leave the
   dim's axis and the SubNetworks to `base`. Over a `base` holding the dim,
@@ -266,12 +266,24 @@ All notable changes to datarecord are documented here. The format follows
 - `WorkingRecord.set(name, value, **labels)` takes labels as `select` does.
   It accepts the same names as before.
 - Breaking: `Schema.broadcast_dims` and `Schema.dims` are gone.
-  `Schema.dimensions` is the one ordered list of dims, and `Schema.flat_dims`
+  `Schema.dimensions` is the one ordered list of dims, and `Schema.flat_dimensions`
   lists the dims that are not multi-dims. `Schema.coordinates_of` is now
-  `Schema.dims_of`.
+  `Schema.dimensions_of`.
 - Breaking: every dim order is the schema's declaration order: the fields of
   the `varies` and `broadcast` structs, the owner map's index and the columns
   of an attribute file, which put the multi-dims first.
+- Breaking: the public names and paths spelled `dims` take mathspec's
+  `dimensions`. `RecordLike.dims` is `dimensions`, on a `Record`, a
+  `Selection` and a `WorkingRecord` too, and its registered views sit in
+  `name.dimensions`. `Requirements.dims` and `unsupported_dims`,
+  `LayerFiles.dims` and, on `Schema`, `dims_of`, `flat_dims`, `multi_dims`,
+  `multi_dims_of`, `partial_dims` and `one_of_dims` end in `dimensions`
+  instead, and `check_multi_dim_columns` is `check_multi_dimension_columns`. A
+  layer's axis files sit under `dimensions/`, not `dims/`, and a materialised
+  node's `resolved/dim_owners.parquet` is `resolved/dimension_owners.parquet`,
+  with its column `dim` now `dimension`, so a store written before does not
+  read. `Store.dim_owners_uri` is `dimension_owners_uri`. An attribute still
+  lists its dims under `dims`.
 - Breaking: a property names the dim it refers to with `refers`, which was
   `one_of`, so `one_of` is a dim's list of labels alone.
   `Schema.one_of_properties` is now `Schema.referring_properties`.
@@ -281,8 +293,8 @@ All notable changes to datarecord are documented here. The format follows
   which the pages called a point.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`
-  or `datarecord.edit.dims.bus`, or runs `USE datarecord` once on its own
-  connection and writes `registered` or `edit.dims.bus`; `ws.registered()`
+  or `datarecord.edit.dimensions.bus`, or runs `USE datarecord` once on its own
+  connection and writes `registered` or `edit.dimensions.bus`; `ws.registered()`
   reads the table.
 - Breaking: the schema models (`Schema`, `Dimension`, `AttributeSpec`,
   `PropertySpec`) are frozen; derive a changed one with
@@ -303,11 +315,11 @@ All notable changes to datarecord are documented here. The format follows
   schema's checks per layer. A `Schema` obtained from a revision is shared:
   copy it before changing it.
 - A materialised node no longer copies its axes into `resolved/dims/`.
-  `resolved/dim_owners.parquet` names, per dim, the layer whose
-  `dims/<dim>.parquet` is the deepest at or below the node, and a read opens
+  `resolved/dimension_owners.parquet` names, per dim, the layer whose
+  `dimensions/<dim>.parquet` is the deepest at or below the node, and a read opens
   that file. Its `has_dead` column says which dims have dead labels in
   `resolved/dead/`, so a read opens those by name and lists no directory.
-  `Store.dim_owners_uri(id)` is where it lives. A node materialised
+  `Store.dimension_owners_uri(id)` is where it lives. A node materialised
   before holds no such file and fails the read: delete its `resolved/` and
   materialise it again.
 - datarecord requires DuckDB 2.0. A relation it returns is a DuckDB 2.0
@@ -340,27 +352,27 @@ All notable changes to datarecord are documented here. The format follows
 - Groups are multi-dims. A dim declared under `dimensions` with
   `over`, and neither `dtype` nor `one_of`, is a multi-dim: its labels are
   tuples of other dims' labels, carried as one struct column named for it.
-  Its table is `dims/<multi-dim>.parquet`, keyed by that column with its
+  Its table is `dimensions/<multi-dim>.parquet`, keyed by that column with its
   properties beside it; `groups/` and `resolved/groups/` are gone, so every
-  record with a group is written again. `record.dims["connection"]` is the
+  record with a group is written again. `record.dimensions["connection"]` is the
   struct column alone and `record.properties["connection"]` adds `role`.
   `add` and `remove` take a multi-dim's tuples as a frame holding its struct
-  column, so `add("connection", record.dims["connection"])` round-trips, or
+  column, so `add("connection", record.dimensions["connection"])` round-trips, or
   one with a column per field instead, or as a list of mappings from
   field to label.
   `connection.bus` names a field wherever `subject.name` stands, and
-  `set` refuses it. No property refers to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,
-  `check_multi_dim_columns` and `field_over`. The PyPSA tool declares `connection` under `dimensions`.
-- A dim with `one_of` has its axis derived from the list: `record.dims["ctype"]`
-  is the list, and no `dims/<dim>.parquet` is written or read for it, nor is
-  it named in `resolved/dim_owners.parquet`. The writer refuses a `LayerData`
+  `set` refuses it. No property refers to one. New on `Schema`: `multi_dimensions`, `over`, `multi_dimensions_of`,
+  `check_multi_dimension_columns` and `field_over`. The PyPSA tool declares `connection` under `dimensions`.
+- A dim with `one_of` has its axis derived from the list: `record.dimensions["ctype"]`
+  is the list, and no `dimensions/<dim>.parquet` is written or read for it, nor is
+  it named in `resolved/dimension_owners.parquet`. The writer refuses a `LayerData`
   handing one over, a read refuses a layer holding one, and a `RecordLike`'s
   axis of it is dropped where it is the list, same labels in the same order,
   and refused otherwise, naming a NULL, a repeated, missing or extra label, or
   else the order.
   `add` and `remove` on it are refused, and a property declared on it is
   refused at load. A record carrying such a file is written again. New on
-  `Schema`: `one_of_dims`; `Schema.require_listed` is `require_one_of`. The
+  `Schema`: `one_of_dimensions`; `Schema.require_listed` is `require_one_of`. The
   PyPSA tool no longer writes the `ctype` and `role` axes.
 - A multi-dim in `partial` is categorized by a property that refers to a dim
   with `one_of`, as a dim is: `connection.role` categorizes `connection`, so a
@@ -377,7 +389,7 @@ All notable changes to datarecord are documented here. The format follows
   API reference uses the design section names.
 - An attribute over a multi-dim carries it as one struct column named for it,
   holding its fields, such as `connection STRUCT(entity, bus)`. Its
-  table is keyed by that column, and `dims/connection.parquet` is
+  table is keyed by that column, and `dimensions/connection.parquet` is
   `connection STRUCT(entity, bus) | role`. The PyPSA tool declares no `bus`
   attribute. A port's bus is the connection tuple.
 - The dims that a multi-dim draws on broadcast. A per-bus value with
@@ -398,7 +410,7 @@ All notable changes to datarecord are documented here. The format follows
 - Every layer holds its attributes in one `attributes/` directory, and a
   result inherits through layers like any attribute. The PyPSA tool declares
   its outputs as attributes, and `build` copies them.
-- `record.dims`, `properties` and `attributes` return
+- `record.dimensions`, `properties` and `attributes` return
   `DuckDBPyRelation`s. `Frames` and `LazyFrames` are now `Relations` and
   `LazyRelations`. `set`, `add` and the writer take a relation or a
   pandas, polars or arrow frame, which DuckDB reads with its own scanner.
@@ -414,11 +426,11 @@ All notable changes to datarecord are documented here. The format follows
   `Requirements.unsupported_partial`, the `partial` dims a tool cannot honour.
 - A `Record` is constructed from `revision_id`, `sources` and `workspace`, and
   reads under its last source's schema. A caller reads it through its
-  mappings: `rev.record.sources`, `dims[dim]`, `properties[dim]` and
+  mappings: `rev.record.sources`, `dimensions[dim]`, `properties[dim]` and
   `attributes[name]`. `attributes[name]` raises `KeyError` for an undeclared
   attribute.
 - `PyPSA.build` raises `TypeError` for a `RecordLike` that is not a `Record`.
-  `Schema.long_columns_for` and `Schema.dims_of` raise `KeyError` for an
+  `Schema.long_columns_for` and `Schema.dimensions_of` raise `KeyError` for an
   attribute that the schema does not declare.
 - `LayerData` declares no `frozen`, and its `axes()` and
   `attributes()` return `set[str]`. A whole `Record` reaches the writer
@@ -435,7 +447,7 @@ All notable changes to datarecord are documented here. The format follows
 - A label that one layer removes and a later layer adds again
   takes its place where it is added again, in a working record, a written
   record and a materialised node.
-- A label held twice in a `dims/` file, and a column that is
+- A label held twice in a `dimensions/` file, and a column that is
   neither the dim's own nor a declared property of its subject, fail at read.
   `write_layer` refuses a restatement that orders the labels of its parent
   differently.
@@ -465,7 +477,7 @@ All notable changes to datarecord are documented here. The format follows
   out along the labels a parent row sets there. The fold refuses a layer
   written otherwise that leaves such a crossing, naming the layer, the
   attribute, the dim and the labels the two rows share.
-- The writer refuses a `dims/` file of a dim that the schema does not declare,
+- The writer refuses a `dimensions/` file of a dim that the schema does not declare,
   as it refuses an undeclared attribute. A descendant declaring the dim would
   read its labels.
 - The writer accepts two rows that each set a dim the other leaves NULL

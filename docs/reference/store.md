@@ -71,7 +71,7 @@ ws = Workspace(con=server, name="dr")  # on the server's connection, attached as
 ```
 
 The cursors of a passed connection see the attached database, and their transactions are their own, not the caller's.
-SQL names what lies there in full, `datarecord.main.revisions` or `datarecord.edit.dims.bus`, since a name without its database resolves in the cursor's default database.
+SQL names what lies there in full, `datarecord.main.revisions` or `datarecord.edit.dimensions.bus`, since a name without its database resolves in the cursor's default database.
 datarecord's own SQL always does and never runs `USE`.
 A relation or frame that datarecord's SQL reads goes by a Python local named `_dr_<role>`, because a table or view of the same name in the cursor's temp schema or default database binds first.
 So create no table or view whose name starts with `_dr_` in the default database or temp schema of the workspace's connection.
@@ -169,11 +169,11 @@ When two threads fold one revision at once, both fold and datarecord keeps one o
 
 A write to a store runs in three steps:
 
-| Step   | File                   | Write         | Contains                                  |
-| ------ | ---------------------- | ------------- | ----------------------------------------- |
-| claim  | `claim.json`           | create-only   | `id`, `parent`, `meta`, when it was taken |
-| data   | `dims/`, `attributes/` | unconditional | the layer's parquet                       |
-| commit | `manifest.json`        | create-only   | the [manifest](format.md#manifestjson)    |
+| Step   | File                         | Write         | Contains                                  |
+| ------ | ---------------------------- | ------------- | ----------------------------------------- |
+| claim  | `claim.json`                 | create-only   | `id`, `parent`, `meta`, when it was taken |
+| data   | `dimensions/`, `attributes/` | unconditional | the layer's parquet                       |
+| commit | `manifest.json`              | create-only   | the [manifest](format.md#manifestjson)    |
 
 A layer with a claim and no manifest is pending, and no read, listing or `ancestry()` finds it.
 A commit that fails leaves its layer pending with the files it wrote, and a retried commit writes them again.

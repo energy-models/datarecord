@@ -129,7 +129,7 @@ def _as_written(layer: HandBuilt, kind: str, name: str) -> pd.DataFrame:
     if name in record.schema.properties:
         rel = record.properties.get(name)
     else:
-        rel = record.dims.get(name)
+        rel = record.dimensions.get(name)
     if rel is None:
         return pd.DataFrame()
     frame = rel.df()
@@ -174,13 +174,13 @@ def restate(
 
 
 def write_multi_dim(layer: HandBuilt, multi: str, rows: list[dict]) -> None:
-    """Restate `dims/<multi>.parquet` with `rows`, each keyed by the struct column, a dict.
+    """Restate `dimensions/<multi>.parquet` with `rows`, each keyed by the struct column, a dict.
 
     Notes
     -----
     - [where the rows live](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
-    restate(layer, "dims", multi, rows)
+    restate(layer, "dimensions", multi, rows)
 
 
 def unpacked(rel: Any, multi: str = "connection") -> pd.DataFrame:
@@ -199,7 +199,7 @@ def _connection(row: dict) -> dict:
 
 
 def write_connections(layer: HandBuilt, rows: list[dict]) -> None:
-    """Restate `dims/connection.parquet` with `rows`, each needing `entity` and `bus`.
+    """Restate `dimensions/connection.parquet` with `rows`, each needing `entity` and `bus`.
 
     No component type - one file holds every type's rows.
 
@@ -208,52 +208,52 @@ def write_connections(layer: HandBuilt, rows: list[dict]) -> None:
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
     - [where the rows live](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
-    restate(layer, "dims", "connection", [_connection(r) for r in rows])
+    restate(layer, "dimensions", "connection", [_connection(r) for r in rows])
 
 
 def drop_connections(layer: HandBuilt, pairs: list[tuple[str, str]]) -> None:
-    """Restate `dims/connection.parquet` without the `(entity, bus)` pairs.
+    """Restate `dimensions/connection.parquet` without the `(entity, bus)` pairs.
 
     Notes
     -----
     - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
     """
     gone = [{"entity": e, "bus": b} for e, b in pairs]
-    restate(layer, "dims", "connection", [], drop=gone)
+    restate(layer, "dimensions", "connection", [], drop=gone)
 
 
 def write_component(layer: HandBuilt, ctype: str, rows: list[dict]) -> None:
-    """Restate `dims/entity.parquet` with `rows`, each an entity of type `ctype`."""
-    restate(layer, "dims", "entity", [{**r, "ctype": ctype} for r in rows])
+    """Restate `dimensions/entity.parquet` with `rows`, each an entity of type `ctype`."""
+    restate(layer, "dimensions", "entity", [{**r, "ctype": ctype} for r in rows])
 
 
 def drop_entities(layer: HandBuilt, names: list[str]) -> None:
-    """Restate `dims/entity.parquet` without `names`.
+    """Restate `dimensions/entity.parquet` without `names`.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
-    restate(layer, "dims", "entity", [], drop=names)
+    restate(layer, "dimensions", "entity", [], drop=names)
 
 
 def write_axis(layer: HandBuilt, dim: str, rows: list[dict]) -> None:
-    """Restate `dims/<dim>.parquet` with `rows`, each carrying `dim` and its properties.
+    """Restate `dimensions/<dim>.parquet` with `rows`, each carrying `dim` and its properties.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
-    restate(layer, "dims", dim, rows)
+    restate(layer, "dimensions", dim, rows)
 
 
 def write_scenarios(layer: HandBuilt, rows: list[dict]) -> None:
-    """Restate `dims/scenario.parquet`; each row needs `scenario`."""
+    """Restate `dimensions/scenario.parquet`; each row needs `scenario`."""
     write_axis(layer, "scenario", rows)
 
 
 def write_periods(layer: HandBuilt, rows: list[dict]) -> None:
-    """Restate `dims/period.parquet`; each row needs `period`."""
+    """Restate `dimensions/period.parquet`; each row needs `period`."""
     write_axis(layer, "period", rows)
 
 
@@ -361,7 +361,9 @@ class HandBuilt:
     def commit(self) -> Revision:
         """Write the manifest listing the layer's files, which makes it a revision."""
         files = LayerFiles(
-            dims=tuple(sorted(p.stem for p in self.dir.glob("dims/*.parquet"))),
+            dimensions=tuple(
+                sorted(p.stem for p in self.dir.glob("dimensions/*.parquet"))
+            ),
             attributes=tuple(
                 sorted(p.stem for p in self.dir.glob("attributes/*.parquet"))
             ),
@@ -549,7 +551,7 @@ def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
         return tuple(value.values()) if isinstance(value, dict) else value
 
     def axis(d: str) -> duckdb.DuckDBPyRelation:
-        return record.dims[d]
+        return record.dimensions[d]
 
     labels = {d: [label(c) for (c,) in axis(d).project(d).fetchall()] for d in dims}
     reaching: dict[tuple, list[tuple[frozenset, Any]]] = defaultdict(list)

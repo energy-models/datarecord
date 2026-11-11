@@ -86,7 +86,7 @@ def flags_from_rows(
     """
 
     def scope(attribute: str) -> tuple[str, ...]:
-        own = schema.dims_of(attribute)
+        own = schema.dimensions_of(attribute)
         return tuple(d for d in dims if d in own)
 
     return {
@@ -182,7 +182,9 @@ class Fold:
         om = self.owner_map.set_alias("o")
         named = labels.set_alias("l")
         paths: list[tuple[str, str | None]] = [(dim, None)]
-        paths += [(m, f) for m in schema.multi_dims if (f := schema.field_over(m, dim))]
+        paths += [
+            (m, f) for m in schema.multi_dimensions if (f := schema.field_over(m, dim))
+        ]
         reached = []
         for column, field in paths:
             if column not in om.columns:
@@ -196,7 +198,7 @@ class Fold:
                 hit = held.set_alias("g").join(named, on, how="semi")
             else:
                 continue
-            over = [a for a in schema.attributes if column in schema.dims_of(a)]
+            over = [a for a in schema.attributes if column in schema.dimensions_of(a)]
             if over and hit.limit(1).fetchall():
                 reached.append(
                     om.filter(
@@ -257,7 +259,7 @@ class Fold:
 
         The owner map is the presence marker: the map is written last
         (`materialise.materialise`), so if it is absent the node reads as not
-        materialised at all. Each axis is read from the layer `dim_owners.parquet`
+        materialised at all. Each axis is read from the layer `dimension_owners.parquet`
         names for it, and a dim's dead labels only where it says the dim has
         any.
 
@@ -272,7 +274,7 @@ class Fold:
         dead = f"{store.resolved_dir(revision_id)}dead/"
         axes = Axes.from_rows(
             layer.schema,
-            read_dim_owners(revision_id, con, store),
+            read_dimension_owners(revision_id, con, store),
             lambda dim, owner: con.read_parquet(store.axis_uri(owner, dim)),
             lambda dim: con.read_parquet(f"{dead}{dim}.parquet"),
         )
@@ -313,21 +315,21 @@ def read_owner_map(
     return con.read_parquet(uri) if store.files.exists(uri) else None
 
 
-def read_dim_owners(
+def read_dimension_owners(
     revision_id: UUID, con: DuckDBPyConnection, store: Store
 ) -> list[tuple[str, UUID, bool]]:
-    """`revision_id`'s materialised `(dim, layer_uuid, has_dead)` rows (`Axes.owners`).
+    """`revision_id`'s materialised `(dimension, layer_uuid, has_dead)` rows (`Axes.owners`).
 
     A dim absent has no axis.
 
     Raises
     ------
     duckdb.IOException
-        If the node holds no `dim_owners.parquet`.
+        If the node holds no `dimension_owners.parquet`.
 
     Notes
     -----
     - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
-    rel = con.read_parquet(store.dim_owners_uri(revision_id))
-    return rel.project(col("dim"), col(LAYER_COLUMN), col("has_dead")).fetchall()
+    rel = con.read_parquet(store.dimension_owners_uri(revision_id))
+    return rel.project(col("dimension"), col(LAYER_COLUMN), col("has_dead")).fetchall()

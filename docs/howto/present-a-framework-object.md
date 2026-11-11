@@ -10,9 +10,9 @@ This guide shows how to wrap a framework's own object so that any reader of a re
 
 ## Implement the six members
 
-`RecordLike` is a structural protocol, so a class with its six members satisfies it without importing anything from datarecord. The members are `schema`, `con`, `dims`, `properties`, `attributes` and `flags`, and [the record](../reference/record.md) states what each returns.
+`RecordLike` is a structural protocol, so a class with its six members satisfies it without importing anything from datarecord. The members are `schema`, `con`, `dimensions`, `properties`, `attributes` and `flags`, and [the record](../reference/record.md) states what each returns.
 
-A mapping may be a plain `dict`. A dim with `one_of` needs no entry in `dims`, because its axis is the schema's list.
+A mapping may be a plain `dict`. A dim with `one_of` needs no entry in `dimensions`, because its axis is the schema's list.
 
 ## Write the wrapper
 
@@ -66,7 +66,7 @@ class FleetRecord:
     schema: Schema = SCHEMA
 
     @property
-    def dims(self) -> Relations:
+    def dimensions(self) -> Relations:
         units = self.con.from_df(self.fleet.units)
         hours = self.con.from_df(self.fleet.availability)
         return {

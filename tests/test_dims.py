@@ -23,7 +23,7 @@ from tests.fixtures import (
 
 
 def test_a_dim_names_its_own_file(store):
-    """`dims/<dim>.parquet`, whatever the dim is called.
+    """`dimensions/<dim>.parquet`, whatever the dim is called.
 
     A dim named `bus` is the case that matters: pluralising by concatenation
     would look for `buss.parquet` and find nothing, so the axis would read as
@@ -34,11 +34,11 @@ def test_a_dim_names_its_own_file(store):
     - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
     layer = empty_root(store, schema(dims={"bus": "str"}, partial=set()))
-    target = Path(layer.dir, "dims")
+    target = Path(layer.dir, "dimensions")
     target.mkdir(parents=True, exist_ok=True)
     pd.DataFrame([{"bus": "north"}, {"bus": "south"}]).to_parquet(
         target / "bus.parquet", index=False
     )
 
-    axis = layer.commit().record.dims["bus"].df()
+    axis = layer.commit().record.dimensions["bus"].df()
     assert sorted(axis["bus"].tolist()) == ["north", "south"]

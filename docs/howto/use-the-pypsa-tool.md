@@ -261,7 +261,7 @@ print(south_price.pivot(index="snapshot", columns="weather_year", values="value"
 ```
 
 ```text
-record cannot build a pypsa model; missing: unsupported dims ['weather_year']
+record cannot build a pypsa model; missing: unsupported dimensions ['weather_year']
 weather_year         2012  2013
 snapshot
 2030-01-01 00:00:00  -0.0  50.0

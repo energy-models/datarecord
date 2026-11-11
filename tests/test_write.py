@@ -88,8 +88,8 @@ class _Source:
         return LazyRelations(tuple(mapping), build)
 
     @property
-    def dims(self):
-        return self._frames(self._dims, "dims") if self._dims else EMPTY
+    def dimensions(self):
+        return self._frames(self._dims, "dimensions") if self._dims else EMPTY
 
     @property
     def properties(self):
@@ -108,7 +108,7 @@ def _named_multi_dims(schema, attributes) -> dict[str, pd.DataFrame]:
     named: dict[str, dict] = {}
     for frame in attributes.values():
         for column in frame.columns:
-            if column in schema.multi_dims:
+            if column in schema.multi_dimensions:
                 tuples = named.setdefault(column, {})
                 tuples.update((tuple(t.items()), t) for t in frame[column].dropna())
     return {g: pd.DataFrame({g: list(t.values())}) for g, t in named.items()}
@@ -119,7 +119,7 @@ def _named_axes(schema, frames) -> dict[str, pd.DataFrame]:
     named: dict[str, list] = {}
     for frame in frames.values():
         for column in frame.columns:
-            if column in schema.multi_dims:
+            if column in schema.multi_dimensions:
                 for field, dim in schema.over(column).items():
                     tuples = frame[column].dropna()
                     named.setdefault(dim, []).extend(t.get(field) for t in tuples)
@@ -182,7 +182,7 @@ def test_a_write_builds_each_key_once(store):
     assert sorted(source.built) == [
         "attributes:e_nom",
         "attributes:p_nom",
-        "dims:entity",
+        "dimensions:entity",
         "properties:entity",
     ]
 
@@ -209,7 +209,7 @@ def test_a_write_creates_a_new_layer(store):
         id=revision.id,
         parent=None,
         schema=_SCHEMA,
-        files=LayerFiles(dims=("entity",), attributes=("p_nom",)),
+        files=LayerFiles(dimensions=("entity",), attributes=("p_nom",)),
         meta={"run": 1},
     ), "the full schema and every file written, by name"
     assert revision.manifest == manifest
@@ -255,7 +255,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
     """
     revision = store.commit(_with_ctype_axis(_CTYPES), parent=None)
-    assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
+    assert revision.record.dimensions["ctype"].df()["ctype"].tolist() == _CTYPES
     revision.materialise()
     out = tmp_path / "flat"
     store.workspace.write(revision.record, str(out))
@@ -264,7 +264,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
         Path(store.resolved_dir(revision.id)),
         out,
     ]
-    assert not [d for d in written if (d / "dims" / "ctype.parquet").exists()], (
+    assert not [d for d in written if (d / "dimensions" / "ctype.parquet").exists()], (
         "neither the layer, its resolved files nor a record written whole holds the list"
     )
 
@@ -274,7 +274,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
         store.commit(ParquetLayer(forged.manifest, store), parent=None)
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
-        forged.record.dims["ctype"]
+        forged.record.dimensions["ctype"]
 
 
 @pytest.mark.parametrize(
@@ -548,7 +548,7 @@ def test_a_file_carries_only_its_own_attributes_dims(store):
         "and no dim it is not addressed by"
     )
     axis = store.workspace.con.read_parquet(
-        str(Path(store.layer_dir(revision.id), "dims", "entity.parquet"))
+        str(Path(store.layer_dir(revision.id), "dimensions", "entity.parquet"))
     )
     assert "p_max_pu" not in axis.columns, "a single-dim attribute is no axis column"
 
@@ -636,7 +636,7 @@ def _connection_source(tuples: list[dict], attributes=None) -> _Source:
 @pytest.mark.parametrize(
     ("source", "file"),
     [
-        (lambda: _connection_source([_PARTIAL]), "dims/connection"),
+        (lambda: _connection_source([_PARTIAL]), "dimensions/connection"),
         (
             lambda: _connection_source(
                 [_WHOLE],
@@ -645,7 +645,7 @@ def _connection_source(tuples: list[dict], attributes=None) -> _Source:
             "attributes/efficiency",
         ),
     ],
-    ids=["dims", "attributes"],
+    ids=["dimensions", "attributes"],
 )
 def test_a_write_rejects_a_tuple_with_some_fields_null(store, source, file):
     """A multi-dim value is a whole tuple or NULL, checked on the file the layer wrote.
@@ -722,7 +722,7 @@ def _write_junk(store, axes):  # noqa: ARG001
 def _read_junk(store, axes):  # noqa: ARG001
     root = empty_root(store, _SCHEMA)
     write_axis(root, "scenario", [{"scenario": "high", "junk": 1}])
-    root.commit().record.dims["scenario"].fetchall()
+    root.commit().record.dimensions["scenario"].fetchall()
 
 
 @pytest.mark.parametrize(
@@ -752,10 +752,10 @@ def _written_axis(store, frame):
 
 def _read_axis(store, frame):
     root = empty_root(store, _SCHEMA)
-    target = root.dir / "dims"
+    target = root.dir / "dimensions"
     target.mkdir(parents=True)
     frame.to_parquet(target / "scenario.parquet", index=False)
-    root.commit().record.dims["scenario"].fetchall()
+    root.commit().record.dimensions["scenario"].fetchall()
 
 
 @pytest.fixture
@@ -786,7 +786,7 @@ def test_an_axis_file_holding_a_label_twice_is_refused(store, by):
 
 
 def _scenarios(record) -> list[str]:
-    return record.dims["scenario"].df()["scenario"].tolist()
+    return record.dimensions["scenario"].df()["scenario"].tolist()
 
 
 def _xyz(store):
@@ -1402,9 +1402,9 @@ def _typed(file: str, column: str, values: list) -> _Source:
     ("file", "column", "values", "stored"),
     [
         ("attributes/p_nom.parquet", "value", [1, 2], "DOUBLE"),
-        ("dims/entity.parquet", "tag", [None], "VARCHAR"),
+        ("dimensions/entity.parquet", "tag", [None], "VARCHAR"),
         (
-            "dims/snapshot.parquet",
+            "dimensions/snapshot.parquet",
             "snapshot",
             pd.to_datetime(["2030-01-01"]),
             "TIMESTAMP",
@@ -1437,7 +1437,7 @@ def test_a_write_stores_the_declared_type_widening_a_column(
             "does not fit 'p_nom' of dtype float \\(DOUBLE\\)",
         ),
         (
-            "dims/snapshot.parquet",
+            "dimensions/snapshot.parquet",
             "snapshot",
             ["2030-01-01"],
             "does not fit 'snapshot' of dtype datetime \\(TIMESTAMP\\)",
@@ -1592,8 +1592,8 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
 def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
     source = PyPSA.to_datarecord(ac_dc, store.workspace.con)
-    assert "entity" in source.dims
-    assert "connection" in source.dims
+    assert "entity" in source.dimensions
+    assert "connection" in source.dimensions
     assert "p_max_pu" in source.attributes
     assert "v_nom" in source.attributes, "a static attribute is long rows too"
     assert "carrier" not in source.attributes, "a property is no attribute"
@@ -1620,7 +1620,7 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store):
     revision = export_network(n, store)
     rows = unpacked(
         store.workspace.con.read_parquet(
-            store.layer_dir(revision.id) + "dims/connection.parquet"
+            store.layer_dir(revision.id) + "dimensions/connection.parquet"
         )
     )
     back = PyPSA.build(revision.record)

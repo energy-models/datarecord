@@ -52,16 +52,16 @@ It raises `ValueError` where `results_only` comes without `base`.
 
 `Requirements` is what `requires` and `verify` return, with one set per kind of fault.
 
-| Field                 | Contains                                                                                                          |
-| --------------------- | ----------------------------------------------------------------------------------------------------------------- |
-| `dims`                | dims the tool needs and the schema does not declare                                                               |
-| `categories`          | categories the framework has no counterpart for                                                                   |
-| `attributes`          | `(category, attribute)` pairs with no value, named in the record's words                                          |
-| `unsupported_partial` | dims in `partial` the framework cannot take                                                                       |
-| `unsupported_dims`    | dims the record declares that the framework's model has no place for                                              |
-| `unsupported_values`  | `(category, attribute)` pairs stored as a curve, or varying along a dim the framework holds the attribute without |
-| `names`               | labels that two of the framework's categories share                                                               |
-| `ignored`             | `(category, attribute)` pairs that the record stores and the category does not take                               |
+| Field                    | Contains                                                                                                          |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `dimensions`             | dims the tool needs and the schema does not declare                                                               |
+| `categories`             | categories the framework has no counterpart for                                                                   |
+| `attributes`             | `(category, attribute)` pairs with no value, named in the record's words                                          |
+| `unsupported_partial`    | dims in `partial` the framework cannot take                                                                       |
+| `unsupported_dimensions` | dims the record declares that the framework's model has no place for                                              |
+| `unsupported_values`     | `(category, attribute)` pairs stored as a curve, or varying along a dim the framework holds the attribute without |
+| `names`                  | labels that two of the framework's categories share                                                               |
+| `ignored`                | `(category, attribute)` pairs that the record stores and the category does not take                               |
 
 A `Requirements` is truthy when any field but `ignored` has an entry.
 `a | b` returns a `Requirements` with the union of each field.
@@ -121,15 +121,15 @@ These are `active`, `build_year`, `committable`, `lifetime`, `weight`, `*_nom_ex
 
 `verify` takes a record or a [selection](#selecting-before-a-build), and reports in a `Requirements`:
 
-| Field                 | Entries                                                                                      |
-| --------------------- | -------------------------------------------------------------------------------------------- |
-| `dims`                | `snapshot`, `period` or `scenario`, where the schema lacks it and no selection squeezes it   |
-| `unsupported_partial` | `snapshot`, where it is in `partial`                                                         |
-| `unsupported_dims`    | each dim of the record's own ([a collection](#a-collection))                                 |
-| `categories`          | each `ctype` that PyPSA's registry lacks                                                     |
-| `attributes`          | each required attribute with no row, property or declared default, a port's `bus` among them |
-| `unsupported_values`  | each attribute stored as a curve, or varying along a dim PyPSA holds it without              |
-| `ignored`             | each attribute a type has a value for and does not take                                      |
+| Field                    | Entries                                                                                      |
+| ------------------------ | -------------------------------------------------------------------------------------------- |
+| `dimensions`             | `snapshot`, `period` or `scenario`, where the schema lacks it and no selection squeezes it   |
+| `unsupported_partial`    | `snapshot`, where it is in `partial`                                                         |
+| `unsupported_dimensions` | each dim of the record's own ([a collection](#a-collection))                                 |
+| `categories`             | each `ctype` that PyPSA's registry lacks                                                     |
+| `attributes`             | each required attribute with no row, property or declared default, a port's `bus` among them |
+| `unsupported_values`     | each attribute stored as a curve, or varying along a dim PyPSA holds it without              |
+| `ignored`                | each attribute a type has a value for and does not take                                      |
 
 When `verify` finds a dim in `partial` or a dim it cannot take, it reports nothing else.
 It raises `ValueError` for a selection that `build` refuses.
@@ -330,7 +330,7 @@ Two floats agree within `numpy.isclose`'s default tolerance, and other values ag
 The record's `meta` and `crs` are the first member's.
 `verify` checks each member as `PyPSA.verify` checks a selection, and reports what any member lacks.
 `build` raises `ValueError` for a single-period record without a dim of its own.
-`verify` reports each dim of its own of a record with several in `unsupported_dims`, and `build` raises `UnsupportedRecordError` for it.
+`verify` reports each dim of its own of a record with several in `unsupported_dimensions`, and `build` raises `UnsupportedRecordError` for it.
 
 #### Over `period`
 

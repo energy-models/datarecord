@@ -36,7 +36,7 @@ if TYPE_CHECKING:
 def _fold_name(workspace: Workspace, revision_id: UUID, table: str) -> str:
     """Table `table` of revision `revision_id`'s fold in the workspace's database, qualified for SQL.
 
-    The tables are `owner_map`, `dim_owners`, and `dims_<dim>` and
+    The tables are `owner_map`, `dimension_owners`, and `dimensions_<dim>` and
     `dead_<dim>`, the dim spelled as declared, which `Schema` holds to a plain
     identifier.
 
@@ -107,7 +107,7 @@ def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
     -----
     - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
     """
-    held = sorted(set(dims) & set(schema.one_of_dims))
+    held = sorted(set(dims) & set(schema.one_of_dimensions))
     if held:
         msg = (
             f"{where} holds an axis file of {held}, which list their labels "
@@ -226,7 +226,7 @@ def refuse_unheld(
     for c in columns:
         if c in taken:
             labels[f"{subject}.{c}"] = (col(c), taken[c])
-        elif c in schema.multi_dims:
+        elif c in schema.multi_dimensions:
             fields |= {f"{c}.{f}": (col(c)[f], d) for f, d in schema.over(c).items()}
             if c != subject:
                 tuples[c] = (col(c), c)
@@ -238,12 +238,12 @@ def refuse_unheld(
         return
     key, found = unheld
     name = named[key][1]
-    multi = name in schema.multi_dims
+    multi = name in schema.multi_dimensions
     shown = (
         f"{name!r} tuples [{', '.join(found)}]" if multi else f"{name!r} labels {found}"
     )
     via = "" if key == name else f" in {key!r}"
-    if name in schema.one_of_dims:
+    if name in schema.one_of_dimensions:
         holder = f"its `one_of`, {list(schema.dimensions[name].one_of or ())},"
         remedy = "use one of its labels"
         link = "data-model/#a-dim-with-one_of"
@@ -252,7 +252,7 @@ def refuse_unheld(
         remedy = "`add` them first"
         link = "editing/#validation"
     else:
-        holder = f"the layer's dims/{name}.parquet"
+        holder = f"the layer's dimensions/{name}.parquet"
         remedy = "add them there or drop those rows"
         link = "layers/"
     msg = (
@@ -398,11 +398,11 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
     drawn = {
-        *(d for m in schema.multi_dims for d in schema.over(m).values()),
+        *(d for m in schema.multi_dimensions for d in schema.over(m).values()),
         *schema.referring_properties().values(),
     }
-    outside_index = set(schema.dimensions) - set(schema.partial_dims)
-    kept = (drawn | outside_index) - set(schema.one_of_dims)
+    outside_index = set(schema.dimensions) - set(schema.partial_dimensions)
+    kept = (drawn | outside_index) - set(schema.one_of_dimensions)
     return tuple(c for c in schema.dimensions if c in kept)
 
 
@@ -423,8 +423,8 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         column alone - its properties ride along; a multi-dim's column is
         its struct column. A dim with no rows anywhere is absent rather than
         present-and-empty.
-    dim_owners : dict of str to UUID
-        Each folded axis's owner: the layer whose `dims/<dim>.parquet` it
+    dimension_owners : dict of str to UUID
+        Each folded axis's owner: the layer whose `dimensions/<dim>.parquet` it
         resolved to. A dim with `one_of` has none, its axis being the schema's.
     dead : dict of str to DuckDBPyRelation
         Each `mortal` dim's dead labels, keyed as its axis.
@@ -438,7 +438,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
 
     schema: Schema
     relations: dict[str, DuckDBPyRelation]
-    dim_owners: dict[str, UUID]
+    dimension_owners: dict[str, UUID]
     dead: dict[str, DuckDBPyRelation] = field(default_factory=dict)
 
     def __getitem__(self, dim: str) -> DuckDBPyRelation:
@@ -458,7 +458,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         axis: Callable[[str, UUID], DuckDBPyRelation],
         dead: Callable[[str], DuckDBPyRelation],
     ) -> Axes:
-        """The axes `(dim, layer_uuid, has_dead)` rows (`owners`) name.
+        """The axes `(dimension, layer_uuid, has_dead)` rows (`owners`) name.
 
         Parameters
         ----------
@@ -470,7 +470,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         return cls(
             schema=schema,
             relations={d: axis(d, layer) for d, layer, _ in rows},
-            dim_owners={d: layer for d, layer, _ in rows},
+            dimension_owners={d: layer for d, layer, _ in rows},
             dead={d: dead(d) for d, _, has_dead in rows if has_dead},
         )
 
@@ -482,7 +482,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         rows: Sequence[tuple[str, UUID, bool]],
         workspace: Workspace,
     ) -> Axes:
-        """The axes `revision_id`'s shared tables hold, given its `dim_owners` rows.
+        """The axes `revision_id`'s shared tables hold, given its `dimension_owners` rows.
 
         A `one_of` dim's axis is the schema's, so it is not among them.
 
@@ -494,7 +494,9 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         return cls.from_rows(
             schema,
             rows,
-            lambda d, _: con.table(_fold_name(workspace, revision_id, f"dims_{d}")),
+            lambda d, _: con.table(
+                _fold_name(workspace, revision_id, f"dimensions_{d}")
+            ),
             lambda d: con.table(_fold_name(workspace, revision_id, f"dead_{d}")),
         )
 
@@ -507,9 +509,9 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         own ancestry - as every proper ancestor in a source list is.
         """
         rid, ws = source.layer_id, source.workspace
-        if "dim_owners" not in tables_in(ws.con, ws.name, FOLD, rid):
+        if "dimension_owners" not in tables_in(ws.con, ws.name, FOLD, rid):
             return None
-        rows = ws.con.table(_fold_name(ws, rid, "dim_owners")).fetchall()
+        rows = ws.con.table(_fold_name(ws, rid, "dimension_owners")).fetchall()
         return cls.tabled(rid, source.schema, rows, ws)
 
     @classmethod
@@ -517,7 +519,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         """The axes of the frozen `sources`, kept as shared tables and read on the calling thread's cursor.
 
         Each axis and dead label set is a table (`_fold_name`), built by
-        whichever cursor misses it first; `dim_owners` is created after
+        whichever cursor misses it first; `dimension_owners` is created after
         them, so a reader finding it finds every table it names. A `one_of`
         dim's axis is the schema's, carried so a fold onto these axes binds
         no `VALUES` list per read.
@@ -533,7 +535,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         def build() -> DuckDBPyRelation:
             axes = cls.resolve(sources)
             made = [
-                *(("dims", dim, axes[dim]) for dim in axes.dim_owners),
+                *(("dimensions", dim, axes[dim]) for dim in axes.dimension_owners),
                 *(("dead", name, rel) for name, rel in axes.dead.items()),
             ]
             for kind, name, rel in made:
@@ -544,12 +546,17 @@ class Axes(Mapping[str, DuckDBPyRelation]):
             return axes.owners(con)
 
         index = shared_table(
-            con, ws.name, FOLD, revision_id, "dim_owners", lambda: nullcontext(build())
+            con,
+            ws.name,
+            FOLD,
+            revision_id,
+            "dimension_owners",
+            lambda: nullcontext(build()),
         )
         rows = index.fetchall()
         tabled = cls.tabled(revision_id, schema, rows, ws)
         relations = tabled.relations | {
-            n: one_of_axis(schema, n, con) for n in schema.one_of_dims
+            n: one_of_axis(schema, n, con) for n in schema.one_of_dimensions
         }
         return dataclasses.replace(
             tabled,
@@ -587,17 +594,17 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         """
         schema, con = sources[-1].schema, sources[-1].workspace.con
         base, above = split or _base_and_above(sources, _axes_at_hand)
-        restated = {d for d in schema.dimensions if d not in schema.one_of_dims}
+        restated = {d for d in schema.dimensions if d not in schema.one_of_dimensions}
         held_files = [source.axes() if source.frozen else restated for source in above]
         for source, names in zip(above, held_files, strict=True):
             refuse_one_of_file(schema, names, f"layer {source.layer_id}")
         keep = mortal(schema)
         relations: dict[str, DuckDBPyRelation] = {}
         dead: dict[str, DuckDBPyRelation] = {}
-        dim_owners: dict[str, UUID] = {}
+        dimension_owners: dict[str, UUID] = {}
         for name in schema.dimensions:
             seed = None if base is None else base.get(name)
-            if name in schema.one_of_dims:
+            if name in schema.one_of_dimensions:
                 relations[name] = (
                     one_of_axis(schema, name, con) if seed is None else seed
                 )
@@ -607,14 +614,14 @@ class Axes(Mapping[str, DuckDBPyRelation]):
                 for s, held in zip(above, held_files, strict=True)
                 if name in held and (rel := s.axis(name)) is not None
             ]
-            rel = _fold_axis(seed, files, name, f"dims/{name}.parquet")
+            rel = _fold_axis(seed, files, name, f"dimensions/{name}.parquet")
             if rel is None:
                 continue
             relations[name] = rel
             if files:
-                dim_owners[name] = files[-1][0].layer_id
+                dimension_owners[name] = files[-1][0].layer_id
             elif base is not None:
-                dim_owners[name] = base.dim_owners[name]
+                dimension_owners[name] = base.dimension_owners[name]
             if name not in keep:
                 continue
             before = None if base is None else base.dead.get(name)
@@ -626,10 +633,15 @@ class Axes(Mapping[str, DuckDBPyRelation]):
                 before = _dead_labels(held, rel, name, fixed=fixed)
             if before is not None:
                 dead[name] = before
-        return cls(schema=schema, relations=relations, dead=dead, dim_owners=dim_owners)
+        return cls(
+            schema=schema,
+            relations=relations,
+            dead=dead,
+            dimension_owners=dimension_owners,
+        )
 
     def owners(self, con: DuckDBPyConnection) -> DuckDBPyRelation:
-        """Return `(dim, layer_uuid, has_dead)`, one row per `dim_owners` entry.
+        """Return `(dimension, layer_uuid, has_dead)`, one row per `dimension_owners` entry.
 
         `has_dead` says whether the dim has dead labels; every dim with dead
         labels has an axis, so none is left out.
@@ -640,12 +652,12 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
         """
         return con.sql(
-            "SELECT unnest($dims::VARCHAR[]) AS dim, "
+            "SELECT unnest($dimensions::VARCHAR[]) AS dimension, "
             f"unnest($layers::VARCHAR[])::{LAYER_UUID_TYPE} AS {LAYER_COLUMN}, "
             "unnest($dead::BOOLEAN[]) AS has_dead",
             params={
-                "dims": list(self.dim_owners),
-                "layers": [str(u) for u in self.dim_owners.values()],
-                "dead": [d in self.dead for d in self.dim_owners],
+                "dimensions": list(self.dimension_owners),
+                "layers": [str(u) for u in self.dimension_owners.values()],
+                "dead": [d in self.dead for d in self.dimension_owners],
             },
         )

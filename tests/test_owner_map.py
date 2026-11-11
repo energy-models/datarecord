@@ -21,7 +21,7 @@ import pytest
 
 from datarecord import WorkingRecord, Workspace
 from datarecord.duck import union_all_by_name
-from datarecord.resolve.fold import read_dim_owners
+from datarecord.resolve.fold import read_dimension_owners
 from datarecord.resolve.owner_map import _fold_map
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec
@@ -95,7 +95,7 @@ def keys(revision):
 
 
 def entity_names(revision):
-    return set(revision.record.dims["entity"].df()["entity"])
+    return set(revision.record.dimensions["entity"].df()["entity"])
 
 
 def test_materialise_writes_the_map_under_resolved(store, parent):
@@ -106,7 +106,7 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
     - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     assert Path(store.resolved_dir(parent.id), "owner_map.parquet").exists()
-    assert Path(store.dim_owners_uri(parent.id)).exists()
+    assert Path(store.dimension_owners_uri(parent.id)).exists()
     assert not Path(
         store.resolved_dir(parent.id), "owner_map", "entities.parquet"
     ).exists()
@@ -123,8 +123,8 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
         for pattern in (
             "*.parquet",
             "attributes/*.parquet",
-            "dims/*.parquet",
-            "dims/*/*.parquet",
+            "dimensions/*.parquet",
+            "dimensions/*/*.parquet",
         )
         for p in layer.glob(pattern)
     }
@@ -141,7 +141,7 @@ def _axes(store, revision):
     workspace = Workspace()
     try:
         record = workspace.store(store.uri).revision(revision.id).record
-        dims = record.dims
+        dims = record.dimensions
         dead = record._fold.axes.dead
         return (
             {d: dims[d].df().to_dict("records") for d in dims},
@@ -196,7 +196,7 @@ def test_a_materialised_node_points_at_the_layers_holding_its_axes(
         store.revision(nodes[name].id).materialise()
     store.revision(leaf.id).materialise()
 
-    owners = read_dim_owners(leaf.id, store.workspace.con, store)
+    owners = read_dimension_owners(leaf.id, store.workspace.con, store)
     assert {d: layer for d, layer, _ in owners} == {
         "entity": middle.id if not dropped else leaf.id,
         "bus": leaf.id,
@@ -300,7 +300,7 @@ def test_a_read_refuses_an_owner_map_naming_a_file_the_layer_lacks(store, tmp_pa
     root.materialise()
     manifest = root.manifest
     Path(store.manifest_uri(root.id)).unlink()
-    stripped = replace(manifest, files=LayerFiles(dims=manifest.files.dims))
+    stripped = replace(manifest, files=LayerFiles(dimensions=manifest.files.dimensions))
     stripped.write(store.files, store.manifest_uri(root.id))
 
     reread = Workspace().store(str(tmp_path)).revision(root.id)
@@ -812,20 +812,20 @@ def test_a_label_removed_along_a_dim_joining_partial_names_no_row(
     node = _scenario_root(store, materialised=False)
     if remover == "parent":
         layer = empty_child(node)
-        restate(layer, "dims", "scenario", [], drop=["low"])
+        restate(layer, "dimensions", "scenario", [], drop=["low"])
         node = layer.commit()
     if materialised:
         node.materialise()
     layer = empty_child(node, _WIDE)
     if remover == "widening child":
-        restate(layer, "dims", "scenario", [], drop=["low"])
+        restate(layer, "dimensions", "scenario", [], drop=["low"])
     child = layer.commit()
 
     rows = child.record.attributes["p_max_pu"].project("entity, scenario").fetchall()
     assert sorted(rows, key=str) == [("gas", "high"), ("wind", None)], (
         "no row names the removed label"
     )
-    assert child.record.dims["scenario"].fetchall() == [("high",)]
+    assert child.record.dimensions["scenario"].fetchall() == [("high",)]
 
 
 def _committed(layer, *, materialised):
@@ -849,10 +849,10 @@ def _restated_then_widened(store):
 def _removed_widened_re_added(store):
     """`low` is removed outside `partial`, `scenario` joins it, then `low` is re-added."""
     layer = empty_child(_scenario_root(store, materialised=False))
-    restate(layer, "dims", "scenario", [], drop=["low"])
+    restate(layer, "dimensions", "scenario", [], drop=["low"])
     widening = empty_child(layer.commit(), _WIDE)
     layer = empty_child(widening.commit())
-    restate(layer, "dims", "scenario", [{"scenario": "low"}])
+    restate(layer, "dimensions", "scenario", [{"scenario": "low"}])
     expected = {("gas", "high"): 2.0, ("wind", "low"): 5.0, ("wind", "high"): 5.0}
     return _p_max_pu(layer.commit()), expected
 

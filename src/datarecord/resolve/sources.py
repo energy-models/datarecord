@@ -119,7 +119,7 @@ class LayerSource(Protocol):
         ...
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        """`dims/<dim>.parquet` - one axis's full row, not its column alone.
+        """`dimensions/<dim>.parquet` - one axis's full row, not its column alone.
 
         Its properties ride along as columns. A file restates the axis whole,
         in order; a multi-dim's column is its struct column.
@@ -215,13 +215,13 @@ class _FileLayer:
         return self.workspace.con.read_parquet(uris, union_by_name=True)
 
     def axes(self) -> set[str]:
-        return set(self.files.dims)
+        return set(self.files.dimensions)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        if dim not in self.files.dims:
+        if dim not in self.files.dimensions:
             return None
-        rel = self._read("dims", [dim])
-        file = f"dims/{dim}.parquet"
+        rel = self._read("dimensions", [dim])
+        file = f"dimensions/{dim}.parquet"
         refuse_foreign_columns(set(rel.columns), {dim}, self.schema, dim, file)
         return rel
 

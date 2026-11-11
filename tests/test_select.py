@@ -209,7 +209,7 @@ def _rows(rel: DuckDBPyRelation) -> list[str]:
 def _relations(view: RecordLike) -> dict[tuple[str, str], Any]:
     """Every relation of `view`, fetched, by kind and name."""
     return {
-        **{("dims", d): r.fetchall() for d, r in view.dims.items()},
+        **{("dimensions", d): r.fetchall() for d, r in view.dimensions.items()},
         **{("properties", s): r.fetchall() for s, r in view.properties.items()},
         **{("attributes", a): _rows(r) for a, r in view.attributes.items()},
     }
@@ -223,15 +223,17 @@ def _at(record: RecordLike, labels: dict[str, Any]) -> dict[str, DuckDBPyRelatio
         for d, label in labels.items()
         if d in schema.dimensions and not isinstance(label, list)
     }
-    at = {d: record.dims[d].filter(col(d) == lit(label)) for d, label in one.items()}
-    for m in schema.multi_dims:
+    at = {
+        d: record.dimensions[d].filter(col(d) == lit(label)) for d, label in one.items()
+    }
+    for m in schema.multi_dimensions:
         over = schema.over(m)
         if set(over.values()) <= one.keys():
             fields = (
                 fn.struct_extract(col(m), lit(c)) == lit(one[d])
                 for c, d in over.items()
             )
-            at[m] = record.dims[m].filter(ex_all(fields))
+            at[m] = record.dimensions[m].filter(ex_all(fields))
     return at
 
 
@@ -374,7 +376,7 @@ ALL_BUSES = ["north", "south", "paris"]
 )
 def test_a_dropped_label_takes_what_refers_to_it(record, asked, kept):
     view = record.select(**asked)
-    assert {d: _labels(view.dims[d]) for d in kept} == kept
+    assert {d: _labels(view.dimensions[d]) for d in kept} == kept
 
 
 @pytest.mark.parametrize(
@@ -554,7 +556,7 @@ def test_a_squeeze_never_defaults_a_label_null_on_its_category(record):
             w.select(ctype="Load")
         assert "select(ctype='Load')" in str(refused.value)
         for kept in ({"ctype": ["Load"]}, {"ctype": "Generator"}):
-            assert "spare" in _labels(w.select(**kept).dims["entity"]), (
+            assert "spare" in _labels(w.select(**kept).dimensions["entity"]), (
                 f"{kept} keeps a label NULL on its category, defaulting it as the base"
             )
 
@@ -587,8 +589,10 @@ def routes(module_store):
 
 def test_a_field_keyword_wins_over_a_property_of_its_name(routes):
     view = routes.select(via=["b"])
-    assert _labels(view.dims["pipe"]) == [{"from": "a", "via": "b"}]
-    assert _labels(view.dims["node"]) == ["a", "b", "c"], "no node selected by `via`"
+    assert _labels(view.dimensions["pipe"]) == [{"from": "a", "via": "b"}]
+    assert _labels(view.dimensions["node"]) == ["a", "b", "c"], (
+        "no node selected by `via`"
+    )
 
 
 @pytest.mark.parametrize(

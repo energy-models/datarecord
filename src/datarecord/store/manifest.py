@@ -38,12 +38,12 @@ A float is finite, since JSON has no NaN or infinity to store it as.
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
 class LayerFiles:
-    """What a layer wrote, by declared name: `dims/<dim>.parquet`, `attributes/<attr>.parquet`.
+    """What a layer wrote, by declared name: `dimensions/<dim>.parquet`, `attributes/<attr>.parquet`.
 
     A read opens exactly these and ignores any other file in the layer.
     """
 
-    dims: tuple[str, ...] = ()
+    dimensions: tuple[str, ...] = ()
     attributes: tuple[str, ...] = ()
 
 

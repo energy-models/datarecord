@@ -28,7 +28,7 @@ With one struct column, the two stay apart. A NULL `connection` means every conn
 
 The other alternatives lose more. Without multi-dims, with valid pairs stated by a condition, the record loses the whole-or-NULL broadcast and the axis file that contains `connection.role`. A surrogate dim with one label per tuple makes you write a value against a port label and look up its entity and bus. Then the port label, not the tuple, is the value's label.
 
-datarecord applies every rule for a dim to a multi-dim. It is declared under `dimensions`, has its file under `dims/`, takes `add` and `remove`, and may sit in `partial`. Each of those rules is stated once for both.
+datarecord applies every rule for a dim to a multi-dim. It is declared under `dimensions`, has its file under `dimensions/`, takes `add` and `remove`, and may sit in `partial`. Each of those rules is stated once for both.
 
 The cost is a struct at the boundary. A filter on one field is `connection.entity = 'wind'`, which DuckDB pushes into the parquet scan as it does a plain column. A numpy-backed pandas frame has no struct dtype, so a pandas reader unnests on the DuckDB side first.
 
@@ -62,7 +62,7 @@ A solve's results are attributes like any other, with the same spec, file layout
 
 The rejected alternative keeps results apart, in a second mapping, a separate directory or behind a flag on the spec. A result already has an input's spec and file shape. A split would add a branch to every reader in return for one rule about inheritance. Which attributes a solve fills is the framework's vocabulary, which the PyPSA tool reads from PyPSA's registry ([tools](../reference/tools.md)).
 
-datarecord runs every check on results that it runs on inputs, so a reader that joins a result to `dims["entity"]` never finds an orphan.
+datarecord runs every check on results that it runs on inputs, so a reader that joins a result to `dimensions["entity"]` never finds an orphan.
 
 The cost is staleness. A child that edits an input keeps results computed from its parent's inputs, which describe a record that no longer exists. datarecord keeps both and leaves their coherence to you ([open questions](open-questions.md)).
 

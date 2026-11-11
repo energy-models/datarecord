@@ -116,13 +116,13 @@ It refuses any other type, naming the attribute, property or dim and its dtype.
 
 ### Axis files
 
-A `dims/<dim>.parquet` file contains the whole axis at the new revision, in order, with each label's properties.
+A `dimensions/<dim>.parquet` file contains the whole axis at the new revision, in order, with each label's properties.
 The writer refuses a file for an undeclared dim or a [dim with `one_of`](data-model.md), and a file with a label twice.
 It refuses a column other than the dim's column and the subject's declared properties.
 It also refuses a file with its parent's labels in a different order from the parent's, and a new label may sit anywhere:
 
 ```text
-ValueError: dims/entity.parquet puts entity 'wind' out of its parent's order; a restatement keeps the order of the labels its parent holds and places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+ValueError: dimensions/entity.parquet puts entity 'wind' out of its parent's order; a restatement keeps the order of the labels its parent holds and places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
 ```
 
 ### Labels
@@ -133,7 +133,7 @@ The writer refuses an attribute row with a label or tuple outside the final axes
 It refuses a multi-dim's tuple that contains a label outside its field's final axis the same way:
 
 ```text
-ValueError: attributes/p_max_pu.parquet names 'entity' labels ['coal'], which the layer's dims/entity.parquet does not hold; add them there or drop those rows (https://energy-models.github.io/datarecord/reference/layers/)
+ValueError: attributes/p_max_pu.parquet names 'entity' labels ['coal'], which the layer's dimensions/entity.parquet does not hold; add them there or drop those rows (https://energy-models.github.io/datarecord/reference/layers/)
 ```
 
 ### `LayerData`

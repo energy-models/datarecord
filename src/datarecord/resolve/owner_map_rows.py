@@ -100,7 +100,9 @@ def _over(schema: Schema, dim: str, attributes: tuple[str, ...]) -> Expression:
     - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
     lacking = [
-        a for a in attributes if a in schema.attributes and dim not in schema.dims_of(a)
+        a
+        for a in attributes
+        if a in schema.attributes and dim not in schema.dimensions_of(a)
     ]
     if not lacking:
         return lit(True)  # noqa: FBT003
