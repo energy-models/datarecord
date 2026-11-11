@@ -1946,12 +1946,12 @@ class PyPSATool(Tool):
     ) -> tuple[Requirements, dict[str, _TypeMembers]]:
         """`verify`, with the members it read for each known type, for `build` to reuse; empty where a key check failed."""
         dims = REQUIRED_DIMS - set(record.schema.dimensions) - _squeezed(record)
-        unsupported_keys = self._unsupported_keys(record)
+        unsupported_partial = self._unsupported_partial(record)
         unsupported_dims = self._unsupported_dims(record)
-        if unsupported_keys or unsupported_dims:
+        if unsupported_partial or unsupported_dims:
             return Requirements(
                 dims=frozenset(dims),
-                unsupported_keys=frozenset(unsupported_keys),
+                unsupported_partial=frozenset(unsupported_partial),
                 unsupported_dims=frozenset(unsupported_dims),
             ), {}
 
@@ -2005,8 +2005,8 @@ class PyPSATool(Tool):
             ignored=frozenset(ignored),
         ), read
 
-    def _unsupported_keys(self, record: RecordLike) -> set[tuple[str, str]]:
-        """`(key, dim)` pairs this tool cannot honour: `snapshot`, as any key.
+    def _unsupported_partial(self, record: RecordLike) -> set[str]:
+        """The `partial` dims this tool cannot honour: `snapshot`.
 
         A component's whole series must come from one layer for PyPSA's static/series split.
 
@@ -2015,7 +2015,7 @@ class PyPSATool(Tool):
         - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
         """
         defs = record.schema
-        return {("owner_map_key", SNAPSHOT)} if SNAPSHOT in defs.partial_dims else set()
+        return {SNAPSHOT} if SNAPSHOT in defs.partial_dims else set()
 
     def _unsupported_dims(self, record: RecordLike) -> set[str]:
         """The record's dims of its own (`_own_dims`): one network has none, a collection (`PyPSACollection`) is over one.

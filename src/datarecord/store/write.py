@@ -434,14 +434,14 @@ def _require_living_references(
 def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) -> None:
     """Check one frame is shaped for the fold to resolve it.
 
-    Structural only: a long frame carries its own attribute's dim columns, and a
+    Structural only: a long frame carries a column per dim of its attribute, and a
     `dims/` frame carries every dim the schema declares it keyed by. Values
     are not checked - which labels and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
 
-    An attribute's dim columns are what its `dims` declare, so one file's column
-    set is not another's and neither is every declared dim.
+    Each file carries a column per dim of its own attribute, so two files'
+    columns differ and neither need hold every declared dim.
 
     Reads the schema rather than the rows, so validating an unmaterialised
     relation costs nothing.

@@ -49,7 +49,7 @@ def _root_with_curve(store) -> HandBuilt:
 
 
 def test_a_child_curve_replaces_the_parents_value_whole(store):
-    """`breakpoint` is not in `owner_map_key`: one layer owns every breakpoint of a key.
+    """`breakpoint` is not in `owner_map_index`: one layer owns every breakpoint of a key.
 
     So a child's curve replaces a parent's curve entirely - never a mix of the
     two.

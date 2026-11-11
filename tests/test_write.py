@@ -136,7 +136,7 @@ _CTYPES = list(_SCHEMA.dimensions["ctype"].one_of or ())
 
 
 def _long(**overrides) -> pd.DataFrame:
-    """One long row carrying its attribute's own dim columns, and no others.
+    """One long row carrying a column per dim of its attribute.
 
     Shaped from the spec rather than spelled: a source handing over a column
     the attribute is not addressed by is what the writer rejects, so a
@@ -585,7 +585,7 @@ def test_a_write_rejects_an_undeclared_attribute_or_dim(store, source, match):
 def test_a_write_rejects_a_dim_the_attribute_lacks(store):
     """A column the attribute is not addressed by is a disagreement, not a spare.
 
-    The read path projects an attribute's own dim columns, so a `bus` on a
+    The read path projects a column per dim of an attribute, so a `bus` on a
     component attribute would be written and never read - and a source emitting
     one means something different by the attribute than the schema does.
     Reported rather than dropped, since silently narrowing would hide that.

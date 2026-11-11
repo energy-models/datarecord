@@ -17,12 +17,16 @@ All notable changes to datarecord are documented here. The format follows
   return a `Selection`: a `RecordLike` holding any record at the labels named,
   as xarray's `sel` takes them. One label squeezes its dim out of the schema,
   its attributes' rows settled along it by the broadcast rule; a list, a slice
-  or a partial date string keeps it. A keyword naming a multi-dim's coordinate
-  narrows its tuples, and one naming a property narrows its subject. A label
+  or a partial date string keeps it. Labels of a multi-dim's field
+  narrow its tuples, and labels of a property narrow its subject. A label
   whose property names a dropped label goes, and so does a tuple naming one,
   until nothing more goes. `Selection.select` merges its labels and selects the
   base again, and `Selection.lift` puts the squeezed labels back on rows
   computed over the view. Attributes stay plans on the base's connection.
+- `Schema.fields(dim)` maps each field of a dim to the dim it draws on, a
+  multi-dim's `over` or a flat dim's one field, named for itself.
+  `Schema.fields_of(attribute)` does so for every dim the attribute varies
+  over: the names `set` and `select` take labels by.
 - Properties. The schema has a `properties` section (`PropertySpec`) that
   declares, per dim or multi-dim, the values that describe one label. A record
   stores them as columns of `dims/<dim>.parquet`.
@@ -43,11 +47,11 @@ All notable changes to datarecord are documented here. The format follows
 - A dim of dtype `str` may declare `one_of: [...]`, as in mathspec. Its column
   is an `ENUM` of those labels, and its axis is the list, in order.
 - `WorkingRecord` edits any dim: `add(dim, labels, **properties)`,
-  `remove(dim, labels)` and `set(name, value, **coords)`. `set` writes
-  attributes and properties, and a property keyword selects labels when `set`
-  is called.
-- A multi-dim is a broadcast coordinate like any dim. A NULL multi-dim value
-  means every tuple of the multi-dim, and `partial` may name a multi-dim.
+  `remove(dim, labels)` and `set(name, value, **labels)`. `set` writes
+  attributes and properties, and labels of a property select the labels of its
+  subject when `set` is called.
+- A multi-dim broadcasts like any dim. A NULL in its column means every tuple
+  of the multi-dim, and `partial` may name a multi-dim.
 - `Workspace` holds the DuckDB database and `Store` holds one location. Each
   layer under `layers/<id>/` carries its own `manifest.json`, a `Manifest`
   holding its id, its parent, the full schema it was written under, the files
@@ -96,24 +100,24 @@ All notable changes to datarecord are documented here. The format follows
   race.
 - `Tool.to_datarecord(model, con)` takes the connection that its frames are
   planned on.
-- Removing an entity removes the group tuples that name it, and the values of
+- Removing an entity removes the tuples of each multi-dim that name it, and the values of
   a tuple go with it. An `add` of the name revives the entity alone. A layer
   that adds a tuple naming a removed label, or removes a label that a tuple
   names, fails at write.
-- A layer that changes an axis or a group restates it whole, in order. A label
+- A layer that changes an axis restates it whole, in order. A label
   is removed where a restatement omits a label that the previous one held,
-  and its order is the file's row order. The deepest file for an axis or group
-  is the answer for a node. A `WorkingRecord` stages an edited axis or group
+  and its order is the file's row order. The deepest file for an axis
+  is the answer for a node. A `WorkingRecord` stages an edited axis
   whole, copied from the base at its first edit. A materialised node names
   the layer holding each axis's deepest file in `resolved/dim_owners.parquet`.
-- `WorkingRecord.set` checks that an attribute value names a label that its
-  dim's axis, as staged, holds, for every dim, and a tuple that its group, as
-  staged, holds. `add` checks that each label of a tuple is on its axis
+- `WorkingRecord.set` checks that each label of an attribute row is on its
+  dim's axis as staged, a multi-dim's tuple among them. `add` checks that each label of a tuple is on its axis
   as staged, and that a value of a property with `one_of` is a label of that
   dim as staged. `write_layer` checks every attribute row against the final
-  axes and groups of the layer, and every group tuple against the final axes.
+  axes of the layer, and every tuple of a multi-dim against the final axes of
+  the dims its fields draw on.
   Each check is one DuckDB anti-join.
-- A schema is checked at load. A dim, group, group coordinate or attribute
+- A schema is checked at load. A dim, field or attribute
   name that is not a plain identifier (mathspec's rule: ASCII letters, digits
   and `_`, not starting with a digit), starts with `_`, is a column that datarecord
   writes itself (`value`, `layer_uuid` and others, ignoring case), or differs
@@ -150,7 +154,7 @@ All notable changes to datarecord are documented here. The format follows
   custom column clashes any more.
 - The PyPSA tool stores per-port results on connections like per-port inputs.
   `p0`, `p1`, `p2` and a one-port type's `p` are one result `p` over the
-  `connection` group, with a row per `(entity, bus)` that keeps the port's
+  `connection` multi-dim, with a row per `(entity, bus)` that keeps the port's
   sign. `q` works the same way. `Link.p` and `Process.p` are `p_internal`, and
   a three-port Link's `p2` is a declared result.
 - The PyPSA tool stores a Process's `rate0`, `rate1`, `rate2` as one input
@@ -260,16 +264,17 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- `WorkingRecord.set(name, value, **labels)` takes labels as `select` does.
+  It accepts the same names as before.
 - Breaking: `Schema.dims` returns every declared dim, the flat dims first and
   the multi-dims last, which `Schema.broadcast_dims` returned before.
   `Schema.flat_dims` returns the dims that are not multi-dims, which
   `Schema.dims` returned before. `Schema.coordinates_of` is now
   `Schema.dims_of`.
-- Breaking: `Schema.coordinate_over` is now `Schema.field_over`.
 - The pages, docstrings and error messages take mathspec's words. A named
   part of a multi-dim's tuple, such as `bus` of `connection`, is a field. A
   coordinate is one label on each dim of an attribute, such as `(gas, high)`,
-  which the pages called a point. A keyword names a flat dim or a field.
+  which the pages called a point.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`
   or `datarecord.edit.dims.bus`, or runs `USE datarecord` once on its own
@@ -337,12 +342,11 @@ All notable changes to datarecord are documented here. The format follows
   struct column alone and `record.properties["connection"]` adds `role`.
   `add` and `remove` take a multi-dim's tuples as a frame holding its struct
   column, so `add("connection", record.dims["connection"])` round-trips, or
-  one with a column per coordinate instead, or as a list of mappings from
-  coordinate to label.
-  `connection.bus` names a coordinate wherever `subject.name` stands, and
+  one with a column per field instead, or as a list of mappings from
+  field to label.
+  `connection.bus` names a field wherever `subject.name` stands, and
   `set` refuses it. No property refers to one. New on `Schema`: `multi_dims`, `over`, `multi_dims_of`,
-  `check_multi_dim_columns` and `coordinate_over`; `dims` lists every dim but
-  the multi-dims. The PyPSA tool declares `connection` under `dimensions`.
+  `check_multi_dim_columns` and `field_over`. The PyPSA tool declares `connection` under `dimensions`.
 - A dim with `one_of` has its axis derived from the list: `record.dims["ctype"]`
   is the list, and no `dims/<dim>.parquet` is written or read for it, nor is
   it named in `resolved/dim_owners.parquet`. The writer refuses a `LayerData`
@@ -358,8 +362,8 @@ All notable changes to datarecord are documented here. The format follows
   with `one_of`, as a dim is: `connection.role` categorizes `connection`, so a
   `default_by` keyed `connection.role` loads, `Schema.categorizing("connection")`
   lists `role`, and `flags(role="output")`, `default_for(name, role="output")`
-  and the `set` keyword `role="output"` select by it. A role keyword picks the
-  tuples of an attribute over `connection`, narrowed by a coordinate keyword,
+  and `set(..., role="output")` select by it. A role picks the
+  tuples of an attribute over `connection`, narrowed by labels of a field,
   and of a property of it: `set("connection.note", v, role="output")` patches
   the output connections, as `set("entity.note", v, ctype="Generator")` does
   the generators, and `ctype="Link"` on it the connections of links.
@@ -368,20 +372,21 @@ All notable changes to datarecord are documented here. The format follows
   redirects to its new page. The usage pages are organised by task, and the
   API reference uses the design section names.
 - An attribute over a multi-dim carries it as one struct column named for it,
-  with a field per coordinate, such as `connection STRUCT(entity, bus)`. Its
+  holding its fields, such as `connection STRUCT(entity, bus)`. Its
   table is keyed by that column, and `dims/connection.parquet` is
   `connection STRUCT(entity, bus) | role`. The PyPSA tool declares no `bus`
   attribute. A port's bus is the connection tuple.
 - The dims that a multi-dim draws on broadcast. A per-bus value with
   `bus = NULL` holds for every bus, and `bus` must be in `partial` to patch one
-  bus at a time. `WorkingRecord.set` still takes `bus=`. Naming a multi-dim
-  next to a dim that one of its coordinates is named for, as in
+  bus at a time. `WorkingRecord.set` still takes `bus=`. Listing a multi-dim
+  next to a dim that one of its fields is named for, as in
   `dims={"connection", "bus"}`, is an error.
 - `entity` is an ordinary dim. It broadcasts, and it must be in `partial` to
   be patched or categorized per label. `entity_type` is `entity.ctype`.
-- An attribute reaches every label that its `dims` address, whatever the
-  categories of the labels. A NULL on a categorized dim reaches every label.
-  `flags(**categories)` holds every attribute with a row that reaches a
+- An attribute's rows cover every label of the dims it is indexed over,
+  whatever the categories of the labels. A NULL in a categorized dim's column
+  covers every label. `flags(**categories)` holds every attribute with a row
+  that covers a
   matching label. The PyPSA tool keeps the per-type vocabulary. `build`
   leaves out a value that its type does not take and reports it in
   `Requirements.ignored`, and `to_datarecord` records custom entity columns
@@ -396,22 +401,22 @@ All notable changes to datarecord are documented here. The format follows
   They refuse timestamps with a time zone and cast a column only to a wider
   type of its kind. A dtype is mathspec's: `float`, `int`, `bool`, `str` or
   `datetime`.
-- The owner map's key is the `partial` dims and groups plus `attribute`. A dim or
-  group outside `partial` is owned whole, so a layer that patches one
+- The owner map's index is the `partial` dims plus `attribute`. A dim outside
+  `partial` is owned whole, so a layer that patches one
   connection's value restates every connection's. The PyPSA tool declares
   `partial` so that it keeps per-connection ownership.
-  `Schema.input_key` is `Schema.owner_map_key`, `Schema.input_columns` is
-  `Schema.owner_map_columns`, and `Requirements.unsupported_keys` reports
-  `"owner_map_key"`.
+  `Schema.input_key` is `Schema.owner_map_index`, `Schema.input_columns` is
+  `Schema.owner_map_columns`, and `Requirements.unsupported_keys` is
+  `Requirements.unsupported_partial`, the `partial` dims a tool cannot honour.
 - A `Record` is constructed from `revision_id`, `sources` and `workspace`, and
   reads under its last source's schema. A caller reads it through its
   mappings: `rev.record.sources`, `dims[dim]`, `properties[dim]` and
   `attributes[name]`. `attributes[name]` raises `KeyError` for an undeclared
   attribute.
 - `PyPSA.build` raises `TypeError` for a `RecordLike` that is not a `Record`.
-  `Schema.long_columns_for` and `Schema.coordinates_of` raise `KeyError` for an
+  `Schema.long_columns_for` and `Schema.dims_of` raise `KeyError` for an
   attribute that the schema does not declare.
-- `LayerData` declares no `frozen`, and its `axes()`, `groups()` and
+- `LayerData` declares no `frozen`, and its `axes()` and
   `attributes()` return `set[str]`. A whole `Record` reaches the writer
   through the adapter for a `RecordLike`.
 - The modules live in the subpackages `datarecord.schema`, `datarecord.resolve`
@@ -420,49 +425,49 @@ All notable changes to datarecord are documented here. The format follows
   `datarecord.layered.categories` is `datarecord.schema.categories`. The
   dtype helpers moved from `datarecord.duck` to `datarecord.schema.dtypes`.
   Every public name imports from `datarecord`.
-- A `WorkingRecord` folds its staged layer onto the folded axes, groups and
+- A `WorkingRecord` folds its staged layer onto the folded axes and
   removed labels of its base, which the workspace keeps as tables. Folding the
   staged edits opens no file of the base.
-- A label or group tuple that one layer removes and a later layer adds again
+- A label that one layer removes and a later layer adds again
   takes its place where it is added again, in a working record, a written
   record and a materialised node.
-- A key held twice in a `dims/` or `groups/` file, and a column that is
-  neither the key nor a declared property of its subject, fail at read.
+- A label held twice in a `dims/` file, and a column that is
+  neither the dim's own nor a declared property of its subject, fail at read.
   `write_layer` refuses a restatement that orders the labels of its parent
   differently.
-- A reference to a removed label in a group tuple or a property is checked in
+- A reference to a removed label in a multi-dim's tuple or a property is checked in
   every subject that a layer restates, whole. A reference that an ancestor
   left dangling fails the next layer that restates its subject.
 - A layer's id is its manifest's. A standalone directory is one layer with
   no parent, and `ws.at` refuses a manifest naming one, a layer of a tree
   being read alone through `store.layer(id)`.
-- A value over a dim or group outside `partial` that names a removed label is
+- A value over a dim outside `partial` at a removed label is
   dropped at read, including the per-bus values of a removed `bus` label. A
   materialised node keeps the removed labels in `resolved/dead/`.
-- `attributes[name]` returns the owned rows as written. A NULL coordinate
-  stays NULL, rows of two layers may cover one coordinate, and the row order
+- `attributes[name]` returns the owned rows as written. A NULL in a dim's
+  column stays NULL, rows of two layers may cover one coordinate, and the row order
   is unspecified. A consumer settles each coordinate by the broadcast rule,
-  the row naming every dim the others there name winning. The owner map holds
-  each layer's keys as written, plus one row naming both wherever a deeper
-  layer's row crosses a parent's, so it grows with the rows layers write
-  rather than with the labels a broadcast reaches.
-- A deeper layer owns only the coordinates its rows reach. A shallower row
+  the row setting every dim the others there set winning. The owner map holds
+  each layer's keys as written, plus one row setting the dims of both wherever
+  a deeper layer's row crosses a parent's, so it grows with the rows layers
+  write rather than with the labels a broadcast covers.
+- A deeper layer owns only the coordinates its rows cover. A shallower row
   keeps every coordinate that no more specific row covers.
 - A label removed and added again takes every broadcast covering it, written
-  before or after the removal, and no row that named it below the removal.
+  before or after the removal, and no row at it below the removal.
 - `flags()` counts a broadcast that more specific rows shadow at every label,
   and reports in `varies` and `broadcast` only the dims an attribute uses.
 - `WorkingRecord.set` writes a row that leaves a dim outside `partial` NULL
-  out along the labels a parent row names there. The fold refuses a layer
+  out along the labels a parent row sets there. The fold refuses a layer
   written otherwise that leaves such a crossing, naming the layer, the
   attribute, the dim and the key.
 - The writer refuses a `dims/` file of a dim that the schema does not declare,
   as it refuses an undeclared attribute. A descendant declaring the dim would
   read its labels.
-- The writer accepts two rows that each name a dim the other leaves NULL
-  where a row naming both is there, so `ws.write(w, uri)` writes a record of
-  several layers. A `set` staging two rows that cross with no row naming
-  both is refused.
+- The writer accepts two rows that each set a dim the other leaves NULL
+  where a row setting the dims of both is there, so `ws.write(w, uri)` writes a record of
+  several layers. A `set` staging two rows that cross with no row setting
+  the dims of both is refused.
 - The fold reads each layer under the schema in its own manifest. Where a
   deeper layer's schema is wider, the map folded so far, materialised or not,
   is extended to it, so a materialised node keeps counting after a descendant
@@ -471,7 +476,7 @@ All notable changes to datarecord are documented here. The format follows
   and omits a label its parent held there deletes that value, and a later
   widening of `partial` no longer brings it back.
 - The fold of a layer onto the map below it is one query whose joins its
-  schema fixes, whatever named sets its rows hold (`fold_layer`, replacing
+  schema fixes, whatever sets of dims its rows set (`fold_layer`, replacing
   `fold_attributes`). A frozen layer leaving a dim outside `partial` unfilled
   is refused when a workspace first folds it, not on every read.
 - Every `Record` lists every dim, property subject and attribute its schema
@@ -483,15 +488,15 @@ All notable changes to datarecord are documented here. The format follows
   empties them rather than dropping them. Each edit runs in one transaction,
   which also refreshes the staged owner-map rows the fold, `flags()` and the
   write read.
-- A `set` whose row crosses a staged row, with no staged row naming both, also
-  stages the row naming both with its value: the later edit wins where the
+- A `set` whose row crosses a staged row, with no staged row setting the dims
+  of both, also stages the row setting the dims of both with its value: the later edit wins where the
   two meet, rather than the read failing.
 - The edits of a `WorkingRecord` restate an axis only where it differs from
   the base's, and write no attribute without rows.
 - A fold starts from the deepest proper ancestor whose fold is materialised
   or already held by the workspace, so a record opened on a child after a
   commit folds only the child's layer.
-- A `Record` builds the coords of its frozen layers once per thread rather
+- A `Record` builds the axes of its frozen layers once per thread rather
   than on every relation it reads, about halving a warm read of a deep
   record. A write checks a new layer's axes against its parent's fold.
 - The cold fold of a deep record's owner map takes about a third of the
@@ -510,7 +515,7 @@ All notable changes to datarecord are documented here. The format follows
 - `Attr.resolve` and `Schema.resolve` take `labels` and `flags`, and settle
   each source by the broadcast rule over `labels` before a rename or a
   computation. `settle(rel, labels, flags)`, exported from `datarecord`, does
-  the same for one relation, dropping rows that name a label outside `labels`.
+  the same for one relation, dropping rows at a label outside `labels`.
 - A failed write, local or remote, leaves its files in the pending layer
   rather than staging them locally and renaming the directory into place.
 
@@ -520,7 +525,7 @@ All notable changes to datarecord are documented here. The format follows
   its per-attribute plans directly.
 - `Group`, the schema's `groups` section, `Schema.groups`,
   `Schema.group_columns`, `Schema.group_type`, `Schema.groups_of`,
-  `Schema.group_key`, `Schema.check_group_columns`, `Schema.field_over`,
+  `Schema.group_key`, `Schema.check_group_columns`,
   `RecordLike.groups`, `LayerData.groups()` and `LayerData.group()`,
   `WorkingRecord.add_group` and `WorkingRecord.remove_group`.
 - `set` takes no expression. Compute the new values from `attributes[name]`
@@ -551,7 +556,7 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
-- `PyPSA.build` refuses a record whose rows of an attribute name several
+- `PyPSA.build` refuses a record whose rows of an attribute hold several
   labels of a dim PyPSA's registry declares it without, such as a generator's
   `marginal_cost` over `period` in a multi-period record, rather than keeping
   one label's value, and `PyPSA.verify` reports the attribute in
@@ -611,24 +616,25 @@ All notable changes to datarecord are documented here. The format follows
   millions of rows is checked in bounded memory and spill.
 - A pointwise `set` leaving one of two dims outside `partial` NULL keeps the
   rest of the series.
-- A broadcast reaches every label the record holds, including one added below
+- A broadcast covers every label the record holds, including one added below
   a materialised revision or staged in a `WorkingRecord`, so materialising
   changes no answer.
 - `set` refuses a frame column that the schema does not declare for the
   attribute, and names the column and the columns it takes.
 - A later `set` replaces the rows of an earlier one that it covers. A row is
-  covered where, at each coordinate, it names the same label or leaves NULL,
-  including labels that a property keyword or a group's fields select.
+  covered where the later row, on each dim, sets the same label or leaves it
+  NULL, including labels that a property or a multi-dim's fields
+  select.
   `set("p_nom", 0.9, entity=["a"])` and then `set("p_nom", 0.95)` reads 0.95
   at `a`. The other order keeps both rows, and `a` reads 0.9.
 - Within one layer the more specific row wins, so a layer that holds a default
   and its exception, such as `set("p_nom", 0.95)` and then
   `set("p_nom", 0.9, entity=["a"])`, reads one value at each coordinate. A
-  row that names a label of a dim is more specific than a row that leaves that
-  dim NULL. Two rows that cover one coordinate, where each names a dim that
-  the other leaves NULL, fail at write and at read, naming the attribute and
+  row that sets a dim is more specific than a row that leaves that dim NULL.
+  Two rows that cover one coordinate, where each sets a dim that the other
+  leaves NULL, fail at write and at read, naming the attribute and
   the coordinate.
-- A layer with two rows of one attribute that name the same labels at one
+- A layer with two rows of one attribute that set the same labels at one
   breakpoint fails at write and at read, naming the attribute and the
   coordinate.
 - The writer casts every column to its declared dtype, as `set` does. An
@@ -639,13 +645,13 @@ All notable changes to datarecord are documented here. The format follows
   only NULLs passes as the NULL of its declared type, in `set` and `add` as
   well. The PyPSA tool's static rows keep an integer `snapshot`.
 - A label of a type that does not fit its dim's dtype fails with the dim and
-  its dtype named. This covers a series index, mapping keys, a keyword of
-  `set`, a multi-dim's coordinate keyword, the labels of `add` and `remove`,
+  its dtype named. This covers a series index, mapping keys, a label given
+  to `set`, one given for a multi-dim's field, the labels of `add` and `remove`,
   and a value of a property that refers to a dim.
   `snapshot="2030-01-01"` on a `datetime` dim is refused.
 - `add` checks that a property value is a label of its dim, and its error
   says to use one of the labels where the dim has `one_of`.
-- Removing an entity drops the values of every group row that names it, in any
+- Removing an entity drops the values at every tuple that holds it, in any
   field. A `contract` over `(from, to)` loses its values when either party is
   removed, and `flags(ctype)` counts such a row for the type of each party.
 - `materialise()` writes `owner_map/inputs.parquet` last and each file through

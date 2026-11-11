@@ -85,7 +85,7 @@ def test_connections_resolve_in_order(store):
 
 
 def test_patch_overrides_one_connection_only(store):
-    """The sibling-clobbering case: `bus` in `owner_map_key` scopes ownership per connection."""
+    """The sibling-clobbering case: `bus` in `owner_map_index` scopes ownership per connection."""
     root = _root(store).commit()
     root.materialise()
 
@@ -206,7 +206,7 @@ def test_restating_without_a_connection_removes_it(store):
     frame = unpacked(_connections(child))
     assert set(frame["bus"]) == {"h2_north", "dri"}
     # ... and the attribute rows go with it, which the map can scope per
-    # connection only because `bus` is in `owner_map_key`.
+    # connection only because `bus` is in `owner_map_index`.
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 

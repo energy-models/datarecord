@@ -110,7 +110,7 @@ def test_the_over_list_form_is_sugar_for_the_dict():
                 }
             },
             "refers to 'state', but 'state' is not a one_of dim",
-            id="a-default-by-on-a-plain-dim",
+            id="a-default-by-on-a-dim-without-one-of",
         ),
     ],
 )

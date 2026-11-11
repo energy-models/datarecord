@@ -35,7 +35,7 @@ from datarecord.duck import (
     ex_all,
     fn,
     join_on,
-    named_mask,
+    null_pattern,
     null_safe,
     shared_table,
     temp_table,
@@ -127,7 +127,7 @@ def fold_layer(
     if refuse is None:
         pairs = _meeting(kept, own, schema, attribute, _incomparable)
     else:
-        pairs = within.filter(sql(_not_within("_o__m", "_m")))
+        pairs = within.filter(sql(_not_within("_o__p", "_p")))
     return union_all_by_name([kept, own, _overlaps(pairs, schema).distinct()])
 
 
@@ -142,7 +142,7 @@ def _prune(
 
 
 def _domain(schema: Schema, attribute: str) -> int:
-    """The `partial` dims `attribute` is over, as a `named_mask` bitmask; every one for an undeclared attribute."""
+    """The `partial` dims `attribute` is over, as a `null_pattern`; every one for an undeclared attribute."""
     if attribute not in schema.attributes:
         return (1 << len(schema.partial_dims)) - 1
     over = schema.dims_of(attribute)
@@ -183,7 +183,7 @@ def _not_within(p: str, o: str) -> str:
 def _choices(
     schema: Schema, attribute: str | None, allowed: Callable[[str, str], str]
 ) -> Expression:
-    """Per row, the masks `x` within its attribute's domain that `allowed(_m, x)` admits.
+    """Per row, the patterns `x` within its attribute's domain that `allowed(_p, x)` admits.
 
     Computed per row rather than bound as a constant list, whose size grows
     as 4 to the number of `partial` dims.
@@ -191,22 +191,22 @@ def _choices(
     dom = _domain_of(schema) if attribute is None else lit(_domain(schema, attribute))
     n = 1 << len(schema.partial_dims)
     return fn.list_filter(
-        fn.range(lit(n)), sql(f"lambda x: (x & {dom}) = x AND {allowed('_m', 'x')}")
+        fn.range(lit(n)), sql(f"lambda x: (x & {dom}) = x AND {allowed('_p', 'x')}")
     )
 
 
 def _expanded(
     rel: DuckDBPyRelation, schema: Schema, choices: Expression, prefix: str = ""
 ) -> DuckDBPyRelation:
-    """`rel` with `_m` its row's named set, and one copy per mask in `choices`.
+    """`rel` with `_p` its row's pattern, and one copy per pattern in `choices`.
 
-    Each copy holds its mask in `_x` and, in `_k_<dim>`, the row's label on
-    each `partial` dim the mask names, NULL elsewhere: the key the row
-    agrees with any row naming exactly that mask on. Every column is
+    Each copy holds its pattern in `_x` and, in `_k_<dim>`, the row's label on
+    each `partial` dim the pattern names, NULL elsewhere: the key the row
+    agrees with any row with exactly that pattern on. Every column is
     prefixed `prefix`.
     """
     dims = schema.partial_dims
-    rel = rel.project(star(), named_mask(dims).alias("_m"))
+    rel = rel.project(star(), null_pattern(dims).alias("_p"))
     rel = rel.project(star(), fn.unnest(choices).alias("_x"))
     keys = [
         duckdb.CaseExpression(sql(f"(_x & {1 << i}) <> 0"), col(d)).alias(f"_k_{d}")
@@ -221,8 +221,8 @@ def _uncovered_by(
 ) -> DuckDBPyRelation:
     """`kept` without each row a row of `own` covers naming no `partial` dim it leaves NULL.
 
-    Each row of `kept` is expanded into one copy per subset of its named
-    set, keyed by its labels there, which an own row naming exactly that
+    Each row of `kept` is expanded into one copy per subset of the set of
+    dims it sets, keyed by its labels there, which an own row naming exactly that
     subset equals: one semi-join finds the covered rows, one anti-join drops
     them.
     """
@@ -230,17 +230,17 @@ def _uncovered_by(
     probe = _expanded(
         kept.project(col("attribute"), *map(col, dims)),
         schema,
-        sql("list_filter(range(_m + 1), lambda x: (x & _m) = x)"),
+        sql("list_filter(range(_p + 1), lambda x: (x & _p) = x)"),
     )
     keys = own.project(
         col("attribute").alias("_o_attribute"),
-        named_mask(dims).alias("_o__m"),
+        null_pattern(dims).alias("_o__p"),
         *(col(d).alias(f"_o__k_{d}") for d in dims),
     )
     on = ex_all(
         [
             col("attribute") == col("_o_attribute"),
-            col("_x") == col("_o__m"),
+            col("_x") == col("_o__p"),
             *(_same(f"_k_{d}", f"_o__k_{d}") for d in dims),
         ]
     )
@@ -266,9 +266,9 @@ def _meeting(
     """Each row of `kept` beside each row of `own` it shares a key with, where `allowed(named(parent), named(own))`.
 
     Two rows share a key where they agree on the dims both name. Each side
-    is expanded into a copy per named set the other side's row may hold
-    under `allowed`, keyed by its labels on the dims the two sets share; one
-    equi-join on (attribute, the two named sets, those labels) then matches
+    is expanded into a copy per pattern the other side's row may hold
+    under `allowed`, keyed by its labels on the dims the two patterns share; one
+    equi-join on (attribute, the two patterns, those labels) then matches
     each pair exactly once. The own row's columns are prefixed `_o_`.
     """
     dims = schema.partial_dims
@@ -279,29 +279,27 @@ def _meeting(
     on = ex_all(
         [
             col("attribute") == col("_o_attribute"),
-            col("_x") == col("_o__m"),
-            col("_m") == col("_o__x"),
+            col("_x") == col("_o__p"),
+            col("_p") == col("_o__x"),
             *(_same(f"_k_{d}", f"_o__k_{d}") for d in dims),
         ]
     )
     return left.join(right, on)
 
 
-def named_sets(rel: DuckDBPyRelation, columns: Sequence[str]) -> list[frozenset[str]]:
-    """The distinct sets of `columns` the rows of `rel` hold a non-NULL value in."""
-    if not columns:
+def null_patterns(rel: DuckDBPyRelation, dims: Sequence[str]) -> list[frozenset[str]]:
+    """The distinct sets of `dims` that rows of `rel` set."""
+    if not dims:
         return [frozenset()]
-    rows = rel.project(*(col(c).isnotnull() for c in columns)).distinct().fetchall()
-    return [
-        frozenset(c for c, n in zip(columns, row, strict=True) if n) for row in rows
-    ]
+    rows = rel.project(*(col(d).isnotnull() for d in dims)).distinct().fetchall()
+    return [frozenset(d for d, n in zip(dims, row, strict=True) if n) for row in rows]
 
 
-def names_exactly(columns: Sequence[str], named: Set[str]) -> Expression:
-    """Whether a row holds a non-NULL value in exactly the `named` of `columns`."""
+def has_pattern(dims: Sequence[str], pattern: Set[str]) -> Expression:
+    """Whether a row sets exactly the `pattern` of `dims`."""
     return reduce(
         operator.and_,
-        (col(c).isnotnull() if c in named else col(c).isnull() for c in columns),
+        (col(d).isnotnull() if d in pattern else col(d).isnull() for d in dims),
         lit(True),  # noqa: FBT003
     )
 
@@ -318,11 +316,11 @@ def uncovered(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    for mask in named_sets(staged, columns):
-        part = staged.filter(names_exactly(columns, mask))
+    for pattern in null_patterns(staged, columns):
+        part = staged.filter(has_pattern(columns, pattern))
         rel = rel.set_alias("r").join(
             part.set_alias("s"),
-            null_safe("r", "s", [c for c in columns if c in mask]),
+            null_safe("r", "s", [c for c in columns if c in pattern]),
             how="anti",
         )
     return rel
@@ -331,7 +329,7 @@ def uncovered(
 def unsettled(
     rel: DuckDBPyRelation, dims: Sequence[str]
 ) -> Iterator[tuple[frozenset[str], frozenset[str], DuckDBPyRelation]]:
-    """Each pair of named sets of `rel` neither holds, with the coordinates its rows meet at that no row names both at.
+    """Each pair of patterns of `rel` neither holds, with the coordinates its rows meet at that no row names both at.
 
     Two rows meet where they agree on every one of `dims` both name; a
     coordinate where they meet takes the labels either names. There the
@@ -342,12 +340,12 @@ def unsettled(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    sets = named_sets(rel, dims)
+    patterns = null_patterns(rel, dims)
 
-    def exactly(named: frozenset[str]) -> DuckDBPyRelation:
-        return rel.filter(names_exactly(dims, named)).project(*map(col, dims))
+    def exactly(pattern: frozenset[str]) -> DuckDBPyRelation:
+        return rel.filter(has_pattern(dims, pattern)).project(*map(col, dims))
 
-    for a, b in combinations(sets, 2):
+    for a, b in combinations(patterns, 2):
         if a <= b or b <= a:
             continue
         on = [col("a", c) == col("b", c) for c in dims if c in a & b]
@@ -356,7 +354,7 @@ def unsettled(
             exactly(b).distinct().set_alias("b"),
             on,
         ).project(*(coalesce(col("a", c), col("b", c)).alias(c) for c in dims))
-        if a | b in sets:
+        if a | b in patterns:
             settled = ex_all(col("m", c) == col("u", c) for c in a | b)
             meets = meets.set_alias("m").join(
                 exactly(a | b).set_alias("u"), settled, how="anti"
@@ -549,7 +547,7 @@ def _widened(
         return held | col("attribute").isin(*(lit(a) for a in gained[d]))
 
     extended = with_columns(now, rel, *joining).project(
-        *(col(c) for c in (*now.owner_map_key, LAYER_COLUMN)),
+        *(col(c) for c in (*now.owner_map_index, LAYER_COLUMN)),
         fn.struct_pack(**{d: old("varies", d) for d in now.dims}).alias("varies"),
         fn.struct_pack(**{d: broadcast(d) for d in now.dims}).alias("broadcast"),
         col("breakpoints"),

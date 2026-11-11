@@ -114,7 +114,7 @@ class Fold:
         The folded axes, their owners and dead labels, under the schema the
         record is read under, which says which dims the flags carry.
     owner_map
-        The resolved owner map: `(owner_map_key, layer_uuid, varies,
+        The resolved owner map: `(owner_map_index, layer_uuid, varies,
         broadcast, breakpoints)`, one row per key as its layer wrote it,
         expanded along a dim only where a deeper layer crossed it there.
     """

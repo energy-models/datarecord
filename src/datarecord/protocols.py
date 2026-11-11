@@ -183,7 +183,7 @@ class RecordLike(Protocol):
     def attributes(self) -> Relations:
         """Long attribute relations, keyed by attribute name - one per file.
 
-        A row carries its dim columns alone; select by category through
+        A row carries a column per dim of its attribute; select by category through
         `properties`.
 
         Notes

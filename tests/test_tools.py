@@ -1024,7 +1024,7 @@ class TestPyPSA:
         revision = _with_schema(exported, partial={"scenario", "snapshot"})
 
         missing = PyPSA.verify(revision.record)
-        assert ("owner_map_key", "snapshot") in missing.unsupported_keys
+        assert "snapshot" in missing.unsupported_partial
         assert "snapshot" in missing.describe()
         with pytest.raises(UnsupportedRecordError, match="snapshot"):
             PyPSA.build(revision.record)

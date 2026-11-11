@@ -58,7 +58,7 @@ STRUCTURAL_TYPES = {
 }
 
 
-# Every long row's trailing columns, whatever dim columns precede them: the
+# Every long row's trailing columns, after one column per dim: the
 # attribute named, the abscissa of a piecewise-linear value, and the value
 # (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet).
 LONG_TAIL = ("attribute", "breakpoint", "value")
@@ -644,8 +644,8 @@ class Schema(_Declared):
         Raises
         ------
         ValueError
-            On a field as a column of its own, or a multi-dim column not
-            a struct of exactly the fields, naming the struct to pass
+            On a field as a column of its own, or a multi-dim's column
+            not a struct of exactly its fields, naming the struct to pass
             instead.
 
         Notes
@@ -715,8 +715,8 @@ class Schema(_Declared):
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
         """Return one attribute's full long column set, in order.
 
-        An attribute carries the dim columns its `dims` name and no others, so a
-        per-snapshot weighting has no column for any other dim.
+        An attribute carries a column per dim its `dims` name, so a per-snapshot
+        weighting carries `snapshot` alone.
 
         Raises
         ------
@@ -994,14 +994,14 @@ class Schema(_Declared):
         return (*self.multi_dims, *self.flat_dims, *LONG_TAIL)
 
     @property
-    def owner_map_key(self) -> tuple[str, ...]:
-        """Owner-map key columns, compared NULL-safely when folding.
+    def owner_map_index(self) -> tuple[str, ...]:
+        """The owner map's index columns, compared NULL-safely when folding.
 
         `partial_dims`, plus `attribute`: a layer may patch one value along a
         `partial` dim without restating every other's.
 
-        A dim column an attribute's own file does not carry reads as NULL,
-        which is what makes the key one fixed tuple over attributes whose
+        A column an attribute's own file does not carry reads as NULL,
+        which is what makes the index one fixed tuple over attributes whose
         columns differ.
 
         Notes
@@ -1037,7 +1037,7 @@ class Schema(_Declared):
         -----
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        return (*self.owner_map_key, LAYER_COLUMN, *FLAG_COLUMNS)
+        return (*self.owner_map_index, LAYER_COLUMN, *FLAG_COLUMNS)
 
     # -- typing (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/layers/) -------------------------------------------------
 

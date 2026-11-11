@@ -46,11 +46,10 @@ class Requirements:
         vocabulary, not the tool's, so a caller can act on them: an attribute
         the tool renames or computes (`Schema`) is reported by the source
         attribute it is missing.
-    unsupported_keys : frozenset of tuple of (str, str)
-        `(key, dim)` pairs the schema declares that this tool cannot honour;
-        `key` is `"owner_map_key"`, the fold's unit of ownership. The record layer
-        trusts every declared key, so this is a tool's verdict on the record it
-        was handed, not a schema rejection.
+    unsupported_partial
+        Dims the schema declares in `partial` that this tool cannot honour.
+        The record layer trusts every `partial`, so this is a tool's verdict
+        on the record it was handed, not a schema rejection.
     unsupported_dims : frozenset of str
         Dims the record declares that this tool has no place for in the model
         it builds.
@@ -77,7 +76,7 @@ class Requirements:
     dims: frozenset[str] = frozenset()
     categories: frozenset[str] = frozenset()
     attributes: frozenset[tuple[str, str]] = frozenset()
-    unsupported_keys: frozenset[tuple[str, str]] = frozenset()
+    unsupported_partial: frozenset[str] = frozenset()
     unsupported_dims: frozenset[str] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
@@ -89,7 +88,7 @@ class Requirements:
             self.dims
             or self.categories
             or self.attributes
-            or self.unsupported_keys
+            or self.unsupported_partial
             or self.unsupported_dims
             or self.unsupported_values
             or self.names
@@ -109,11 +108,8 @@ class Requirements:
             parts.append(f"categories {sorted(self.categories)}")
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
-        if self.unsupported_keys:
-            unsupported = ", ".join(
-                f"{dim} as {key}" for key, dim in sorted(self.unsupported_keys)
-            )
-            parts.append(f"unsupported keys ({unsupported})")
+        if self.unsupported_partial:
+            parts.append(f"unsupported partial {sorted(self.unsupported_partial)}")
         if self.unsupported_dims:
             parts.append(f"unsupported dims {sorted(self.unsupported_dims)}")
         if self.unsupported_values:

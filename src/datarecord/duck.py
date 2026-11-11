@@ -205,7 +205,7 @@ def join_on(
 def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     """NULL-safe equality on `columns`, between two aliased relations.
 
-    What a key's dim column is matched on everywhere: a row exists or it does
+    What a dim's column is matched on everywhere: a row exists or it does
     not, so NULL means "this key has no value there" and must match the same
     NULL on the other side, which a plain `=` never does.
     """
@@ -215,8 +215,8 @@ def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     )
 
 
-def named_mask(dims: Sequence[str], alias: str | None = None) -> Expression:
-    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
+def null_pattern(dims: Sequence[str], alias: str | None = None) -> Expression:
+    """A row's pattern over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
     return reduce(
         operator.add,
         (

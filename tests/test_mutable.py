@@ -448,7 +448,7 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     staged.set("marginal_cost", 3.0, entity=["Norway Wind"])
     mixed = staged.flags()["marginal_cost"]
     assert {"snapshot"} <= mixed.varies & mixed.broadcast, (
-        "members staged at different grains report both, whatever the map's grain"
+        "labels staged at different grains report both, whatever the map's grain"
     )
 
 
@@ -555,7 +555,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     the removed label and tuple back, and each comes where it is added again.
     Writing the edits as a child folds every layer from its files, which the
     seeded fold has to match: the same labels, tuples, properties and values,
-    in member order. One case materialises the root, below every removal, and
+    in axis order. One case materialises the root, below every removal, and
     one the base, above them, where its node cache keeps a removed key at most
     as a dead label. In every case a child over the base reads the same once
     the base is materialised.
@@ -1273,7 +1273,7 @@ def test_add_refuses_what_is_no_frame_duckdb_rescans(staged):
         staged.add("connection", reader)
 
 
-def test_a_plain_dim_refuses_a_frame(staged):
+def test_a_flat_dim_refuses_a_frame(staged):
     """A frame gives a multi-dim's tuples; read as labels it would be its column names."""
     with pytest.raises(TypeError, match="a frame gives the tuples of a multi-dim"):
         staged.add("entity", pd.DataFrame({"entity": ["Norway Gas"]}))

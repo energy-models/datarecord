@@ -59,11 +59,16 @@ from datarecord.protocols import RecordLike
 from datarecord.resolve.axes import refuse_unheld
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import owner_keys
-from datarecord.resolve.owner_map import named_sets, names_exactly, uncovered, unsettled
+from datarecord.resolve.owner_map import (
+    has_pattern,
+    null_patterns,
+    uncovered,
+    unsettled,
+)
 from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
-from datarecord.schema.schema import LONG_TAIL, Schema, packed, unpacked
+from datarecord.schema.schema import Schema, packed, unpacked
 
 if TYPE_CHECKING:
     from datarecord.store.store import Workspace
@@ -113,7 +118,7 @@ def _flat_labels(dim: str, labels: _Labels, call: str) -> list[Any]:
 
 
 def _field_in(multi: str, field: str, labels: Sequence[Any]) -> Expression:
-    """Whether field `field` of the multi-dim column `multi` holds one of `labels`, none matching no tuple.
+    """Whether field `field` of the multi-dim `multi` holds one of `labels`, none matching no tuple.
 
     DuckDB's `isin` refuses an empty list, which a property keyword selecting
     no label yields.
@@ -254,9 +259,8 @@ class StagedSource:
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every staged attribute, unioned by name and unprojected.
 
-        By name because the tables carry per-attribute column variation exactly
-        as the files do - one attribute's dim columns and no others - which is
-        what lets `fold_layer` pad both the same way.
+        By name because each table carries a column per dim of its attribute, as
+        its file does, which is what lets `fold_layer` pad both the same way.
 
         Notes
         -----
@@ -382,8 +386,8 @@ class WorkingRecord(Record):
     _base: Record
     #: Keyed by `(kind, attribute)`, the attribute being None for an axis.
     #: Attributes stage one table per attribute because that is the
-    #: file it stands for: one `value` column at the attribute's own type, and
-    #: its own dim columns and no others.
+    #: file it stands for: a column per dim of its attribute and one `value`
+    #: column at the attribute's own type.
     _staged: dict[tuple[str, str | None], str]
     #: The `_staged` keys an edit wrote to since the start or `rollback()`.
     _touched: set[tuple[str, str | None]]
@@ -636,17 +640,6 @@ class WorkingRecord(Record):
 
     def _column_type(self, column: str, subject: str | None = None) -> DuckDBPyType:
         return _column_type(self.schema, column, subject)
-
-    def _staged_dims_of(self, attribute: str) -> tuple[str, ...]:
-        """The dim columns one attribute's staging table has, in table order.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
-        """
-        return tuple(
-            c for c in self.schema.long_columns_for(attribute) if c not in LONG_TAIL
-        )
 
     # -- Record, one fold deeper (https://energy-models.github.io/datarecord/reference/editing/) --------------------------------
 
@@ -980,7 +973,7 @@ class WorkingRecord(Record):
             self._validate_input(attribute, labels)
             table = self._ensure(_ATTRIBUTES, attribute)
             known = [
-                *self._staged_dims_of(attribute),
+                *self.schema.dims_of(attribute),
                 *self.schema.fields_of(attribute),
                 "value",
             ]
@@ -1427,10 +1420,10 @@ class WorkingRecord(Record):
     ) -> None:
         """Insert `rel` as one attribute's long rows.
 
-        `present` names the dim columns `rel` already carries; the rest come from
+        `present` names the columns `rel` already carries; the rest come from
         `dims` where the caller scoped them and are otherwise NULL - "every value
         of it" by the broadcast rule - typed as the schema declares them either
-        way, so the insert needs no coercion. A multi-dim column `rel` lacks is
+        way, so the insert needs no coercion. A multi-dim's column `rel` lacks is
         packed from its fields the same way, a field at a time.
 
         Only this attribute's own dims: the staging table is the shape of
@@ -1451,7 +1444,7 @@ class WorkingRecord(Record):
                 return packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
-        key_dims = self._staged_dims_of(attribute)
+        key_dims = self.schema.dims_of(attribute)
         shaped = rel.project(
             *(column(d) for d in key_dims),
             lit(attribute).alias("attribute"),
@@ -1461,7 +1454,13 @@ class WorkingRecord(Record):
         call = f"`set({attribute!r}, ...)`"
         refuse_unheld(shaped, self.schema, key_dims, self._held, call, staged=True)
         self._insert(
-            shaped, table, {}, key=self._long_key(attribute), broadcast=key_dims
+            shaped,
+            table,
+            {},
+            key=tuple(
+                c for c in self.schema.long_columns_for(attribute) if c != "value"
+            ),
+            broadcast=key_dims,
         )
         self._complete_owned_whole(attribute, table)
         self._overwrite_crossing(attribute, shaped, table)
@@ -1495,14 +1494,15 @@ class WorkingRecord(Record):
             .distinct()
         )
         parts = []
-        for a in named_sets(rows, dims):
-            for b in named_sets(earlier, dims):
-                if a <= b or b <= a:
+        for row_pattern in null_patterns(rows, dims):
+            for earlier_pattern in null_patterns(earlier, dims):
+                if row_pattern <= earlier_pattern or earlier_pattern <= row_pattern:
                     continue
-                on = [col("r", c) == col("e", c) for c in dims if c in a & b]
+                shared = row_pattern & earlier_pattern
+                on = [col("r", c) == col("e", c) for c in dims if c in shared]
                 met = join_on(
-                    rows.filter(names_exactly(dims, a)).set_alias("r"),
-                    earlier.filter(names_exactly(dims, b)).set_alias("e"),
+                    rows.filter(has_pattern(dims, row_pattern)).set_alias("r"),
+                    earlier.filter(has_pattern(dims, earlier_pattern)).set_alias("e"),
                     on,
                 )
                 parts.append(
@@ -1594,19 +1594,6 @@ class WorkingRecord(Record):
             where = f"{part} AND {on}" if part else str(on)
             self.con.execute(f"DELETE FROM {table} AS t USING _dr_rel p WHERE {where}")
 
-    def _long_key(self, attribute: str) -> tuple[str, ...]:
-        """The dim columns one long table is keyed on - what an edit replaces.
-
-        The fold partitions on these too (`_collapsed_attribute`), so replacing
-        them per edit removes at least what it would have discarded.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
-        - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
-        """
-        return tuple(c for c in self.schema.long_columns_for(attribute) if c != "value")
-
     def _complete_owned_whole(self, attribute: str, table: str) -> None:
         """Carry the base extent a non-partial axis obliges the staged rows to hold.
 
@@ -1650,14 +1637,14 @@ class WorkingRecord(Record):
         # and joining on it would fail to bind (`long_columns_for`).
         columns = set(self.schema.long_columns_for(attribute))
         scope = [
-            c for c in self.schema.owner_map_key if c not in whole and c in columns
+            c for c in self.schema.owner_map_index if c not in whole and c in columns
         ]
         present = [d for d in whole if d in columns]
         if not present:
             # No column for any whole-owned dim, so the file holds one row per
             # key and there is no extent to complete.
             return
-        dims = [c for c in self._long_key(attribute) if c != "breakpoint"]
+        dims = [*self.schema.dims_of(attribute), "attribute"]
         staged = self.con.table(table)
 
         axes: dict[str, DuckDBPyRelation | None] = {d: self.dims[d] for d in present}
@@ -2314,10 +2301,10 @@ def _reaching(
         (col(c).isnotnull().cast(sqltypes.INTEGER) for c in (*scope, *axes)),
     )
     parts = []
-    for mask in named_sets(base, scope):
-        part = base.filter(names_exactly(scope, mask))
+    for pattern in null_patterns(base, scope):
+        part = base.filter(has_pattern(scope, pattern))
         part = part.project(star(), named.alias("_named"))
-        on = [col(c) == col(f"_k_{c}") for c in scope if c in mask]
+        on = [col(c) == col(f"_k_{c}") for c in scope if c in pattern]
         parts.append(
             part.join(keys, ex_all(on)).project(
                 *(
@@ -2373,20 +2360,24 @@ def _spread(
     open_ = reduce(operator.or_, (col(c).isnull() for c in whole))
     named = reduce(operator.or_, (col(c).isnotnull() for c in whole))
     parts = []
-    for s in named_sets(staged.filter(open_), keys):
-        for b in named_sets(base.filter(named), keys):
-            if s & set(scope) <= b or not any(d in b and d not in s for d in whole):
+    for staged_pattern in null_patterns(staged.filter(open_), keys):
+        for base_pattern in null_patterns(base.filter(named), keys):
+            base_only = base_pattern - staged_pattern
+            if staged_pattern & set(scope) <= base_pattern or base_only.isdisjoint(
+                whole
+            ):
                 continue
-            left = staged.filter(names_exactly(keys, s)).set_alias("s")
-            right = base.filter(names_exactly(keys, b)).set_alias("b")
-            on = [col("s", c) == col("b", c) for c in keys if c in s and c in b]
+            left = staged.filter(has_pattern(keys, staged_pattern)).set_alias("s")
+            right = base.filter(has_pattern(keys, base_pattern)).set_alias("b")
+            shared = staged_pattern & base_pattern
+            on = [col("s", c) == col("b", c) for c in keys if c in shared]
             parts.append(
                 join_on(left, right, on).project(
                     *(
-                        col("b" if c in b and c not in s else "s", c).alias(c)
+                        col("b" if c in base_only else "s", c).alias(c)
                         for c in staged.columns
                     ),
-                    lit(len(s & set(scope))).alias("_named"),
+                    lit(len(staged_pattern & set(scope))).alias("_named"),
                 )
             )
     if not parts:
