@@ -67,9 +67,7 @@ def test_a_multi_dim_in_dims_is_one_struct_column():
         },
         attributes={"capacity": AttributeSpec(dtype="float", dims={"connection"})},
     )
-    assert s.coordinates_of("capacity") == ("connection",), (
-        "the multi-dim, not expanded"
-    )
+    assert s.dims_of("capacity") == ("connection",), "the multi-dim, not expanded"
     assert s.column_type("connection") == duckdb.struct_type(
         {"bus": sqltypes.VARCHAR, "state": sqltypes.VARCHAR}
     )

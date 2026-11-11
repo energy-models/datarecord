@@ -185,8 +185,8 @@ def write_layer(
         written["attributes"].append(key)
         file = f"attributes/{key}.parquet"
         _refuse_unordered(frame, key, schema)
-        coordinates = schema.coordinates_of(key)
-        refuse_unheld(frame, schema, coordinates, held, file, staged=False)
+        key_dims = schema.dims_of(key)
+        refuse_unheld(frame, schema, key_dims, held, file, staged=False)
     files = LayerFiles(
         dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
     )
@@ -262,7 +262,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    dims = schema.coordinates_of(attribute)
+    dims = schema.dims_of(attribute)
     refuse_twice(
         rel,
         [*dims, "breakpoint"],

@@ -86,7 +86,7 @@ def flags_from_rows(
     """
 
     def scope(attribute: str) -> tuple[str, ...]:
-        own = schema.coordinates_of(attribute)
+        own = schema.dims_of(attribute)
         return tuple(d for d in dims if d in own)
 
     return {
@@ -198,7 +198,7 @@ class Fold:
                 hit = held.set_alias("g").join(named, on, how="semi")
             else:
                 continue
-            over = [a for a in schema.attributes if column in schema.coordinates_of(a)]
+            over = [a for a in schema.attributes if column in schema.dims_of(a)]
             if over and hit.limit(1).fetchall():
                 reached.append(
                     om.filter(

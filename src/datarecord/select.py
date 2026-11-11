@@ -149,16 +149,16 @@ class Selection:
         - [lifting rows back](https://energy-models.github.io/datarecord/reference/selecting/#lift)
         """
         base = self.base.schema
-        coordinates = base.coordinates_of(attribute)
+        dims = base.dims_of(attribute)
         changed = [
             c
-            for c in coordinates
+            for c in dims
             if c in self._squeezed or (c in rel.columns and self._shrunk(c))
         ]
         if not changed:
             return rel
         lifted: list[Expression] = []
-        for c in coordinates:
+        for c in dims:
             if c in self._squeezed:
                 lifted.append(_literal(self._squeezed[c], self._type(c)).alias(c))
             elif c in changed:
@@ -171,7 +171,7 @@ class Selection:
                 lifted.append(_tuple(c, fields, self._type(c)))
             elif c in rel.columns:
                 lifted.append(col(c))
-        rest = [col(c) for c in rel.columns if c not in coordinates]
+        rest = [col(c) for c in rel.columns if c not in dims]
         return rel.project(*lifted, *rest)
 
     def _type(self, dim: str) -> DuckDBPyType:

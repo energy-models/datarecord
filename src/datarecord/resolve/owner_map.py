@@ -145,7 +145,7 @@ def _domain(schema: Schema, attribute: str) -> int:
     """The `partial` dims `attribute` is over, as a `named_mask` bitmask; every one for an undeclared attribute."""
     if attribute not in schema.attributes:
         return (1 << len(schema.partial_dims)) - 1
-    over = schema.coordinates_of(attribute)
+    over = schema.dims_of(attribute)
     return sum(1 << i for i, d in enumerate(schema.partial_dims) if d in over)
 
 
@@ -464,9 +464,7 @@ def _refuse_unfilled(
 def _gained(was: Schema, now: Schema, dim: str) -> list[str]:
     """The attributes of `was` over `dim` under `now` but not under `was`."""
     return [
-        a
-        for a in was.attributes
-        if dim in now.coordinates_of(a) and dim not in was.coordinates_of(a)
+        a for a in was.attributes if dim in now.dims_of(a) and dim not in was.dims_of(a)
     ]
 
 
