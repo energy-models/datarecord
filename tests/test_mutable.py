@@ -823,7 +823,7 @@ def test_a_dim_with_one_of_is_the_schemas_list(units):
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
     """
     with pytest.raises(
@@ -903,7 +903,7 @@ def test_a_staged_axis_is_the_whole_axis_in_order(staged, root):
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     labels = [*root.record.dimensions["entity"].df()["entity"], "NewSolar"]
     staged.remove("entity", ["Norway Gas"])
@@ -960,7 +960,7 @@ def test_an_add_undone_by_a_remove_writes_nothing(staged, root, set_value):
     assert layer.attribute("p_nom") is None, "the commit writes no attribute"
 
 
-# -- connect and disconnect (https://energy-models.github.io/datarecord/reference/editing/#add-and-remove, https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column) --------------------------------------
+# -- connect and disconnect (https://energy-models.github.io/datarecord/reference/editing/#add-and-remove, https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column) --------------------------------------
 
 
 def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
@@ -968,7 +968,7 @@ def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     staged.remove("connection", [{"entity": "Norwich Converter", "bus": "Norwich"}])
     before = unpacked(staged.dimensions["connection"])
@@ -995,7 +995,7 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
 
@@ -1122,7 +1122,7 @@ def test_a_frame_carrying_a_multi_dim_but_as_its_struct_is_rejected(staged, sele
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     with pytest.raises(ValueError, match="'connection'"):
         staged.set("efficiency", staged.con.sql(f"SELECT {select}"))
@@ -1275,12 +1275,14 @@ def test_add_refuses_what_is_no_frame_duckdb_rescans(staged):
 
 def test_a_flat_dim_refuses_a_frame(staged):
     """A frame gives a multi-dim's tuples; read as labels it would be its column names."""
-    with pytest.raises(TypeError, match="a frame gives the tuples of a multi-dim"):
+    with pytest.raises(
+        TypeError, match="a frame gives the tuples of a multi-dimension"
+    ):
         staged.add("entity", pd.DataFrame({"entity": ["Norway Gas"]}))
 
 
 def test_set_addresses_a_multi_dim_by_its_fields(staged):
-    with pytest.raises(KeyError, match=r"\['connection'\] are multi-dims.*`add`"):
+    with pytest.raises(KeyError, match=r"\['connection'\] are multi-dimensions.*`add`"):
         staged.set("efficiency", 0.5, connection=_TUPLE)
 
 
@@ -1289,9 +1291,9 @@ def test_set_refuses_a_field(staged):
 
     Notes
     -----
-    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
-    with pytest.raises(ValueError, match="names a field of the multi-dim"):
+    with pytest.raises(ValueError, match="names a field of the multi-dimension"):
         staged.set("connection.bus", "Norway", entity="Manchester Wind")
 
 
@@ -1305,7 +1307,7 @@ def test_every_declared_multi_dim_reads_its_staged_rows(store):
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     revision = _small(
         store,

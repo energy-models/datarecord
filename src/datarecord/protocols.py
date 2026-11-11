@@ -93,19 +93,19 @@ EMPTY = LazyRelations((), _unreachable)
 class Flags:
     """Which axes an attribute's rows actually use.
 
-    The two sets are **not** complements: a dim in both means the rows
+    The two sets are **not** complements: a dimension in both means the rows
     disagree, which is the instruction to use both containers rather
     than an ambiguity to resolve. `varies | broadcast` is the test for
-    whether an attribute touches a dim at all.
+    whether an attribute touches a dimension at all.
 
     Parameters
     ----------
     varies
-        Dims some row of this attribute sets.
+        Dimensions some row of this attribute sets.
     broadcast
-        Dims some row leaves NULL, i.e. "all values of that dim".
+        Dimensions some row leaves NULL, i.e. "all values of that dimension".
     breakpoints
-        Whether any row carries a breakpoint. Not a dim.
+        Whether any row carries a breakpoint. Not a dimension.
 
     Notes
     -----
@@ -135,7 +135,7 @@ class RecordLike(Protocol):
 
     @property
     def schema(self) -> Schema:
-        """The record's schema: its dims, its attributes, its patch granularity.
+        """The record's schema: its dimensions, its attributes, its patch granularity.
 
         Notes
         -----
@@ -156,22 +156,22 @@ class RecordLike(Protocol):
 
     @property
     def dimensions(self) -> Relations:
-        """Axis relations keyed by dim, each holding only the dim's label column.
+        """Axis relations keyed by dimension, each holding only the dimension's label column.
 
-        A multi-dim's label column is its struct column of its
+        A multi-dimension's label column is its struct column of its
         fields. Properties are in `properties`, attributes in
         `attributes`.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
-        - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+        - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
         """
         ...
 
     @property
     def properties(self) -> Relations:
-        """Per dim declaring properties, its column and their stored values, no default applied.
+        """Per dimension declaring properties, its column and their stored values, no default applied.
 
         Notes
         -----
@@ -183,7 +183,7 @@ class RecordLike(Protocol):
     def attributes(self) -> Relations:
         """Long attribute relations, keyed by attribute name - one per file.
 
-        A row carries a column per dim of its attribute; select by category through
+        A row carries a column per dimension of its attribute; select by category through
         `properties`.
 
         Notes
@@ -195,13 +195,13 @@ class RecordLike(Protocol):
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
         """Every attribute with rows, mapped to the shape its rows take.
 
-        Given `categories` of one dim, only rows reaching a label among them
+        Given `categories` of one dimension, only rows reaching a label among them
         count, and only attributes those labels carry.
 
         Raises
         ------
         ValueError
-            If the keywords categorize no dim or several.
+            If the keywords categorize no dimension or several.
 
         Notes
         -----

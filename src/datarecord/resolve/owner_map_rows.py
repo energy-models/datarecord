@@ -53,7 +53,7 @@ def owner_map_rows(
 
 
 def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelation:
-    """Layer `layer`'s attribute rows `rel`, padded to `schema`'s dims and cast, as `_flags` reads them."""
+    """Layer `layer`'s attribute rows `rel`, padded to `schema`'s dimensions and cast, as `_flags` reads them."""
     rel = cast_declared(
         schema, with_columns(schema, rel, "breakpoint", *schema.dimensions)
     )
@@ -93,7 +93,7 @@ def _over(schema: Schema, dim: str, attributes: tuple[str, ...]) -> Expression:
 
     An attribute not over `dim` holds NULL there for want of the column, which
     is neither a label nor a broadcast. An undeclared attribute counts as over
-    every dim.
+    every dimension.
 
     Notes
     -----

@@ -12,7 +12,7 @@ You need datarecord installed, as [Installation](../installation.md) shows.
 
 ## The schema
 
-A record's [schema](../reference/schema.md) declares what the record may contain. It lists the sets of labels that values vary along (dims), the values that describe one label (properties) and the values over dims (attributes). The [data model](../reference/data-model.md) defines each. Run this:
+A record's [schema](../reference/schema.md) declares what the record may contain. It lists the sets of labels that values vary along (dimensions), the values that describe one label (properties) and the values over dimensions (attributes). The [data model](../reference/data-model.md) defines each. Run this:
 
 ```python
 from datarecord import AttributeSpec, Dimension, PropertySpec, Schema
@@ -51,7 +51,7 @@ Check it:
 ('connection',)
 ```
 
-`connection` is a dim whose labels are `(entity, bus)` tuples (a multi-dim), so the schema lists it apart from the five flat dims. `ctype` lists its labels in the schema with `one_of`, and `partial` lists the dims along which a later layer overrides one label's value.
+`connection` is a dimension whose labels are `(entity, bus)` tuples (a multi-dimension), so the schema lists it apart from the five flat dimensions. `ctype` lists its labels in the schema with `one_of`, and `partial` lists the dimensions along which a later layer overrides one label's value.
 
 ## An empty root
 
@@ -92,7 +92,7 @@ Columns: [entity]
 Index: []
 ```
 
-The root revision's `entity` dim has no labels. The [`Workspace`](../reference/store.md) is the DuckDB database that its stores share.
+The root revision's `entity` dimension has no labels. The [`Workspace`](../reference/store.md) is the DuckDB database that its stores share.
 
 ## Labels
 
@@ -125,7 +125,7 @@ Check it:
 1   {'entity': 'gas1', 'bus': 'south'}
 ```
 
-Each generator has its `ctype` and `carrier` properties, and each connection is one struct with an `entity` and a `bus` field. The carriers and buses come first, because `add` refuses a property value or a tuple field that is not yet a label of its dim.
+Each generator has its `ctype` and `carrier` properties, and each connection is one struct with an `entity` and a `bus` field. The carriers and buses come first, because `add` refuses a property value or a tuple field that is not yet a label of its dimension.
 
 ## Values
 
@@ -148,7 +148,7 @@ Check it:
 3  wind1         2  p_max_pu         NaN    0.5
 ```
 
-`attributes` returns long rows, one per value, in no promised order. The `gas1` row leaves `snapshot` NULL, and a NULL means every label of its dim ([the broadcast rule](../reference/data-model.md)).
+`attributes` returns long rows, one per value, in no promised order. The `gas1` row leaves `snapshot` NULL, and a NULL means every label of its dimension ([the broadcast rule](../reference/data-model.md)).
 
 ## The values, wide
 

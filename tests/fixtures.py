@@ -82,7 +82,7 @@ def write_attribute(
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     df = pd.DataFrame(rows)
     if connection is None:
@@ -205,7 +205,7 @@ def write_connections(layer: HandBuilt, rows: list[dict]) -> None:
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     - [where the rows live](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     restate(layer, "dimensions", "connection", [_connection(r) for r in rows])
@@ -216,7 +216,7 @@ def drop_connections(layer: HandBuilt, pairs: list[tuple[str, str]]) -> None:
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     gone = [{"entity": e, "bus": b} for e, b in pairs]
     restate(layer, "dimensions", "connection", [], drop=gone)
@@ -488,7 +488,7 @@ def schema(
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     # Callers declare per type, which is how a modelling framework thinks; the
     # schema stores one spec per attribute, record-wide. Flattening here keeps

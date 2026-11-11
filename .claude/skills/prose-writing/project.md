@@ -39,17 +39,17 @@ SKILL.md sets the rule. datarecord adds these subjects, verbs and actors.
   or you. The acting verbs include folds and drops.
 - The fold, the writer and the read are named steps of datarecord and act as
   it does: "the fold drops the parent's row".
-- A design decision is datarecord's: "datarecord refuses a property on a dim
+- A design decision is datarecord's: "datarecord refuses a property on a dimension
   with `one_of`", never "the schema refuses".
 - A record is the object you hold, so it has, contains and exposes. "A record
   exposes its attributes as DuckDB relations" is right, and "the record reads
   its layers" or "the record decides" is wrong.
-- A row sets a dim or leaves it NULL, and never names one. Where rows cover
+- A row sets a dimension or leaves it NULL, and never names one. Where rows cover
   one coordinate, datarecord keeps a row, and a read returns a layer's row. No row
   or layer wins.
 - No layer owns a map row: "the owner map assigns the map row to the layer".
-- An attribute is indexed over the dims its values are over: its own `dims`
-  plus the dims its multi-dims' fields draw on. A row or a NULL in a dim's
+- An attribute is indexed over the dimensions its values are over: its own `dims`
+  plus the dimensions its multi-dimensions' fields draw on. A row or a NULL in a dimension's
   column applies to or covers labels. Nothing reaches.
 
 ## Records and layers
@@ -78,8 +78,8 @@ History such as "replaces groups" belongs in git, the changelog and the DEPs.
 These restate examples from SKILL.md in this project's terms. Use them when a
 generic example does not settle a sentence.
 
-- Define by category first: "A multi-dim is a dim whose labels are tuples of
-  other dims' labels." A reference entry is a definition, then behaviour, then
+- Define by category first: "A multi-dimension is a dimension whose labels are tuples of
+  other dimensions' labels." A reference entry is a definition, then behaviour, then
   its keys or arguments.
 - Gloss: "the data one revision adds (a layer)", not "a layer (the data one
   revision adds)".
@@ -91,9 +91,9 @@ generic example does not settle a sentence.
   "the creation of a claim" and "the evaluation of a selection" become "when
   `settle` applies the broadcast rule", "when a store claims an id" and "when
   `select` runs".
-- Gate item 5: "A NULL in a dim's column is not a missing value, not a zero
-  and not a label of the dim" becomes "A NULL in a dim's column means every
-  label of its dim."
+- Gate item 5: "A NULL in a dimension's column is not a missing value, not a zero
+  and not a label of the dimension" becomes "A NULL in a dimension's column means every
+  label of its dimension."
 - Gate item 6: "With edits pending, …" and "Once the store commits the layer,
   …" name the situation, and "on disk" does not.
 - Gate item 10: "a record is what it answers, not how it is stored" is an
@@ -109,47 +109,47 @@ generic example does not settle a sentence.
 
 Each word in the table has the meaning given and no other. A key or a class
 keeps its code spelling in backticks: `dimensions` is the key and `Dimension`
-the class, and in prose the word is _dim_.
+the class, and in prose the word is _dimension_.
 
-| Project word       | Define it at first use as                                                                                                                                                                              | Not                                                       |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| a record           | the object you hold: dims, properties and attributes under one schema, exposed as DuckDB relations through `RecordLike`. `Record`, `WorkingRecord` and `Selection` are records                         | dataset, network, model                                   |
-| a dim              | a set of unique labels that values vary along, declared by a `Dimension` under `dimensions`                                                                                                            | dimension (except as the gloss), index, coordinate, field |
-| an axis            | the labels one dim has in one record, in order, which `record.dimensions[dim]` returns                                                                                                                 | member order (write axis order)                           |
-| a label            | one value of a dim, unique within it. A multi-dim's labels are tuples                                                                                                                                  | member, element, entry, name                              |
-| a flat dim         | a dim declared without `over`, whose labels are single values. `Schema.flat_dimensions` lists them, in declaration order                                                                               | plain dim                                                 |
-| a multi-dim        | a dim declared with `over`, whose labels are tuples of other dims' labels and list the combinations that exist, such as `connection` over `(entity, bus)`                                              | group, mapping, relation                                  |
-| a field            | one named part of a dim's label, such as `bus` of `connection`; a flat dim has one, named for itself. `set` and `select` take labels by field                                                          | coordinate, dim, column (for a multi-dim's field)         |
-| a column           | where a dim is stored in a file or relation, one per dim: a flat dim's labels, or a multi-dim's fields packed in one struct column                                                                     | field, dim column                                         |
-| a coordinate       | one label on each dim of an attribute, such as `(gas, high)`, never NULL, which is where a value applies. A row's labels cover coordinates, and a NULL in a dim's column covers every label of its dim | point, cell, location, field                              |
-| a property         | a value per label of its subject dim, declared by a `PropertySpec` under `properties` and stored as a column of that dim's axis file. You name it `subject.name`                                       | trait, member attribute, metadata                         |
-| a category         | a label's value of a categorising property, which is a property of a dim in `partial` that refers to a dim with `one_of`, such as `entity.ctype`                                                       | type, class, kind, trait                                  |
-| an attribute       | the values at coordinates over the dims its `AttributeSpec` lists, stored as long rows, one file per attribute. A solve's results are attributes too                                                   | parameter, variable, field, result (as a kind of its own) |
-| the broadcast rule | the rule that a NULL in a dim's column means every label of its dim, and that where rows cover one coordinate, datarecord keeps the row that leaves no dim NULL that another row there sets            | wildcard, default row, fill                               |
-| a schema           | the `Schema` of a record: the dims, properties, attributes and `partial` that may exist, with their dtypes. A tool's attribute map is "the tool's schema"                                              | spec, model                                               |
-| a layer            | the data one revision adds on top of its parent: a directory under `layers/<id>/`, written once                                                                                                        | patch, overlay, node, delta                               |
-| a revision         | a `Revision`: the id of one layer in a store, whose manifest lists its parent. Revisions form a tree                                                                                                   | node, version, commit, snapshot                           |
-| the fold           | the step that builds the owner map along a revision's ancestry, one layer at a time, so that a read returns the deeper layer's row where rows of two layers meet                                       | merge, overlay, resolve (for this step alone)             |
-| the owner map      | the fold's result: per attribute, each map row a layer wrote and the layer the map assigns it to. Its index is the `partial` dims plus `attribute`                                                     | ownership table                                           |
-| to cross           | of two rows of two layers, to cover a common coordinate where each row leaves NULL a dim that the other row sets. The fold then adds an overlap row that sets both, assigned to the deeper layer       | conflict, clash, collide                                  |
-| indexed over       | of an attribute: each dim its `dims` lists, and each dim that a field of one of its multi-dims draws on                                                                                                | reaches, spans                                            |
-| `partial`          | the `Schema.partial` set of dims along which a layer overrides one value per label. Along any other dim a layer restates the whole extent of each map row it touches                                   | sparse, patchable, granularity (in prose)                 |
-| to materialise     | to write a revision's owner map and pointers to its resolved axes under `resolved/`, with `Revision.materialise()`, so that a read stops at that revision                                              | node cache, cache (for this)                              |
-| to remove a label  | to restate its dim's axis without it, which removes its values and the tuples that contain it                                                                                                          | delete, tombstone, dead label (the code's word)           |
-| an edit            | a `set`, `add` or `remove` on a `WorkingRecord`, staged until `store.commit` writes the edits as a child layer                                                                                         | change, patch, mutation                                   |
-| a manifest         | a `Manifest`: a layer's `manifest.json`, which lists its id, parent, full schema, files and meta. A store writes it last and create-only, and the revision exists from that moment                     | index, metadata file                                      |
-| a claim            | a `Claim`: a revision id that a store reserves before the layer is written. `claim.commit` writes the layer                                                                                            | lock, reservation                                         |
-| a store            | a `Store`: one location, local or on S3, that contains the layers of a tree of revisions                                                                                                               | repository, database, bucket                              |
-| a workspace        | a `Workspace`: the DuckDB database and the file access that its stores share, so records from several stores join                                                                                      | session, connection, environment                          |
-| a reader           | code that reads a record through `RecordLike`, such as a tool or your script. The person reading a page is "you"                                                                                       | consumer, client                                          |
-| a tool             | a module under `datarecord.tools` that translates between a record and one modelling framework, with `build`, `verify` and `to_datarecord`                                                             | adapter, plugin, exporter, converter                      |
-| a framework        | a modelling framework, such as PyPSA, that builds a model from a record                                                                                                                                | engine (DuckDB is the engine), backend                    |
-| a selection        | the `Selection` that `select(record, **labels)` returns: a record at the labels named                                                                                                                  | view, subset, slice, filter                               |
-| to squeeze         | to select one label of a dim, which drops the dim from the selection's schema. A list of one keeps the dim                                                                                             | collapse, drop                                            |
-| to lift            | to put the squeezed labels back on rows written over a selection, with `Selection.lift`                                                                                                                | expand, restore                                           |
-| a registered view  | a DuckDB view that `Record.register` creates, one per dim, property subject and attribute, for a SQL client                                                                                            | view (alone)                                              |
-| to settle rows     | to apply the broadcast rule to long rows with `settle(rel, labels, flags)`: one row per label passed at each coordinate, where datarecord keeps the most specific row                                  | resolve, expand, densify                                  |
-| flags              | what `record.flags(**categories)` returns: per attribute, the dims some row sets (`varies`) and the dims some row leaves NULL (`broadcast`)                                                            | shape, layout                                             |
+| Project word       | Define it at first use as                                                                                                                                                                                                | Not                                                           |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
+| a record           | the object you hold: dimensions, properties and attributes under one schema, exposed as DuckDB relations through `RecordLike`. `Record`, `WorkingRecord` and `Selection` are records                                     | dataset, network, model                                       |
+| a dimension        | a set of unique labels that values vary along, declared by a `Dimension` under `dimensions`                                                                                                                              | dim, index, coordinate, field                                 |
+| an axis            | the labels one dimension has in one record, in order, which `record.dimensions[dim]` returns                                                                                                                             | member order (write axis order)                               |
+| a label            | one value of a dimension, unique within it. A multi-dimension's labels are tuples                                                                                                                                        | member, element, entry, name                                  |
+| a flat dimension   | a dimension declared without `over`, whose labels are single values. `Schema.flat_dimensions` lists them, in declaration order                                                                                           | plain dimension                                               |
+| a multi-dimension  | a dimension declared with `over`, whose labels are tuples of other dimensions' labels and list the combinations that exist, such as `connection` over `(entity, bus)`                                                    | multi-dim, group, mapping, relation                           |
+| a field            | one named part of a dimension's label, such as `bus` of `connection`; a flat dimension has one, named for itself. `set` and `select` take labels by field                                                                | coordinate, dimension, column (for a multi-dimension's field) |
+| a column           | where a dimension is stored in a file or relation, one per dimension: a flat dimension's labels, or a multi-dimension's fields packed in one struct column                                                               | field, dimension column                                       |
+| a coordinate       | one label on each dimension of an attribute, such as `(gas, high)`, never NULL, which is where a value applies. A row's labels cover coordinates, and a NULL in a dimension's column covers every label of its dimension | point, cell, location, field                                  |
+| a property         | a value per label of its subject dimension, declared by a `PropertySpec` under `properties` and stored as a column of that dimension's axis file. You name it `subject.name`                                             | trait, member attribute, metadata                             |
+| a category         | a label's value of a categorising property, which is a property of a dimension in `partial` that refers to a dimension with `one_of`, such as `entity.ctype`                                                             | type, class, kind, trait                                      |
+| an attribute       | the values at coordinates over the dimensions its `AttributeSpec` lists, stored as long rows, one file per attribute. A solve's results are attributes too                                                               | parameter, variable, field, result (as a kind of its own)     |
+| the broadcast rule | the rule that a NULL in a dimension's column means every label of its dimension, and that where rows cover one coordinate, datarecord keeps the row that leaves no dimension NULL that another row there sets            | wildcard, default row, fill                                   |
+| a schema           | the `Schema` of a record: the dimensions, properties, attributes and `partial` that may exist, with their dtypes. A tool's attribute map is "the tool's schema"                                                          | spec, model                                                   |
+| a layer            | the data one revision adds on top of its parent: a directory under `layers/<id>/`, written once                                                                                                                          | patch, overlay, node, delta                                   |
+| a revision         | a `Revision`: the id of one layer in a store, whose manifest lists its parent. Revisions form a tree                                                                                                                     | node, version, commit, snapshot                               |
+| the fold           | the step that builds the owner map along a revision's ancestry, one layer at a time, so that a read returns the deeper layer's row where rows of two layers meet                                                         | merge, overlay, resolve (for this step alone)                 |
+| the owner map      | the fold's result: per attribute, each map row a layer wrote and the layer the map assigns it to. Its index is the `partial` dimensions plus `attribute`                                                                 | ownership table                                               |
+| to cross           | of two rows of two layers, to cover a common coordinate where each row leaves NULL a dimension that the other row sets. The fold then adds an overlap row that sets both, assigned to the deeper layer                   | conflict, clash, collide                                      |
+| indexed over       | of an attribute: each dimension its `dims` lists, and each dimension that a field of one of its multi-dimensions draws on                                                                                                | reaches, spans                                                |
+| `partial`          | the `Schema.partial` set of dimensions along which a layer overrides one value per label. Along any other dimension a layer restates the whole extent of each map row it touches                                         | sparse, patchable, granularity (in prose)                     |
+| to materialise     | to write a revision's owner map and pointers to its resolved axes under `resolved/`, with `Revision.materialise()`, so that a read stops at that revision                                                                | node cache, cache (for this)                                  |
+| to remove a label  | to restate its dimension's axis without it, which removes its values and the tuples that contain it                                                                                                                      | delete, tombstone, dead label (the code's word)               |
+| an edit            | a `set`, `add` or `remove` on a `WorkingRecord`, staged until `store.commit` writes the edits as a child layer                                                                                                           | change, patch, mutation                                       |
+| a manifest         | a `Manifest`: a layer's `manifest.json`, which lists its id, parent, full schema, files and meta. A store writes it last and create-only, and the revision exists from that moment                                       | index, metadata file                                          |
+| a claim            | a `Claim`: a revision id that a store reserves before the layer is written. `claim.commit` writes the layer                                                                                                              | lock, reservation                                             |
+| a store            | a `Store`: one location, local or on S3, that contains the layers of a tree of revisions                                                                                                                                 | repository, database, bucket                                  |
+| a workspace        | a `Workspace`: the DuckDB database and the file access that its stores share, so records from several stores join                                                                                                        | session, connection, environment                              |
+| a reader           | code that reads a record through `RecordLike`, such as a tool or your script. The person reading a page is "you"                                                                                                         | consumer, client                                              |
+| a tool             | a module under `datarecord.tools` that translates between a record and one modelling framework, with `build`, `verify` and `to_datarecord`                                                                               | adapter, plugin, exporter, converter                          |
+| a framework        | a modelling framework, such as PyPSA, that builds a model from a record                                                                                                                                                  | engine (DuckDB is the engine), backend                        |
+| a selection        | the `Selection` that `select(record, **labels)` returns: a record at the labels named                                                                                                                                    | view, subset, slice, filter                                   |
+| to squeeze         | to select one label of a dimension, which drops the dimension from the selection's schema. A list of one keeps the dimension                                                                                             | collapse, drop                                                |
+| to lift            | to put the squeezed labels back on rows written over a selection, with `Selection.lift`                                                                                                                                  | expand, restore                                               |
+| a registered view  | a DuckDB view that `Record.register` creates, one per dimension, property subject and attribute, for a SQL client                                                                                                        | view (alone)                                                  |
+| to settle rows     | to apply the broadcast rule to long rows with `settle(rel, labels, flags)`: one row per label passed at each coordinate, where datarecord keeps the most specific row                                                    | resolve, expand, densify                                      |
+| flags              | what `record.flags(**categories)` returns: per attribute, the dimensions some row sets (`varies`) and the dimensions some row leaves NULL (`broadcast`)                                                                  | shape, layout                                                 |
 
 ## Words to avoid
 
@@ -159,7 +159,7 @@ the class, and in prose the word is _dim_.
 | simply, just                                                 | nothing: cut them                               |
 | under the hood, seam, surface, lane, closure and bookkeeping | the plain thing                                 |
 | owned whole, whole-owned                                     | outside `partial`                               |
-| named set (of dims)                                          | set of dims                                     |
+| named set (of dimensions)                                    | set of dimensions                               |
 | parquet reader                                               | parquet library, such as pandas or polars       |
 
 ## Extra message rules
@@ -172,7 +172,7 @@ semicolon, which overrides "No semicolons" for messages alone.
 - The message names the call or the key, states the fault, and then gives the
   rewrite after a semicolon: "`` `set('p_nom', ...)` `` keys its values by
   'entity' and names it as a keyword too; give its labels one way".
-- Quote the call, the key, the dim or the label with `!r` or in backticks, as
+- Quote the call, the key, the dimension or the label with `!r` or in backticks, as
   the module already does. A property is `subject.name`.
 - The exception's class name opens the line the reader sees, so the message
   starts in lower case.

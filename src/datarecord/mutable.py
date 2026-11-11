@@ -96,24 +96,24 @@ _Labels = Sequence[Any] | Sequence[Mapping[str, Any]] | DuckDBPyRelation
 
 
 def _flat_labels(dim: str, labels: _Labels, call: str) -> list[Any]:
-    """`labels` of the flat dim `dim` as a list.
+    """`labels` of the flat dimension `dim` as a list.
 
     Raises
     ------
     TypeError
-        On a frame, which gives the tuples of a multi-dim.
+        On a frame, which gives the tuples of a multi-dimension.
     """
     if is_frame(labels):
         msg = (
             f"{call} takes a sequence of labels of {dim!r}; a frame gives the "
-            f"tuples of a multi-dim"
+            f"tuples of a multi-dimension"
         )
         raise TypeError(msg)
     return list(cast("Sequence[Any]", labels))
 
 
 def _field_in(multi: str, field: str, labels: Sequence[Any]) -> Expression:
-    """Whether field `field` of the multi-dim `multi` holds one of `labels`, none matching no tuple.
+    """Whether field `field` of the multi-dimension `multi` holds one of `labels`, none matching no tuple.
 
     DuckDB's `isin` refuses an empty list, which a property keyword selecting
     no label yields.
@@ -225,7 +225,7 @@ class StagedSource:
         return None
 
     def axes(self) -> set[str]:
-        """The dims whose staged axis differs from the base's, as rows in position order.
+        """The dimensions whose staged axis differs from the base's, as rows in position order.
 
         What a write of `edits` restates. The fold reads every staged axis
         regardless, a staging area restating each from the start.
@@ -255,7 +255,7 @@ class StagedSource:
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every staged attribute, unioned by name and unprojected.
 
-        By name because each table carries a column per dim of its attribute, as
+        By name because each table carries a column per dimension of its attribute, as
         its file does, which is what lets `fold_layer` pad both the same way.
 
         Notes
@@ -382,7 +382,7 @@ class WorkingRecord(Record):
     _base: Record
     #: Keyed by `(kind, attribute)`, the attribute being None for an axis.
     #: Attributes stage one table per attribute because that is the
-    #: file it stands for: a column per dim of its attribute and one `value`
+    #: file it stands for: a column per dimension of its attribute and one `value`
     #: column at the attribute's own type.
     _staged: dict[tuple[str, str | None], str]
     #: The `_staged` keys an edit wrote to since the start or `rollback()`.
@@ -484,7 +484,7 @@ class WorkingRecord(Record):
         return self._base._kept_schemas | {nested(STAGED, self._layer_id)}
 
     def _kinds(self) -> list[tuple[str, str | None]]:
-        """Every staging table's `(kind, attribute)`: an axis per dim but those with `one_of`, a table per attribute."""
+        """Every staging table's `(kind, attribute)`: an axis per dimension but those with `one_of`, a table per attribute."""
         return [
             *(
                 (f"{_AXIS_PREFIX}{d}", None)
@@ -526,7 +526,7 @@ class WorkingRecord(Record):
         """The staging table for `kind`, marked as touched by an edit.
 
         `kind` is `_ATTRIBUTES` with an `attribute`, or an axis (`_AXIS_PREFIX`
-        and its dim). Every table exists from the start (`_kinds`); the mark
+        and its dimension). Every table exists from the start (`_kinds`); the mark
         is what `_staged_dims` and `_staged_attributes` look at.
         """
         self._touched.add((kind, attribute))
@@ -544,7 +544,7 @@ class WorkingRecord(Record):
         return rows[dim]
 
     def _restatement(self, kind: str) -> DuckDBPyRelation | None:
-        """The staged axis `kind` stands for, in position order; `None` for a dim with `one_of`."""
+        """The staged axis `kind` stands for, in position order; `None` for a dimension with `one_of`."""
         name = self._staged.get((kind, None))
         if name is None:
             return None
@@ -649,7 +649,7 @@ class WorkingRecord(Record):
     def _outside_partial(self, attribute: str) -> tuple[str, ...]:
         """`AttributeSpec.dims` minus the owner map's index - the value axes outside `partial`.
 
-        The complement of `owned_per`: along a dim the attribute varies over
+        The complement of `owned_per`: along a dimension the attribute varies over
         but that is not in `partial_dimensions` (a `timestep` or `connection`
         outside `partial`), a patch to one value restates the attribute's
         whole extent along it.
@@ -676,7 +676,7 @@ class WorkingRecord(Record):
 
         The series' own `index.name` where it names a field of this attribute,
         else the one field the call gives no labels for. Never read off the labels:
-        one dim's label may be a string just like another's, so a membership
+        one dimension's label may be a string just like another's, so a membership
         test would make one call mean different things in two records.
 
         An `index.name` naming no field is ignored rather than rejected; it may
@@ -719,7 +719,7 @@ class WorkingRecord(Record):
         return open_[0]
 
     def _label_type(self, attribute: str, field: str) -> DuckDBPyType:
-        """The declared type of the labels of one field of `attribute`: its dim's type."""
+        """The declared type of the labels of one field of `attribute`: its dimension's type."""
         dim = self.schema.fields_of(attribute).get(field, field)
         return self._column_type(dim)
 
@@ -801,8 +801,8 @@ class WorkingRecord(Record):
     def _patch(self, kind: str, column: str, name: str, edit: DuckDBPyRelation) -> None:
         """Set property `name` on each label or tuple `edit` names, in the staged `kind`.
 
-        `column` is the dim's column a row is matched on: a flat dim's, or a
-        multi-dim's struct column. The first edit stages the base's axis whole, so the
+        `column` is the dimension's column a row is matched on: a flat dimension's, or a
+        multi-dimension's struct column. The first edit stages the base's axis whole, so the
         row is there to update, its other properties with it.
 
         Notes
@@ -821,10 +821,10 @@ class WorkingRecord(Record):
         )
 
     def _validate_dims(self, dims: Mapping[str, Any]) -> None:
-        """The dim vocabulary.
+        """The dimension vocabulary.
 
-        A multi-dim's field is a keyword too, `from=` for a corridor,
-        though it names no dim.
+        A multi-dimension's field is a keyword too, `from=` for a corridor,
+        though it names no dimension.
 
         Notes
         -----
@@ -834,7 +834,7 @@ class WorkingRecord(Record):
         if multi:
             over = list(self.schema.over(multi[0]))
             msg = (
-                f"{multi} are multi-dims, addressed by their fields as "
+                f"{multi} are multi-dimensions, addressed by their fields as "
                 f"keywords, e.g. {over} for {multi[0]!r}; `add` and `remove` "
                 f"change their tuples"
             )
@@ -842,7 +842,7 @@ class WorkingRecord(Record):
         fields = {c for m in self.schema.multi_dimensions for c in self.schema.over(m)}
         unknown = sorted(set(dims) - set(self.schema.flat_dimensions) - fields)
         if unknown:
-            msg = f"the schema declares no dims {unknown}"
+            msg = f"the schema declares no dimensions {unknown}"
             raise KeyError(msg)
 
     def _validate_input(self, attribute: str, labels: Mapping[str, Any]) -> None:
@@ -883,10 +883,10 @@ class WorkingRecord(Record):
     ) -> None:
         """Stage values of one attribute.
 
-        Each flat dim and each field of a multi-dim is a keyword, such as
+        Each flat dimension and each field of a multi-dimension is a keyword, such as
         `entity=`, `snapshot=`, `bus=` or a corridor's `from=`, since which
         exist is declared rather than fixed. A keyword holds one label, fixing
-        that dim, or a list of labels the value is staged at each of. A dim no
+        that dimension, or a list of labels the value is staged at each of. A dimension no
         keyword names is NULL, which by the broadcast rule is every label of
         it. The call replaces every row of `attribute` staged earlier that its
         own rows cover.
@@ -904,7 +904,7 @@ class WorkingRecord(Record):
         An attribute's values are long rows, whatever its `dims`. A property -
         a category included - patches one column of existing axis rows: a
         mapping or series from label to value, a `dim=` keyword naming the
-        labels, or a scalar for every label the axis has. A multi-dim's
+        labels, or a scalar for every label the axis has. A multi-dimension's
         property takes a scalar, its fields as keywords selecting the
         tuples, none selecting every tuple. A field is part of the label,
         which `add` and `remove` change, and is refused here.
@@ -912,14 +912,14 @@ class WorkingRecord(Record):
         A property is named `subject.name` - `set("entity.carrier", ...)` -
         and a plain name is an attribute.
 
-        A keyword naming no dim or field of `attribute` is a property of a dim it
+        A keyword naming no dimension or field of `attribute` is a property of a dimension it
         reaches - `ctype="Generator"`, or a list of values - and selects
-        the labels of that dim matching it on the record as staged, the
+        the labels of that dimension matching it on the record as staged, the
         keywords combining as an intersection; `set` writes one row per label,
         and stores nothing of the filter, so a label added later is not reached.
-        A property of a multi-dim `attribute` is over - `role="output"` -
+        A property of a multi-dimension `attribute` is over - `role="output"` -
         selects its tuples the same way, narrowed by any keyword naming one of
-        its fields. On a multi-dim's property, the keywords select its
+        its fields. On a multi-dimension's property, the keywords select its
         tuples as on an attribute over it: `set("connection.note", v,
         role="output")` patches the output connections, and `ctype="Link"`
         the connections of links.
@@ -927,16 +927,16 @@ class WorkingRecord(Record):
         Raises
         ------
         KeyError
-            On an undeclared attribute or keyword, a label that its dim's
-            axis, as staged, does not hold, a tuple that its multi-dim, as
+            On an undeclared attribute or keyword, a label that its dimension's
+            axis, as staged, does not hold, a tuple that its multi-dimension, as
             staged, does not hold, a property's label no layer wrote, or a
-            value of a property that refers to a dim and is no
+            value of a property that refers to a dimension and is no
             label of it.
         ValueError
             On a field named as `subject.name`, a keyword the attribute
             does not vary over, a sequence with no single list keyword to align to,
-            keys whose keyword is ambiguous, a label its dim does not
-            list, a property keyword whose dim the attribute does not reach
+            keys whose keyword is ambiguous, a label its dimension does not
+            list, a property keyword whose dimension the attribute does not reach
             through exactly one keyword, or that is given beside that
             keyword, a frame column the schema does not
             declare for `attribute`, or a frame column or label whose type
@@ -1039,12 +1039,12 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            Where `dotted` names a field of a multi-dim.
+            Where `dotted` names a field of a multi-dimension.
         """
         subject, _, name = dotted.partition(".")
         if name in self.schema.over(subject):
             msg = (
-                f"`set({dotted!r}, ...)` names a field of the multi-dim "
+                f"`set({dotted!r}, ...)` names a field of the multi-dimension "
                 f"{subject!r}, which `set` cannot change; `remove` the tuples and "
                 f"`add` them with the new label instead"
             )
@@ -1066,9 +1066,9 @@ class WorkingRecord(Record):
         ------
         KeyError
             On a label the record does not resolve, or a value of a property
-            that refers to a dim and is no label of it.
+            that refers to a dimension and is no label of it.
         ValueError
-            On a label its dim does not list or whose type does not fit
+            On a label its dimension does not list or whose type does not fit
             its dtype, and as `_axis_values` does.
         """
         call = f"`set({f'{dim}.{name}'!r}, ...)`"
@@ -1101,10 +1101,10 @@ class WorkingRecord(Record):
         ------
         KeyError
             Where keywords are given and select no tuple, or on a value of a
-            property that refers to a dim and is no label of it.
+            property that refers to a dimension and is no label of it.
         ValueError
             On a keyword naming no field of `multi`, a value that is not a
-            scalar, or a label its dim does not list or whose type does
+            scalar, or a label its dimension does not list or whose type does
             not fit its dtype.
         """
         call = f"set({f'{multi}.{name}'!r}, ...)"
@@ -1113,7 +1113,7 @@ class WorkingRecord(Record):
         if unknown:
             msg = (
                 f"`{call}` names {unknown}, but {name!r} is a property of the "
-                f"multi-dim {multi!r}, whose tuples its fields {list(over)} "
+                f"multi-dimension {multi!r}, whose tuples its fields {list(over)} "
                 f"select"
             )
             raise ValueError(msg)
@@ -1121,7 +1121,7 @@ class WorkingRecord(Record):
         if isinstance(value, Mapping) or _is_labels(value) or is_frame(value):
             msg = (
                 f"`{call}` takes one value for the tuples its keywords select, "
-                f"{name!r} being a property of the multi-dim {multi!r}"
+                f"{name!r} being a property of the multi-dimension {multi!r}"
             )
             raise ValueError(msg)
         self.schema.require_one_of(multi, {name: [value]}, f"`{call}`")
@@ -1168,7 +1168,7 @@ class WorkingRecord(Record):
     def _require_live(
         self, subject: str, data: Mapping[str, Sequence[Any]], call: str
     ) -> None:
-        """Refuse a value of a property of `subject` that is no label of the dim it refers to.
+        """Refuse a value of a property of `subject` that is no label of the dimension it refers to.
 
         The labels are those of the record as staged. NULL is no label and
         passes.
@@ -1178,7 +1178,7 @@ class WorkingRecord(Record):
         KeyError
             Naming the unknown labels.
         ValueError
-            On a value whose type does not fit the dtype of the dim.
+            On a value whose type does not fit the dtype of the dimension.
 
         Notes
         -----
@@ -1196,31 +1196,31 @@ class WorkingRecord(Record):
     ) -> tuple[dict[str, Any], dict[str, DuckDBPyRelation]]:
         """`labels` with each property keyword replaced by the labels or tuples it selects.
 
-        Those of its dim storing one of the keyword's values, as staged, each
-        under the one keyword of attribute or dotted dim property `name`
-        over the dim. A keyword naming a dim or field of `name` is that
-        dim or field, whatever property shares its name; any other names a
-        property of a dim `name` reaches, else of any dim. A property of a
-        multi-dim attribute `name` is over, or dotted `name` is a property
+        Those of its dimension storing one of the keyword's values, as staged, each
+        under the one keyword of attribute or dotted dimension property `name`
+        over the dimension. A keyword naming a dimension or field of `name` is that
+        dimension or field, whatever property shares its name; any other names a
+        property of a dimension `name` reaches, else of any dimension. A property of a
+        multi-dimension attribute `name` is over, or dotted `name` is a property
         of, selects its tuples instead, which the keywords naming its
-        fields narrow. For dotted `name` of a multi-dim, a property of
-        a dim one of its fields draws on selects the tuples holding
+        fields narrow. For dotted `name` of a multi-dimension, a property of
+        a dimension one of its fields draws on selects the tuples holding
         those labels there.
 
         Returns
         -------
         tuple of dict and dict
             The keywords, each property one replaced by the labels it
-            selects; and per multi-dim selected by a property, its tuples.
+            selects; and per multi-dimension selected by a property, its tuples.
 
         Raises
         ------
         ValueError
-            Where the keyword is a property of several dims `name` reaches,
-            `name` reaches the dim through no keyword or several, that
+            Where the keyword is a property of several dimensions `name` reaches,
+            `name` reaches the dimension through no keyword or several, that
             keyword is also given, a keyword is dotted, a
-            value is a label its dim does not list, or the keyword is a
-            property of a multi-dim `name` is not over.
+            value is a label its dimension does not list, or the keyword is a
+            property of a multi-dimension `name` is not over.
 
         Notes
         -----
@@ -1241,7 +1241,7 @@ class WorkingRecord(Record):
             if "." in c:
                 msg = (
                     f"`{call}` selects by {c!r}; a keyword is bare, a "
-                    f"dim, a field or a property of a dim {name!r} reaches"
+                    f"dimension, a field or a property of a dimension {name!r} reaches"
                 )
                 raise ValueError(msg)
             owners = [
@@ -1256,7 +1256,7 @@ class WorkingRecord(Record):
             if len(among) > 1:
                 msg = (
                     f"`{call}` selects by {c!r}, a property of each of {among}, "
-                    f"which {name!r} all reaches; set it per dim instead"
+                    f"which {name!r} all reaches; set it per dimension instead"
                 )
                 raise ValueError(msg)
             values = list(given) if _is_labels(given) else [given]
@@ -1308,7 +1308,7 @@ class WorkingRecord(Record):
         ------
         ValueError
             Where `name` is neither an attribute over `multi` nor a dotted
-            property of it, or a value is a label its dim does not list.
+            property of it, or a value is a label its dimension does not list.
         """
         call = f"set({name!r}, ...)"
         if multi != name.partition(".")[
@@ -1316,7 +1316,7 @@ class WorkingRecord(Record):
         ] and multi not in self.schema.multi_dimensions_of(name):
             msg = (
                 f"`{call}` selects by {sorted(wanted)}, properties of the "
-                f"multi-dim {multi!r}, which {name!r} is not over"
+                f"multi-dimension {multi!r}, which {name!r} is not over"
             )
             raise ValueError(msg)
         self.schema.require_one_of(multi, wanted, f"`{call}`")
@@ -1336,7 +1336,7 @@ class WorkingRecord(Record):
         """Refuse a label whose type does not fit the dtype of `dim` (`takes`).
 
         A label has the type DuckDB binds it as, so a string is refused for a
-        `datetime` dim rather than parsed by the cast. One label per Python
+        `datetime` dimension rather than parsed by the cast. One label per Python
         type is bound, so a list mixing types is checked once per type.
 
         Raises
@@ -1421,18 +1421,18 @@ class WorkingRecord(Record):
         `present` names the columns `rel` already carries; the rest come from
         `dims` where the caller scoped them and are otherwise NULL - "every value
         of it" by the broadcast rule - typed as the schema declares them either
-        way, so the insert needs no coercion. A multi-dim's column `rel` lacks is
+        way, so the insert needs no coercion. A multi-dimension's column `rel` lacks is
         packed from its fields the same way, a field at a time.
 
-        Only this attribute's own dims: the staging table is the shape of
-        the file it becomes, so a dim it is not addressed by has no column to
+        Only this attribute's own dimensions: the staging table is the shape of
+        the file it becomes, so a dimension it is not addressed by has no column to
         fill, and the projection is in that table's order.
 
         Notes
         -----
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
 
         def column(d: str) -> Expression:
@@ -1533,7 +1533,7 @@ class WorkingRecord(Record):
         Raises
         ------
         ValueError
-            Naming the attribute, the two sets of dims and the coordinate.
+            Naming the attribute, the two sets of dimensions and the coordinate.
 
         Notes
         -----
@@ -1597,19 +1597,19 @@ class WorkingRecord(Record):
 
         Done as the rows are staged rather than at write, so the staging table
         *is* the layer: touching one snapshot of a series makes
-        this layer the owner of that map row's whole extent along the dim, and the
+        this layer the owner of that map row's whole extent along the dimension, and the
         untouched coordinates have to be carried or the written layer would
         report a loss.
 
         Scoped by the map rows already staged, not by the attribute: only the
         base rows reaching a map row some edit named are carried (`_reaching`), so
         an entity this record never touched stays in the parent. A map row NULL on a
-        dim the base holds labels of carries nothing.
+        dimension the base holds labels of carries nothing.
 
-        A carried row is expanded along the dims outside `partial` it leaves NULL, and
+        A carried row is expanded along the dimensions outside `partial` it leaves NULL, and
         every coordinate a staged row covers is dropped (`uncovered`), so no
         fill sits beside a staged row neither of which is the more specific.
-        A staged row leaving a dim outside `partial` NULL is itself written out along
+        A staged row leaving a dimension outside `partial` NULL is itself written out along
         the labels the base rows it crosses name there (`_spread`).
 
         Idempotent, which is what lets it run per insert instead of once: the
@@ -1623,7 +1623,7 @@ class WorkingRecord(Record):
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
-        - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
+        - [a dimension outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dimension-outside-partial)
         - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
         """
         outside = self._outside_partial(attribute)
@@ -1704,8 +1704,8 @@ class WorkingRecord(Record):
         the base removed here takes its base place back, and a new one is
         appended.
 
-        A multi-dim's labels are tuples, given as a frame holding the struct
-        column named for the multi-dim, as `dims[dim]` reads it, or one with a
+        A multi-dimension's labels are tuples, given as a frame holding the struct
+        column named for the multi-dimension, as `dims[dim]` reads it, or one with a
         column per field instead, or as a list of mappings from
         field to label. A frame may carry property columns too and takes
         a scalar keyword only.
@@ -1718,15 +1718,15 @@ class WorkingRecord(Record):
         ------
         KeyError
             If the schema declares no `dim`, on a value of a property
-            that refers to a dim and is no label of it, or on a tuple naming
+            that refers to a dimension and is no label of it, or on a tuple naming
             a label its field's axis, as staged, does not hold.
         TypeError
-            On a frame for a dim that is no multi-dim, or a value that is no
+            On a frame for a dimension that is no multi-dimension, or a value that is no
             frame DuckDB rescans.
         ValueError
-            On a dim with `one_of`, whose axis is the schema's, an
+            On a dimension with `one_of`, whose axis is the schema's, an
             attribute, a column the axis file has no place for, a sequence of
-            the wrong length, a property value its dim does not list, a label
+            the wrong length, a property value its dimension does not list, a label
             whose type does not fit the dtype of `dim`, a tuple missing a
             field or naming NULL in one, or a frame carrying both the
             struct column and a field column.
@@ -1735,10 +1735,10 @@ class WorkingRecord(Record):
         -----
         - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
         - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
         if dim not in self.schema.dimensions:
-            msg = f"the schema declares no dim {dim!r}"
+            msg = f"the schema declares no dimension {dim!r}"
             raise KeyError(msg)
         call = f"add({dim!r}, ...)"
         self._refuse_one_of(dim, f"`{call}`")
@@ -1776,18 +1776,18 @@ class WorkingRecord(Record):
         Need not enumerate what it deletes: the fold drops every value keyed
         by a removed label where `dim` is `partial`. No labels stage nothing.
 
-        And every multi-dim with a field over `dim` without the tuples
+        And every multi-dimension with a field over `dim` without the tuples
         naming one of `labels`, read from the record as it currently resolves:
-        a multi-dim attribute's value goes with its tuple.
+        a multi-dimension attribute's value goes with its tuple.
 
-        A multi-dim's labels are tuples, given as `add` takes them.
+        A multi-dimension's labels are tuples, given as `add` takes them.
 
         Raises
         ------
         TypeError
             As `add` does.
         ValueError
-            On a dim with `one_of`, whose axis is the schema's, a label whose
+            On a dimension with `one_of`, whose axis is the schema's, a label whose
             type does not fit the dtype of `dim`, a tuple given as `add`
             refuses it, or while a property that refers to `dim` stores one of
             `labels` in the record as staged.
@@ -1841,7 +1841,7 @@ class WorkingRecord(Record):
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+        - [a dimension with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
         """
         if dim not in self.schema.one_of_dimensions:
             return
@@ -1849,14 +1849,14 @@ class WorkingRecord(Record):
             f"{call} is refused: {dim!r} lists its labels with `one_of`, "
             f"{list(self.schema.dimensions[dim].one_of or ())}, so its axis is "
             f"the schema's; change the schema instead "
-            f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
+            f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)"
         )
         raise ValueError(msg)
 
     def _add_tuples(
         self, multi: str, tuples: _Labels, columns: Mapping[str, Any]
     ) -> None:
-        """Stage `tuples` of the multi-dim `multi`, with its properties `columns`, as `add` does.
+        """Stage `tuples` of the multi-dimension `multi`, with its properties `columns`, as `add` does.
 
         Raises
         ------
@@ -1898,7 +1898,7 @@ class WorkingRecord(Record):
         ValueError
             As `_unpacked` does, on a mapping whose keys are not the
             fields of `multi`, a label of a list whose type does not fit
-            its field's dim, which a column mixing types would hide, a
+            its field's dimension, which a column mixing types would hide, a
             sequence beside a frame, or one of the wrong length.
         """
         over = self.schema.over(multi)
@@ -1937,7 +1937,7 @@ class WorkingRecord(Record):
         ------
         ValueError
             On a field `rel` carries no column of, whose type does not
-            fit the dtype of the dim it draws on, or that is NULL in a row.
+            fit the dtype of the dimension it draws on, or that is NULL in a row.
         """
         over = self.schema.over(multi)
         missing = [c for c in over if c not in rel.columns]
@@ -2083,19 +2083,19 @@ class WorkingRecord(Record):
         The rows are already one per coordinate - an edit replaced the row at its
         coordinate rather than appending beside it (`_insert`) - so this is the table scan minus
         the rows naming a label, or a tuple of one of the attribute's
-        multi-dims, that the staged axis does not hold. `set` refuses a label the
+        multi-dimensions, that the staged axis does not hold. `set` refuses a label the
         staged axis lacks, so a row is dropped here only where `remove` took
         its label after the `set`: the drop is that removal. The fold drops
         only the parent's rows of a label a layer removes, and a label added
         and removed in one staging area is in no restatement, so it is dead
-        nowhere. A multi-dim attribute's row naming a removed label goes by
+        nowhere. A multi-dimension attribute's row naming a removed label goes by
         its tuple, which `remove` dropped.
 
         Notes
         -----
         - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
         - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
         rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
@@ -2185,7 +2185,7 @@ def _column_type(
 ) -> DuckDBPyType:
     """A staged column's declared type, for a typed NULL or literal.
 
-    Every column a staging table has is a declared dim, a structural one or a
+    Every column a staging table has is a declared dimension, a structural one or a
     property of `subject`, all of which the schema types - so a missing type
     is a disagreement between the table's shape and the schema, not a column
     to guess at.
@@ -2208,7 +2208,7 @@ def _column_type(
 def _unpacked(
     schema: Schema, multi: str, rel: DuckDBPyRelation, call: str
 ) -> DuckDBPyRelation:
-    """`rel` with the struct column of the multi-dim `multi`, where it carries one, spelled as a column per field (`unpacked`), checked as a caller gave it.
+    """`rel` with the struct column of the multi-dimension `multi`, where it carries one, spelled as a column per field (`unpacked`), checked as a caller gave it.
 
     Raises
     ------
@@ -2286,8 +2286,8 @@ def _reaching(
     """`base`'s value at each coordinate of the `scope` labels `staged` holds, by the broadcast rule.
 
     A base row NULL on a `scope` column reaches every staged label there and
-    takes it; NULL on a dim of `axes`, every label of that axis, and
-    stays NULL where the dim holds none. Of the rows covering one coordinate
+    takes it; NULL on a dimension of `axes`, every label of that axis, and
+    stays NULL where the dimension holds none. Of the rows covering one coordinate
     the one naming the most of those columns is kept. A match on "NULL or equal" cannot hash, so `base` is split by which
     `scope` columns it leaves NULL and each part joins on the columns it
     names, as `_delete_covered` does.
@@ -2340,9 +2340,9 @@ def _spread(
     outside: Sequence[str],
     columns: Sequence[str],
 ) -> DuckDBPyRelation | None:
-    """Each staged row leaving an `outside` dim NULL, at every base row's label it reaches there.
+    """Each staged row leaving an `outside` dimension NULL, at every base row's label it reaches there.
 
-    A base row it reaches names an `outside` dim the staged row leaves NULL and is
+    A base row it reaches names an `outside` dimension the staged row leaves NULL and is
     not covered by it on `scope`: the staged row names a `scope` column the
     base row leaves NULL. The row written takes every label either names, and
     the staged row's value. Of the staged rows covering one coordinate the one
@@ -2354,7 +2354,7 @@ def _spread(
 
     Notes
     -----
-    - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
+    - [a dimension outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dimension-outside-partial)
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     matched = [*scope, *outside]

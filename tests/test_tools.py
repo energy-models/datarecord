@@ -695,7 +695,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
         """
         dim = "ctype"
         record = single_revision.record
@@ -1358,7 +1358,7 @@ class TestPyPSA:
         """
         n = _north()
         _with_bus_column(n, name, "x")
-        with pytest.raises(ValueError, match="are dims of a record's rows"):
+        with pytest.raises(ValueError, match="are dimensions of a record's rows"):
             PyPSA.to_datarecord(n, workspace.con)
 
     @pytest.mark.parametrize(
@@ -1493,7 +1493,7 @@ class TestPyPSA:
             ),
             pytest.param(
                 lambda n: _add_shape(n, idx="north", component="bus", type="onshore"),
-                "a dim PyPSA's schema declares",
+                "a dimension PyPSA's schema declares",
                 id="pypsa-dim",
             ),
             pytest.param(
@@ -2587,7 +2587,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         - [snapshots and weightings](https://energy-models.github.io/datarecord/reference/tools/#snapshots-and-weightings)
         """
         schema = multiperiod_revision.record.schema
@@ -3087,7 +3087,9 @@ class TestPyPSA:
     def test_a_collection_is_built_over_a_dim_of_its_own_or_period(
         self, single_revision, method
     ):
-        with pytest.raises(ValueError, match="with a dim of its own, one network"):
+        with pytest.raises(
+            ValueError, match="with a dimension of its own, one network"
+        ):
             getattr(PyPSACollection, method)(single_revision.record)
 
     @pytest.mark.slow
@@ -3170,7 +3172,7 @@ class TestPyPSA:
         ("edit", "dim", "match"),
         [
             pytest.param(_two_levels, ["case", "run"], "one index level", id="levels"),
-            pytest.param(dict, "bus", "a dim the PyPSA schema", id="pypsa-dim"),
+            pytest.param(dict, "bus", "a dimension the PyPSA schema", id="pypsa-dim"),
             pytest.param(dict, "scenario", "holds its scenarios itself", id="scenario"),
             pytest.param(_moved_bus, "sensitivity", "'London' has `x`", id="property"),
             pytest.param(_reordered_buses, "sensitivity", "orders `bus`", id="order"),
@@ -3186,7 +3188,7 @@ class TestPyPSA:
             pytest.param(
                 _with_region_shapes,
                 "region",
-                "a dim the members' shapes make",
+                "a dimension the members' shapes make",
                 id="shape-made-dim",
             ),
             pytest.param(
@@ -3635,7 +3637,7 @@ class TestPyPSA:
         years = {2012: sweep["lo"], 2013: sweep["hi"]}
         record = _collection(years, store, None, "weather_year", results_only=False)
         with pytest.raises(
-            ValueError, match=r"with a dim of its own, \['weather_year'\]"
+            ValueError, match=r"with a dimension of its own, \['weather_year'\]"
         ):
             PyPSA.to_datarecord(
                 sweep["lo"], store.workspace.con, results_only=results_only, base=record

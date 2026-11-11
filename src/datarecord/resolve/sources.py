@@ -111,10 +111,10 @@ class LayerSource(Protocol):
         ...
 
     def axes(self) -> set[str]:
-        """Which dims this layer has an axis file for.
+        """Which dimensions this layer has an axis file for.
 
-        Asked once per source rather than probed per declared dim:
-        `Axes.resolve` folds only the dims some source holds.
+        Asked once per source rather than probed per declared dimension:
+        `Axes.resolve` folds only the dimensions some source holds.
         """
         ...
 
@@ -122,7 +122,7 @@ class LayerSource(Protocol):
         """`dimensions/<dim>.parquet` - one axis's full row, not its column alone.
 
         Its properties ride along as columns. A file restates the axis whole,
-        in order; a multi-dim's column is its struct column.
+        in order; a multi-dimension's column is its struct column.
         """
         ...
 
@@ -169,7 +169,7 @@ class LayerSource(Protocol):
 class _FileLayer:
     """The layer layout over a URI, shared by every file-backed source.
 
-    Each member is one file, addressed by the dim or attribute it holds, and opened only where
+    Each member is one file, addressed by the dimension or attribute it holds, and opened only where
     the layer's manifest lists it: a file it does not list is no part of the
     layer. A subclass supplies where the layer root is (`uri`), the workspace
     to read it through, and the manifest, and inherits every accessor
@@ -251,7 +251,7 @@ def refuse_foreign_columns(
 ) -> None:
     """Refuse a column of an axis file beyond `structural` and `subject`'s properties.
 
-    `structural` is the dim's column, and at write an explicit `order_key`,
+    `structural` is the dimension's column, and at write an explicit `order_key`,
     which the write drops.
 
     Raises

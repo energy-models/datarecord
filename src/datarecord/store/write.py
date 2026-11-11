@@ -92,29 +92,29 @@ def write_layer(
     ------
     ValueError
         If a long frame is missing a long-schema column, or the schema
-        declares a dim no frame carries - either would make the fold
+        declares a dimension no frame carries - either would make the fold
         misresolve the layer.
-        If a multi-dim's tuple or a property that refers to a dim names
+        If a multi-dimension's tuple or a property that refers to a dimension names
         a label dead after the layer, in a subject the layer restates or whose
         rows name a label the layer removes.
         If `data` hands over an attribute or an axis the schema does not
-        declare, or the axis of a dim with `one_of`, whose axis is the
+        declare, or the axis of a dimension with `one_of`, whose axis is the
         schema's list.
         If a column's type does not fit its dtype, naming the attribute,
-        property or dim that declares the column, and the dtype.
+        property or dimension that declares the column, and the dtype.
         If two rows of one attribute cover one coordinate and both name the
-        same dims, or each names a dim the other leaves NULL, naming the
+        same dimensions, or each names a dimension the other leaves NULL, naming the
         attribute and the coordinate.
         If an axis file holds one label twice, naming it, or orders
         its parent's labels otherwise than the parent, naming the first label
         out of place.
-        If a multi-dim's tuple has some fields NULL and not all, naming the
+        If a multi-dimension's tuple has some fields NULL and not all, naming the
         file, judged on the file as written.
-        If a multi-dim's tuple names a label that the layer's final axis of
-        that dim does not hold, naming the multi-dim, the field and up to
+        If a multi-dimension's tuple names a label that the layer's final axis of
+        that dimension does not hold, naming the multi-dimension, the field and up to
         three such labels.
         If an attribute row names a label or a tuple that the layer's final
-        axis of that dim does not hold, naming the dim and up to three such
+        axis of that dimension does not hold, naming the dimension and up to three such
         labels.
 
     Notes
@@ -242,18 +242,18 @@ def _write_frame(
 def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> None:
     """Refuse two rows of `attribute` covering one coordinate where neither is more specific.
 
-    Two rows cover one coordinate where they agree on every dim both name. A
-    row is more specific than another where it names every dim the other
+    Two rows cover one coordinate where they agree on every dimension both name. A
+    row is more specific than another where it names every dimension the other
     names, and more. Of the rows covering a coordinate, a read keeps the one
-    naming every dim the others name, so where two name the same dims, or each
-    names a dim the other leaves NULL and no row there names both, it has none
+    naming every dimension the others name, so where two name the same dimensions, or each
+    names a dimension the other leaves NULL and no row there names both, it has none
     to keep. A record holding rows of several layers, flattened into one,
     holds such a row wherever two of them cross. `breakpoint` is part of a
     row, so the rows of one curve are no such pair.
 
-    Rows naming the same dims are found by `refuse_twice` over the dims,
+    Rows naming the same dimensions are found by `refuse_twice` over the dimensions,
     crossing ones by `unsettled`. `rel` is the file as written, so the source
-    is built only once, and only its dims and `breakpoint` are read.
+    is built only once, and only its dimensions and `breakpoint` are read.
 
     Raises
     ------
@@ -269,7 +269,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
         rel,
         [*dims, "breakpoint"],
         f"attributes/{attribute}.parquet",
-        "they name the same dims, so neither is the more specific there. Keep "
+        "they name the same dimensions, so neither is the more specific there. Keep "
         "one of them (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)",
     )
     for a, b, meets in unsettled(rel, dims):
@@ -282,7 +282,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
         msg = (
             f"attributes/{attribute}.parquet holds a row naming {[d for d in dims if d in a]} "
             f"and one naming {[d for d in dims if d in b]} that both cover {coordinate}; "
-            f"neither names every dim the other does and no row there names both, "
+            f"neither names every dimension the other does and no row there names both, "
             f"so neither is the more specific there. Name the labels of one of "
             f"them row by row, leaving that coordinate out, or add a row naming "
             f"both (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)"
@@ -307,7 +307,7 @@ def _refuse_reordered(
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     mine = rel.project(col(dim), fn.row_number().over().alias("_mine"))
     theirs = parent.project(col(dim), fn.row_number().over().alias("_theirs"))
@@ -333,7 +333,7 @@ def _refuse_reordered(
         msg = (
             f"{file} puts {dim} {first[0][0]!r} out of its parent's order; a "
             f"restatement keeps the order of the labels its parent holds and "
-            f"places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)"
+            f"places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)"
         )
         raise ValueError(msg)
 
@@ -341,9 +341,9 @@ def _refuse_reordered(
 def _parent_axis(
     parent: Record | None, schema: Schema, name: str, con: DuckDBPyConnection
 ) -> DuckDBPyRelation | None:
-    """`parent`'s axis `name`, `None` where there is none; a `one_of` dim's is `schema`'s list.
+    """`parent`'s axis `name`, `None` where there is none; a `one_of` dimension's is `schema`'s list.
 
-    The axis every read of `parent` takes, its labels alone; a declared dim
+    The axis every read of `parent` takes, its labels alone; a declared dimension
     without rows is an empty one, which holds nothing as `None` does.
     """
     if name in schema.one_of_dimensions:
@@ -358,13 +358,13 @@ def _require_living_references(
 ) -> None:
     """Reject a layer leaving a reference to a dead label in a subject it touches.
 
-    A reference is a multi-dim tuple's field over a dim, or a property
-    that refers to a dim. A property's subject the layer restates is
+    A reference is a multi-dimension tuple's field over a dimension, or a property
+    that refers to a dimension. A property's subject the layer restates is
     checked whole, in its final state, against every dead label; any other
     reference only for the labels the layer removes, its parent's axis minus
-    its restatement. A restated multi-dim's tuples `refuse_unheld`
+    its restatement. A restated multi-dimension's tuples `refuse_unheld`
     already holds to the final axes. Removing a label restates every
-    multi-dim naming it without its tuples, which `WorkingRecord.remove` writes, and a
+    multi-dimension naming it without its tuples, which `WorkingRecord.remove` writes, and a
     property holding it must be cleared first; a layer written otherwise
     carries both itself. A property an ancestor left dangling thus fails the
     next layer restating its subject, which can drop or repair it.
@@ -427,7 +427,7 @@ def _require_living_references(
     if problems:
         msg = (
             f"{'; '.join(problems)}; removing a label removes the tuples naming "
-            f"it and leaves no property holding it, so restate those multi-dims "
+            f"it and leaves no property holding it, so restate those multi-dimensions "
             f"without the tuples and clear those properties (https://energy-models.github.io/datarecord/reference/layers/#removing-labels)"
         )
         raise ValueError(msg)
@@ -438,14 +438,14 @@ def _validate_frame(
 ) -> None:
     """Check one frame is shaped for the fold to resolve it.
 
-    Structural only: a long frame carries a column per dim of its attribute, and a
-    `dimensions/` frame carries its dim's column. Values
+    Structural only: a long frame carries a column per dimension of its attribute, and a
+    `dimensions/` frame carries its dimension's column. Values
     are not checked - which labels and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
 
-    Each file carries a column per dim of its own attribute, so two files'
-    columns differ and neither need hold every declared dim.
+    Each file carries a column per dimension of its own attribute, so two files'
+    columns differ and neither need hold every declared dimension.
 
     Reads the schema rather than the rows, so validating an unmaterialised
     relation costs nothing.
@@ -453,7 +453,7 @@ def _validate_frame(
     Notes
     -----
     - [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dimension](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
     - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
     """
@@ -497,7 +497,7 @@ def _validate_frame(
     if kind == "dimensions":
         if name not in schema.dimensions:
             msg = (
-                f"dimensions/{name}.parquet is not a declared dim; a descendant "
+                f"dimensions/{name}.parquet is not a declared dimension; a descendant "
                 f"declaring it would read these labels (https://energy-models.github.io/datarecord/reference/layers/#what-a-layer-may-contain)"
             )
             raise ValueError(msg)
@@ -559,7 +559,7 @@ class _RecordLikeAsLayerData:
         return as_relation(frames[key], self._con)
 
     def axes(self) -> set[str]:
-        """The source's dims but those with `one_of`, whose axis a `RecordLike` answers from the schema.
+        """The source's dimensions but those with `one_of`, whose axis a `RecordLike` answers from the schema.
 
         Raises
         ------
@@ -576,7 +576,7 @@ class _RecordLikeAsLayerData:
         return set(self._dims) - one_of
 
     def _require_one_of_axis(self, dim: str) -> None:
-        """Refuse the source's axis of `dim`, a dim with `one_of`, unless it is the list.
+        """Refuse the source's axis of `dim`, a dimension with `one_of`, unless it is the list.
 
         Dropped rather than written, it may differ from the list only by
         nothing: the same labels in the same order.
@@ -589,7 +589,7 @@ class _RecordLikeAsLayerData:
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+        - [a dimension with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
         """
         rel = as_relation(self._dims[dim], self._con)
         given = [
@@ -615,7 +615,7 @@ class _RecordLikeAsLayerData:
             f"the source's axis of {dim!r} {difference}, but {dim!r} lists its "
             f"labels with `one_of`, {expected}, so its axis is the schema's "
             f"list and is written only as it stands "
-            f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
+            f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)"
         )
         raise ValueError(msg)
 

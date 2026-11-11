@@ -12,7 +12,7 @@ This page lists what the design of datarecord leaves open, and below it the ques
 
 ### Should `partial` ever be per attribute?
 
-`partial` sits on the dim because it applies to every attribute over that dim ([layers](layers.md)). A counter-example would be an attribute whose series a reader can take in pieces while others cannot, and none is known. Allowing it would make the owner map's index vary per attribute, where the owner map has one fixed index.
+`partial` sits on the dimension because it applies to every attribute over that dimension ([layers](layers.md)). A counter-example would be an attribute whose series a reader can take in pieces while others cannot, and none is known. Allowing it would make the owner map's index vary per attribute, where the owner map has one fixed index.
 
 ### Should a later input edit invalidate results?
 
@@ -22,13 +22,13 @@ A result is an attribute and is inherited, so a child that edits an input keeps 
 
 A results layer of the PyPSA tool replaces the SubNetworks of its base. A child that edits the topology keeps its parent's until the next solve ([tools](../reference/tools.md)). Marking them stale needs a list of the inputs that each came from.
 
-### Can a property's value name a label as the dim's own keyword?
+### Can a property's value name a label as the dimension's own keyword?
 
-A record may label a dim by position and keep what each label means as a property, such as a snapshot's timestamp as `snapshot.timestep`. `select` matches `snapshot=` against the positions ([selecting](../reference/selecting.md)). Taking a timestamp there needs a rule for when `select` matches a keyword against a property rather than the label. PyPSA's multi-period snapshots need no such rule, because they are a [multi-dim](../reference/data-model.md#multi-dims) whose field `timestep` is a keyword.
+A record may label a dimension by position and keep what each label means as a property, such as a snapshot's timestamp as `snapshot.timestep`. `select` matches `snapshot=` against the positions ([selecting](../reference/selecting.md)). Taking a timestamp there needs a rule for when `select` matches a keyword against a property rather than the label. PyPSA's multi-period snapshots need no such rule, because they are a [multi-dimension](../reference/data-model.md#multi-dimensions) whose field `timestep` is a keyword.
 
-### Does a multi-dim left with one field read as that dim?
+### Does a multi-dimension left with one field read as that dimension?
 
-Squeezing a field's dim projects a multi-dim's tuples on the others ([selecting](../reference/selecting.md)). A multi-dim left with one field stays a struct of one field, rather than reading as the dim it draws on.
+Squeezing a field's dimension projects a multi-dimension's tuples on the others ([selecting](../reference/selecting.md)). A multi-dimension left with one field stays a struct of one field, rather than reading as the dimension it draws on.
 
 ### Can a `WorkingRecord` edit through a selection?
 
@@ -46,29 +46,29 @@ A `WorkingRecord` may sit over another `WorkingRecord`, and its reads include th
 
 `flags` is the model for this: cheap derived metadata a reader plans with before opening a file, per attribute ([the record](../reference/record.md)). `entity -> ctype` is a column of the resolved axis, one frame across all categories ([the format](../reference/format.md)). "Which categories have live labels" and "how many labels a category has" are still frames to collect. The open part is how much one method should answer. `flags` answers every attribute in one call, and one method per question would add more to `RecordLike` than collecting the frames costs a reader. Any answer has to come from the fold, where a record's labels are settled.
 
-### May a property referring to a dim without `one_of` categorise a `partial` dim?
+### May a property referring to a dimension without `one_of` categorise a `partial` dimension?
 
-`entity.carrier` refers to `carrier`, and a `default_by` keyed on it would make a vocabulary of data: a category that a layer adds and removes. Today a category is a label of a dim with `one_of` ([the schema](../reference/schema.md)).
+`entity.carrier` refers to `carrier`, and a `default_by` keyed on it would make a vocabulary of data: a category that a layer adds and removes. Today a category is a label of a dimension with `one_of` ([the schema](../reference/schema.md)).
 
-### May a dim with `one_of` grow in a layer?
+### May a dimension with `one_of` grow in a layer?
 
-Its axis is the schema's list, so a custom PyPSA component type is a schema change and not a data edit ([the schema](../reference/schema.md)). That is the cost of checking a category at load. The alternative is an axis that a layer writes and the list bounds. A tool or a layer could then set which labels exist, and the dim could have properties. It costs a file that restates the schema and a category that may match no live label ([DEP 24](../development/proposals/dep-0024-categories-are-enum-dimensions.md)).
+Its axis is the schema's list, so a custom PyPSA component type is a schema change and not a data edit ([the schema](../reference/schema.md)). That is the cost of checking a category at load. The alternative is an axis that a layer writes and the list bounds. A tool or a layer could then set which labels exist, and the dimension could have properties. It costs a file that restates the schema and a category that may match no live label ([DEP 24](../development/proposals/dep-0024-categories-are-enum-dimensions.md)).
 
-### May a multi-dim be `over` another multi-dim?
+### May a multi-dimension be `over` another multi-dimension?
 
-Each field of a multi-dim draws on a dim that is not a multi-dim, and datarecord refuses one that does ([the schema](../reference/schema.md)). Nothing needs a tuple of tuples yet, and the refusal stands until something does.
+Each field of a multi-dimension draws on a dimension that is not a multi-dimension, and datarecord refuses one that does ([the schema](../reference/schema.md)). Nothing needs a tuple of tuples yet, and the refusal stands until something does.
 
-### Does a functional mapping over two dims justify a dim?
+### Does a functional mapping over two dimensions justify a dimension?
 
-A zone per plant and period is a multi-dim `plant_period` with the property `zone` ([the data model](../reference/data-model.md)). The multi-dim exists only for `zone`, and you add its tuples before you can set the property.
+A zone per plant and period is a multi-dimension `plant_period` with the property `zone` ([the data model](../reference/data-model.md)). The multi-dimension exists only for `zone`, and you add its tuples before you can set the property.
 
 ### How does the published package depend on mathspec?
 
 Core reads its dtypes from `mathspec.program`. The environment pins mathspec at a commit of a pull request branch, which lasts only while the commit exists on GitHub. Before a release the pin moves to the merged commit. `pyproject.toml` declares that pin as a direct git dependency, which PyPI refuses in an upload, so a PyPI release waits until mathspec is published.
 
-### How does a property that refers to a dim map onto mathspec?
+### How does a property that refers to a dimension map onto mathspec?
 
-mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier }`, declared beside the dims. datarecord declares `refers: carrier` on a property of `generator`. Unifying the two is left for later.
+mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier }`, declared beside the dimensions. datarecord declares `refers: carrier` on a property of `generator`. Unifying the two is left for later.
 
 ### Must a default name a live label?
 
@@ -76,27 +76,27 @@ mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier
 
 ### Does `bus` earn its place in the owner map's index?
 
-PyPSA's `partial` includes `bus` so that a layer can patch one bus's `v_nom`, and every read scans every `partial` dim in the owner map's index ([layers](layers.md)). Measuring it on a record the size of PyPSA-Eur would settle it.
+PyPSA's `partial` includes `bus` so that a layer can patch one bus's `v_nom`, and every read scans every `partial` dimension in the owner map's index ([layers](layers.md)). Measuring it on a record the size of PyPSA-Eur would settle it.
 
-### May `partial` name a field of a multi-dim?
+### May `partial` name a field of a multi-dimension?
 
-`partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a field in `partial`, `p`'s index would be `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider index on every read of every attribute over `snapshot`.
+`partial` may name a multi-dimension whole. A layer overrides an attribute one value per label along each dimension in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dimension over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a field in `partial`, `p`'s index would be `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider index on every read of every attribute over `snapshot`.
 
 ### Do selector keywords need a qualified form?
 
-`set` refuses a bare selector keyword that is the name of a property of two dims that one attribute is indexed over ([editing](../reference/editing.md)). The only way to say which is meant is to set per dim.
+`set` refuses a bare selector keyword that is the name of a property of two dimensions that one attribute is indexed over ([editing](../reference/editing.md)). The only way to say which is meant is to set per dimension.
 
-### Should `Schema` declare a dim with its mapping property in one call?
+### Should `Schema` declare a dimension with its mapping property in one call?
 
-A snapshot mapped to its period is a dim plus a property that refers to the period. A helper could make the two declarations one ([the schema](../reference/schema.md)).
+A snapshot mapped to its period is a dimension plus a property that refers to the period. A helper could make the two declarations one ([the schema](../reference/schema.md)).
 
-### May a `WorkingRecord` delete one value along a dim outside `partial`?
+### May a `WorkingRecord` delete one value along a dimension outside `partial`?
 
-A layer that restates a map row along such a dim and leaves out a label its parent had there deletes that value ([layers](../reference/layers.md)). A `WorkingRecord` stages the label's whole extent, so today only a hand-written layer can.
+A layer that restates a map row along such a dimension and leaves out a label its parent had there deletes that value ([layers](../reference/layers.md)). A `WorkingRecord` stages the label's whole extent, so today only a hand-written layer can.
 
-### May a layer remove a dim from `partial`?
+### May a layer remove a dimension from `partial`?
 
-Schema versioning refuses it ([the schema](../reference/schema.md)). To allow it, the layer would restate as resolved each map row of its `partial` where a parent's map row sets a label of the dim. The fold would then project the dim out of the parent's map, dropping every row that set it. It would refuse a layer that leaves one uncovered ([resolution](../reference/resolution.md)). `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
+Schema versioning refuses it ([the schema](../reference/schema.md)). To allow it, the layer would restate as resolved each map row of its `partial` where a parent's map row sets a label of the dimension. The fold would then project the dimension out of the parent's map, dropping every row that set it. It would refuse a layer that leaves one uncovered ([resolution](../reference/resolution.md)). `compatible_with` would accept the smaller `partial`, and a helper would build such a layer from a revision.
 
 ### What does PyPSA#1474 land as?
 
@@ -104,7 +104,7 @@ Upstream making buses and carriers indices may turn an unlisted carrier into an 
 
 ### Can the checks at `set` and at write take the fold's fixed plan?
 
-The fold carries the set of dims a row sets as data, so its joins do not depend on the rows ([resolution](../reference/resolution.md)). `set` and the writer refuse two crossing rows by looping over the pairs of such sets, fetching once per pair ([editing](../reference/editing.md)).
+The fold carries the set of dimensions a row sets as data, so its joins do not depend on the rows ([resolution](../reference/resolution.md)). `set` and the writer refuse two crossing rows by looping over the pairs of such sets, fetching once per pair ([editing](../reference/editing.md)).
 
 ### Can `set` stage a scoped or crossing broadcast without spreading it?
 
@@ -120,7 +120,7 @@ An edit runs in its own transaction, and DuckDB nests none. datarecord therefore
 
 ### What does a schema change on a `WorkingRecord` do to its registered views?
 
-A `WorkingRecord` has no method that changes its schema, which changes only at commit. Such a method would refuse a change that alters a column or the fold of a registered view, or replace the views it affects. A client would then see them change ([the format](../reference/format.md)). Widening an attribute's `dims`, adding a property and adding a dim to `partial` are such changes. Adding an attribute or a dim would add its view ([DEP 34](../development/proposals/dep-0034-a-record-registers-as-views.md)).
+A `WorkingRecord` has no method that changes its schema, which changes only at commit. Such a method would refuse a change that alters a column or the fold of a registered view, or replace the views it affects. A client would then see them change ([the format](../reference/format.md)). Widening an attribute's `dims`, adding a property and adding a dimension to `partial` are such changes. Adding an attribute or a dimension would add its view ([DEP 34](../development/proposals/dep-0034-a-record-registers-as-views.md)).
 
 ### How does a SQL client settle rows?
 
@@ -146,11 +146,11 @@ DuckDB 2.0 can show a reader on another cursor part of a committed transaction o
 
 ### Can a record be filtered before `build`?
 
-`select(record, period=2030)` returns a selection of the record at those labels, which any reader reads as a `RecordLike` ([selecting](../reference/selecting.md)). One label squeezes its dim, and what refers to a dropped label goes with it.
+`select(record, period=2030)` returns a selection of the record at those labels, which any reader reads as a `RecordLike` ([selecting](../reference/selecting.md)). One label squeezes its dimension, and what refers to a dropped label goes with it.
 
-### What does a `set` at one label cover when it leaves one of two dims outside `partial` NULL?
+### What does a `set` at one label cover when it leaves one of two dimensions outside `partial` NULL?
 
-Every label of the dim it leaves NULL, at the label it names. The rest of the series keeps the parent's values, whether staged, committed or over a materialised parent ([resolution](../reference/resolution.md)).
+Every label of the dimension it leaves NULL, at the label it names. The rest of the series keeps the parent's values, whether staged, committed or over a materialised parent ([resolution](../reference/resolution.md)).
 
 ### Does a broadcast survive materialisation?
 
@@ -158,23 +158,23 @@ It does. The owner map contains map rows as written and the fold reads no axis. 
 
 ### Does `flags` need a record-level counterpart?
 
-It is one. `flags()` returns flags per record, every attribute included, and `flags(**categories)` per category, restricted to the rows that apply to its labels ([the record](../reference/record.md)). An attribute over an axis alone, or over a multi-dim outside `partial`, appears only in the first.
+It is one. `flags()` returns flags per record, every attribute included, and `flags(**categories)` per category, restricted to the rows that apply to its labels ([the record](../reference/record.md)). An attribute over an axis alone, or over a multi-dimension outside `partial`, appears only in the first.
 
-### What does a NULL multi-dim struct cover?
+### What does a NULL multi-dimension struct cover?
 
-Every tuple, as a NULL on a dim means every label ([the data model](../reference/data-model.md)). A constant `efficiency` applies to generators' connections too, and one for links alone is `set("efficiency", 0.7, ctype="Link")`.
+Every tuple, as a NULL on a dimension means every label ([the data model](../reference/data-model.md)). A constant `efficiency` applies to generators' connections too, and one for links alone is `set("efficiency", 0.7, ctype="Link")`.
 
 ### What does `build` do with a value its type does not take?
 
 It leaves the value out and reports it in `Requirements.ignored`, as it reports an unknown type, and does not raise ([tools](../reference/tools.md)).
 
-### May a multi-dim in `partial` have categories?
+### May a multi-dimension in `partial` have categories?
 
-It may, by the rule a dim follows. `connection.role: {refers: role}` categorises `connection` in `partial`, so a `default_by` keyed `connection.role`, `flags(role=...)` and the keyword `role=` work as they do for `entity.ctype` ([the data model](data-model.md)).
+It may, by the rule a dimension follows. `connection.role: {refers: role}` categorises `connection` in `partial`, so a `default_by` keyed `connection.role`, `flags(role=...)` and the keyword `role=` work as they do for `entity.ctype` ([the data model](data-model.md)).
 
 ### What should a connection value staged without its `bus` mean?
 
-Nothing: `set` refuses the call ([editing](../reference/editing.md)). A multi-dim value is a whole tuple or NULL, so `{entity: dc, bus: NULL}` is no value, and datarecord refuses it wherever a row comes in. The alternative, "every connection of this entity", would broadcast over part of a tuple, where a multi-dim's column broadcasts only whole.
+Nothing: `set` refuses the call ([editing](../reference/editing.md)). A multi-dimension value is a whole tuple or NULL, so `{entity: dc, bus: NULL}` is no value, and datarecord refuses it wherever a row comes in. The alternative, "every connection of this entity", would broadcast over part of a tuple, where a multi-dimension's column broadcasts only whole.
 
 ### Can a record's relations be named views?
 

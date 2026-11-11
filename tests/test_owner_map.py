@@ -606,7 +606,7 @@ def test_a_set_at_one_snapshot_leaving_a_dim_outside_partial_null_keeps_the_seri
 
     Notes
     -----
-    - [a dim outside partial](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
+    - [a dim outside partial](https://energy-models.github.io/datarecord/reference/resolution/#a-dimension-outside-partial)
     """
     base = empty_root(
         store,
@@ -933,7 +933,7 @@ def test_a_layer_leaving_a_dim_outside_partial_unfilled_is_refused(store):
 
     Notes
     -----
-    - [a dim outside partial](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
+    - [a dim outside partial](https://energy-models.github.io/datarecord/reference/resolution/#a-dimension-outside-partial)
     """
     layer = empty_root(store, schema(partial={"period", "connection"}))
     write_component(layer, "Generator", [{"entity": "gas"}])

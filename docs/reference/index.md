@@ -12,7 +12,7 @@ These pages describe what datarecord does: what a record contains, what each cal
 
 What a record contains, and the calls that read, select and edit it.
 
-- [The data model](data-model.md): dims, multi-dims, properties, categories, attributes and the broadcast rule.
+- [The data model](data-model.md): dimensions, multi-dimensions, properties, categories, attributes and the broadcast rule.
 - [The schema](schema.md): every key a schema accepts, its dtypes, names and compatible changes.
 - [The record](record.md): the `RecordLike` protocol, relations, `flags` and `settle`.
 - [Selecting](selecting.md): `select`, squeezing, dropped labels and `lift`.

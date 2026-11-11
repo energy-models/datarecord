@@ -519,7 +519,7 @@ def test_a_selection_plans_on_the_base_and_reads_its_later_edits(record):
 @pytest.mark.parametrize(
     ("asked", "reason"),
     [
-        pytest.param({"pipeline": 1}, "names no dim", id="undeclared"),
+        pytest.param({"pipeline": 1}, "names no dimension", id="undeclared"),
         pytest.param({"bus": "Atlantis"}, "the axis lacks", id="unknown-label"),
         pytest.param({"bus": ["north", "Atlantis"]}, "the axis lacks", id="unknown"),
         pytest.param({"snapshot": "2014"}, "names no label", id="empty-span"),
@@ -562,7 +562,7 @@ def test_a_squeeze_never_defaults_a_label_null_on_its_category(record):
 
 
 def test_flags_refuse_a_category_the_view_squeezed(record):
-    with pytest.raises(ValueError, match="categorize no dim"):
+    with pytest.raises(ValueError, match="categorize no dimension"):
         record.select(ctype="Load").flags(ctype="Load")
 
 
@@ -599,7 +599,7 @@ def test_a_field_keyword_wins_over_a_property_of_its_name(routes):
     ("asked", "reason"),
     [
         pytest.param({"from": "a"}, "field of each", id="several-multi-dims"),
-        pytest.param({"node": "a"}, "squeezes every dim", id="every-dim"),
+        pytest.param({"node": "a"}, "squeezes every dimension", id="every-dim"),
     ],
 )
 def test_select_refuses_a_view_the_schema_cannot_hold(routes, asked, reason):

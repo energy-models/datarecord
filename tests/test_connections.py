@@ -6,7 +6,7 @@
 
 Notes
 -----
-- [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+- [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
 """
 
 from contextlib import nullcontext
@@ -219,7 +219,7 @@ def test_a_dim_a_multi_dim_draws_on_still_broadcasts(store):
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     price = AttributeSpec(dtype="float", dims={"bus", "snapshot"})
     declared = schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"})

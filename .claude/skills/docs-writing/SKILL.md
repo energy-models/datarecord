@@ -277,7 +277,7 @@ A tutorial or a how-to links to the figure and draws none of its own.
 
 - **Every table is drawn as a table, one row per row of the data.**
   Where no row exists, the table has none, and a dashed rounded box with an italic note stands where the row would be: "no row: `coal` is dropped".
-- **A second dim is a second column.**
+- **A second dimension is a second column.**
   Use one only where it changes the result.
   A figure has at most two result panels to the right of its input, and more go on a row below.
 - **The figure uses the data of the section's example.**

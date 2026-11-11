@@ -66,9 +66,9 @@ A read opens exactly the files the manifest lists, and ignores any other file in
 
 ## `partial`
 
-`partial` is the set of dims, declared as `Schema.partial`, along which a layer overrides one value per label.
-Along any other dim, a layer restates the whole extent of each map row it touches.
-The owner map assigns an attribute's values to a layer per map row. Its index is the attribute's dims that are in `partial`, with the attribute's name:
+`partial` is the set of dimensions, declared as `Schema.partial`, along which a layer overrides one value per label.
+Along any other dimension, a layer restates the whole extent of each map row it touches.
+The owner map assigns an attribute's values to a layer per map row. Its index is the attribute's dimensions that are in `partial`, with the attribute's name:
 
 ```text
 index(attribute) = (attribute.dims ∩ partial, attribute)
@@ -84,18 +84,18 @@ The child changes wind at snapshot 1 and so writes wind's whole series.
 The read takes gas from the root, since the child writes no gas row, and wind from the child.
 A [`WorkingRecord`](editing.md) stages the rest of the series for you: `set("p_max_pu", 0.9, entity="wind", snapshot=1)` also stages wind's row at snapshot 0.
 
-- A multi-dim in `partial` is in the index as its struct column, so a layer overrides one tuple's value. With `connection` outside `partial`, a layer that changes one connection's `efficiency` restates every connection's.
+- A multi-dimension in `partial` is in the index as its struct column, so a layer overrides one tuple's value. With `connection` outside `partial`, a layer that changes one connection's `efficiency` restates every connection's.
 - The owner map assigns a curve whole to one layer, because `breakpoint` is not in the index.
 - `partial` applies to attribute values alone. A layer that changes an axis restates the whole axis, whatever `partial` contains ([removing labels](#removing-labels)).
-- Only a property of a dim in `partial` can be categorising ([the data model](data-model.md)).
-- The fold reads each layer under the schema in its own manifest, so a child may add a dim to `partial` ([a wider schema](resolution.md#a-wider-schema)).
+- Only a property of a dimension in `partial` can be categorising ([the data model](data-model.md)).
+- The fold reads each layer under the schema in its own manifest, so a child may add a dimension to `partial` ([a wider schema](resolution.md#a-wider-schema)).
 
 Under the PyPSA schema's `partial`, a layer overrides one bus's `v_nom` and restates every carrier's `co2_emissions`, because `carrier` is not in `partial`.
 
 !!! info "See also"
 
     [The schema page](schema.md) lists the `partial` key and what it accepts.
-    [Layers and `partial`](../about/layers.md) argues for putting `partial` on the dim.
+    [Layers and `partial`](../about/layers.md) argues for putting `partial` on the dimension.
 
 ## What a layer may contain
 
@@ -105,32 +105,32 @@ A refused layer stays pending, and no read opens it.
 ### Types
 
 The writer casts each column to its declared dtype, from a wider type of the same kind or from a column of NULLs alone.
-It refuses any other type, naming the attribute, property or dim and its dtype.
+It refuses any other type, naming the attribute, property or dimension and its dtype.
 
 ### Attribute files
 
 - The writer refuses an attribute that the schema does not declare.
-- An attribute file has exactly a column per dim of its attribute, then `attribute`, `breakpoint` and `value` ([the long schema](format.md#attributesattrparquet)). The writer refuses a file that lacks a dim's column, or that has a column the attribute is not over.
-- A multi-dim's column is a struct with exactly its fields, and the writer refuses a tuple with some fields NULL and not all.
-- The writer refuses two rows of one attribute at one coordinate that set the same dims. It also refuses two rows there where each row leaves NULL a dim that the other row sets, unless a third row sets both.
+- An attribute file has exactly a column per dimension of its attribute, then `attribute`, `breakpoint` and `value` ([the long schema](format.md#attributesattrparquet)). The writer refuses a file that lacks a dimension's column, or that has a column the attribute is not over.
+- A multi-dimension's column is a struct with exactly its fields, and the writer refuses a tuple with some fields NULL and not all.
+- The writer refuses two rows of one attribute at one coordinate that set the same dimensions. It also refuses two rows there where each row leaves NULL a dimension that the other row sets, unless a third row sets both.
 
 ### Axis files
 
 A `dimensions/<dim>.parquet` file contains the whole axis at the new revision, in order, with each label's properties.
-The writer refuses a file for an undeclared dim or a [dim with `one_of`](data-model.md), and a file with a label twice.
-It refuses a column other than the dim's column and the subject's declared properties.
+The writer refuses a file for an undeclared dimension or a [dimension with `one_of`](data-model.md), and a file with a label twice.
+It refuses a column other than the dimension's column and the subject's declared properties.
 It also refuses a file with its parent's labels in a different order from the parent's, and a new label may sit anywhere:
 
 ```text
-ValueError: dimensions/entity.parquet puts entity 'wind' out of its parent's order; a restatement keeps the order of the labels its parent holds and places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+ValueError: dimensions/entity.parquet puts entity 'wind' out of its parent's order; a restatement keeps the order of the labels its parent holds and places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
 ```
 
 ### Labels
 
 The labels and tuples in every row of a layer are on the layer's final axes.
-The final axis of a dim is the layer's own file, or else the parent's resolved axis.
+The final axis of a dimension is the layer's own file, or else the parent's resolved axis.
 The writer refuses an attribute row with a label or tuple outside the final axes.
-It refuses a multi-dim's tuple that contains a label outside its field's final axis the same way:
+It refuses a multi-dimension's tuple that contains a label outside its field's final axis the same way:
 
 ```text
 ValueError: attributes/p_max_pu.parquet names 'entity' labels ['coal'], which the layer's dimensions/entity.parquet does not hold; add them there or drop those rows (https://energy-models.github.io/datarecord/reference/layers/)
@@ -159,8 +159,8 @@ class LayerData(Protocol):
 
 ## Removing labels
 
-To remove a label is to restate its dim's axis without it, which removes its values and the tuples that contain it.
-`remove(dim, labels)` on a [`WorkingRecord`](editing.md) writes one layer that restates the axis without the labels, and every multi-dim over `dim` without the tuples that contain them:
+To remove a label is to restate its dimension's axis without it, which removes its values and the tuples that contain it.
+`remove(dim, labels)` on a [`WorkingRecord`](editing.md) writes one layer that restates the axis without the labels, and every multi-dimension over `dim` without the tuples that contain them:
 
 <figure class="diagram">
 --8<-- "docs/static/layers-removal.svg"
@@ -168,16 +168,16 @@ To remove a label is to restate its dim's axis without it, which removes its val
 
 The child writes no `p_nom` file, and the read still has no `p_nom` row for coal.
 A removal applies to every attribute.
-On a dim in `partial` the fold drops each parent row that has the label, and on any other dim [the read drops it](resolution.md#labels-outside-the-index).
-A row that leaves the dim NULL stays, and applies to the labels that remain.
+On a dimension in `partial` the fold drops each parent row that has the label, and on any other dimension [the read drops it](resolution.md#labels-outside-the-index).
+A row that leaves the dimension NULL stays, and applies to the labels that remain.
 
 - A removed tuple takes its values. The labels in it keep their other rows, so removing `(gas, north)` leaves `gas`.
-- `remove` refuses a dim with `one_of`, whose axis is the schema's list.
+- `remove` refuses a dimension with `one_of`, whose axis is the schema's list.
 - A sibling branch keeps a label that one branch removes.
-- A label added again after its removal has none of the values it had below the removal. Every row that leaves its dim NULL applies to it again, whichever layer wrote the row.
+- A label added again after its removal has none of the values it had below the removal. Every row that leaves its dimension NULL applies to it again, whichever layer wrote the row.
 
 The writer refuses a layer that leaves a removed label in a reference.
-A reference is a multi-dim's tuple, or a property that [refers to a dim](data-model.md).
+A reference is a multi-dimension's tuple, or a property that [refers to a dimension](data-model.md).
 The writer checks each subject whose rows contain a label the layer removes.
 It also checks each property of a subject the layer restates against every label removed so far.
 So where an ancestor left such a reference, the writer refuses the next layer that restates its subject.

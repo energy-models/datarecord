@@ -18,7 +18,7 @@ datarecord/
 │   ├── dtypes.py      # DUCK_TYPES, enum_type, enum_labels, takes
 │   ├── specs.py       # Dimension, AttributeSpec, PropertySpec
 │   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED, packed, unpacked, cast_declared, with_columns
-│   └── categories.py  # selecting a categorised dim's labels, and their defaults
+│   └── categories.py  # selecting a categorised dimension's labels, and their defaults
 ├── settle.py          # settle, uncovered, unsettled: the broadcast rule over long rows
 ├── select.py          # select, Selection
 ├── resolve/

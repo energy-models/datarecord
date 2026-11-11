@@ -103,7 +103,7 @@ def test_properties_hold_stored_values_without_defaults(record):
 
 
 def test_flags_refuse_a_plain_property(record):
-    with pytest.raises(ValueError, match="categorize no dim"):
+    with pytest.raises(ValueError, match="categorize no dimension"):
         record.flags(carrier="wind")
 
 

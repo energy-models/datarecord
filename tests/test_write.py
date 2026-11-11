@@ -252,7 +252,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     """
     revision = store.commit(_with_ctype_axis(_CTYPES), parent=None)
     assert revision.record.dimensions["ctype"].df()["ctype"].tolist() == _CTYPES
@@ -294,7 +294,7 @@ def test_a_record_handing_over_another_one_of_axis_is_refused(store, labels, mat
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     """
     with pytest.raises(ValueError, match=match):
         store.commit(_with_ctype_axis(labels), parent=None)
@@ -611,7 +611,7 @@ def test_a_write_rejects_a_multi_dim_column_not_of_its_fields(store):
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
     row |= {"snapshot": None, "scenario": None, "period": None}
@@ -697,7 +697,7 @@ def test_a_write_rejects_a_multi_dim_frame_without_its_struct_column(store):
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     frame = pd.DataFrame({"entity": ["steel_dri"], "bus": ["h2"]})
     source = _Source(_SCHEMA, connections={"connection": frame})
@@ -804,7 +804,7 @@ def test_a_restatement_in_its_parents_order_is_written(store, order):
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
     root = _xyz(store)
@@ -820,7 +820,7 @@ def test_a_restatement_reordering_its_parents_labels_is_refused(store, order, fi
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     root = _xyz(store)
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
@@ -1366,7 +1366,9 @@ def test_a_stored_pair_naming_the_same_dims_fails_the_read(axes):
     twin = duckdb.read_parquet(str(file)).filter("entity = 'a'")
     duckdb.read_parquet(str(file)).union(twin).to_parquet(str(file) + ".twin")
     Path(str(file) + ".twin").replace(file)
-    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*same dims"):
+    with pytest.raises(
+        duckdb.Error, match="'p_nom' covering entity=a, .*same dimensions"
+    ):
         revision.record.attributes["p_nom"].df()
 
 
@@ -1597,7 +1599,7 @@ def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     assert "p_max_pu" in source.attributes
     assert "v_nom" in source.attributes, "a static attribute is long rows too"
     assert "carrier" not in source.attributes, "a property is no attribute"
-    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column).
+    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes
 
@@ -1607,7 +1609,7 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store):
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
     import pypsa

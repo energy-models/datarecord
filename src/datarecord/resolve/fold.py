@@ -69,16 +69,16 @@ def flags_from_rows(
     is about the *schema*, not about the map: it is the same cut whatever
     ownership decided, and keeping it out of the SQL is what makes it readable.
 
-    Both sets are cut to the attribute's own dims. The relation aggregated
-    over covers every attribute, so a dim one attribute is addressed by reads
+    Both sets are cut to the attribute's own dimensions. The relation aggregated
+    over covers every attribute, so a dimension one attribute is addressed by reads
     NULL for the rows of one that is not, and reporting that NULL as "every row
     broadcasts over it" would tell a consumer to build a container along an axis
     the attribute has no values on.
 
     Parameters
     ----------
-    dims
-        The dims the two mappings have an entry per.
+    dimensions
+        The dimensions the two mappings have an entry per.
 
     Notes
     -----
@@ -112,11 +112,11 @@ class Fold:
     ----------
     axes
         The folded axes, their owners and dead labels, under the schema the
-        record is read under, which says which dims the flags carry.
+        record is read under, which says which dimensions the flags carry.
     owner_map
         The resolved owner map: `(owner_map_index, layer_uuid, varies,
         broadcast, breakpoints)`, one map row as its layer wrote it,
-        expanded along a dim only where a deeper layer crossed it there.
+        expanded along a dimension only where a deeper layer crossed it there.
     """
 
     axes: Axes
@@ -132,22 +132,22 @@ class Fold:
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use, across the record or one category.
+        """Per attribute, which dimensions its rows use, across the record or one category.
 
-        A dim in both sets is the instruction to use both containers, each
+        A dimension in both sets is the instruction to use both containers, each
         taking the rows it matches.
 
         Parameters
         ----------
         categories
-            Categorizing properties of one dim, each one category or several:
+            Categorizing properties of one dimension, each one category or several:
             only rows reaching a matching label count. None given, every row
             counts.
 
         Raises
         ------
         ValueError
-            If the keywords categorize no dim or several.
+            If the keywords categorize no dimension or several.
 
         Notes
         -----
@@ -169,11 +169,11 @@ class Fold:
         return flags_from_rows(schema, dims, self._flag_rows(rows, dims))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
-        """The owner-map rows reaching one of `labels`, on `dim` or a multi-dim's field over it.
+        """The owner-map rows reaching one of `labels`, on `dim` or a multi-dimension's field over it.
 
-        A row names a label, or leaves the dim NULL for an attribute
-        over it, which covers every label the dim holds: such a row
-        counts where `labels` holds a label of `dim`, or the multi-dim a tuple
+        A row names a label, or leaves the dimension NULL for an attribute
+        over it, which covers every label the dimension holds: such a row
+        counts where `labels` holds a label of `dim`, or the multi-dimension a tuple
         whose field names one. One semi-join per path, unioned rather than
         OR-ed into one condition, which would be a nested loop; a row matched
         twice changes no flag.
@@ -260,7 +260,7 @@ class Fold:
         The owner map is the presence marker: the map is written last
         (`materialise.materialise`), so if it is absent the node reads as not
         materialised at all. Each axis is read from the layer `dimension_owners.parquet`
-        names for it, and a dim's dead labels only where it says the dim has
+        names for it, and a dimension's dead labels only where it says the dimension has
         any.
 
         Notes
@@ -320,7 +320,7 @@ def read_dimension_owners(
 ) -> list[tuple[str, UUID, bool]]:
     """`revision_id`'s materialised `(dimension, layer_uuid, has_dead)` rows (`Axes.owners`).
 
-    A dim absent has no axis.
+    A dimension absent has no axis.
 
     Raises
     ------

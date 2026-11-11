@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The declarations a schema is made of: dims, properties and attributes.
+"""The declarations a schema is made of: dimensions, properties and attributes.
 
 Notes
 -----
@@ -41,30 +41,30 @@ class _Declared(BaseModel):
 class Dimension(_Declared):
     """One axis attribute data may vary over: its shape, not its data.
 
-    Not which dims an *attribute* varies over (`AttributeSpec.dims`), nor the
+    Not which dimensions an *attribute* varies over (`AttributeSpec.dims`), nor the
     patch granularity (`Schema.partial`), nor order - an axis is ordered by its
     file's row order, undeclared.
 
-    A dim declaring `over` is a multi-dim: its labels are tuples of other dims'
+    A dimension declaring `over` is a multi-dimension: its labels are tuples of other dimensions'
     labels, carried in a row as one struct column named for it, of one field
-    per entry of `over` (`Schema.multi_dim_type`). Fields rather than dims
-    because two of them may draw on one dim: a corridor between two buses is
+    per entry of `over` (`Schema.multi_dim_type`). Fields rather than dimensions
+    because two of them may draw on one dimension: a corridor between two buses is
     `(from, to)`.
 
     Attributes
     ----------
     over
-        Field name -> the dim it draws its labels from, or None for a dim
-        that is no multi-dim. A list is sugar for the dict with identical keys
+        Field name -> the dimension it draws its labels from, or None for a dimension
+        that is no multi-dimension. A list is sugar for the dict with identical keys
         and values. Declared without `dtype` and `one_of`.
     dtype
         The axis labels' type, a mathspec `DimensionDtype`; `"str"` where
-        undeclared, None on a multi-dim.
+        undeclared, None on a multi-dimension.
     one_of
-        The dim's labels, in order, or None for labels a layer writes. A
-        dim with `one_of` has its axis derived from the list, no axis file
+        The dimension's labels, in order, or None for labels a layer writes. A
+        dimension with `one_of` has its axis derived from the list, no axis file
         and no properties, and an `ENUM` of the labels as its column; `add`
-        and `remove` refuse it. Only a `str` dim takes `one_of`.
+        and `remove` refuse it. Only a `str` dimension takes `one_of`.
     unit
         What this axis's *labels* measure, if anything - `None` is undeclared,
         `""` genuinely dimensionless.
@@ -73,9 +73,9 @@ class Dimension(_Declared):
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     - [unit and description](https://energy-models.github.io/datarecord/reference/schema/#unit-and-description)
     - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
     """
@@ -99,7 +99,7 @@ class Dimension(_Declared):
             typed = sorted({"dtype", "one_of"} & data.keys())
             if typed:
                 msg = (
-                    f"a dim declaring `over` is a multi-dim, whose labels are "
+                    f"a dimension declaring `over` is a multi-dimension, whose labels are "
                     f"tuples of its fields' labels, and takes no {typed}"
                 )
                 raise ValueError(msg)
@@ -119,8 +119,8 @@ class Dimension(_Declared):
         dtype = info.data.get("dtype") or "str"
         if value is not None and dtype != "str":
             msg = (
-                f"a dim of dtype {dtype!r} takes no `one_of`; "
-                'only a "str" dim takes `one_of`'
+                f"a dimension of dtype {dtype!r} takes no `one_of`; "
+                'only a "str" dimension takes `one_of`'
             )
             raise ValueError(msg)
         if isinstance(value, (list, tuple)):
@@ -214,8 +214,8 @@ class AttributeSpec(_ValueSpec):
     ----------
     dtype
         The value column's type, a mathspec `ParameterDtype`.
-    dims
-        Dims this attribute may vary over; a subset
+    dimensions
+        Dimensions this attribute may vary over; a subset
         of those declared. Whatever they are, its values are long rows of
         `attributes/<attr>.parquet`.
     default
@@ -224,7 +224,7 @@ class AttributeSpec(_ValueSpec):
         A categorizing property, as `subject.name`, -> category -> the default
         for labels of that category, overriding `default`; the first key, in
         declaration order, listing a label's category wins. Each key must
-        categorize a dim the attribute reaches. Read through `Schema.default_for`; never applied by
+        categorize a dimension the attribute reaches. Read through `Schema.default_for`; never applied by
         the record layer.
     breakpoints
         Whether it may carry a piecewise-linear curve.
@@ -237,7 +237,7 @@ class AttributeSpec(_ValueSpec):
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dimension](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
@@ -251,14 +251,14 @@ class AttributeSpec(_ValueSpec):
 
 
 class PropertySpec(_ValueSpec):
-    """One value per label of a dim, describing it.
+    """One value per label of a dimension, describing it.
 
     A property is keyed by its subject (`Schema.properties`) and stored as a
     column of `dimensions/{dim}.parquet`.
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
     A property declares exactly one of `dtype` and `refers`. A property of a
-    dim in `partial` that refers to a dim with
+    dimension in `partial` that refers to a dimension with
     `one_of` categorizes its subject (`Schema.categorizing`).
 
     Attributes
@@ -266,13 +266,13 @@ class PropertySpec(_ValueSpec):
     dtype
         The column's type, a mathspec `ParameterDtype`.
     refers
-        The dim the property refers to. Its values have that
-        dim's type, and a stored value that is not NULL must be a live label
-        of the dim.
+        The dimension the property refers to. Its values have that
+        dimension's type, and a stored value that is not NULL must be a live label
+        of the dimension.
     default
         The value a label no row sets takes.
     default_by
-        A categorizing property of a dim the subject reaches, as
+        A categorizing property of a dimension the subject reaches, as
         `subject.name`, -> category -> the default for labels of that category,
         overriding `default`. Refused on a categorizing property itself. Read
         through `Schema.default_for`.

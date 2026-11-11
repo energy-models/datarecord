@@ -11,7 +11,7 @@ file for its order and for its properties.
 Notes
 -----
 - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
-- [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+- [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
 """
 
 from typing import Any
@@ -97,7 +97,9 @@ def test_the_over_list_form_is_sugar_for_the_dict():
 @pytest.mark.parametrize(
     ("spec", "extra", "match"),
     [
-        pytest.param({"refers": "nope"}, {}, "an undeclared dim", id="undeclared"),
+        pytest.param(
+            {"refers": "nope"}, {}, "an undeclared dimension", id="undeclared"
+        ),
         pytest.param(
             {"refers": "state"},
             {
@@ -109,7 +111,7 @@ def test_the_over_list_form_is_sugar_for_the_dict():
                     )
                 }
             },
-            "refers to 'state', but 'state' is not a one_of dim",
+            "refers to 'state', but 'state' is not a one_of dimension",
             id="a-default-by-on-a-dim-without-one-of",
         ),
     ],

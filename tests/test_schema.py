@@ -231,7 +231,7 @@ def test_a_field_is_addressed_as_a_property_is():
 
     Notes
     -----
-    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     s = _schema()
     assert s.resolve("connection.bus") == ("connection", s.dimensions["bus"])
@@ -259,12 +259,12 @@ def test_a_field_is_addressed_as_a_property_is():
         ),
         pytest.param(
             {"bus": {}, "c": {"over": ["bus"]}, "d": {"over": ["bus", "c"]}},
-            "is over the multi-dims",
+            "is over the multi-dimensions",
             id="over-a-multi-dim",
         ),
         pytest.param(
             {"bus": {}, "c": {"over": ["nope"]}},
-            "over undeclared dims",
+            "over undeclared dimensions",
             id="over-an-undeclared-dim",
         ),
     ],
@@ -277,7 +277,9 @@ def test_a_multi_dim_draws_on_dims(dimensions, match):
 
 def test_a_property_refers_to_no_multi_dim():
     """A property's value is a label of a dim that is no multi-dim."""
-    with pytest.raises(ValidationError, match="refers to the multi-dim 'connection'"):
+    with pytest.raises(
+        ValidationError, match="refers to the multi-dimension 'connection'"
+    ):
         _schema(properties={"entity": {"port": PropertySpec(refers="connection")}})
 
 
@@ -337,7 +339,7 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
         ),
         pytest.param(
             lambda: _schema(properties={"nope": {"kind": PropertySpec(dtype="str")}}),
-            "undeclared dims",
+            "undeclared dimensions",
             id="on-an-undeclared-dim",
         ),
     ],
@@ -495,7 +497,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     default_by={"entity.ctype": {"Link": 1.0}},
                 )
             ),
-            "does not reach its dim 'entity'",
+            "does not reach its dimension 'entity'",
             id="a-dim-out-of-reach",
         ),
         pytest.param(
@@ -525,7 +527,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     **kw,
                 ),
             ),
-            "refers to no dim",
+            "refers to no dimension",
             id="a-string-property",
         ),
         pytest.param(
@@ -558,7 +560,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     partial=frozenset({"entity", "scenario", "connection"}), **kw
                 ),
             ),
-            "is a field of the multi-dim 'connection'",
+            "is a field of the multi-dimension 'connection'",
             id="a-field",
         ),
     ],
@@ -849,7 +851,7 @@ def test_attributes_need_at_least_one_dim():
     -----
     - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
     """
-    with pytest.raises(ValidationError, match="at least one dim"):
+    with pytest.raises(ValidationError, match="at least one dimension"):
         Schema(attributes={"p_nom": AttributeSpec(dtype="float")})
 
 
