@@ -54,9 +54,11 @@ def owner_map_rows(
 
 def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelation:
     """Layer `layer`'s attribute rows `rel`, padded to `schema`'s dims and cast, as `_flags` reads them."""
-    rel = cast_declared(schema, with_columns(schema, rel, "breakpoint", *schema.dims))
+    rel = cast_declared(
+        schema, with_columns(schema, rel, "breakpoint", *schema.dimensions)
+    )
     return rel.project(
-        *(col(d) for d in schema.dims),
+        *(col(d) for d in schema.dimensions),
         col("attribute"),
         lit(str(layer)).cast(LAYER_UUID_TYPE).alias(LAYER_COLUMN),
         col("breakpoint"),
@@ -73,7 +75,7 @@ def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...
     -----
     - [flags](https://energy-models.github.io/datarecord/reference/resolution/#flags)
     """
-    broadcast = schema.dims
+    broadcast = tuple(schema.dimensions)
     over = {d: _over(schema, d, attributes) for d in broadcast}
     return (
         fn.struct_pack(

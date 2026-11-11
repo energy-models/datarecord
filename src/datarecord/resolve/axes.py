@@ -401,9 +401,9 @@ def mortal(schema: Schema) -> tuple[str, ...]:
         *(d for m in schema.multi_dims for d in schema.over(m).values()),
         *schema.referring_properties().values(),
     }
-    outside_index = set(schema.dims) - set(schema.partial_dims)
+    outside_index = set(schema.dimensions) - set(schema.partial_dims)
     kept = (drawn | outside_index) - set(schema.one_of_dims)
-    return tuple(c for c in schema.dims if c in kept)
+    return tuple(c for c in schema.dimensions if c in kept)
 
 
 @dataclass(frozen=True)

@@ -513,7 +513,7 @@ def test_set_addresses_a_multi_dims_fields_by_keyword(store):
     staged.set("price", 40.0, to=["smelter"], **plant)
     assert _prices(staged) == {"mill": 30.0, "smelter": 40.0}, "a list fills `to`"
 
-    with pytest.raises(ValueError, match=r"\['from', 'to'"):
+    with pytest.raises(ValueError, match=r"\['snapshot', 'from', 'to'\]"):
         staged.set("price", {"mill": 50.0})
     with pytest.raises(ValueError, match=r"\['to'\] was not given"):
         staged.set("price", 50.0, **plant)

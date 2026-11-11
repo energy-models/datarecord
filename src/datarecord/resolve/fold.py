@@ -155,7 +155,7 @@ class Fold:
         - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
         schema = self.axes.schema
-        dims = schema.dims
+        dims = tuple(schema.dimensions)
         if not categories:
             # The structs come back as dicts keyed by dim, so each set is a filter
             # by name rather than a positional slice.
