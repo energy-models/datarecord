@@ -183,7 +183,7 @@ def _with_schema(layer: HandBuilt, **kwargs) -> Revision:
 def _redeclared_over(store, n, attr: str, dim: str, rows: list[dict]) -> Revision:
     """`n` written as a root of `store` declaring `attr` static and over `dim` too, its rows `rows`.
 
-    Static, since an attribute over `snapshot` is over its coordinate `period` already.
+    Static, since an attribute over `snapshot` is over its field `period` already.
     """
     revision = export_network(n, store)
     declared = revision.manifest.schema
@@ -2546,7 +2546,7 @@ class TestPyPSA:
         )
 
     def test_schema_dims_stay_generic(self, exported):
-        """`Coords` carries a dim PyPSA knows nothing about; axis names live in the tool, which reports it as a dim of the record's own.
+        """`Axes` carries a dim PyPSA knows nothing about; axis names live in the tool, which reports it as a dim of the record's own.
 
         Declared but not `partial`, so the record's files need no column for it.
         Keying it would be a different matter, reported by the tool against the

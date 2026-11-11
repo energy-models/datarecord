@@ -148,11 +148,11 @@ Check it:
 3  wind1         2  p_max_pu         NaN    0.5
 ```
 
-`attributes` returns long rows, one per value, in no promised order. The `gas1` row leaves `snapshot` NULL, and a NULL coordinate means every label of its dim ([the broadcast rule](../reference/data-model.md)).
+`attributes` returns long rows, one per value, in no promised order. The `gas1` row leaves `snapshot` NULL, and a NULL means every label of its dim ([the broadcast rule](../reference/data-model.md)).
 
 ## The values, wide
 
-[`settle`](../reference/record.md) applies that rule and gives one row per label at each point, which pandas pivots wide:
+[`settle`](../reference/record.md) applies that rule and gives one row per label at each coordinate, which pandas pivots wide:
 
 ```python
 from datarecord import settle

@@ -16,7 +16,7 @@ The rejected alternative is a nested dim, keyed by its parent's label and its ow
 
 datarecord states the nesting in one of two flat forms instead. A property maps each label to a label of another dim: `bus.country` names each bus's country, and you read it as you read `bus.carrier`. A multi-dim names both in each label: PyPSA's multi-period `snapshot` is a multi-dim over `(period, timestep)`, one struct column ([below](#why-a-multi-dim-is-one-struct-column)). With one key column either way, datarecord applies one rule to the axis, the fold key and the broadcast rule. No dim has a parent, so no series can leave a parent's label NULL.
 
-A source whose labels repeat across parents takes the multi-dim form. PyPSA reuses its timesteps in every period, so the PyPSA tool makes each snapshot the tuple of its period and timestep. "The same timestep in every period" is then the coordinate keyword `timestep=[t]`, which selects that tuple in every period.
+A source whose labels repeat across parents takes the multi-dim form. PyPSA reuses its timesteps in every period, so the PyPSA tool makes each snapshot the tuple of its period and timestep. "The same timestep in every period" is then the field keyword `timestep=[t]`, which selects that tuple in every period.
 
 ## Why a multi-dim is one struct column
 
@@ -46,7 +46,7 @@ The cost is that a new category is a schema change. A custom PyPSA component typ
 
 ## Why properties and attributes differ
 
-A property is one value per label of its subject, stored as a column of the subject's axis file. An attribute is the values at points over the dims it lists, stored as long rows, one file per attribute ([the data model](../reference/data-model.md)). You declare which a name is.
+A property is one value per label of its subject, stored as a column of the subject's axis file. An attribute is the values at coordinates over the dims it lists, stored as long rows, one file per attribute ([the data model](../reference/data-model.md)). You declare which a name is.
 
 The rejected alternative places a value by its shape: a value over one dim goes on that dim's axis, and anything wider in a file. That groups `p_nom` with `carrier`, which both vary over `entity` alone. Yet `p_nom` is data a model optimises against and a scenario changes, while `carrier` describes the generator. Placing by shape also makes a compatible change move a file. Widening `p_nom` over `scenario` would move it off the axis, away from the rows earlier layers wrote.
 

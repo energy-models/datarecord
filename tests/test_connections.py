@@ -164,7 +164,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
 def test_component_level_attribute_is_unaffected(store):
     """A component attribute carries no `bus` column.
 
-    `bus` is the `connection` multi-dim's coordinate, so it is on the files of the
+    `bus` is the `connection` multi-dim's field, so it is on the files of the
     attributes addressed by that multi-dim and on no others.
 
     Notes
@@ -494,7 +494,7 @@ def test_remove_reaches_a_multi_dims_second_entity_before_and_after_commit(store
     assert len(contracts) == 1, "its tuple went with it"
 
 
-def test_set_addresses_a_multi_dims_coordinates_by_keyword(store):
+def test_set_addresses_a_multi_dims_fields_by_keyword(store):
     """Each party is its own keyword, one label or a list; `entity=` is neither.
 
     Notes

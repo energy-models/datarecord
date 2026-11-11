@@ -4,7 +4,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="db-t db-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="db-t">Settling p_max_pu over its axes by the broadcast rule</title>
-  <desc id="db-d">The attribute p_max_pu has four rows: wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and one row with entity and snapshot NULL and value 1.0. Settled over the entity axis wind, gas, dc and the snapshot axis 0, 1, 2, the result has one row per point: wind keeps its own three values, because a row that sets entity and snapshot is more specific than the NULL row, and gas and dc take 1.0 at every snapshot from the NULL row.</desc>
+  <desc id="db-d">The attribute p_max_pu has four rows: wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and one row with entity and snapshot NULL and value 1.0. Settled over the entity axis wind, gas, dc and the snapshot axis 0, 1, 2, the result has one row per coordinate: wind keeps its own three values, because a row that sets entity and snapshot is more specific than the NULL row, and gas and dc take 1.0 at every snapshot from the NULL row.</desc>
   <defs>
     <marker id="db-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -77,7 +77,7 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="132" y="243">2</text>
     </g>
     <text x="476" y="22" font-weight="bold">settled rows</text>
-    <text x="586" y="22" fill-opacity="0.75">one per point</text>
+    <text x="586" y="22" fill-opacity="0.75">one per coordinate</text>
     <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
     <text x="484" y="47" font-weight="bold">entity</text>
     <text x="548" y="47" font-weight="bold">snapshot</text>

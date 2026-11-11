@@ -20,7 +20,7 @@ import pyarrow as pa
 import pytest
 
 from datarecord.mutable import WorkingRecord, normalise_value
-from datarecord.resolve.coords import Coords
+from datarecord.resolve.axes import Axes
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
@@ -161,19 +161,19 @@ def test_a_sequence_must_align_to_labels(value, labels, match):
         normalise_value(value, labels)
 
 
-def test_an_unnamed_series_index_over_several_open_coordinates_is_refused(staged):
+def test_an_unnamed_series_index_over_several_open_fields_is_refused(staged):
     """Not inferred from the labels, so an index saying nothing must be told.
 
-    `entity=` fixes one coordinate, but `p_max_pu` has more than one left open,
+    `entity=` fixes one dim, but `p_max_pu` has more than one keyword left open,
     so nothing says which the index holds.
     """
     series = pd.Series({"2030-01-01": 0.4})
-    with pytest.raises(ValueError, match="naming the series' index"):
+    with pytest.raises(ValueError, match="name the series' index after one"):
         staged.set("p_max_pu", series, entity=["Manchester Wind"])
 
 
 def test_the_series_index_name_says_what_it_holds(staged):
-    """A caller who named the index has said which coordinate it holds."""
+    """A caller who named the index has said which keyword it holds."""
     index = pd.Index([pd.Timestamp("2015-01-01")], name="snapshot")
     staged.set("p_max_pu", pd.Series([0.4], index=index), entity=["Manchester Wind"])
     assert "p_max_pu" in staged.attributes
@@ -357,8 +357,8 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
 # -- the overlay does not overlap (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule, https://energy-models.github.io/datarecord/reference/editing/) -----------------------------
 
 
-def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
-    """An edit naming a coordinate displaces that one only.
+def test_an_edit_at_one_coordinate_keeps_the_rest_of_the_series(staged):
+    """An edit at one coordinate displaces that one only.
 
     Keying the overlay on the owner-map key alone would drop the whole series here,
     since it excludes the dims an attribute is not owned per.
@@ -640,7 +640,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
     axis stages the touched value plus the untouched coordinates as fills, and a
     second `set` at another coordinate must replace only the fill on *its* key -
     the first edit's value and its fills have to survive. Idempotence of
-    `_complete_owned_whole` and replace-by-coordinate are what make it hold with
+    `_complete_owned_whole` and replace-by-key are what make it hold with
     no ordering column to rank a fill below an edit.
 
     Notes
@@ -685,7 +685,7 @@ def _entity_axis(record):
 
 
 def _entity_values(record, attribute):
-    """`attribute`'s rows naming an entity alone - every other coordinate NULL - by label."""
+    """`attribute`'s rows naming an entity alone - every other dim NULL - by label."""
     rows = record.attributes[attribute].df()
     others = [c for c in rows.columns if c not in ("entity", "attribute", "value")]
     return rows[rows[others].isna().all(axis=1)].set_index("entity")["value"]
@@ -793,7 +793,7 @@ def test_set_may_change_a_category(units):
             ("demand", 1.0),
             {"tech": "plant", "hour": [0]},
             ValueError,
-            "through no coordinate",
+            "through no keyword",
         ),
     ],
     ids=[
@@ -802,7 +802,7 @@ def test_set_may_change_a_category(units):
         "add-unknown-category",
         "keyword-unknown-category",
         "keyword-and-label",
-        "keyword-reaching-no-coordinate",
+        "keyword-through-no-keyword",
     ],
 )
 def test_an_edit_refuses_an_unknown_label_category_or_keyword(
@@ -1088,7 +1088,7 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
                 }
             ),
             r"columns \['Snapshot'\] the schema does not declare",
-            id="case-variant-coordinate",
+            id="case-variant-dim",
         ),
     ],
 )
@@ -1118,7 +1118,7 @@ def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
     ids=["flat", "partly-null"],
 )
 def test_a_frame_carrying_a_multi_dim_but_as_its_struct_is_rejected(staged, select):
-    """Flat coordinates, beside the struct or not, or a wrong struct, are refused.
+    """Flat fields, beside the struct or not, or a wrong struct, are refused.
 
     Notes
     -----
@@ -1142,7 +1142,7 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
         pytest.fail("resolved the ancestry for a layer with nothing to check")
 
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    monkeypatch.setattr(Coords, "resolve", classmethod(unwanted))
+    monkeypatch.setattr(Axes, "resolve", classmethod(unwanted))
     root.store.commit(staged)
 
 
@@ -1177,12 +1177,12 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         (
             pd.DataFrame([{"connection": {"entity": "Manchester Wind"}}]),
             {},
-            r"as a struct of its coordinates \['entity', 'bus'\]",
+            r"as a struct of its fields \['entity', 'bus'\]",
         ),
         (
             pd.DataFrame([{"connection": _TUPLE, "entity": "Manchester Wind"}]),
             {},
-            r"carrying both the column 'connection' and its coordinates \['entity'\]",
+            r"carrying both the column 'connection' and its fields \['entity'\]",
         ),
         (
             pd.DataFrame([{"entity": "Manchester Wind"}]),
@@ -1197,23 +1197,23 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         (
             pd.DataFrame({"entity": [None], "bus": ["Norway"]}),
             {},
-            "with a coordinate NULL",
+            "with a field NULL",
         ),
-        ([{"entity": "Manchester Wind"}], {}, "maps each of its coordinates"),
+        ([{"entity": "Manchester Wind"}], {}, "maps each of its fields"),
         ([_TUPLE], {"p_nom": [1.0, 2.0]}, "has 2 'p_nom' values for 1 tuples"),
     ],
     ids=[
         "struct-missing-field",
-        "struct-and-coordinates",
-        "missing-coordinate",
-        "mixed-type-coordinate-list",
-        "null-coordinate",
+        "struct-and-fields",
+        "missing-field",
+        "mixed-type-field-list",
+        "null-field",
         "partial-mapping",
         "misaligned-keyword",
     ],
 )
-def test_add_needs_a_label_per_coordinate(staged, tuples, columns, match):
-    """A tuple is whole: a label of each coordinate, typed as the dim it draws on.
+def test_add_needs_a_label_per_field(staged, tuples, columns, match):
+    """A tuple is whole: a label of each field, typed as the dim it draws on.
 
     Notes
     -----
@@ -1233,7 +1233,7 @@ def _as_mappings(pairs):
 
 @pytest.mark.parametrize("shape", [_as_flat, _as_mappings], ids=["flat", "mappings"])
 def test_add_and_remove_take_tuples_in_any_shape(over_roles, shape):
-    """The struct column `dims` reads, a column per coordinate, or a list of mappings.
+    """The struct column `dims` reads, a column per field, or a list of mappings.
 
     Notes
     -----
@@ -1279,19 +1279,19 @@ def test_a_plain_dim_refuses_a_frame(staged):
         staged.add("entity", pd.DataFrame({"entity": ["Norway Gas"]}))
 
 
-def test_set_addresses_a_multi_dim_by_its_coordinates(staged):
+def test_set_addresses_a_multi_dim_by_its_fields(staged):
     with pytest.raises(KeyError, match=r"\['connection'\] are multi-dims.*`add`"):
         staged.set("efficiency", 0.5, connection=_TUPLE)
 
 
-def test_set_refuses_a_coordinate(staged):
-    """A coordinate is the key, which `remove` and `add` change.
+def test_set_refuses_a_field(staged):
+    """A field is part of the key, which `remove` and `add` change.
 
     Notes
     -----
-    - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
-    with pytest.raises(ValueError, match="names a coordinate of the multi-dim"):
+    with pytest.raises(ValueError, match="names a field of the multi-dim"):
         staged.set("connection.bus", "Norway", entity="Manchester Wind")
 
 
@@ -1378,7 +1378,7 @@ def _roles(record):
 
 
 def test_a_multi_dim_property_is_a_column_of_its_axis_file(roles, over_roles):
-    """And `set` with the multi-dim's coordinates as keywords patches the tuples they select.
+    """And `set` with the multi-dim's fields as keywords patches the tuples they select.
 
     Notes
     -----
@@ -1400,15 +1400,15 @@ def test_a_multi_dim_property_is_a_column_of_its_axis_file(roles, over_roles):
     )
 
 
-def test_a_multi_dim_property_with_no_coordinate_reaches_every_tuple(over_roles):
+def test_a_multi_dim_property_with_no_keyword_reaches_every_tuple(over_roles):
     staged = over_roles
     staged.set("connection.role", "any")
     assert set(_roles(staged).values()) == {"any"}
 
 
-def test_a_multi_dim_property_refuses_what_is_no_coordinate(over_roles):
+def test_a_multi_dim_property_refuses_what_is_no_field(over_roles):
     staged = over_roles
-    with pytest.raises(ValueError, match="whose tuples its coordinates"):
+    with pytest.raises(ValueError, match="whose tuples its fields"):
         staged.set("connection.role", "x", snapshot="2020")
     with pytest.raises(KeyError, match="selects no tuple"):
         staged.set("connection.role", "x", entity="l1", bus="nowhere")

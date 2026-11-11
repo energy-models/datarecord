@@ -24,11 +24,11 @@ A results layer of the PyPSA tool replaces the SubNetworks of its base. A child 
 
 ### Can a property's value name a label as the dim's own keyword?
 
-A record may label a dim by position and keep what each label means as a property, such as a snapshot's timestamp as `snapshot.timestep`. `select` matches `snapshot=` against the positions ([selecting](../reference/selecting.md)). Taking a timestamp there needs a rule for when `select` matches a keyword against a property rather than the label. PyPSA's multi-period snapshots need no such rule, because they are a [multi-dim](../reference/data-model.md#multi-dims) whose `timestep` is a coordinate keyword.
+A record may label a dim by position and keep what each label means as a property, such as a snapshot's timestamp as `snapshot.timestep`. `select` matches `snapshot=` against the positions ([selecting](../reference/selecting.md)). Taking a timestamp there needs a rule for when `select` matches a keyword against a property rather than the label. PyPSA's multi-period snapshots need no such rule, because they are a [multi-dim](../reference/data-model.md#multi-dims) whose field `timestep` is a keyword.
 
-### Does a multi-dim left with one coordinate read as that dim?
+### Does a multi-dim left with one field read as that dim?
 
-Squeezing a coordinate's dim projects a multi-dim's tuples on the others ([selecting](../reference/selecting.md)). A multi-dim left with one coordinate stays a struct of one field, rather than reading as the dim it draws on.
+Squeezing a field's dim projects a multi-dim's tuples on the others ([selecting](../reference/selecting.md)). A multi-dim left with one field stays a struct of one field, rather than reading as the dim it draws on.
 
 ### Can a `WorkingRecord` edit through a selection?
 
@@ -56,9 +56,9 @@ Its axis is the schema's list, so a custom PyPSA component type is a schema chan
 
 ### May a multi-dim be `over` another multi-dim?
 
-Each coordinate of a multi-dim draws on a dim that is not a multi-dim, and datarecord refuses one that does ([the schema](../reference/schema.md)). Nothing needs a tuple of tuples yet, and the refusal stands until something does.
+Each field of a multi-dim draws on a dim that is not a multi-dim, and datarecord refuses one that does ([the schema](../reference/schema.md)). Nothing needs a tuple of tuples yet, and the refusal stands until something does.
 
-### Does a functional mapping over two coordinates justify a dim?
+### Does a functional mapping over two dims justify a dim?
 
 A zone per plant and period is a multi-dim `plant_period` with the property `zone` ([the data model](../reference/data-model.md)). The multi-dim exists only for `zone`, and you add its tuples before you can set the property.
 
@@ -78,9 +78,9 @@ mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier
 
 PyPSA's `partial` includes `bus` so that a layer can patch one bus's `v_nom`, and every read scans every `partial` dim in the fold key ([layers](layers.md)). Measuring it on a record the size of PyPSA-Eur would settle it.
 
-### May `partial` name a coordinate of a multi-dim?
+### May `partial` name a field of a multi-dim?
 
-`partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a coordinate in `partial`, `p` would be keyed by `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider fold key on every read of every attribute over `snapshot`.
+`partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a field in `partial`, `p` would be keyed by `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider fold key on every read of every attribute over `snapshot`.
 
 ### Do selector keywords need a qualified form?
 
@@ -148,7 +148,7 @@ DuckDB 2.0 can show a reader on another cursor part of a committed transaction o
 
 `select(record, period=2030)` returns a selection of the record at those labels, which any reader reads as a `RecordLike` ([selecting](../reference/selecting.md)). One label squeezes its dim, and what refers to a dropped label goes with it.
 
-### What does a pointwise `set` cover when it leaves one of two dims outside `partial` NULL?
+### What does a `set` at one label cover when it leaves one of two dims outside `partial` NULL?
 
 Every label of the dim it leaves NULL, at the label it names. The rest of the series keeps the parent's values, whether staged, committed or over a materialised parent ([resolution](../reference/resolution.md)).
 

@@ -205,7 +205,7 @@ def join_on(
 def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     """NULL-safe equality on `columns`, between two aliased relations.
 
-    What an address coordinate is matched on everywhere: a row exists or it does
+    What a key's dim column is matched on everywhere: a row exists or it does
     not, so NULL means "this key has no value there" and must match the same
     NULL on the other side, which a plain `=` never does.
     """

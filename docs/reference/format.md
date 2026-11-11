@@ -70,19 +70,19 @@ dims/connection.parquet   connection STRUCT(entity, bus) | role
 ```
 
 - A property is NULL in a row where no layer wrote a value for that label.
-- A [multi-dim](data-model.md)'s file is keyed by one struct column named for it, with a field per coordinate. Its rows are every tuple of the multi-dim at the layer's revision.
+- A [multi-dim](data-model.md)'s file is keyed by one struct column named for it, with its fields. Its rows are every tuple of the multi-dim at the layer's revision.
 - A [dim with `one_of`](data-model.md) has no file. The writer refuses a layer that has one.
 - A layer removes a label or tuple by writing the file without it ([removing labels](layers.md#removing-labels)).
 
 ## `attributes/<attr>.parquet`
 
-An attribute file contains the long rows of one attribute: its own coordinates, then the columns every row has.
+An attribute file contains the long rows of one attribute: a column per dim of the attribute, then the columns every row has.
 
 ```text
-<coordinate> ... | attribute | breakpoint | value
+<dim> ... | attribute | breakpoint | value
 ```
 
-The coordinates are the dims that the attribute's [`dims`](schema.md) declare, multi-dims first, each multi-dim as one struct column.
+The dim columns are the dims that the attribute's [`dims`](schema.md) declare, multi-dims first, each multi-dim as one struct column.
 
 | Attribute                               | Columns                                                        |
 | --------------------------------------- | -------------------------------------------------------------- |
@@ -90,7 +90,7 @@ The coordinates are the dims that the attribute's [`dims`](schema.md) declare, m
 | `p_max_pu` over `entity` and `snapshot` | `entity, snapshot, attribute, breakpoint, value`               |
 | `efficiency` over `connection`          | `connection STRUCT(entity, bus), attribute, breakpoint, value` |
 
-A NULL coordinate means every label of its dim, by [the broadcast rule](data-model.md).
+A NULL in a dim's column means every label of its dim, by [the broadcast rule](data-model.md).
 `breakpoint` is NULL except on the rows of a curve.
 `value` has the attribute's dtype, since each file contains one attribute.
 
@@ -143,7 +143,7 @@ A SQL client of that database reads the record through these views.
 | `datarecord.name.properties.<dim>` | dim that declares properties      | `record.properties[dim]`                   |
 | `datarecord.name.attributes.<a>`   | attribute the schema declares     | `record.attributes[a]`, empty with no rows |
 
-The views are the record's relations unsettled: a NULL coordinate means every label, two rows may cover one point and no default applies.
+The views are the record's relations unsettled: a NULL in a dim's column means every label, two rows may cover one coordinate and no default applies.
 Over a `WorkingRecord`, a view returns each edit once `set`, `add` or `remove` returns.
 A view reads the tables of its own database under any name a client attaches it as: a client that attaches the workspace's file as `r` reads `r.name.dims.<dim>`, and never a table of its own with the same name.
 

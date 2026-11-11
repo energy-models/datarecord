@@ -29,11 +29,11 @@ print(record.properties["entity"].filter("ctype = 'Generator'").df())
 1   gas1  Generator     gas
 ```
 
-The axis lists the three snapshots in order, and the filter keeps both generators. A multi-dim's axis is one struct column, such as `connection`, with a field per coordinate.
+The axis lists the three snapshots in order, and the filter keeps both generators. A multi-dim's axis is one struct column, such as `connection`, with its fields.
 
 ## Read attributes long
 
-`attributes[name]` returns the stored rows, one per value, in no promised order. A row has the attribute's own coordinates, then `attribute`, `breakpoint` and `value`:
+`attributes[name]` returns the stored rows, one per value, in no promised order. A row has a column per dim of the attribute, then `attribute`, `breakpoint` and `value`:
 
 ```python
 print(record.attributes["p_max_pu"].filter("entity = 'wind1'").df())
@@ -46,7 +46,7 @@ print(record.attributes["p_max_pu"].filter("entity = 'wind1'").df())
 2  wind1         0  p_max_pu         NaN    0.3
 ```
 
-Each row is one value of `wind1`'s series. A NULL coordinate means every label of its dim ([the broadcast rule](../reference/data-model.md)). An attribute row has no property column, so join `properties` on the key to filter by category.
+Each row is one value of `wind1`'s series. A NULL in a dim's column means every label of its dim ([the broadcast rule](../reference/data-model.md)). An attribute row has no property column, so join `properties` on the key to filter by category.
 
 ## Plan a read with `flags`
 
@@ -65,7 +65,7 @@ Flags(varies=frozenset({'entity', 'snapshot'}), broadcast=frozenset({'snapshot'}
 
 ## Apply the broadcast rule
 
-To get one row per label at each point, pass `settle` the rows, the labels of each coordinate to expand, and the attribute's flags:
+To get one row per label at each coordinate, pass `settle` the rows, the labels of each dim to expand, and the attribute's flags:
 
 ```python
 from datarecord import settle
@@ -85,9 +85,9 @@ print(settle(record.attributes["p_max_pu"], labels, flags["p_max_pu"]).df())
 5  wind1         2  p_max_pu         NaN    0.5
 ```
 
-`settle` expands `gas1`'s NULL `snapshot` over the three snapshots and drops rows of labels you did not pass. A coordinate you leave out of `labels` stays as written. [The record reference](../reference/record.md) lists what each flag costs.
+`settle` expands `gas1`'s NULL `snapshot` over the three snapshots and drops rows of labels you did not pass. A dim you leave out of `labels` stays as written. [The record reference](../reference/record.md) lists what each flag costs.
 
-A point that no row covers takes the attribute's default. `Schema.default_for` gives it per category:
+A coordinate that no row covers takes the attribute's default. `Schema.default_for` gives it per category:
 
 ```python
 print(record.schema.default_for("p_max_pu", ctype="Generator"))

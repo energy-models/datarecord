@@ -59,7 +59,7 @@ def _schema(**overrides) -> Schema:
 
 
 def test_a_multi_dim_in_dims_is_one_struct_column():
-    """A multi-dim in `dims` is carried as itself, a struct over its coordinates."""
+    """A multi-dim in `dims` is carried as itself, a struct over its fields."""
     s = _schema(
         dimensions={
             **_schema().dimensions,
@@ -77,7 +77,7 @@ def test_a_multi_dim_in_dims_is_one_struct_column():
 def test_the_over_list_form_is_sugar_for_the_dict():
     """`[bus]` is `{bus: bus}`; the dict is what a corridor needs.
 
-    A corridor draws two coordinates from one dim.
+    A corridor draws two fields from one dim.
     """
     assert Dimension(over=["bus"]).over == {"bus": "bus"}
     s = _schema(
@@ -86,7 +86,7 @@ def test_the_over_list_form_is_sugar_for_the_dict():
             "corridor": Dimension(over={"from": "bus", "to": "bus"}),
         }
     )
-    assert list(s.over("corridor")) == ["from", "to"], "every coordinate"
+    assert list(s.over("corridor")) == ["from", "to"], "every field"
     assert s.dimensions["corridor"].dtype is None, "a multi-dim has no dtype"
     assert "dtype" not in s.model_dump()["dimensions"]["corridor"]
 
@@ -193,7 +193,7 @@ def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
     staged = WorkingRecord(revision.record)
     staged.set("target", {"DE": 30.0})
     child = revision.store.commit(staged)
-    assert "target" not in child.record._coords.axes["country"].columns
+    assert "target" not in child.record._axes["country"].columns
     rows = child.record.attributes["target"].to_arrow_table().to_pydict()
     assert rows["country"] == ["DE"]
     assert rows["value"] == [30.0]

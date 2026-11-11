@@ -36,18 +36,18 @@ def settle(
 ) -> DuckDBPyRelation:
     """Settle the long rows of `rel` by the broadcast rule, one row per coordinate.
 
-    A row NULL on a coordinate in `labels` takes each label there, and a row
-    naming a label outside `labels`, or reaching none, is dropped. At each
-    coordinate the row naming every coordinate in `labels` that the other rows
-    there name is kept. A coordinate outside `labels` is kept as written, a
-    NULL there being one more label, and `breakpoint` is no coordinate, so a
+    A row NULL on a dim in `labels` takes each label there, and a row
+    naming a label outside `labels`, or covering none, is dropped. At each
+    coordinate the row naming every dim in `labels` that the other rows
+    there name is kept. A dim outside `labels` is kept as written, a
+    NULL there being one more label, and `breakpoint` is no dim, so a
     curve is kept or dropped whole.
 
     Parameters
     ----------
     labels
-        Per coordinate, a relation holding its labels, or its tuples for a
-        multi-dim, in a column of the coordinate's name.
+        Per dim, a relation holding its labels, or its tuples for a
+        multi-dim, in a column of the dim's name.
     flags
         The attribute's `Flags`, or flags overstating them; they only spare
         work, so overstating changes no value.
@@ -58,7 +58,7 @@ def settle(
     Raises
     ------
     duckdb.Error
-        On fetch, where no row names every coordinate the rows reaching it name.
+        On fetch, where no row names every dim the rows covering a coordinate name.
 
     Notes
     -----
@@ -80,14 +80,14 @@ def settle(
             rel = _broadcast_beside(rows, labels[d], d)
     if not mixed:
         return rel
-    coordinates = [c for c in rel.columns if c not in ("_named", "breakpoint", "value")]
+    dims = [c for c in rel.columns if c not in ("_named", "breakpoint", "value")]
     coordinate = fn.concat_ws(
         lit(", "),
         *(
             fn.concat(
                 lit(f"{c}="), coalesce(col(c).cast(sqltypes.VARCHAR), lit("NULL"))
             )
-            for c in coordinates
+            for c in dims
         ),
     )
     crossed = fn.error(
@@ -100,19 +100,19 @@ def settle(
             ),
         )
     )
-    return most_specific(rel, coordinates, crossed)
+    return most_specific(rel, dims, crossed)
 
 
 def most_specific(
     rel: DuckDBPyRelation,
-    coordinates: Sequence[str],
+    dims: Sequence[str],
     crossed: Expression,
     twins: Expression | None = None,
 ) -> DuckDBPyRelation:
     """Keep, at each coordinate, the row of `rel` naming every dim the other rows there name.
 
     `rel` carries each row's named dims as a `named_mask` in `_named`, which the
-    result drops. `breakpoint` is no coordinate, so a curve is kept or
+    result drops. `breakpoint` is no dim, so a curve is kept or
     dropped whole.
 
     Parameters
@@ -128,7 +128,7 @@ def most_specific(
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    by = [col(c) for c in coordinates]
+    by = [col(c) for c in dims]
     windows = {
         "_all": col("_named").bit_or().over(partition_by=by),
         "_most": fn.bit_count(col("_named")).max().over(partition_by=by),

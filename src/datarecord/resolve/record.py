@@ -45,7 +45,7 @@ from datarecord.duck import (
     union_all_by_name,
 )
 from datarecord.protocols import Flags, LazyRelations
-from datarecord.resolve.coords import Coords
+from datarecord.resolve.axes import Axes
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_keys import with_columns
 from datarecord.resolve.owner_map import (
@@ -71,9 +71,9 @@ def _living(
     """`rel` without the rows naming, in one of `unkeyed`, a dead label.
 
     The fold drops a removed label's rows by anti-joining the owner map on its
-    key. A coordinate outside `partial` is no key column, so the fold cannot
+    key. A dim outside `partial` is no key column, so the fold cannot
     reach the rows naming a label there: they are dropped here instead, against
-    that coordinate's `dead` labels (`Coords.dead`).
+    that dim's `dead` labels (`Axes.dead`).
 
     Notes
     -----
@@ -190,7 +190,7 @@ def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRe
 
 
 def _most_specific(
-    rel: DuckDBPyRelation, coordinates: Sequence[str], attribute: str
+    rel: DuckDBPyRelation, dims: Sequence[str], attribute: str
 ) -> DuckDBPyRelation:
     """`most_specific` over one layer's rows of `attribute`, refusing twins too.
 
@@ -206,17 +206,17 @@ def _most_specific(
     """
     return most_specific(
         rel,
-        coordinates,
-        _refusal(attribute, coordinates, _INCOMPARABLE),
-        _refusal(attribute, coordinates, "both name the same dims"),
+        dims,
+        _refusal(attribute, dims, _INCOMPARABLE),
+        _refusal(attribute, dims, "both name the same dims"),
     )
 
 
 _INCOMPARABLE = "each names a dim the other leaves NULL"
 
 
-def _refusal(attribute: str, coordinates: Sequence[str], why: str) -> Expression:
-    """An expression failing the query, naming `attribute`, the row's `coordinates` and `why`.
+def _refusal(attribute: str, dims: Sequence[str], why: str) -> Expression:
+    """An expression failing the query, naming `attribute`, the row's `dims` and `why`.
 
     Notes
     -----
@@ -228,7 +228,7 @@ def _refusal(attribute: str, coordinates: Sequence[str], why: str) -> Expression
             fn.concat(
                 lit(f"{c}="), coalesce(col(c).cast(sqltypes.VARCHAR), lit("NULL"))
             )
-            for c in coordinates
+            for c in dims
         ),
     )
     return fn.error(
@@ -281,8 +281,8 @@ class _PerCursor(threading.local):
     """What a `Record` keeps per thread, so per cursor: relations are planned on one."""
 
     def __init__(self) -> None:
-        self.frozen_coords: Coords | None = None
-        self.coords: Coords | None = None
+        self.frozen_axes: Axes | None = None
+        self.axes: Axes | None = None
 
 
 @dataclass(frozen=True)
@@ -379,7 +379,7 @@ class Record:
     def _require_open(self) -> None:
         """Refuse a closed record before DuckDB finds its tables gone.
 
-        Called in `_frozen_coords`, which every read takes: the coords and the
+        Called in `_frozen_axes`, which every read takes: the axes and the
         owner map both. A subclass says what it lost in `_closed_message`.
 
         Raises
@@ -552,8 +552,8 @@ class Record:
     def _kept_schemas(self) -> frozenset[str]:
         """The schemas this record keeps, which a registration of it keeps too.
 
-        The fold of each source: `Coords.shared` and `_frozen_table` key the
-        fold by `revision_id`, the last frozen source's id, and `Coords.held`
+        The fold of each source: `Axes.shared` and `_frozen_table` key the
+        fold by `revision_id`, the last frozen source's id, and `Axes.held`
         and `Fold.held` an ancestor's by that ancestor's.
         """
         return frozenset(nested(FOLD, s.layer_id) for s in self.sources)
@@ -561,7 +561,7 @@ class Record:
     # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/reference/resolution/#axes) --
 
     def _axis(self, dim: str) -> DuckDBPyRelation:
-        axis = self._coords.axes.get(dim)
+        axis = self._axes.get(dim)
         return _empty_axis(self.schema, dim, self.con) if axis is None else axis
 
     def _axis_frame(self, dim: str) -> DuckDBPyRelation:
@@ -575,10 +575,10 @@ class Record:
     # -- the fold ------------------------------------------------------------
 
     @property
-    def _coords(self) -> Coords:
+    def _axes(self) -> Axes:
         """Return every declared dim's folded relation, and the dead labels.
 
-        The frozen layers' fold is a set of shared tables (`Coords.shared`),
+        The frozen layers' fold is a set of shared tables (`Axes.shared`),
         read on the calling thread's cursor. The sources above them are folded
         onto those tables once per thread too, so a read with staged edits
         opens no file: that fold's plan is fixed, reading the staging tables
@@ -589,18 +589,18 @@ class Record:
         - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
         - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
         """
-        frozen = self._frozen_coords
+        frozen = self._frozen_axes
         _, above = split_frozen(self.sources)
         if not above:
             return frozen
         cache = self._per_cursor
-        if cache.coords is None:
-            cache.coords = Coords.resolve(self.sources, (frozen, above))
-        return cache.coords
+        if cache.axes is None:
+            cache.axes = Axes.resolve(self.sources, (frozen, above))
+        return cache.axes
 
     @property
-    def _frozen_coords(self) -> Coords:
-        """Return the frozen layers' coords, their shared tables read on the calling thread's cursor.
+    def _frozen_axes(self) -> Axes:
+        """Return the frozen layers' axes, their shared tables read on the calling thread's cursor.
 
         Built once per thread: the tables are write-once, and a relation over
         a table reads it as it is when collected.
@@ -612,10 +612,10 @@ class Record:
         """
         self._require_open()
         cache = self._per_cursor
-        if cache.frozen_coords is None:
+        if cache.frozen_axes is None:
             frozen, _ = split_frozen(self.sources)
-            cache.frozen_coords = Coords.shared(self.revision_id, frozen)
-        return cache.frozen_coords
+            cache.frozen_axes = Axes.shared(self.revision_id, frozen)
+        return cache.frozen_axes
 
     @cached_property
     def _per_cursor(self) -> _PerCursor:
@@ -623,14 +623,14 @@ class Record:
 
     @property
     def _fold(self) -> Fold:
-        """Return the folded coords and the owner map as one `Fold`.
+        """Return the folded axes and the owner map as one `Fold`.
 
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        owner_map = _table(self.revision_id, self.sources, self._frozen_coords)
-        return Fold(self._coords, owner_map)
+        owner_map = _table(self.revision_id, self.sources, self._frozen_axes)
+        return Fold(self._axes, owner_map)
 
     def _source_for(self, layer_uuid: UUID) -> LayerSource:
         """Return the source the fold stamped `layer_uuid` from.
@@ -676,15 +676,15 @@ class Record:
             om = _table(
                 self.revision_id,
                 self.sources,
-                self._frozen_coords,
+                self._frozen_axes,
                 attribute,
                 in_frozen=in_frozen,
             )
-            dead = self._coords.dead
+            dead = self._axes.dead
         else:
             fold = self._fold
             om = fold.owners(attribute)
-            dead = fold.coords.dead
+            dead = fold.axes.dead
         partial_dims = schema.partial_dims
         # This attribute's own columns, not every declared dim: one file per
         # attribute is one column set per attribute (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet).

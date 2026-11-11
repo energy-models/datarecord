@@ -38,11 +38,11 @@ The cost is DuckDB as a hard dependency. A reader written in polars or pandas ex
 
 ## Rows as written
 
-A record exposes an attribute's rows as its layers wrote them, with each NULL coordinate left NULL. A NULL coordinate means every label of its dim, which is [the broadcast rule](../reference/data-model.md). You, or a tool, apply the rule with `settle` when you need one value per point ([read a record](../howto/read-a-record.md)).
+A record exposes an attribute's rows as its layers wrote them, with each NULL left NULL. A NULL in a dim's column means every label of its dim, which is [the broadcast rule](../reference/data-model.md). You, or a tool, apply the rule with `settle` when you need one value per point ([read a record](../howto/read-a-record.md)).
 
 The rejected alternative is a read that applies the rule first. It would expand a constant `p_max_pu` to one row per snapshot, and DuckDB would run the expansion for every reader, needed or not. With rows as written, a value stored once is returned once. A framework that stores a constant apart from a series then tells the two apart without comparing values.
 
-The cost is a step that the reader must run. A reader that ignores the rule takes a NULL coordinate for a missing one. Where two rows cover one point, datarecord guarantees that one sets every dim the other sets. So `settle` always keeps one row at each point ([resolution](../reference/resolution.md)).
+The cost is a step that the reader must run. A reader that ignores the rule takes a NULL in a dim's column for a missing label. Where two rows cover one coordinate, datarecord guarantees that one sets every dim the other sets. So `settle` always keeps one row at each coordinate ([resolution](../reference/resolution.md)).
 
 ## What is out of scope
 

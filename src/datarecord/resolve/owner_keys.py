@@ -70,8 +70,8 @@ def with_columns(
 ) -> DuckDBPyRelation:
     """`rel` with any of `columns` it lacks added as typed NULLs.
 
-    One file carries one attribute's coordinates, so a column another attribute
-    uses is simply absent - and a coordinate an attribute is not addressed by
+    One file carries one attribute's dim columns, so a column another attribute
+    uses is simply absent - and a dim an attribute is not addressed by
     means the value applies across every value of it, which is what NULL means.
     Materialising it here lets every path downstream project the column
     unconditionally instead of branching on its presence.
@@ -143,7 +143,7 @@ def owner_keys(
 
 
 def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelation:
-    """Layer `layer`'s attribute rows `rel`, padded to `schema`'s coordinates and cast, as `_flags` reads them."""
+    """Layer `layer`'s attribute rows `rel`, padded to `schema`'s dims and cast, as `_flags` reads them."""
     rel = cast_declared(schema, with_columns(schema, rel, "breakpoint", *schema.dims))
     return rel.project(
         *(col(d) for d in schema.dims),

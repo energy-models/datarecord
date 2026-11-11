@@ -5,7 +5,7 @@
 """The owner map: which layer owns each key, folded over a record's layers.
 
 The fold over a record's frozen layers is kept in tables the workspace shares, the owner
-map's and the coords' alike.
+map's and the axes' alike.
 
 Notes
 -----
@@ -41,8 +41,8 @@ from datarecord.duck import (
     temp_table,
     union_all_by_name,
 )
-from datarecord.resolve.coords import (
-    Coords,
+from datarecord.resolve.axes import (
+    Axes,
     _base_and_above,
     _dead_keys,
     removed_labels,
@@ -329,35 +329,33 @@ def uncovered(
 
 
 def unsettled(
-    rel: DuckDBPyRelation, coordinates: Sequence[str]
+    rel: DuckDBPyRelation, dims: Sequence[str]
 ) -> Iterator[tuple[frozenset[str], frozenset[str], DuckDBPyRelation]]:
     """Each pair of named sets of `rel` neither holds, with the coordinates its rows meet at that no row names both at.
 
-    Two rows meet where they agree on every one of `coordinates` both name; a
-    meeting coordinate takes the labels either names. There the broadcast rule
-    finds no row more specific than both. The relation is lazy and yields one
-    column per coordinate.
+    Two rows meet where they agree on every one of `dims` both name; a
+    coordinate where they meet takes the labels either names. There the
+    broadcast rule finds no row more specific than both. The relation is lazy
+    and yields one column per dim.
 
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    sets = named_sets(rel, coordinates)
+    sets = named_sets(rel, dims)
 
     def exactly(named: frozenset[str]) -> DuckDBPyRelation:
-        return rel.filter(names_exactly(coordinates, named)).project(
-            *map(col, coordinates)
-        )
+        return rel.filter(names_exactly(dims, named)).project(*map(col, dims))
 
     for a, b in combinations(sets, 2):
         if a <= b or b <= a:
             continue
-        on = [col("a", c) == col("b", c) for c in coordinates if c in a & b]
+        on = [col("a", c) == col("b", c) for c in dims if c in a & b]
         meets = join_on(
             exactly(a).distinct().set_alias("a"),
             exactly(b).distinct().set_alias("b"),
             on,
-        ).project(*(coalesce(col("a", c), col("b", c)).alias(c) for c in coordinates))
+        ).project(*(coalesce(col("a", c), col("b", c)).alias(c) for c in dims))
         if a | b in sets:
             settled = ex_all(col("m", c) == col("u", c) for c in a | b)
             meets = meets.set_alias("m").join(
@@ -624,7 +622,7 @@ def _fold_map(
     """A record's owner map, folded down over `sources`, checkpointed into `made` as `_fold_onto` does.
 
     Keyed by the last source's schema. The axes fold to a resolved copy
-    instead (`Coords.resolve`). The deepest materialised source's map is the
+    instead (`Axes.resolve`). The deepest materialised source's map is the
     fold's *seed* rather than a step of it: it is already folded over
     everything at or below it, so it is read as the starting relation, cast
     and keyed by that node's schema, and only the sources above it are folded
@@ -641,9 +639,9 @@ def _fold_map(
     rel: DuckDBPyRelation | None = None
     keyed, held, dead = schema, dict.fromkeys(_pruned(schema)), {}
     if base is not None:
-        rel = cast_declared(base.coords.schema, base.owner_map)
-        keyed, dead = base.coords.schema, base.coords.dead
-        held = {name: base.coords.axes.get(name) for name in _pruned(schema)}
+        rel = cast_declared(base.axes.schema, base.owner_map)
+        keyed, dead = base.axes.schema, base.axes.dead
+        held = {name: base.axes.get(name) for name in _pruned(schema)}
     return _fold_onto(rel, above, held, con, keyed=keyed, dead=dead, made=made)
 
 
@@ -844,7 +842,7 @@ def split_frozen(
 def _table(
     revision_id: UUID,
     sources: Sequence[LayerSource],
-    frozen_coords: Coords,
+    frozen_axes: Axes,
     attribute: str | None = None,
     *,
     in_frozen: bool = True,
@@ -856,7 +854,7 @@ def _table(
     it is folded on top per call and handed back as a relation, so a staging
     area's edits are picked up with no bookkeeping at all: a relation over a
     staging table reads whatever the table holds when it is collected.
-    `frozen_coords` are the frozen layers' coords, which a restatement above
+    `frozen_axes` are the frozen layers' axes, which a restatement above
     them removes labels from. Where `attribute` is given, only its rows,
     folded one attribute at a time above the frozen layers (`_fold_onto`),
     and onto no map unless `in_frozen`, which says whether the frozen layers'
@@ -874,14 +872,14 @@ def _table(
     keyed = frozen[-1].schema if frozen else schema
     if attribute is not None and rel is not None:
         rel = rel.filter(col("attribute") == lit(attribute)) if in_frozen else None
-    held = {name: frozen_coords.axes.get(name) for name in _pruned(schema)}
+    held = {name: frozen_axes.get(name) for name in _pruned(schema)}
     return _fold_onto(
         rel,
         above,
         held,
         sources[-1].workspace.con,
         keyed=keyed,
-        dead=frozen_coords.dead,
+        dead=frozen_axes.dead,
         attribute=attribute,
     )
 

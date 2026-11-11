@@ -39,12 +39,12 @@ The values are as stored, with no default applied, so NULL means that no layer w
 
 ## `attributes`
 
-`attributes` maps every attribute the schema declares to a relation of its long rows: the attribute's coordinates, then `attribute`, `breakpoint` and `value`.
+`attributes` maps every attribute the schema declares to a relation of its long rows: a column per dim of the attribute, then `attribute`, `breakpoint` and `value`.
 The rows are as written, in no promised order:
 
-- A NULL coordinate stays NULL, and a reader applies [the broadcast rule](data-model.md#the-broadcast-rule) itself, with [`settle`](#settle) or its own SQL.
-- Two rows may cover one point, of one layer or of two. Where they do, the record has one row there that leaves no dim NULL that another row there sets.
-- A point that no row covers has no row, and `Schema.default_for` gives its default.
+- A NULL in a dim's column stays NULL, and a reader applies [the broadcast rule](data-model.md#the-broadcast-rule) itself, with [`settle`](#settle) or its own SQL.
+- Two rows may cover one coordinate, of one layer or of two. Where they do, the record has one row there that leaves no dim NULL that another row there sets.
+- A coordinate that no row covers has no row, and `Schema.default_for` gives its default.
 
 An attribute that no layer has rows for returns an empty relation with its declared columns.
 
@@ -117,9 +117,9 @@ The next record over the same revision folds its ancestry again, so a process th
 
 ## `settle`
 
-**To settle rows** is to apply the broadcast rule to long rows with `settle(rel, labels, flags)`, giving one row per label passed at each point.
-`settle` expands each NULL on a coordinate in `labels` over the labels passed, and drops a row with a label outside them.
-At each point it keeps the row that leaves no coordinate in `labels` NULL that another row there sets.
+**To settle rows** is to apply the broadcast rule to long rows with `settle(rel, labels, flags)`, giving one row per label passed at each coordinate.
+`settle` expands each NULL on a dim in `labels` over the labels passed, and drops a row with a label outside them.
+At each coordinate it keeps the row that leaves no dim in `labels` NULL that another row there sets.
 
 <figure class="diagram">
 --8<-- "docs/static/record-settle.svg"
@@ -127,7 +127,7 @@ At each point it keeps the row that leaves no coordinate in `labels` NULL that a
 
 Over the generators `wind` and `gas`, the NULL row gives each a row at `snapshot` NULL, beside `wind`'s series.
 
-A coordinate left out of `labels` stays as written, and its NULL counts as one more label:
+A dim left out of `labels` stays as written, and its NULL counts as one more label:
 
 ```python
 from datarecord import settle
@@ -148,17 +148,17 @@ rows.order("entity, snapshot").fetchall()
 `snapshot` is not in `labels`, so `gas` keeps one constant row, and `wind` keeps its series beside a row at `snapshot` NULL.
 Passing `"snapshot": record.dims["snapshot"]` as well gives one row per generator and snapshot.
 
-`labels` maps each coordinate to a relation of its labels, or of a multi-dim's tuples, in a column of the coordinate's name.
+`labels` maps each dim to a relation of its labels, or of a multi-dim's tuples, in a column of the dim's name.
 `flags` sets how much work the query does, and flags that overstate the rows give the same result more slowly:
 
-| The coordinate is in     | `settle`                                  |
+| The dim is in            | `settle`                                  |
 | ------------------------ | ----------------------------------------- |
 | `varies` only            | keeps the rows with a label passed        |
 | `broadcast` only         | expands each row over the labels passed   |
 | `varies` and `broadcast` | expands, then keeps the most specific row |
 
 `filter=False` keeps a row with a label outside `labels` as written, for a reader whose own join on the labels drops it.
-Where every row at a point leaves NULL a coordinate that another row there sets, the query raises `duckdb.Error` on fetch, naming the point.
+Where every row at a coordinate leaves NULL a dim that another row there sets, the query raises `duckdb.Error` on fetch, naming the coordinate.
 
 !!! info "See also"
 

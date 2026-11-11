@@ -259,7 +259,7 @@ VIEWS = [
         {"carrier": ["AC", "wind"]}, {"carrier": ["AC", "wind"]}, id="carriers"
     ),
     pytest.param({"country": ["DE"]}, {"country": ["DE"]}, id="chain"),
-    pytest.param({"from": "north"}, {"from": ["north"]}, id="coordinate"),
+    pytest.param({"from": "north"}, {"from": ["north"]}, id="field"),
     pytest.param({"sign": -1}, {"sign": [-1.0]}, id="property"),
 ]
 
@@ -363,12 +363,12 @@ ALL_BUSES = ["north", "south", "paris"]
         pytest.param(
             {"from": "north"},
             {"corridor": [{"from": "north", "to": "south"}], "bus": ALL_BUSES},
-            id="a-coordinate-narrows-tuples",
+            id="a-field-narrows-tuples",
         ),
         pytest.param(
             {"scenario": "high"},
             {"stage": [{"period": 2030}, {"period": 2040}]},
-            id="a-multi-dim-loses-a-coordinate",
+            id="a-multi-dim-loses-a-field",
         ),
     ],
 )
@@ -404,13 +404,13 @@ def test_a_dropped_label_takes_what_refers_to_it(record, asked, kept):
             {"scenario": "high"},
             "stage_cost",
             [(None, 4.0), ({"period": 2040}, 5.0)],
-            id="a-coordinate-leaves-its-struct",
+            id="a-field-leaves-its-struct",
         ),
         pytest.param(
             {"scenario": "high", "period": 2040},
             "stage_cost",
             [(5.0,)],
-            id="a-multi-dim-squeezed-with-its-coordinates",
+            id="a-multi-dim-squeezed-with-its-fields",
         ),
         pytest.param(
             {"period": 2030},
@@ -489,7 +489,7 @@ def test_a_default_by_a_squeezed_category_applies_its_entry(
             {"scenario": "high"},
             "stage_cost",
             [(None, 4.0), ({"scenario": "high", "period": 2040}, 5.0)],
-            id="a-coordinate-comes-back-into-its-struct",
+            id="a-field-comes-back-into-its-struct",
         ),
         pytest.param(
             {"scenario": "high", "period": 2040},
@@ -566,7 +566,7 @@ def test_flags_refuse_a_category_the_view_squeezed(record):
 
 @pytest.fixture(scope="module")
 def routes(module_store):
-    """Corridors and pipes between nodes, `from` a coordinate of both, `via` a coordinate and a property."""
+    """Corridors and pipes between nodes, `from` a field of both, `via` a field and a property."""
     schema = Schema(
         dimensions={
             "node": Dimension(),
@@ -585,7 +585,7 @@ def routes(module_store):
         return module_store.commit(w).record
 
 
-def test_a_coordinate_keyword_wins_over_a_property_of_its_name(routes):
+def test_a_field_keyword_wins_over_a_property_of_its_name(routes):
     view = routes.select(via=["b"])
     assert _labels(view.dims["pipe"]) == [{"from": "a", "via": "b"}]
     assert _labels(view.dims["node"]) == ["a", "b", "c"], "no node selected by `via`"
@@ -594,7 +594,7 @@ def test_a_coordinate_keyword_wins_over_a_property_of_its_name(routes):
 @pytest.mark.parametrize(
     ("asked", "reason"),
     [
-        pytest.param({"from": "a"}, "coordinate of each", id="several-multi-dims"),
+        pytest.param({"from": "a"}, "field of each", id="several-multi-dims"),
         pytest.param({"node": "a"}, "squeezes every dim", id="every-dim"),
     ],
 )

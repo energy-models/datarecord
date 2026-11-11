@@ -58,7 +58,7 @@ Give each dim a `Dimension` with a `dtype` of `"str"`, `"int"`, `"float"` or `"d
 
 ## Declare a multi-dim
 
-Pass `over` with the dims whose labels form its tuples. A list is short for a mapping in which each coordinate is named after its dim:
+Pass `over` with the dims whose labels form its tuples. A list is short for a mapping in which each field is named after its dim:
 
 ```python
 print(schema.multi_dims, schema.over("connection"))
@@ -68,7 +68,7 @@ print(schema.multi_dims, schema.over("connection"))
 ('connection',) {'entity': 'entity', 'bus': 'bus'}
 ```
 
-`over("connection")` returns the mapping that the list stands for. To name a coordinate differently from its dim, pass the mapping, as in `Dimension(over={"from": "bus", "to": "bus"})` for a line between two buses.
+`over("connection")` returns the mapping that the list stands for. To name a field differently from its dim, pass the mapping, as in `Dimension(over={"from": "bus", "to": "bus"})` for a line between two buses.
 
 ## Declare properties
 
@@ -116,7 +116,7 @@ pydantic_core._pydantic_core.ValidationError: 1 validation error for Schema
 
 ## Declare attributes
 
-Give each attribute a `dtype` and the `dims` it varies over, multi-dims included, and a `default` for a point that no row covers. `unit` and `description` are stored as written and never interpreted:
+Give each attribute a `dtype` and the `dims` it varies over, multi-dims included, and a `default` for a coordinate that no row covers. `unit` and `description` are stored as written and never interpreted:
 
 ```python
 print(schema.dims_of("efficiency"))

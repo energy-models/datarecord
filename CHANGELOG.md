@@ -265,6 +265,11 @@ All notable changes to datarecord are documented here. The format follows
   `Schema.flat_dims` returns the dims that are not multi-dims, which
   `Schema.dims` returned before. `Schema.coordinates_of` is now
   `Schema.dims_of`.
+- Breaking: `Schema.coordinate_over` is now `Schema.field_over`.
+- The pages, docstrings and error messages take mathspec's words. A named
+  part of a multi-dim's tuple, such as `bus` of `connection`, is a field. A
+  coordinate is one label on each dim of an attribute, such as `(gas, high)`,
+  which the pages called a point. A keyword names a flat dim or a field.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`
   or `datarecord.edit.dims.bus`, or runs `USE datarecord` once on its own

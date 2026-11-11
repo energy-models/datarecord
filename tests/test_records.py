@@ -102,8 +102,8 @@ def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
     entity_axis = store.workspace.con.sql(
         "SELECT 'wind' AS entity, 'Generator' AS ctype"
     )
-    # `p_nom`'s own coordinates and no others: no `ctype` in a long
-    # row, and no `bus`, which is the connection multi-dim's coordinate rather than
+    # `p_nom`'s own dim columns and no others: no `ctype` in a long
+    # row, and no `bus`, which is the connection multi-dim's field rather than
     # a column every attribute carries.
     long = store.workspace.con.sql(
         "SELECT 'wind' AS entity, 'p_nom' AS attribute,"

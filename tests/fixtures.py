@@ -436,7 +436,7 @@ def _default_attributes(dims: dict[str, Any], multi_dims: dict[str, dict[str, st
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in multi_dims else "entity"
-    # A dim named like a coordinate of the connection would clash with its keyword.
+    # A dim named like a field of the connection would clash with its keyword.
     per_connection = set(dims) - set(multi_dims.get(connection, ()))
     declared = {
         "p_nom": AttributeSpec(dtype="float", dims=varying),
@@ -478,7 +478,7 @@ def schema(
     dtype or as a `Dimension`, `multi_dims` to
     declare a different sparse relation.
 
-    A multi-dim's coordinates are declared dims. `entity` is always `partial`, so
+    A multi-dim's fields are declared dims. `entity` is always `partial`, so
     a layer patches one component's value without restating the rest, and
     `connection` is by default, as the PyPSA tool declares it, so the same
     holds per connection.
@@ -499,12 +499,12 @@ def schema(
     # needs it declared.
     for attr, spec in _default_attributes(dims, multi_dims).items():
         flat.setdefault(attr, spec)
-    # Coordinates are declared here rather than assumed, which lets a caller
-    # pass a multi-dim over coordinates that are not called `bus`.
-    coordinates = {c for over in multi_dims.values() for c in over}
+    # Fields are declared as dims here rather than assumed, which lets a caller
+    # pass a multi-dim over fields that are not called `bus`.
+    fields = {c for over in multi_dims.values() for c in over}
     declared = {
         "entity": "str",
-        **{c: "str" for c in coordinates},
+        **{c: "str" for c in fields},
         **dims,
     }
     return Schema(
@@ -537,7 +537,7 @@ def relation(revision, attribute: str):
 
 
 def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
-    """`attribute`'s value per full coordinate over `dims`, by the broadcast rule.
+    """`attribute`'s value per coordinate over `dims`, by the broadcast rule.
 
     A row reaches every label of a dim it leaves NULL, or every tuple of a
     multi-dim, which reads as the tuple of its fields. At each coordinate the row
@@ -554,10 +554,10 @@ def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
     labels = {d: [label(c) for (c,) in axis(d).project(d).fetchall()] for d in dims}
     reaching: dict[tuple, list[tuple[frozenset, Any]]] = defaultdict(list)
     for *raw, value in record.attributes[attribute].project(*dims, "value").fetchall():
-        coords = [label(c) for c in raw]
-        named = frozenset(d for d, c in zip(dims, coords, strict=True) if c is not None)
+        key = [label(c) for c in raw]
+        named = frozenset(d for d, c in zip(dims, key, strict=True) if c is not None)
         reach = [
-            labels[d] if c is None else [c] for d, c in zip(dims, coords, strict=True)
+            labels[d] if c is None else [c] for d, c in zip(dims, key, strict=True)
         ]
         for full in product(*reach):
             reaching[full].append((named, value))
