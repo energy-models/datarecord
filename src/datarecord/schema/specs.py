@@ -47,7 +47,7 @@ class Dimension(_Declared):
 
     A dimension declaring `over` is a multi-dimension: its labels are tuples of other dimensions'
     labels, carried in a row as one struct column named for it, of one field
-    per entry of `over` (`Schema.multi_dim_type`). Fields rather than dimensions
+    per entry of `over` (`Schema.duck_type`). Fields rather than dimensions
     because two of them may draw on one dimension: a corridor between two buses is
     `(from, to)`.
 
