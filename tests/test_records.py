@@ -336,8 +336,8 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
 
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
     a, b = revision_a.record.schema, revision_b.record.schema
-    assert a.broadcast_dims == ("entity", "bus", "scenario", "ctype", "connection")
-    assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection"), (
+    assert a.dims == ("entity", "bus", "scenario", "ctype", "connection")
+    assert b.dims == ("entity", "bus", "vintage", "ctype", "connection"), (
         "each location's own dims beside `entity`, `bus` and the multi-dim"
     )
     assert store_b.layer(revision_b.id).schema == b, (

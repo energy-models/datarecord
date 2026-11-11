@@ -95,8 +95,8 @@ def _series_index_name(value: Any) -> str | None:
 _Labels = Sequence[Any] | Sequence[Mapping[str, Any]] | DuckDBPyRelation
 
 
-def _plain_labels(dim: str, labels: _Labels, call: str) -> list[Any]:
-    """`labels` of the plain dim `dim` as a list.
+def _flat_labels(dim: str, labels: _Labels, call: str) -> list[Any]:
+    """`labels` of the flat dim `dim` as a list.
 
     Raises
     ------
@@ -673,7 +673,7 @@ class WorkingRecord(Record):
             frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
         )
         return tuple(
-            d for d in (*self.schema.multi_dims, *self.schema.dims) if d in whole
+            d for d in (*self.schema.multi_dims, *self.schema.flat_dims) if d in whole
         )
 
     # -- edits (https://energy-models.github.io/datarecord/reference/editing/#set, https://energy-models.github.io/datarecord/reference/editing/#add-and-remove) ----------------------------------------
@@ -1764,7 +1764,7 @@ class WorkingRecord(Record):
             self._add_tuples(dim, labels, columns)
             return
         kind = f"{_AXIS_PREFIX}{dim}"
-        names = _plain_labels(dim, labels, f"`{call}`")
+        names = _flat_labels(dim, labels, f"`{call}`")
         self._reject_undeclared(f"`{call}`", _axis_columns(self.schema, dim), columns)
         self._require_typed(dim, names, f"`{call}`")
         data: dict[str, list[Any]] = {dim: names}
@@ -1824,7 +1824,7 @@ class WorkingRecord(Record):
             table = self._ensure(f"{_AXIS_PREFIX}{dim}")
             self._delete(table, rel, dim, col("t", dim))
             return
-        labels = _plain_labels(dim, labels, call)
+        labels = _flat_labels(dim, labels, call)
         if not labels:
             return
         self._require_typed(dim, labels, call)

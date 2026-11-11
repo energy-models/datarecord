@@ -40,7 +40,7 @@ schema = Schema(
     },
     partial={"entity", "bus", "connection"},
 )
-print(schema.dims)
+print(schema.flat_dims)
 print(schema.multi_dims)
 ```
 
@@ -51,7 +51,7 @@ Check it:
 ('connection',)
 ```
 
-`connection` is a dim whose labels are `(entity, bus)` tuples (a multi-dim), so the schema lists it apart from the five plain dims. `ctype` lists its labels in the schema with `one_of`, and `partial` lists the dims along which a later layer overrides one label's value.
+`connection` is a dim whose labels are `(entity, bus)` tuples (a multi-dim), so the schema lists it apart from the five flat dims. `ctype` lists its labels in the schema with `one_of`, and `partial` lists the dims along which a later layer overrides one label's value.
 
 ## An empty root
 

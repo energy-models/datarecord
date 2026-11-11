@@ -78,7 +78,7 @@ def flags_from_rows(
     Parameters
     ----------
     dims
-        The broadcast dims the two mappings have an entry per.
+        The dims the two mappings have an entry per.
 
     Notes
     -----
@@ -112,7 +112,7 @@ class Fold:
     ----------
     coords
         The folded axes, their owners and dead labels, under the schema the
-        record is read under, which says which broadcast dims the flags carry.
+        record is read under, which says which dims the flags carry.
     owner_map
         The resolved owner map: `(owner_map_key, layer_uuid, varies,
         broadcast, breakpoints)`, one row per key as its layer wrote it,
@@ -155,7 +155,7 @@ class Fold:
         - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
         schema = self.coords.schema
-        dims = schema.broadcast_dims
+        dims = schema.dims
         if not categories:
             # The structs come back as dicts keyed by dim, so each set is a filter
             # by name rather than a positional slice.

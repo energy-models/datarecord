@@ -399,9 +399,9 @@ def mortal(schema: Schema) -> tuple[str, ...]:
         *(d for m in schema.multi_dims for d in schema.over(m).values()),
         *schema.one_of_properties().values(),
     }
-    unkeyed = set(schema.broadcast_dims) - set(schema.partial_dims)
+    unkeyed = set(schema.dims) - set(schema.partial_dims)
     kept = (drawn | unkeyed) - set(schema.one_of_dims)
-    return tuple(c for c in schema.broadcast_dims if c in kept)
+    return tuple(c for c in schema.dims if c in kept)
 
 
 @dataclass(frozen=True)
