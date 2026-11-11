@@ -20,7 +20,7 @@ object that holds the map.
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+- [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
 - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
 """
 
@@ -104,7 +104,7 @@ class Fold:
     """A node's resolved view, and the map reads over it.
 
     Each member is folded over the node's ancestry: `read` builds one from a
-    `resolved/` cache, and `Record._fold` builds one live over sources. Either way
+    node's `resolved/` files, and `Record._fold` builds one live over sources. Either way
     it is the same shape, which is what lets a live fold start from a read one as
     its base.
 
@@ -256,14 +256,14 @@ class Fold:
         """`layer`'s node's `Fold` under its own schema, `None` if it is not materialised.
 
         The owner map is the presence marker: the map is written last
-        (`cache.materialise`), so if it is absent the node reads as having no
-        cache at all. Each axis is read from the layer `dim_owners.parquet`
+        (`materialise.materialise`), so if it is absent the node reads as not
+        materialised at all. Each axis is read from the layer `dim_owners.parquet`
         names for it, and a dim's dead labels only where it says the dim has
         any.
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         revision_id, store, con = layer.layer_id, layer.store, layer.workspace.con
         owner_map = read_owner_map(revision_id, con, store)
@@ -306,7 +306,7 @@ def read_owner_map(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
     """
     uri = store.owner_map_uri(revision_id)
@@ -327,7 +327,7 @@ def read_dim_owners(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     rel = con.read_parquet(store.dim_owners_uri(revision_id))
     return rel.project(col("dim"), col(LAYER_COLUMN), col("has_dead")).fetchall()

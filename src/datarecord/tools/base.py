@@ -203,7 +203,7 @@ class Schema:
     Parameters
     ----------
     attrs : dict of str to tuple of Attr
-        Per entity type, the attributes that are renamed or computed.
+        Per `ctype`, the attributes that are renamed or computed.
 
     Notes
     -----

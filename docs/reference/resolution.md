@@ -221,7 +221,7 @@ For a record opened on `child`, the fold starts from `c`, the deepest fold at ha
 It reads nothing of `root`, `a` or `b`.
 
 - A read gives the same answers after you materialise, and opens fewer layers.
-- datarecord never starts a revision's fold from that revision's own cache.
+- datarecord never starts a revision's fold from that revision's own resolved files.
 - A materialised map has map rows as written, so a NULL in it applies to a label that a descendant adds.
 - A read under a wider schema extends a materialised map as it extends one folded live.
 

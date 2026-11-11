@@ -258,7 +258,7 @@ def test_node_record_keeps_axis_order(store):
     Notes
     -----
     - [one record over one fold](https://energy-models.github.io/datarecord/reference/resolution/)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root_layer = empty_root(store, schema())
     write_component(

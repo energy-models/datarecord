@@ -941,10 +941,10 @@ class Schema(_Declared):
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
         attribute may vary over, `partial_dims` the owner map's index (the
-        `partial` dims), and ownership is their intersection. A
-        dim in `dims` but not the owner map's index - a non-`partial` value axis like
-        `timestep` - is owned whole, so a patch to one of its values restates the
-        attribute's entire extent along it (`_owned_whole`).
+        `partial` dims), and ownership is their intersection. Along a
+        dim in `dims` but not the owner map's index - a value axis outside `partial`,
+        like `timestep` - a patch to one of its values restates the
+        attribute's entire extent along it (`_outside_partial`).
 
         Notes
         -----
@@ -1244,7 +1244,7 @@ class Schema(_Declared):
                 problems.append(
                     f"{sorted(lost)} no longer `partial`; a layer that patched one "
                     f"value along such an axis is now a partial override of an axis "
-                    f"owned whole"
+                    f"outside `partial`"
                 )
         return problems
 

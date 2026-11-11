@@ -184,7 +184,7 @@ def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
     """
     return reduce(DuckDBPyRelation.union_by_name, rels)

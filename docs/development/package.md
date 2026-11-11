@@ -34,7 +34,7 @@ datarecord/
 │   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
 │   ├── files.py       # Files, LocalFiles, RemoteFiles
 │   ├── manifest.py    # Manifest, LayerFiles, ClaimFile
-│   ├── cache.py       # materialise, materialised, sources_to_read
+│   ├── materialise.py # materialise, materialised, sources_to_read
 │   ├── write.py       # write_layer, layer_data
 │   └── store.py       # Workspace, Store, Claim, Revision, ancestry
 └── tools/

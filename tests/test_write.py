@@ -245,7 +245,7 @@ def _with_ctype_axis(labels) -> _Source:
 
 
 def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
-    """Its axis is the schema's list: no write, cache or layer holds a file of it.
+    """Its axis is the schema's list: no write, layer or resolved files hold a file of it.
 
     A `RecordLike` answers every dim's axis, the list of a dim with `one_of`
     included, and the writer takes it without writing it.
@@ -265,7 +265,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
         out,
     ]
     assert not [d for d in written if (d / "dims" / "ctype.parquet").exists()], (
-        "neither the layer, its cache nor a record written whole holds the list"
+        "neither the layer, its resolved files nor a record written whole holds the list"
     )
 
     layer = empty_root(store, _SCHEMA)

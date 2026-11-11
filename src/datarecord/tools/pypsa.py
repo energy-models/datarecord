@@ -148,7 +148,7 @@ _SCENARIO_INVARIANT = frozenset(
         "active",
     }
 )
-#: The `meta` key naming, per entity type, the custom static columns it was
+#: The `meta` key naming, per component type, the custom static columns it was
 #: exported with: the part of `_taken`'s vocabulary the registry lacks.
 _CUSTOM = "custom_columns"
 #: How close two floats held by members of a collection agree, as `numpy.isclose`'s defaults.
@@ -907,7 +907,7 @@ def _empty_for_none(rel: DuckDBPyRelation) -> DuckDBPyRelation:
 
 
 def _colliding_names(n: pypsa.Network) -> frozenset[str]:
-    """Names more than one entity type claims, read off the `name` level of a stochastic index.
+    """Names more than one component type claims, read off the `name` level of a stochastic index.
 
     Notes
     -----
@@ -2260,7 +2260,7 @@ class PyPSATool(Tool):
             names a dim PyPSA's schema declares; or if a custom text column
             named like a dim holds a value naming no label of it.
         UnsupportedRecordError
-            If two entity types share a name.
+            If two component types share a name.
 
         Notes
         -----
@@ -2430,7 +2430,7 @@ class _Registry(NamedTuple):
 
     #: The record schema every network exports against.
     schema: RecordSchema
-    #: Per entity type, the names it declares, which `_taken` keeps its values to.
+    #: Per component type, the names it declares, which `_taken` keeps its values to.
     carries: dict[str, frozenset[str]]
     #: Every input, attribute or property of any subject, which no result may be named.
     inputs: frozenset[str]
@@ -2438,7 +2438,7 @@ class _Registry(NamedTuple):
 
 @cache
 def _registry() -> _Registry:
-    """The record schema PyPSA's whole component registry declares, what each entity type takes, and its inputs.
+    """The record schema PyPSA's whole component registry declares, what each component type takes, and its inputs.
 
     Every network exports against this one schema. One spec per name
     record-wide: the first type declaring it gives the spec, a default
@@ -2640,7 +2640,7 @@ class _NetworkSource:
 
     @cached_property
     def _members(self) -> dict[str, pd.DataFrame]:
-        """Each `_AXIS_TYPES` and entity type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with the properties of that dim it has columns for and its bus columns, by type, entity types in PyPSA's order.
+        """Each `_AXIS_TYPES` and component type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with the properties of that dim it has columns for and its bus columns, by type, component types in PyPSA's order.
 
         Raises
         ------
@@ -2869,7 +2869,7 @@ class _NetworkSource:
 
     @cached_property
     def _entity_frame(self) -> pd.DataFrame:
-        """Every entity type's members and their properties, typed by `ctype`.
+        """Every component type's members and their properties, typed by `ctype`.
 
         Notes
         -----
@@ -4338,7 +4338,7 @@ class PyPSACollectionTool(Tool):
             axis order or properties. If a label is one `base`'s axis of the
             dim lacks, or as `PyPSATool.to_datarecord` refuses a member.
         UnsupportedRecordError
-            If two entity types share a name.
+            If two component types share a name.
 
         Notes
         -----

@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The fold, the cache and persistence.
+"""The fold, materialised revisions and persistence.
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+- [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
 - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
 - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
 """
@@ -103,20 +103,20 @@ def test_materialise_writes_the_map_under_resolved(store, parent):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     assert Path(store.resolved_dir(parent.id), "owner_map.parquet").exists()
     assert Path(store.dim_owners_uri(parent.id)).exists()
     assert not Path(
         store.resolved_dir(parent.id), "owner_map", "entities.parquet"
     ).exists()
-    # The cache shares the record's directory but stays out of the layer's own
+    # The resolved files share the record's directory but stays out of the layer's own
     # namespace, so a reader that knows nothing about layering still sees a
     # plain parquet directory: every glob into a layer is single-level, so nothing
     # under `resolved/` is reachable by one (https://energy-models.github.io/datarecord/reference/layers/#removing-labels).
     assert not Path(store.layer_dir(parent.id), "owner_map").exists()
     # The globs the fold and `Record.at` actually use must not reach a
-    # cached file.
+    # resolved file.
     layer = Path(store.layer_dir(parent.id))
     reachable = {
         p
@@ -136,7 +136,7 @@ def _axes(store, revision):
     """`revision`'s resolved axes and dead labels, read through a workspace of its own.
 
     A fresh workspace holds no fold of an earlier read, so it reads whatever
-    caches are on disk now.
+    resolved files are on disk now.
     """
     workspace = Workspace()
     try:
@@ -152,7 +152,7 @@ def _axes(store, revision):
 
 
 @pytest.mark.parametrize(
-    ("cached", "dropped"),
+    ("materialised", "dropped"),
     [((), []), ((), ["gas"]), (("root",), ["gas"]), (("middle",), [])],
     ids=[
         "leaf-only-nothing-dead",
@@ -161,16 +161,18 @@ def _axes(store, revision):
         "middle-nothing-dead",
     ],
 )
-def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropped):
-    """A node cache names each axis's layer and whether it has dead labels, and reads back as the full fold.
+def test_a_materialised_node_points_at_the_layers_holding_its_axes(
+    store, materialised, dropped
+):
+    """A materialised node names each axis's layer and whether it has dead labels, and reads back as the full fold.
 
-    `scenario` and `connection` are restated only in the root, so a leaf cache
-    seeded from a cache above it carries their owners forward. `gas`, added in
+    `scenario` and `connection` are restated only in the root, so a leaf materialised
+    from a materialised node above it carries their owners forward. `gas`, added in
     the middle, is dropped in the leaf where `dropped` says so.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root_layer = empty_root(store, schema())
     write_component(root_layer, "Generator", [{"entity": "wind"}])
@@ -190,7 +192,7 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropp
     full = _axes(store, reader)
 
     nodes = {"root": root, "middle": middle}
-    for name in cached:
+    for name in materialised:
         store.revision(nodes[name].id).materialise()
     store.revision(leaf.id).materialise()
 
@@ -204,9 +206,9 @@ def test_a_node_cache_points_at_the_layers_holding_its_axes(store, cached, dropp
     assert {d for d, _, has_dead in owners if has_dead} == set(full[1]), (
         "`has_dead` marks exactly the dims the full fold finds dead labels for"
     )
-    assert _axes(store, reader) == full, "the cache changes no answer"
+    assert _axes(store, reader) == full, "materialising changes no answer"
     assert not list(Path(store.uri, "layers").glob("*/resolved/dims")), (
-        "no axis is copied into a cache"
+        "no axis is copied under `resolved/`"
     )
     assert bool(list(Path(store.uri, "layers").glob("*/resolved/dead/*"))) == bool(
         dropped
@@ -242,16 +244,16 @@ def test_removing_a_component_removes_all_its_attributes(ac_dc_root):
     assert "Norway Wind" in n.c["Generator"].static.index
 
 
-def test_a_removed_cache_falls_back_to_the_fold(store, parent):
-    """A cache is an optimisation, so losing it costs work rather than answers.
+def test_removed_resolved_files_fall_back_to_the_fold(store, parent):
+    """Materialising is an optimisation, so losing the resolved files costs work rather than answers.
 
     The old model had to raise here: a closed node's ancestry was truncated to
     itself, so re-folding would have silently dropped every ancestor. Gating on
-    the cache's presence instead means the untruncated path is still available.
+    the resolved files' presence instead means the untruncated path is still available.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     child_layer = empty_child(parent)
     write_attribute(child_layer, "p_min_pu", [{"entity": "Norway Gas", "value": 0.1}])

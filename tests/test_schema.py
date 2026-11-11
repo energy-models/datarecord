@@ -97,7 +97,7 @@ def test_partial_dims_is_the_union_over_attributes():
     }
     unlisted = Schema(dimensions=dims, partial=frozenset({"scenario"}))
     assert unlisted.partial_dims == ("scenario",), (
-        "no dim is in the index by name: `entity` is owned whole where not partial"
+        "no dim is in the index by name: `entity`, outside `partial`, is not in it"
     )
 
 
