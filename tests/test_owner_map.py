@@ -453,7 +453,7 @@ def entity_series_schema():
             "ctype": {"one_of": ["Generator", "Load"]},
             "snapshot": {"dtype": "int"},
         },
-        properties={"entity": {"ctype": {"one_of": "ctype"}}},
+        properties={"entity": {"ctype": {"refers": "ctype"}}},
         attributes={
             "p_nom": {"dtype": "float", "dims": ["entity"], "default": 0.0},
             "p_max_pu": {

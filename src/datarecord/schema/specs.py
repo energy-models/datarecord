@@ -257,7 +257,7 @@ class PropertySpec(_ValueSpec):
     column of `dims/{dim}.parquet`.
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
-    A property declares exactly one of `dtype` and `one_of`. A property of a
+    A property declares exactly one of `dtype` and `refers`. A property of a
     dim in `partial` that refers to a dim with
     `one_of` categorizes its subject (`Schema.categorizing`).
 
@@ -265,7 +265,7 @@ class PropertySpec(_ValueSpec):
     ----------
     dtype
         The column's type, a mathspec `ParameterDtype`.
-    one_of
+    refers
         The dim the property refers to. Its values have that
         dim's type, and a stored value that is not NULL must be a live label
         of the dim.
@@ -292,14 +292,14 @@ class PropertySpec(_ValueSpec):
     dtype: ParameterDtype | None = Field(
         default=None, exclude_if=lambda dtype: dtype is None
     )
-    one_of: str | None = Field(default=None, exclude_if=lambda dim: dim is None)
+    refers: str | None = Field(default=None, exclude_if=lambda dim: dim is None)
 
     @model_validator(mode="after")
-    def _dtype_or_one_of(self) -> PropertySpec:
-        if (self.dtype is None) == (self.one_of is None):
+    def _dtype_or_refers(self) -> PropertySpec:
+        if (self.dtype is None) == (self.refers is None):
             msg = (
-                "a property declares exactly one of `dtype` and `one_of`, "
-                f"not {'both' if self.one_of else 'neither'}"
+                "a property declares exactly one of `dtype` and `refers`, "
+                f"not {'both' if self.refers else 'neither'}"
             )
             raise ValueError(msg)
         return self

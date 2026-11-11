@@ -1182,7 +1182,7 @@ class WorkingRecord(Record):
         -----
         - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
-        named = self.schema.one_of_properties()
+        named = self.schema.referring_properties()
         for name, values in data.items():
             dim = named.get((subject, name))
             if dim is not None:
@@ -1982,7 +1982,7 @@ class WorkingRecord(Record):
         - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
         """
         problems = []
-        naming = [k for k, d in self.schema.one_of_properties().items() if d == dim]
+        naming = [k for k, d in self.schema.referring_properties().items() if d == dim]
         for subject, name in naming:
             rows = self.properties.get(subject)
             if rows is None:

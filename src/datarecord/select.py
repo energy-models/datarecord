@@ -363,8 +363,8 @@ class _Read:
 
         def category(subject: str, name: str) -> Any:
             spec = self.record.schema.properties[subject][name]
-            if spec.one_of is not None and spec.one_of in squeezed:
-                return squeezed[spec.one_of]
+            if spec.refers is not None and spec.refers in squeezed:
+                return squeezed[spec.refers]
             return self.values(subject, name).get(_key(squeezed[subject]))
 
         return category
@@ -415,8 +415,8 @@ def _narrowing(
     spec = schema.properties[subject][keyword]
     values = read.values(subject, keyword)
     held = (
-        read.axis(spec.one_of)
-        if spec.one_of is not None
+        read.axis(spec.refers)
+        if spec.refers is not None
         else sorted({v for v in values.values() if v is not None})
     )
     matched = _listed(_match(keyword, value, held, schema.duck_type(spec)))
@@ -435,7 +435,7 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
     -----
     - [what goes with a dropped label](https://energy-models.github.io/datarecord/reference/selecting/#what-goes-with-a-dropped-label)
     """
-    referring = schema.one_of_properties()
+    referring = schema.referring_properties()
     while True:
         before = {d: len(held) for d, held in kept.items()}
         dropped = {
@@ -489,7 +489,7 @@ def _refuse_uncategorized(
         *schema.attributes.values(),
         *(spec for specs in schema.properties.values() for spec in specs.values()),
     ]
-    for (subject, name), dim in schema.one_of_properties().items():
+    for (subject, name), dim in schema.referring_properties().items():
         if dim not in squeezed:
             continue
         label, key = squeezed[dim], f"{subject}.{name}"
@@ -524,7 +524,7 @@ def _schema(
         (subject, name)
         for subject, specs in schema.properties.items()
         for name, spec in specs.items()
-        if subject in squeezed or spec.one_of in squeezed
+        if subject in squeezed or spec.refers in squeezed
     }
 
     def defaulted[S: (PropertySpec, AttributeSpec)](spec: S) -> S:

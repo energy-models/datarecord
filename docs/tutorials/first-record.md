@@ -28,8 +28,8 @@ schema = Schema(
     },
     properties={
         "entity": {
-            "ctype": PropertySpec(one_of="ctype"),
-            "carrier": PropertySpec(one_of="carrier"),
+            "ctype": PropertySpec(refers="ctype"),
+            "carrier": PropertySpec(refers="carrier"),
         },
     },
     attributes={
