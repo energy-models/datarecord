@@ -8,7 +8,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 Each guide finishes one task, and assumes you have taken [the first tutorial](../tutorials/first-record.md).
 
-- [Declare a schema](declare-a-schema.md) with dims, properties, categories, attributes and `partial`.
+- [Declare a schema](declare-a-schema.md) with dimensions, properties, categories, attributes and `partial`.
 - [Read a record](read-a-record.md) as wide and long relations, from a directory or from SQL.
 - [Select part of a record](select-a-view.md) with `select`, and lift rows back.
 - [Edit a record](edit-a-record.md) with `set`, `add` and `remove`, then commit.

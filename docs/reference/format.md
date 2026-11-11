@@ -18,15 +18,15 @@ A standalone directory has the same layout at its own URI, with no `claim.json` 
 <location>/layers/<id>/
 ├── claim.json                  # written when the store hands out the id
 ├── manifest.json               # written last: the revision exists from here
-├── dims/<dim>.parquet          # one axis per dim the layer restates
+├── dimensions/<dim>.parquet          # one axis per dimension the layer restates
 ├── attributes/<attr>.parquet   # one attribute per file, results included
 └── resolved/                   # written by materialise()
-    ├── dim_owners.parquet
+    ├── dimension_owners.parquet
     ├── dead/<dim>.parquet
     └── owner_map.parquet
 ```
 
-Each file takes the declared name unchanged, so the dim `bus` is `dims/bus.parquet` and the attribute `p_nom` is `attributes/p_nom.parquet`.
+Each file takes the declared name unchanged, so the dimension `bus` is `dimensions/bus.parquet` and the attribute `p_nom` is `attributes/p_nom.parquet`.
 A read opens the files that the manifest lists, and no other.
 
 ## `claim.json`
@@ -43,46 +43,46 @@ The store writes it create-only and keeps it after the commit, so an id is claim
 A `Manifest` is a layer's `manifest.json`, which lists its id, parent, full schema, files and meta.
 The writer writes it last and create-only, and the revision exists from that moment.
 
-| Key      | Contains                                                                                  |
-| -------- | ----------------------------------------------------------------------------------------- |
-| `id`     | the layer's UUID                                                                          |
-| `parent` | the parent's UUID, `null` for a root and for a standalone directory                       |
-| `schema` | the full [schema](schema.md) the layer was written under                                  |
-| `files`  | `{"dims": [...], "attributes": [...]}`: the declared names of the files the layer wrote   |
-| `meta`   | the revision's own `meta`: a flat object of strings, integers, finite floats and booleans |
+| Key      | Contains                                                                                      |
+| -------- | --------------------------------------------------------------------------------------------- |
+| `id`     | the layer's UUID                                                                              |
+| `parent` | the parent's UUID, `null` for a root and for a standalone directory                           |
+| `schema` | the full [schema](schema.md) the layer was written under                                      |
+| `files`  | `{"dimensions": [...], "attributes": [...]}`: the declared names of the files the layer wrote |
+| `meta`   | the revision's own `meta`: a flat object of strings, integers, finite floats and booleans     |
 
 ```json
-{"id": "4731e41b-…", "parent": "9716e2ef-…", "schema": {…}, "files": {"dims": ["entity"], "attributes": ["p_nom"]}, "meta": {"run": "a"}}
+{"id": "4731e41b-…", "parent": "9716e2ef-…", "schema": {…}, "files": {"dimensions": ["entity"], "attributes": ["p_nom"]}, "meta": {"run": "a"}}
 ```
 
 A layer that restates only the entity axis and writes only `p_nom` lists those two files.
 `meta` describes one revision, such as a run's id, and a child does not inherit it.
 `schema.meta` describes the record, and a child inherits it with the rest of the schema.
 
-## `dims/<dim>.parquet`
+## `dimensions/<dim>.parquet`
 
-An axis file contains every label of one dim at the layer's revision, in axis order, one row per label.
-Its first column is the key, named for the dim, and each further column is one [property](data-model.md) of the dim.
+An axis file contains every label of one dimension at the layer's revision, in axis order, one row per label.
+Its first column is the dimension's column, named for it, and each further column is one [property](data-model.md) of the dimension.
 
 ```text
-dims/entity.parquet       entity | ctype | carrier | sign | type
-dims/connection.parquet   connection STRUCT(entity, bus) | role
+dimensions/entity.parquet       entity | ctype | carrier | sign | type
+dimensions/connection.parquet   connection STRUCT(entity, bus) | role
 ```
 
 - A property is NULL in a row where no layer wrote a value for that label.
-- A [multi-dim](data-model.md)'s file is keyed by one struct column named for it, with a field per coordinate. Its rows are every tuple of the multi-dim at the layer's revision.
-- A [dim with `one_of`](data-model.md) has no file. The writer refuses a layer that has one.
+- A [multi-dimension](data-model.md)'s file has one struct column named for it, with its fields, as its first column. Its rows are every tuple of the multi-dimension at the layer's revision.
+- A [dimension with `one_of`](data-model.md) has no file. The writer refuses a layer that has one.
 - A layer removes a label or tuple by writing the file without it ([removing labels](layers.md#removing-labels)).
 
 ## `attributes/<attr>.parquet`
 
-An attribute file contains the long rows of one attribute: its own coordinates, then the columns every row has.
+An attribute file contains the long rows of one attribute: a column per dimension of the attribute, then the columns every row has.
 
 ```text
-<coordinate> ... | attribute | breakpoint | value
+<dim> ... | attribute | breakpoint | value
 ```
 
-The coordinates are the dims that the attribute's [`dims`](schema.md) declare, multi-dims first, each multi-dim as one struct column.
+The dimensions are those the attribute's [`dims`](schema.md) declare, in the order the schema declares them, a multi-dimension's fields packed in one struct column.
 
 | Attribute                               | Columns                                                        |
 | --------------------------------------- | -------------------------------------------------------------- |
@@ -90,7 +90,7 @@ The coordinates are the dims that the attribute's [`dims`](schema.md) declare, m
 | `p_max_pu` over `entity` and `snapshot` | `entity, snapshot, attribute, breakpoint, value`               |
 | `efficiency` over `connection`          | `connection STRUCT(entity, bus), attribute, breakpoint, value` |
 
-A NULL coordinate means every label of its dim, by [the broadcast rule](data-model.md).
+A NULL in a dimension's column means every label of its dimension, by [the broadcast rule](data-model.md).
 `breakpoint` is NULL except on the rows of a curve.
 `value` has the attribute's dtype, since each file contains one attribute.
 
@@ -101,19 +101,19 @@ A file written before has no `scenario` column, and a read takes its rows as NUL
 
 The section of the schema that declares a name sets the file its values go in.
 
-| Declared as             | Is stored in                                 |
-| ----------------------- | -------------------------------------------- |
-| property of a dim       | a column of `dims/<dim>.parquet`             |
-| property of a multi-dim | a column of `dims/<multi-dim>.parquet`       |
-| attribute, any `dims`   | the long rows of `attributes/<attr>.parquet` |
+| Declared as                   | Is stored in                                 |
+| ----------------------------- | -------------------------------------------- |
+| property of a dimension       | a column of `dimensions/<dim>.parquet`       |
+| property of a multi-dimension | a column of `dimensions/<multi-dim>.parquet` |
+| attribute, any `dims`         | the long rows of `attributes/<attr>.parquet` |
 
-A property is named by its subject, so `bus.x` is a column of `dims/bus.parquet`, and an attribute `x` is `attributes/x.parquet`.
+A property is named by its subject, so `bus.x` is a column of `dimensions/bus.parquet`, and an attribute `x` is `attributes/x.parquet`.
 An axis file has no attribute values.
 
 ## Labels
 
 An axis file has one row per label, so two entities named `north` collide whatever their `ctype`.
-A bus named `north` is a label of another dim and collides with neither.
+A bus named `north` is a label of another dimension and collides with neither.
 
 An attribute row has the label alone, so a `p_nom` row has an `entity` column and no `ctype` column.
 datarecord never renames a label: a [tool](tools.md) reports a collision in a framework's names.
@@ -123,31 +123,31 @@ datarecord never renames a label: a [tool](tools.md) reports a collision in a fr
 `Revision.materialise()` writes a revision's fold under `resolved/`.
 No manifest lists these files, a read opens each by name, and a layer's data stays as it was.
 
-| File                 | Contains                                                                                                  |
-| -------------------- | --------------------------------------------------------------------------------------------------------- |
-| `dim_owners.parquet` | a row `(dim, layer_uuid, has_dead)` per axis: the layer whose `dims/<dim>.parquet` is the revision's axis |
-| `dead/<dim>.parquet` | the removed labels of a dim, written only where `has_dead` is true                                        |
-| `owner_map.parquet`  | the [owner map](resolution.md#the-owner-map), written last                                                |
+| File                       | Contains                                                                                                              |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `dimension_owners.parquet` | a row `(dimension, layer_uuid, has_dead)` per axis: the layer whose `dimensions/<dim>.parquet` is the revision's axis |
+| `dead/<dim>.parquet`       | the removed labels of a dimension, written only where `has_dead` is true                                              |
+| `owner_map.parquet`        | the [owner map](resolution.md#the-owner-map), written last                                                            |
 
 A revision is materialised once `owner_map.parquet` exists.
-`dim_owners.parquet` points into ancestor layers by UUID rather than copying their files.
+`dimension_owners.parquet` points into ancestor layers by UUID rather than copying their files.
 
 ## Registered views
 
-`record.register(name)` creates the DuckDB schema `name` in [the workspace's database](store.md#the-database), `datarecord` by default, with a view per dim, property subject and attribute.
+`record.register(name)` creates the DuckDB schema `name` in [the workspace's database](store.md#the-database), `datarecord` by default, with a view per dimension, property subject and attribute.
 A SQL client of that database reads the record through these views.
 
-| View                               | One per                           | Reads as                                   |
-| ---------------------------------- | --------------------------------- | ------------------------------------------ |
-| `datarecord.name.dims.<dim>`       | dim, a dim with `one_of` included | `record.dims[dim]`                         |
-| `datarecord.name.properties.<dim>` | dim that declares properties      | `record.properties[dim]`                   |
-| `datarecord.name.attributes.<a>`   | attribute the schema declares     | `record.attributes[a]`, empty with no rows |
+| View                               | One per                                       | Reads as                                   |
+| ---------------------------------- | --------------------------------------------- | ------------------------------------------ |
+| `datarecord.name.dimensions.<dim>` | dimension, a dimension with `one_of` included | `record.dimensions[dim]`                   |
+| `datarecord.name.properties.<dim>` | dimension that declares properties            | `record.properties[dim]`                   |
+| `datarecord.name.attributes.<a>`   | attribute the schema declares                 | `record.attributes[a]`, empty with no rows |
 
-The views are the record's relations unsettled: a NULL coordinate means every label, two rows may cover one point and no default applies.
+The views are the record's relations unsettled: a NULL in a dimension's column means every label, two rows may cover one coordinate and no default applies.
 Over a `WorkingRecord`, a view returns each edit once `set`, `add` or `remove` returns.
-A view reads the tables of its own database under any name a client attaches it as: a client that attaches the workspace's file as `r` reads `r.name.dims.<dim>`, and never a table of its own with the same name.
+A view reads the tables of its own database under any name a client attaches it as: a client that attaches the workspace's file as `r` reads `r.name.dimensions.<dim>`, and never a table of its own with the same name.
 
-Run `USE datarecord` once to write short names, `name.dims.bus` and `registered`.
+Run `USE datarecord` once to write short names, `name.dimensions.bus` and `registered`.
 `USE` holds only for the connection or cursor that runs it, and a client that attached the file under another name runs `USE` with that name.
 datarecord never runs `USE` on its own cursors.
 

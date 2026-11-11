@@ -4,14 +4,14 @@
 
 """Classifications: a property that refers to a dim.
 
-`bus.state` `one_of: state` says every bus is in at most one state: a
+`bus.state` `refers: state` says every bus is in at most one state: a
 column of the bus axis whose values are labels of `state`, which keeps an axis
 file for its order and for its properties.
 
 Notes
 -----
 - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
-- [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+- [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
 """
 
 from typing import Any
@@ -45,9 +45,9 @@ def _schema(**overrides) -> Schema:
             "bus_state": Dimension(over=["bus", "state"]),
         },
         "properties": {
-            "bus": {"state": PropertySpec(one_of="state")},
-            "state": {"country": PropertySpec(one_of="country")},
-            "bus_state": {"country": PropertySpec(one_of="country")},
+            "bus": {"state": PropertySpec(refers="state")},
+            "state": {"country": PropertySpec(refers="country")},
+            "bus_state": {"country": PropertySpec(refers="country")},
         },
         "partial": frozenset(),
     }
@@ -59,7 +59,7 @@ def _schema(**overrides) -> Schema:
 
 
 def test_a_multi_dim_in_dims_is_one_struct_column():
-    """A multi-dim in `dims` is carried as itself, a struct over its coordinates."""
+    """A multi-dim in `dimensions` is carried as itself, a struct over its fields."""
     s = _schema(
         dimensions={
             **_schema().dimensions,
@@ -67,19 +67,17 @@ def test_a_multi_dim_in_dims_is_one_struct_column():
         },
         attributes={"capacity": AttributeSpec(dtype="float", dims={"connection"})},
     )
-    assert s.coordinates_of("capacity") == ("connection",), (
-        "the multi-dim, not expanded"
-    )
+    assert s.dimensions_of("capacity") == ("connection",), "the multi-dim, not expanded"
     assert s.column_type("connection") == duckdb.struct_type(
         {"bus": sqltypes.VARCHAR, "state": sqltypes.VARCHAR}
     )
-    assert s.multi_dims_of("capacity") == ("connection",)
+    assert s.multi_dimensions_of("capacity") == ("connection",)
 
 
 def test_the_over_list_form_is_sugar_for_the_dict():
     """`[bus]` is `{bus: bus}`; the dict is what a corridor needs.
 
-    A corridor draws two coordinates from one dim.
+    A corridor draws two fields from one dim.
     """
     assert Dimension(over=["bus"]).over == {"bus": "bus"}
     s = _schema(
@@ -88,7 +86,7 @@ def test_the_over_list_form_is_sugar_for_the_dict():
             "corridor": Dimension(over={"from": "bus", "to": "bus"}),
         }
     )
-    assert list(s.over("corridor")) == ["from", "to"], "every coordinate"
+    assert list(s.over("corridor")) == ["from", "to"], "every field"
     assert s.dimensions["corridor"].dtype is None, "a multi-dim has no dtype"
     assert "dtype" not in s.model_dump()["dimensions"]["corridor"]
 
@@ -99,9 +97,11 @@ def test_the_over_list_form_is_sugar_for_the_dict():
 @pytest.mark.parametrize(
     ("spec", "extra", "match"),
     [
-        pytest.param({"one_of": "nope"}, {}, "an undeclared dim", id="undeclared"),
         pytest.param(
-            {"one_of": "state"},
+            {"refers": "nope"}, {}, "an undeclared dimension", id="undeclared"
+        ),
+        pytest.param(
+            {"refers": "state"},
             {
                 "attributes": {
                     "v": AttributeSpec(
@@ -111,8 +111,8 @@ def test_the_over_list_form_is_sugar_for_the_dict():
                     )
                 }
             },
-            "refers to 'state', but 'state' is not a one_of dim",
-            id="a-default-by-on-a-plain-dim",
+            "refers to 'state', but 'state' is not a one_of dimension",
+            id="a-default-by-on-a-dim-without-one-of",
         ),
     ],
 )
@@ -169,7 +169,7 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
 
 
 def _tuples(record) -> list[dict]:
-    return record.dims["bus_state"].df()["bus_state"].tolist()
+    return record.dimensions["bus_state"].df()["bus_state"].tolist()
 
 
 def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
@@ -195,7 +195,7 @@ def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
     staged = WorkingRecord(revision.record)
     staged.set("target", {"DE": 30.0})
     child = revision.store.commit(staged)
-    assert "target" not in child.record._coords.axes["country"].columns
+    assert "target" not in child.record._axes["country"].columns
     rows = child.record.attributes["target"].to_arrow_table().to_pydict()
     assert rows["country"] == ["DE"]
     assert rows["value"] == [30.0]
@@ -398,7 +398,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
     with pytest.raises(KeyError, match=r"names 'state' labels \['lower'\]"):
         staged.set("bus.state", "lower", bus="south")
     child = classified.store.commit(staged)
-    assert child.record.dims["state"].df()["state"].tolist() == ["upper"]
+    assert child.record.dimensions["state"].df()["state"].tolist() == ["upper"]
 
 
 def test_the_writer_refuses_a_property_naming_a_removed_label(classified):

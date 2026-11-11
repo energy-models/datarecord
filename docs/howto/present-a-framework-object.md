@@ -10,9 +10,9 @@ This guide shows how to wrap a framework's own object so that any reader of a re
 
 ## Implement the six members
 
-`RecordLike` is a structural protocol, so a class with its six members satisfies it without importing anything from datarecord. The members are `schema`, `con`, `dims`, `properties`, `attributes` and `flags`, and [the record](../reference/record.md) states what each returns.
+`RecordLike` is a structural protocol, so a class with its six members satisfies it without importing anything from datarecord. The members are `schema`, `con`, `dimensions`, `properties`, `attributes` and `flags`, and [the record](../reference/record.md) states what each returns.
 
-A mapping may be a plain `dict`. A dim with `one_of` needs no entry in `dims`, because its axis is the schema's list.
+A mapping may be a plain `dict`. A dimension with `one_of` needs no entry in `dimensions`, because its axis is the schema's list.
 
 ## Write the wrapper
 
@@ -34,7 +34,7 @@ SCHEMA = Schema(
         "ctype": Dimension(one_of=["Generator", "Load"]),
         "snapshot": Dimension(dtype="int"),
     },
-    properties={"entity": {"ctype": PropertySpec(one_of="ctype")}},
+    properties={"entity": {"ctype": PropertySpec(refers="ctype")}},
     attributes={
         "p_nom": AttributeSpec(dtype="float", dims={"entity"}, default=0.0),
         "p_max_pu": AttributeSpec(
@@ -66,7 +66,7 @@ class FleetRecord:
     schema: Schema = SCHEMA
 
     @property
-    def dims(self) -> Relations:
+    def dimensions(self) -> Relations:
         units = self.con.from_df(self.fleet.units)
         hours = self.con.from_df(self.fleet.availability)
         return {
@@ -120,7 +120,7 @@ Flags(varies=frozenset({'entity', 'snapshot'}), broadcast=frozenset(), breakpoin
 0  wind1  p_max_pu         NaN    0.8
 ```
 
-`p_max_pu` varies along both dims, and the selection at snapshot 1 returns `wind1`'s 0.8. `isinstance` checks only that the members exist. The `select` call is the test that the relations have the shapes the reference states.
+`p_max_pu` varies along both dimensions, and the selection at snapshot 1 returns `wind1`'s 0.8. `isinstance` checks only that the members exist. The `select` call is the test that the relations have the shapes the reference states.
 
 ## Commit the wrapper
 

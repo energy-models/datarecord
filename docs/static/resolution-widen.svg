@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 220" width="820" height="220" style="max-width: 100%; height: auto" role="img" aria-labelledby="rw-t rw-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="rw-t">The fold splits the parent's rows by their labels when a dim joins partial</title>
+  <title id="rw-t">The fold splits the parent's rows by their labels when a dimension joins partial</title>
   <desc id="rw-d">The root, under partial entity, writes gas low 1 and gas high 2. The child, under partial entity and scenario, writes gas high 3. The fold splits the root's map row by the scenarios the root wrote: gas low and gas high, both assigned to the root. The child's gas high covers the second, which the fold drops. The read gives gas low 1 and gas high 3.</desc>
   <defs>
     <marker id="rw-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">

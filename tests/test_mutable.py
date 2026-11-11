@@ -20,7 +20,7 @@ import pyarrow as pa
 import pytest
 
 from datarecord.mutable import WorkingRecord, normalise_value
-from datarecord.resolve.coords import Coords
+from datarecord.resolve.axes import Axes
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
@@ -95,7 +95,7 @@ def _layer_rows(revision, attribute):
 
 
 def _layer_axis(revision, dim):
-    """One committed layer's own `dims/<dim>.parquet`, as pandas - `_layer_rows` for an axis."""
+    """One committed layer's own `dimensions/<dim>.parquet`, as pandas - `_layer_rows` for an axis."""
     rel = ParquetLayer(revision.manifest, revision.store).axis(dim)
     return rel.to_df() if rel is not None else pd.DataFrame()
 
@@ -161,19 +161,19 @@ def test_a_sequence_must_align_to_labels(value, labels, match):
         normalise_value(value, labels)
 
 
-def test_an_unnamed_series_index_over_several_open_coordinates_is_refused(staged):
+def test_an_unnamed_series_index_over_several_open_fields_is_refused(staged):
     """Not inferred from the labels, so an index saying nothing must be told.
 
-    `entity=` fixes one coordinate, but `p_max_pu` has more than one left open,
+    `entity=` fixes one dim, but `p_max_pu` has more than one keyword left open,
     so nothing says which the index holds.
     """
     series = pd.Series({"2030-01-01": 0.4})
-    with pytest.raises(ValueError, match="naming the series' index"):
+    with pytest.raises(ValueError, match="name the series' index after one"):
         staged.set("p_max_pu", series, entity=["Manchester Wind"])
 
 
 def test_the_series_index_name_says_what_it_holds(staged):
-    """A caller who named the index has said which coordinate it holds."""
+    """A caller who named the index has said which keyword it holds."""
     index = pd.Index([pd.Timestamp("2015-01-01")], name="snapshot")
     staged.set("p_max_pu", pd.Series([0.4], index=index), entity=["Manchester Wind"])
     assert "p_max_pu" in staged.attributes
@@ -335,7 +335,7 @@ def test_a_label_of_a_type_that_does_not_fit_its_dim_is_refused(staged, edit, ma
 def test_a_label_its_dtype_widens_is_taken(staged, dim, labels):
     """A label of a type its dtype widens, as a frame's column is, is staged."""
     staged.add(dim, labels)
-    assert set(labels) <= set(staged.dims[dim].df()[dim]), "staged as given"
+    assert set(labels) <= set(staged.dimensions[dim].df()[dim]), "staged as given"
 
 
 def test_set_accepts_a_name_staged_by_add(staged, root):
@@ -357,10 +357,10 @@ def test_set_accepts_a_name_staged_by_add(staged, root):
 # -- the overlay does not overlap (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule, https://energy-models.github.io/datarecord/reference/editing/) -----------------------------
 
 
-def test_a_pointwise_edit_keeps_the_rest_of_the_series(staged):
-    """An edit naming a coordinate displaces that one only.
+def test_an_edit_at_one_coordinate_keeps_the_rest_of_the_series(staged):
+    """An edit at one coordinate displaces that one only.
 
-    Keying the overlay on the owner-map key alone would drop the whole series here,
+    Matching the overlay on the owner map's index alone would drop the whole series here,
     since it excludes the dims an attribute is not owned per.
 
     Notes
@@ -448,7 +448,7 @@ def test_flags_report_a_dim_a_staged_edit_introduces(staged, ac_dc):
     staged.set("marginal_cost", 3.0, entity=["Norway Wind"])
     mixed = staged.flags()["marginal_cost"]
     assert {"snapshot"} <= mixed.varies & mixed.broadcast, (
-        "members staged at different grains report both, whatever the map's grain"
+        "labels staged at different grains report both, whatever the map's grain"
     )
 
 
@@ -476,14 +476,14 @@ def test_a_staged_edit_is_read_back_and_then_re_read(staged, root):
     staged.set("p_nom", 22.0, entity=["Manchester Wind"])
     assert p_nom("Manchester Wind") == [22.0], "the read re-folds the staged layer"
 
-    # A key the second edit never named, to pin that re-folding is not
+    # A map row the second edit never named, to pin that re-folding is not
     # re-resolving from scratch and dropping what the first edit staged.
     staged.set("p_nom", 33.0, entity=["Norway Wind"])
     assert p_nom("Manchester Wind") == [22.0]
     assert p_nom("Norway Wind") == [33.0]
 
     committed = _entity_values(root.store.commit(staged).record, "p_nom")
-    assert committed["Manchester Wind"] == 22.0, "the later edit to a key commits"
+    assert committed["Manchester Wind"] == 22.0, "the later edit to a map row commits"
 
 
 def _rows(rel):
@@ -504,10 +504,10 @@ def _rows(rel):
             "entity",
             lambda w: w.set("entity.carrier", {"Norway Gas": "wind"}),
         ),
-        ("dims", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
-        ("dims", "scenario", lambda w: w.add("scenario", ["high"])),
+        ("dimensions", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
+        ("dimensions", "scenario", lambda w: w.add("scenario", ["high"])),
         (
-            "dims",
+            "dimensions",
             "connection",
             lambda w: w.add(
                 "connection", [{"entity": "Norway Gas", "bus": "Manchester"}]
@@ -555,8 +555,8 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     the removed label and tuple back, and each comes where it is added again.
     Writing the edits as a child folds every layer from its files, which the
     seeded fold has to match: the same labels, tuples, properties and values,
-    in member order. One case materialises the root, below every removal, and
-    one the base, above them, where its node cache keeps a removed key at most
+    in axis order. One case materialises the root, below every removal, and
+    one the base, above them, where its resolved files keep a removed label at most
     as a dead label. In every case a child over the base reads the same once
     the base is materialised.
 
@@ -602,7 +602,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
 
     def read(record):
         return (
-            {d: record.dims[d].fetchall() for d in record.dims},
+            {d: record.dimensions[d].fetchall() for d in record.dimensions},
             {s: record.properties[s].fetchall() for s in record.properties},
             {
                 a: sorted(record.attributes[a].fetchall(), key=str)
@@ -610,12 +610,12 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
             },
         )
 
-    assert w.dims["entity"].fetchall() == [
+    assert w.dimensions["entity"].fetchall() == [
         ("Norway Wind",),
         ("Solar",),
         ("Norway",),
     ], "a staged removal goes, and a label added back comes where it is added again"
-    assert [c for (c,) in w.dims["connection"].fetchall()] == [
+    assert [c for (c,) in w.dimensions["connection"].fetchall()] == [
         {"entity": "Solar", "bus": "Oslo"},
         {"entity": "Norway Wind", "bus": "Norway"},
     ], "a tuple added back comes where it is added again"
@@ -633,14 +633,14 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
 # -- ownership granularity (https://energy-models.github.io/datarecord/reference/layers/#partial, https://energy-models.github.io/datarecord/reference/editing/#edits) -------------------------------------
 
 
-def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
+def test_two_edits_on_one_series_outside_partial_both_land(staged, root):
     """A second `set` replaces its own fill without disturbing the first edit's.
 
-    The case `staging-without-seq` leans on hardest: a `set` on a whole-owned
-    axis stages the touched value plus the untouched coordinates as fills, and a
-    second `set` at another coordinate must replace only the fill on *its* key -
+    The case `staging-without-seq` leans on hardest: a `set` on an axis outside
+    `partial` stages the touched value plus the untouched coordinates as fills, and a
+    second `set` at another coordinate must replace only the fill at *its* coordinate -
     the first edit's value and its fills have to survive. Idempotence of
-    `_complete_owned_whole` and replace-by-coordinate are what make it hold with
+    `_complete_outside_partial` and replace-by-coordinate are what make it hold with
     no ordering column to rank a fill below an edit.
 
     Notes
@@ -671,7 +671,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
         "every untouched snapshot keeps the base value"
     )
     assert set(rows["entity"]) == {"Manchester Wind"}, (
-        "an axis owned whole restates the touched key's extent, not every key's"
+        "an axis outside `partial` restates the touched map row's extent, not every map row's"
     )
 
 
@@ -685,7 +685,7 @@ def _entity_axis(record):
 
 
 def _entity_values(record, attribute):
-    """`attribute`'s rows naming an entity alone - every other coordinate NULL - by label."""
+    """`attribute`'s rows naming an entity alone - every other dim NULL - by label."""
     rows = record.attributes[attribute].df()
     others = [c for c in rows.columns if c not in ("entity", "attribute", "value")]
     return rows[rows[others].isna().all(axis=1)].set_index("entity")["value"]
@@ -704,7 +704,7 @@ def _over_units(module_store):
             },
             properties={
                 "unit": {
-                    "tech": PropertySpec(one_of="tech"),
+                    "tech": PropertySpec(refers="tech"),
                     "site": PropertySpec(dtype="str"),
                 }
             },
@@ -793,7 +793,7 @@ def test_set_may_change_a_category(units):
             ("demand", 1.0),
             {"tech": "plant", "hour": [0]},
             ValueError,
-            "through no coordinate",
+            "through no keyword",
         ),
     ],
     ids=[
@@ -802,7 +802,7 @@ def test_set_may_change_a_category(units):
         "add-unknown-category",
         "keyword-unknown-category",
         "keyword-and-label",
-        "keyword-reaching-no-coordinate",
+        "keyword-through-no-keyword",
     ],
 )
 def test_an_edit_refuses_an_unknown_label_category_or_keyword(
@@ -823,14 +823,14 @@ def test_a_dim_with_one_of_is_the_schemas_list(units):
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
     """
     with pytest.raises(
         ValueError, match=r"`add\('tech', ...\)` is refused: 'tech' lists its labels"
     ):
         units.add("tech", ["node"])
-    assert units.dims["tech"].df()["tech"].tolist() == ["plant", "node"], (
+    assert units.dimensions["tech"].df()["tech"].tolist() == ["plant", "node"], (
         "the axis is the list"
     )
     assert "tech" not in units.edits.axes(), "nothing is staged for it"
@@ -903,9 +903,9 @@ def test_a_staged_axis_is_the_whole_axis_in_order(staged, root):
     Notes
     -----
     - [add / remove](https://energy-models.github.io/datarecord/reference/editing/#add-and-remove)
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
-    labels = [*root.record.dims["entity"].df()["entity"], "NewSolar"]
+    labels = [*root.record.dimensions["entity"].df()["entity"], "NewSolar"]
     staged.remove("entity", ["Norway Gas"])
     staged.add("entity", ["NewSolar"], ctype=GEN)
     staged.add("entity", ["Norway Gas"], ctype=GEN)
@@ -932,7 +932,7 @@ def test_removing_a_label_drops_its_staged_attributes(staged, root):
     assert "Norway Gas" not in _entity_axis(staged).index, "it reads back at once"
 
     child = root.store.commit(staged)
-    assert "Norway Gas" not in set(child.record.dims["entity"].df()["entity"])
+    assert "Norway Gas" not in set(child.record.dimensions["entity"].df()["entity"])
     assert "Norway Gas" not in _entity_values(child.record, "p_nom")
 
 
@@ -960,24 +960,24 @@ def test_an_add_undone_by_a_remove_writes_nothing(staged, root, set_value):
     assert layer.attribute("p_nom") is None, "the commit writes no attribute"
 
 
-# -- connect and disconnect (https://energy-models.github.io/datarecord/reference/editing/#add-and-remove, https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column) --------------------------------------
+# -- connect and disconnect (https://energy-models.github.io/datarecord/reference/editing/#add-and-remove, https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column) --------------------------------------
 
 
 def test_remove_stages_a_multi_dim_without_the_tuple(staged, root):
-    """Per `(entity, bus)`, the multi-dim's own key.
+    """Per `(entity, bus)`, the multi-dim's own label.
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     staged.remove("connection", [{"entity": "Norwich Converter", "bus": "Norwich"}])
-    before = unpacked(staged.dims["connection"])
+    before = unpacked(staged.dimensions["connection"])
     ports = set(before[before["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in ports, "the removal reads back before commit"
     assert "Norwich DC" in ports, "deletion is per connection, not per component"
 
     child = root.store.commit(staged)
-    rows = unpacked(child.record.dims["connection"])
+    rows = unpacked(child.record.dimensions["connection"])
     left = set(rows[rows["entity"] == "Norwich Converter"]["bus"])
     assert "Norwich" not in left
     assert "Norwich DC" in left, "the component's other port survives the commit"
@@ -995,7 +995,7 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     staged.set("efficiency", 0.5, entity=["Manchester Wind"], bus="Manchester")
 
@@ -1011,7 +1011,7 @@ def test_a_bus_keyword_addresses_one_connection(staged, root):
 
 
 def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
-    """A packed struct passes through, one key replacing the last.
+    """A packed struct passes through, one coordinate replacing the last.
 
     Notes
     -----
@@ -1025,7 +1025,7 @@ def test_a_frame_carries_a_multi_dim_as_its_struct(staged):
                 f"AS connection, {value} AS value"
             ),
         )
-    assert _efficiency(staged)["Manchester"] == 0.25, "one key, replaced"
+    assert _efficiency(staged)["Manchester"] == 0.25, "one coordinate, replaced"
 
 
 def test_set_takes_a_frame_duckdb_scans(staged):
@@ -1088,7 +1088,7 @@ def test_set_takes_an_all_none_column_as_a_broadcast(staged):
                 }
             ),
             r"columns \['Snapshot'\] the schema does not declare",
-            id="case-variant-coordinate",
+            id="case-variant-dim",
         ),
     ],
 )
@@ -1118,11 +1118,11 @@ def test_set_refuses_a_frame_column_that_does_not_fit_its_dtype(
     ids=["flat", "partly-null"],
 )
 def test_a_frame_carrying_a_multi_dim_but_as_its_struct_is_rejected(staged, select):
-    """Flat coordinates, beside the struct or not, or a wrong struct, are refused.
+    """Flat fields, beside the struct or not, or a wrong struct, are refused.
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     with pytest.raises(ValueError, match="'connection'"):
         staged.set("efficiency", staged.con.sql(f"SELECT {select}"))
@@ -1142,7 +1142,7 @@ def test_a_layer_touching_no_tuple_resolves_no_ancestry_to_check(
         pytest.fail("resolved the ancestry for a layer with nothing to check")
 
     staged.set("p_nom", 150.0, entity=["Manchester Wind"])
-    monkeypatch.setattr(Coords, "resolve", classmethod(unwanted))
+    monkeypatch.setattr(Axes, "resolve", classmethod(unwanted))
     root.store.commit(staged)
 
 
@@ -1177,12 +1177,12 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         (
             pd.DataFrame([{"connection": {"entity": "Manchester Wind"}}]),
             {},
-            r"as a struct of its coordinates \['entity', 'bus'\]",
+            r"as a struct of its fields \['entity', 'bus'\]",
         ),
         (
             pd.DataFrame([{"connection": _TUPLE, "entity": "Manchester Wind"}]),
             {},
-            r"carrying both the column 'connection' and its coordinates \['entity'\]",
+            r"carrying both the column 'connection' and its fields \['entity'\]",
         ),
         (
             pd.DataFrame([{"entity": "Manchester Wind"}]),
@@ -1197,23 +1197,23 @@ _TUPLE = {"entity": "Manchester Wind", "bus": "Norway"}
         (
             pd.DataFrame({"entity": [None], "bus": ["Norway"]}),
             {},
-            "with a coordinate NULL",
+            "with a field NULL",
         ),
-        ([{"entity": "Manchester Wind"}], {}, "maps each of its coordinates"),
+        ([{"entity": "Manchester Wind"}], {}, "maps each of its fields"),
         ([_TUPLE], {"p_nom": [1.0, 2.0]}, "has 2 'p_nom' values for 1 tuples"),
     ],
     ids=[
         "struct-missing-field",
-        "struct-and-coordinates",
-        "missing-coordinate",
-        "mixed-type-coordinate-list",
-        "null-coordinate",
+        "struct-and-fields",
+        "missing-field",
+        "mixed-type-field-list",
+        "null-field",
         "partial-mapping",
         "misaligned-keyword",
     ],
 )
-def test_add_needs_a_label_per_coordinate(staged, tuples, columns, match):
-    """A tuple is whole: a label of each coordinate, typed as the dim it draws on.
+def test_add_needs_a_label_per_field(staged, tuples, columns, match):
+    """A tuple is whole: a label of each field, typed as the dim it draws on.
 
     Notes
     -----
@@ -1233,7 +1233,7 @@ def _as_mappings(pairs):
 
 @pytest.mark.parametrize("shape", [_as_flat, _as_mappings], ids=["flat", "mappings"])
 def test_add_and_remove_take_tuples_in_any_shape(over_roles, shape):
-    """The struct column `dims` reads, a column per coordinate, or a list of mappings.
+    """The struct column `dimensions` reads, a column per field, or a list of mappings.
 
     Notes
     -----
@@ -1246,8 +1246,8 @@ def test_add_and_remove_take_tuples_in_any_shape(over_roles, shape):
     assert _roles(staged) == {("l1", "b1"): "out", ("l2", "b0"): "mid"}
 
 
-def test_add_takes_back_what_dims_reads(roles, over_roles):
-    """`dims["connection"]` is a frame `add` takes as it stands.
+def test_add_takes_back_what_dimensions_reads(roles, over_roles):
+    """`dimensions["connection"]` is a frame `add` takes as it stands.
 
     Notes
     -----
@@ -1257,7 +1257,7 @@ def test_add_takes_back_what_dims_reads(roles, over_roles):
     staged.remove("entity", ["l1"])
     assert _roles(staged) == {}
     staged.add("entity", ["l1"])
-    staged.add("connection", roles.record.dims["connection"], role="back")
+    staged.add("connection", roles.record.dimensions["connection"], role="back")
     assert _roles(staged) == {("l1", "b0"): "back", ("l1", "b1"): "back"}
 
 
@@ -1273,25 +1273,27 @@ def test_add_refuses_what_is_no_frame_duckdb_rescans(staged):
         staged.add("connection", reader)
 
 
-def test_a_plain_dim_refuses_a_frame(staged):
+def test_a_flat_dim_refuses_a_frame(staged):
     """A frame gives a multi-dim's tuples; read as labels it would be its column names."""
-    with pytest.raises(TypeError, match="a frame gives the tuples of a multi-dim"):
+    with pytest.raises(
+        TypeError, match="a frame gives the tuples of a multi-dimension"
+    ):
         staged.add("entity", pd.DataFrame({"entity": ["Norway Gas"]}))
 
 
-def test_set_addresses_a_multi_dim_by_its_coordinates(staged):
-    with pytest.raises(KeyError, match=r"\['connection'\] are multi-dims.*`add`"):
+def test_set_addresses_a_multi_dim_by_its_fields(staged):
+    with pytest.raises(KeyError, match=r"\['connection'\] are multi-dimensions.*`add`"):
         staged.set("efficiency", 0.5, connection=_TUPLE)
 
 
-def test_set_refuses_a_coordinate(staged):
-    """A coordinate is the key, which `remove` and `add` change.
+def test_set_refuses_a_field(staged):
+    """A field is part of the label, which `remove` and `add` change.
 
     Notes
     -----
-    - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
-    with pytest.raises(ValueError, match="names a coordinate of the multi-dim"):
+    with pytest.raises(ValueError, match="names a field of the multi-dimension"):
         staged.set("connection.bus", "Norway", entity="Manchester Wind")
 
 
@@ -1305,7 +1307,7 @@ def test_every_declared_multi_dim_reads_its_staged_rows(store):
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     revision = _small(
         store,
@@ -1319,12 +1321,12 @@ def test_every_declared_multi_dim_reads_its_staged_rows(store):
     staged.add("connection", [{"entity": "Manchester Wind", "bus": "Norway"}])
     staged.add("corridor", pd.DataFrame([{"from": "Manchester Wind", "to": "Norway"}]))
 
-    connections = unpacked(staged.dims["connection"])
+    connections = unpacked(staged.dimensions["connection"])
     assert "Norway" in set(
         connections[connections["entity"] == "Manchester Wind"]["bus"]
     )
 
-    corridors = unpacked(staged.dims["corridor"], "corridor")
+    corridors = unpacked(staged.dimensions["corridor"], "corridor")
     assert list(zip(corridors["from"], corridors["to"], strict=True)) == [
         ("Manchester Wind", "Norway")
     ], "the second multi-dim reads its own rows, not the first's"
@@ -1378,14 +1380,16 @@ def _roles(record):
 
 
 def test_a_multi_dim_property_is_a_column_of_its_axis_file(roles, over_roles):
-    """And `set` with the multi-dim's coordinates as keywords patches the tuples they select.
+    """And `set` with the multi-dim's fields as keywords patches the tuples they select.
 
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
     store = roles.store
-    on_disk = pd.read_parquet(f"{store.layer_dir(roles.id)}dims/connection.parquet")
+    on_disk = pd.read_parquet(
+        f"{store.layer_dir(roles.id)}dimensions/connection.parquet"
+    )
     assert "role" in on_disk.columns
 
     staged = over_roles
@@ -1394,28 +1398,28 @@ def test_a_multi_dim_property_is_a_column_of_its_axis_file(roles, over_roles):
 
     child = store.commit(staged)
     assert _roles(child.record) == {("l1", "b0"): "in", ("l1", "b1"): "both"}
-    patch = pd.read_parquet(f"{store.layer_dir(child.id)}dims/connection.parquet")
+    patch = pd.read_parquet(f"{store.layer_dir(child.id)}dimensions/connection.parquet")
     assert patch["role"].tolist() == ["in", "both"], (
         "the layer restates the multi-dim whole"
     )
 
 
-def test_a_multi_dim_property_with_no_coordinate_reaches_every_tuple(over_roles):
+def test_a_multi_dim_property_with_no_keyword_reaches_every_tuple(over_roles):
     staged = over_roles
     staged.set("connection.role", "any")
     assert set(_roles(staged).values()) == {"any"}
 
 
-def test_a_multi_dim_property_refuses_what_is_no_coordinate(over_roles):
+def test_a_multi_dim_property_refuses_what_is_no_field(over_roles):
     staged = over_roles
-    with pytest.raises(ValueError, match="whose tuples its coordinates"):
+    with pytest.raises(ValueError, match="whose tuples its fields"):
         staged.set("connection.role", "x", snapshot="2020")
     with pytest.raises(KeyError, match="selects no tuple"):
         staged.set("connection.role", "x", entity="l1", bus="nowhere")
 
 
 def test_add_refuses_an_attribute(over_roles):
-    """An axis row carries properties and keys; an attribute is long rows of `attributes/`."""
+    """An axis row carries its label and properties; an attribute is long rows of `attributes/`."""
     staged = over_roles
     with pytest.raises(ValueError, match=r"attributes \['efficiency'\].*`set"):
         staged.add("entity", ["l2"], efficiency=0.5)
@@ -1468,7 +1472,7 @@ def connected(_over_connected):
 def _relations(record):
     return {
         (member, name): rel
-        for member in ("dims", "properties", "attributes")
+        for member in ("dimensions", "properties", "attributes")
         for name, rel in getattr(record, member).items()
     }
 
@@ -1724,7 +1728,7 @@ def test_an_edit_over_a_directory_base_reads_back(small):
     assert p_nom() == [80.0], "the base holds a value for the edit to displace"
     staged.set("p_nom", 4242.0, entity=["Manchester Wind"])
     assert p_nom() == [4242.0], (
-        "the staged layer owns the key, so the read takes its value"
+        "the staged layer owns the map row, so the read takes its value"
     )
 
     # The base's id is derived from its revision's rather than allocated, so
@@ -1780,7 +1784,7 @@ def test_a_standalone_write_of_the_record_is_flattened(small, tmp_path):
     }, "flattened: the parent's values are written, not left to a parent"
 
     written = sorted(Path(out).rglob("*.parquet"))
-    assert {"dims/entity.parquet", "dims/connection.parquet"} <= {
+    assert {"dimensions/entity.parquet", "dimensions/connection.parquet"} <= {
         path.relative_to(out).as_posix() for path in written
     }, "the frames the fold orders must be among those written"
     for path in written:
@@ -1923,7 +1927,7 @@ def test_a_discarded_working_record_drops_its_staging_tables(small, discard):
 
 
 READS = [
-    pytest.param(lambda r: r.dims["entity"], id="dims"),
+    pytest.param(lambda r: r.dimensions["entity"], id="dimensions"),
     pytest.param(lambda r: r.properties["entity"], id="properties"),
     pytest.param(lambda r: r.attributes["p_nom"], id="attributes"),
     pytest.param(lambda r: r.flags(), id="flags"),

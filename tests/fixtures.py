@@ -82,7 +82,7 @@ def write_attribute(
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     df = pd.DataFrame(rows)
     if connection is None:
@@ -110,7 +110,7 @@ def write_attribute(
 
 
 def _hashable(value: Any) -> Any:
-    """A key value as a dict key: a struct's fields as a tuple."""
+    """A label as a dict key: a struct's fields as a tuple."""
     return tuple(value.values()) if isinstance(value, dict) else value
 
 
@@ -129,7 +129,7 @@ def _as_written(layer: HandBuilt, kind: str, name: str) -> pd.DataFrame:
     if name in record.schema.properties:
         rel = record.properties.get(name)
     else:
-        rel = record.dims.get(name)
+        rel = record.dimensions.get(name)
     if rel is None:
         return pd.DataFrame()
     frame = rel.df()
@@ -147,8 +147,8 @@ def restate(
 ) -> None:
     """Write `{kind}/{name}.parquet` of `layer` whole, as a layer restates it.
 
-    It starts from `_as_written`. A row of `rows` replaces the row of its key
-    in place, a new key is appended, and a key in `drop` is left out.
+    It starts from `_as_written`. A row of `rows` replaces the row of its label
+    in place, a new label is appended, and a label in `drop` is left out.
 
     Notes
     -----
@@ -174,13 +174,13 @@ def restate(
 
 
 def write_multi_dim(layer: HandBuilt, multi: str, rows: list[dict]) -> None:
-    """Restate `dims/<multi>.parquet` with `rows`, each keyed by the struct column, a dict.
+    """Restate `dimensions/<multi>.parquet` with `rows`, each keyed by the struct column, a dict.
 
     Notes
     -----
     - [where the rows live](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
-    restate(layer, "dims", multi, rows)
+    restate(layer, "dimensions", multi, rows)
 
 
 def unpacked(rel: Any, multi: str = "connection") -> pd.DataFrame:
@@ -199,61 +199,61 @@ def _connection(row: dict) -> dict:
 
 
 def write_connections(layer: HandBuilt, rows: list[dict]) -> None:
-    """Restate `dims/connection.parquet` with `rows`, each needing `entity` and `bus`.
+    """Restate `dimensions/connection.parquet` with `rows`, each needing `entity` and `bus`.
 
     No component type - one file holds every type's rows.
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     - [where the rows live](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     """
-    restate(layer, "dims", "connection", [_connection(r) for r in rows])
+    restate(layer, "dimensions", "connection", [_connection(r) for r in rows])
 
 
 def drop_connections(layer: HandBuilt, pairs: list[tuple[str, str]]) -> None:
-    """Restate `dims/connection.parquet` without the `(entity, bus)` pairs.
+    """Restate `dimensions/connection.parquet` without the `(entity, bus)` pairs.
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     gone = [{"entity": e, "bus": b} for e, b in pairs]
-    restate(layer, "dims", "connection", [], drop=gone)
+    restate(layer, "dimensions", "connection", [], drop=gone)
 
 
 def write_component(layer: HandBuilt, ctype: str, rows: list[dict]) -> None:
-    """Restate `dims/entity.parquet` with `rows`, each an entity of type `ctype`."""
-    restate(layer, "dims", "entity", [{**r, "ctype": ctype} for r in rows])
+    """Restate `dimensions/entity.parquet` with `rows`, each an entity of type `ctype`."""
+    restate(layer, "dimensions", "entity", [{**r, "ctype": ctype} for r in rows])
 
 
 def drop_entities(layer: HandBuilt, names: list[str]) -> None:
-    """Restate `dims/entity.parquet` without `names`.
+    """Restate `dimensions/entity.parquet` without `names`.
 
     Notes
     -----
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
-    restate(layer, "dims", "entity", [], drop=names)
+    restate(layer, "dimensions", "entity", [], drop=names)
 
 
 def write_axis(layer: HandBuilt, dim: str, rows: list[dict]) -> None:
-    """Restate `dims/<dim>.parquet` with `rows`, each carrying `dim` and its properties.
+    """Restate `dimensions/<dim>.parquet` with `rows`, each carrying `dim` and its properties.
 
     Notes
     -----
     - [the record format](https://energy-models.github.io/datarecord/reference/format/)
     """
-    restate(layer, "dims", dim, rows)
+    restate(layer, "dimensions", dim, rows)
 
 
 def write_scenarios(layer: HandBuilt, rows: list[dict]) -> None:
-    """Restate `dims/scenario.parquet`; each row needs `scenario`."""
+    """Restate `dimensions/scenario.parquet`; each row needs `scenario`."""
     write_axis(layer, "scenario", rows)
 
 
 def write_periods(layer: HandBuilt, rows: list[dict]) -> None:
-    """Restate `dims/period.parquet`; each row needs `period`."""
+    """Restate `dimensions/period.parquet`; each row needs `period`."""
     write_axis(layer, "period", rows)
 
 
@@ -361,7 +361,9 @@ class HandBuilt:
     def commit(self) -> Revision:
         """Write the manifest listing the layer's files, which makes it a revision."""
         files = LayerFiles(
-            dims=tuple(sorted(p.stem for p in self.dir.glob("dims/*.parquet"))),
+            dimensions=tuple(
+                sorted(p.stem for p in self.dir.glob("dimensions/*.parquet"))
+            ),
             attributes=tuple(
                 sorted(p.stem for p in self.dir.glob("attributes/*.parquet"))
             ),
@@ -436,7 +438,7 @@ def _default_attributes(dims: dict[str, Any], multi_dims: dict[str, dict[str, st
     """
     varying = {"entity", *dims}
     connection = "connection" if "connection" in multi_dims else "entity"
-    # A dim named like a coordinate of the connection would clash with its keyword.
+    # A dim named like a field of the connection would clash with its keyword.
     per_connection = set(dims) - set(multi_dims.get(connection, ()))
     declared = {
         "p_nom": AttributeSpec(dtype="float", dims=varying),
@@ -478,7 +480,7 @@ def schema(
     dtype or as a `Dimension`, `multi_dims` to
     declare a different sparse relation.
 
-    A multi-dim's coordinates are declared dims. `entity` is always `partial`, so
+    A multi-dim's fields are declared dims. `entity` is always `partial`, so
     a layer patches one component's value without restating the rest, and
     `connection` is by default, as the PyPSA tool declares it, so the same
     holds per connection.
@@ -486,7 +488,7 @@ def schema(
     Notes
     -----
     - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     # Callers declare per type, which is how a modelling framework thinks; the
     # schema stores one spec per attribute, record-wide. Flattening here keeps
@@ -499,12 +501,12 @@ def schema(
     # needs it declared.
     for attr, spec in _default_attributes(dims, multi_dims).items():
         flat.setdefault(attr, spec)
-    # Coordinates are declared here rather than assumed, which lets a caller
-    # pass a multi-dim over coordinates that are not called `bus`.
-    coordinates = {c for over in multi_dims.values() for c in over}
+    # Fields are declared as dims here rather than assumed, which lets a caller
+    # pass a multi-dim over fields that are not called `bus`.
+    fields = {c for over in multi_dims.values() for c in over}
     declared = {
         "entity": "str",
-        **{c: "str" for c in coordinates},
+        **{c: "str" for c in fields},
         **dims,
     }
     return Schema(
@@ -516,7 +518,7 @@ def schema(
             "ctype": Dimension(one_of=TYPES),
             **{m: Dimension(over=over) for m, over in multi_dims.items()},
         },
-        properties={"entity": {"ctype": PropertySpec(one_of="ctype")}},
+        properties={"entity": {"ctype": PropertySpec(refers="ctype")}},
         attributes=flat,
         # The default names `connection`, which a caller's own `multi_dims` may drop.
         partial=frozenset(
@@ -537,7 +539,7 @@ def relation(revision, attribute: str):
 
 
 def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
-    """`attribute`'s value per full coordinate over `dims`, by the broadcast rule.
+    """`attribute`'s value per coordinate over `dims`, by the broadcast rule.
 
     A row reaches every label of a dim it leaves NULL, or every tuple of a
     multi-dim, which reads as the tuple of its fields. At each coordinate the row
@@ -549,16 +551,14 @@ def broadcast(record, attribute: str, *dims: str) -> dict[tuple, Any]:
         return tuple(value.values()) if isinstance(value, dict) else value
 
     def axis(d: str) -> duckdb.DuckDBPyRelation:
-        return record.dims[d]
+        return record.dimensions[d]
 
     labels = {d: [label(c) for (c,) in axis(d).project(d).fetchall()] for d in dims}
     reaching: dict[tuple, list[tuple[frozenset, Any]]] = defaultdict(list)
     for *raw, value in record.attributes[attribute].project(*dims, "value").fetchall():
-        coords = [label(c) for c in raw]
-        named = frozenset(d for d, c in zip(dims, coords, strict=True) if c is not None)
-        reach = [
-            labels[d] if c is None else [c] for d, c in zip(dims, coords, strict=True)
-        ]
+        at = [label(c) for c in raw]
+        named = frozenset(d for d, c in zip(dims, at, strict=True) if c is not None)
+        reach = [labels[d] if c is None else [c] for d, c in zip(dims, at, strict=True)]
         for full in product(*reach):
             reaching[full].append((named, value))
     resolved = {}

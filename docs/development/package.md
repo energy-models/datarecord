@@ -17,24 +17,24 @@ datarecord/
 │   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec
 │   ├── dtypes.py      # DUCK_TYPES, enum_type, enum_labels, takes
 │   ├── specs.py       # Dimension, AttributeSpec, PropertySpec
-│   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED, packed, unpacked
-│   └── categories.py  # selecting a categorised dim's labels, and their defaults
-├── settle.py          # settle, the broadcast rule over long rows
+│   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED, packed, unpacked, cast_declared, with_columns
+│   └── categories.py  # selecting a categorised dimension's labels, and their defaults
+├── settle.py          # settle, uncovered, unsettled: the broadcast rule over long rows
 ├── select.py          # select, Selection
 ├── resolve/
 │   ├── __init__.py    # re-exports Record
 │   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
-│   ├── coords.py      # Coords, mortal: folded axes and dead labels
-│   ├── owner_keys.py  # owner_keys: one layer's keys as it wrote them
+│   ├── axes.py        # Axes, mortal: folded axes and dead labels
+│   ├── owner_map_rows.py  # owner_map_rows: one layer's map rows as it wrote them
 │   ├── fold.py        # Fold: a revision's folded axes, owner map and reads
-│   ├── owner_map.py   # fold_layer, uncovered: the owner map folded one layer at a time
+│   ├── owner_map.py   # fold_layer: the owner map folded one layer at a time
 │   └── record.py      # Record
 ├── mutable.py         # WorkingRecord, StagedSource
 ├── store/
 │   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
 │   ├── files.py       # Files, LocalFiles, RemoteFiles
 │   ├── manifest.py    # Manifest, LayerFiles, ClaimFile
-│   ├── cache.py       # materialise, materialised, sources_to_read
+│   ├── materialise.py # materialise, materialised, sources_to_read
 │   ├── write.py       # write_layer, layer_data
 │   └── store.py       # Workspace, Store, Claim, Revision, ancestry
 └── tools/

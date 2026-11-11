@@ -3,8 +3,8 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="dm-t dm-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="dm-t">A multi-dim's tuples, and a NULL struct that applies to each of them</title>
-  <desc id="dm-d">The axis of the multi-dim connection lists four tuples, each with a field per coordinate, entity and bus: wind north, gas south, dc north and dc south. The attribute efficiency has a row with connection NULL and value 1.0, and a row at the tuple dc south with value 0.9. A row with entity dc and bus NULL matches no tuple, so no such row exists. Settled over the axis, the result has one row per tuple: dc south keeps 0.9 and the three other tuples take 1.0 from the NULL row.</desc>
+  <title id="dm-t">A multi-dimension's tuples, and a NULL struct that applies to each of them</title>
+  <desc id="dm-d">The axis of the multi-dimension connection lists four tuples, each with the fields entity and bus: wind north, gas south, dc north and dc south. The attribute efficiency has a row with connection NULL and value 1.0, and a row at the tuple dc south with value 0.9. A row with entity dc and bus NULL matches no tuple, so no such row exists. Settled over the axis, the result has one row per tuple: dc south keeps 0.9 and the three other tuples take 1.0 from the NULL row.</desc>
   <defs>
     <marker id="dm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -32,7 +32,7 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">axis</text>
-    <text x="56" y="22" fill-opacity="0.75">connection, a field per coordinate</text>
+    <text x="56" y="22" fill-opacity="0.75">connection, a struct of its fields</text>
     <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
     <text x="24" y="47" font-weight="bold">entity</text>
     <text x="106" y="47" font-weight="bold">bus</text>

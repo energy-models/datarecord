@@ -12,7 +12,7 @@ You need datarecord installed, as [Installation](../installation.md) shows.
 
 ## The schema
 
-A record's [schema](../reference/schema.md) declares what the record may contain. It lists the sets of labels that values vary along (dims), the values that describe one label (properties) and the values over dims (attributes). The [data model](../reference/data-model.md) defines each. Run this:
+A record's [schema](../reference/schema.md) declares what the record may contain. It lists the sets of labels that values vary along (dimensions), the values that describe one label (properties) and the values over dimensions (attributes). The [data model](../reference/data-model.md) defines each. Run this:
 
 ```python
 from datarecord import AttributeSpec, Dimension, PropertySpec, Schema
@@ -28,8 +28,8 @@ schema = Schema(
     },
     properties={
         "entity": {
-            "ctype": PropertySpec(one_of="ctype"),
-            "carrier": PropertySpec(one_of="carrier"),
+            "ctype": PropertySpec(refers="ctype"),
+            "carrier": PropertySpec(refers="carrier"),
         },
     },
     attributes={
@@ -40,8 +40,8 @@ schema = Schema(
     },
     partial={"entity", "bus", "connection"},
 )
-print(schema.dims)
-print(schema.multi_dims)
+print(schema.flat_dimensions)
+print(schema.multi_dimensions)
 ```
 
 Check it:
@@ -51,7 +51,7 @@ Check it:
 ('connection',)
 ```
 
-`connection` is a dim whose labels are `(entity, bus)` tuples (a multi-dim), so the schema lists it apart from the five plain dims. `ctype` lists its labels in the schema with `one_of`, and `partial` lists the dims along which a later layer overrides one label's value.
+`connection` is a dimension whose labels are `(entity, bus)` tuples (a multi-dimension), so the schema lists it apart from the five flat dimensions. `ctype` lists its labels in the schema with `one_of`, and `partial` lists the dimensions along which a later layer overrides one label's value.
 
 ## An empty root
 
@@ -70,7 +70,7 @@ from datarecord import Workspace
 class Empty:
     schema: Schema
     con: DuckDBPyConnection
-    dims: dict = field(default_factory=dict)
+    dimensions: dict = field(default_factory=dict)
     properties: dict = field(default_factory=dict)
     attributes: dict = field(default_factory=dict)
 
@@ -81,7 +81,7 @@ class Empty:
 ws = Workspace()
 store = ws.store(tempfile.mkdtemp())
 root = store.commit(Empty(schema, ws.con), parent=None)
-print(root.record.dims["entity"].df())
+print(root.record.dimensions["entity"].df())
 ```
 
 Check it:
@@ -92,7 +92,7 @@ Columns: [entity]
 Index: []
 ```
 
-The root revision's `entity` dim has no labels. The [`Workspace`](../reference/store.md) is the DuckDB database that its stores share.
+The root revision's `entity` dimension has no labels. The [`Workspace`](../reference/store.md) is the DuckDB database that its stores share.
 
 ## Labels
 
@@ -111,7 +111,7 @@ w.add(
 )
 w.add("snapshot", [0, 1, 2])
 print(w.properties["entity"].df())
-print(w.dims["connection"].df())
+print(w.dimensions["connection"].df())
 ```
 
 Check it:
@@ -125,7 +125,7 @@ Check it:
 1   {'entity': 'gas1', 'bus': 'south'}
 ```
 
-Each generator has its `ctype` and `carrier` properties, and each connection is one struct with an `entity` and a `bus` field. The carriers and buses come first, because `add` refuses a property value or a tuple field that is not yet a label of its dim.
+Each generator has its `ctype` and `carrier` properties, and each connection is one struct with an `entity` and a `bus` field. The carriers and buses come first, because `add` refuses a property value or a tuple field that is not yet a label of its dimension.
 
 ## Values
 
@@ -148,16 +148,16 @@ Check it:
 3  wind1         2  p_max_pu         NaN    0.5
 ```
 
-`attributes` returns long rows, one per value, in no promised order. The `gas1` row leaves `snapshot` NULL, and a NULL coordinate means every label of its dim ([the broadcast rule](../reference/data-model.md)).
+`attributes` returns long rows, one per value, in no promised order. The `gas1` row leaves `snapshot` NULL, and a NULL means every label of its dimension ([the broadcast rule](../reference/data-model.md)).
 
 ## The values, wide
 
-[`settle`](../reference/record.md) applies that rule and gives one row per label at each point, which pandas pivots wide:
+[`settle`](../reference/record.md) applies that rule and gives one row per label at each coordinate, which pandas pivots wide:
 
 ```python
 from datarecord import settle
 
-labels = {"entity": w.dims["entity"], "snapshot": w.dims["snapshot"]}
+labels = {"entity": w.dimensions["entity"], "snapshot": w.dimensions["snapshot"]}
 settled = settle(w.attributes["p_max_pu"], labels, w.flags()["p_max_pu"])
 print(settled.df().pivot(index="snapshot", columns="entity", values="value"))
 ```

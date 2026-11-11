@@ -37,18 +37,18 @@ a `WorkingRecord` folds its staged rows over a `Record`'s layers, and a Selectio
 
 Each edit stages rows of one file of the [format](format.md):
 
-| Edit                      | Stages                                                                               | Keyed by                    |
-| ------------------------- | ------------------------------------------------------------------------------------ | --------------------------- |
-| `set` an attribute        | rows of `attributes/<attr>.parquet`                                                  | the attribute's coordinates |
-| `set` a property          | the subject's axis, with one column of the labels set changed                        | the subject's label         |
-| `add` labels or tuples    | the dim's axis, with the rows added                                                  | the dim's label             |
-| `remove` labels or tuples | the dim's axis without them, and each multi-dim without the tuples that contain them | the dim's label             |
+| Edit                      | Stages                                                                                           | Matched on                 |
+| ------------------------- | ------------------------------------------------------------------------------------------------ | -------------------------- |
+| `set` an attribute        | rows of `attributes/<attr>.parquet`                                                              | the attribute's dimensions |
+| `set` a property          | the subject's axis, with one column of the labels set changed                                    | the subject's label        |
+| `add` labels or tuples    | the dimension's axis, with the rows added                                                        | the dimension's label      |
+| `remove` labels or tuples | the dimension's axis without them, and each multi-dimension without the tuples that contain them | the dimension's label      |
 
-A layer restates each axis it changes whole, whatever `partial` sets: every label the axis has, with the edits applied, in [axis order](data-model.md#dims-and-labels).
+A layer restates each axis it changes whole, whatever `partial` sets: every label the axis has, with the edits applied, in [axis order](data-model.md#dimensions-and-labels).
 
 ## `set`
 
-`set(name, value, **coords)` stages values of one attribute, or of one property named `subject.name`.
+`set(name, value, **labels)` stages values of one attribute, or of one property named `subject.name`.
 
 ```python
 import pandas as pd
@@ -64,39 +64,39 @@ w.set("efficiency", 0.9, entity="dc", bus="south")  # one connection
 w.set("entity.carrier", "wind", entity="dc")  # a property, by its subject
 ```
 
-### Coordinates
+### Keywords
 
-Every coordinate is a keyword, a multi-dim's coordinates included, because the schema declares which coordinates exist.
+`set` takes a keyword for each field of the dimensions that the attribute is over, as the schema declares them.
 A keyword has one label or a list of labels, and `set` stages the value at each.
-A coordinate with no keyword is NULL, which by [the broadcast rule](data-model.md#the-broadcast-rule) means every label, labels added later included.
+A dimension with no keyword is NULL, which by [the broadcast rule](data-model.md#the-broadcast-rule) means every label, labels added later included.
 
-`set` packs a multi-dim's coordinates into its struct column, so `entity="dc", bus="south"` stages `connection = {entity: dc, bus: south}`.
-You give every coordinate of a multi-dim or none, and none stages a NULL struct, which means every tuple.
-A coordinate is named by its own name, such as `from=` and `to=` of a corridor.
+`set` packs a multi-dimension's fields into its struct column, so `entity="dc", bus="south"` stages `connection = {entity: dc, bus: south}`.
+You give every field of a multi-dimension or none, and none stages a NULL struct, which means every tuple.
+A field is named by its own name, such as `from=` and `to=` of a corridor.
 
 ### Property keywords
 
-A keyword that is not a coordinate of the attribute is the plain name of a property of a dim the attribute is [indexed over](data-model.md#attributes).
+A keyword that names no dimension or field of the attribute is the plain name of a property of a dimension the attribute is [indexed over](data-model.md#attributes).
 It selects the labels whose value matches on the record as staged, and `set` stages one row per label.
 `set` stores nothing of the filter, so its rows do not apply to a label added later.
 Several keywords intersect: `ctype="Generator", carrier="wind"` selects the wind generators.
-A property of a multi-dim selects its tuples the same way, and a coordinate keyword such as `bus="north"` narrows them.
+A property of a multi-dimension selects its tuples the same way, and a field keyword such as `bus="north"` narrows them.
 
-`set` refuses a dotted keyword, a property name that several of those dims declare, and a property keyword beside its own dim's coordinate keyword.
+`set` refuses a dotted keyword, a property name that several of those dimensions declare, and a property keyword beside the keyword of its own dimension.
 
 ### Values
 
-| `value`  | Meaning                            | Keywords                                                    |
-| -------- | ---------------------------------- | ----------------------------------------------------------- |
-| scalar   | staged at every listed combination | an omitted coordinate broadcasts                            |
-| sequence | aligned by position                | exactly one list keyword, of the same length                |
-| mapping  | keys are labels of one coordinate  | the one coordinate without a keyword                        |
-| series   | index is labels of one coordinate  | the index's name, else the one coordinate without a keyword |
-| frame    | supplies its own keys              | single labels that complete it                              |
+| `value`  | Meaning                            | Keywords                                         |
+| -------- | ---------------------------------- | ------------------------------------------------ |
+| scalar   | staged at every listed combination | an omitted keyword broadcasts                    |
+| sequence | aligned by position                | exactly one list keyword, of the same length     |
+| mapping  | keys are labels of one keyword     | the one keyword not given                        |
+| series   | index is labels of one keyword     | the index's name, else the one keyword not given |
+| frame    | supplies its own labels            | single labels that complete it                   |
 
 A frame is a DuckDB relation, or a pandas, polars or arrow frame that DuckDB scans.
-Over a multi-dim, a frame has the struct column, such as `connection STRUCT(entity, bus)`, and `set` refuses one with the coordinates as flat columns.
-`set` never infers a mapping's coordinate from its labels, and refuses the call where neither the index name nor the keywords settle it.
+Over a multi-dimension, a frame has the struct column, such as `connection STRUCT(entity, bus)`, and `set` refuses one with the fields as flat columns.
+`set` never infers a mapping's keyword from its labels, and refuses the call where neither the index name nor the keywords settle it.
 
 `set` casts a frame column to its declared [type](schema.md#dtypes) where the cast widens it.
 It casts a smaller integer to `BIGINT`, a number to `DOUBLE`, a timestamp of any precision to `TIMESTAMP`, and text to and from an `ENUM`.
@@ -107,20 +107,20 @@ It casts a smaller integer to `BIGINT`, a number to `DOUBLE`, a timestamp of any
 `set("entity.carrier", value, ...)` changes one column of the subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with keywords that select the labels, or a scalar for every label.
 A categorising property is set the same way, and the label keeps its attribute values under its new category.
-`set` refuses a coordinate, such as `connection.bus`, because a coordinate is part of the key:
+`set` refuses a field, such as `connection.bus`, because a field is part of the label:
 
 ```text
-`set('connection.bus', ...)` names a coordinate of the multi-dim 'connection', part of its key rather than a value; `remove` the tuples and `add` them with the new label instead
+`set('connection.bus', ...)` names a field of the multi-dimension 'connection', which `set` cannot change; `remove` the tuples and `add` them with the new label instead
 ```
 
 ### A later `set`
 
 A later `set` replaces each staged row of the attribute that one of its own rows covers.
-A row covers another when, at every coordinate, it has the same label or is NULL.
+A row covers another when, on every dimension, it has the same label or is NULL.
 `set("p_nom", 0.9, entity=["wind"])` followed by `set("p_nom", 0.95)` stages one row, and `wind` is `0.95`.
 In the other order both rows stay, and `wind` is `0.9`, because datarecord keeps the more specific row.
 
-Where a new row and a staged row each leave NULL a dim that the other row sets, `set` adds a row that sets both:
+Where a new row and a staged row each leave NULL a dimension that the other row sets, `set` adds a row that sets both:
 
 ```python
 w.rollback()
@@ -135,7 +135,7 @@ w.edits.attribute("p_max_pu").order("entity, snapshot").fetchall()
 
 `gas` at snapshot 1 is 0.7, the later value, so the order of two edits sets a value and never makes an edit fail.
 
-A `set` of one value along a dim outside [`partial`](layers.md#partial) also stages the key's other values, as the record reads them.
+A `set` of one value along a dimension outside [`partial`](layers.md#partial) also stages the map row's other values, as the record reads them.
 `w.set("p_max_pu", series, entity="gas")` with a series over snapshots 0 and 1 stages snapshot 2 as well, at the 1.0 that `gas` read before.
 
 ## `add` and `remove`
@@ -150,22 +150,22 @@ w.remove("connection", [{"entity": "dc", "bus": "south"}])
 w.remove("entity", ["gas"])
 ```
 
-`columns` are the dim's properties by plain name, each a scalar for every label or a sequence aligned to `labels`.
+`columns` are the dimension's properties by plain name, each a scalar for every label or a sequence aligned to `labels`.
 A property with no keyword is NULL on the row, because `add` restates the row whole.
 A new label goes after the axis's last, and a label of the base that this record removed goes back to its base position.
 A label exists because its axis row exists, so `add` with no columns is an edit of its own.
 
-A multi-dim's labels are tuples, which `add` and `remove` take in one of three forms:
+A multi-dimension's labels are tuples, which `add` and `remove` take in one of three forms:
 
 - a frame with the struct column, as `dims["connection"]` returns it
-- a frame with one column per coordinate
-- a list of mappings from coordinate to label
+- a frame with one column per field
+- a list of mappings from field to label
 
 A frame may have property columns beside the tuples, and then each property keyword is a scalar.
-`add` refuses a frame that has both the struct column and a coordinate column, and a tuple with a coordinate missing or NULL.
+`add` refuses a frame that has both the struct column and a field column, and a tuple with a field missing or NULL.
 
 `remove(dim, labels)` stages the axis without `labels`.
-Every value keyed by a removed label goes, and so does every tuple, of any multi-dim, that contains one, with the tuple's values.
+Every value at a removed label goes, and so does every tuple, of any multi-dimension, that contains one, with the tuple's values.
 `remove("bus", ["south"])` removes every connection at `south`.
 `remove` refuses a label that is still the value of a property referring to `dim`, on the record as staged:
 
@@ -173,7 +173,7 @@ Every value keyed by a removed label goes, and so does every tuple, of any multi
 `remove('carrier', ...)` is refused: `entity.carrier` names them at [('wind', 'wind')]; `set` those to another label or None first
 ```
 
-`add` and `remove` refuse a dim with `one_of`, whose labels are the schema's.
+`add` and `remove` refuse a dimension with `one_of`, whose labels are the schema's.
 `add` refuses an attribute as a keyword, and points at `set`.
 
 A `remove` after a `set` on the same label takes effect, because a removed label has no values.
@@ -206,11 +206,11 @@ They raise on:
 
 - an undeclared attribute, property or keyword, or a keyword the attribute does not vary over
 - a plain name that only properties have, naming their dotted forms: `set("carrier", ...)` suggests `entity.carrier`
-- a label that its dim's axis, as staged, lacks, for every dim
-- a tuple that its multi-dim, as staged, lacks
-- a tuple with a label that its coordinate's axis lacks, naming the multi-dim, the coordinate and up to three labels
-- a label that a dim with `one_of` does not list
-- a value of a property that refers to a dim and is no label of it, NULL excepted
+- a label that its dimension's axis, as staged, lacks, for every dimension
+- a tuple that its multi-dimension, as staged, lacks
+- a tuple with a label that its field's axis lacks, naming the multi-dimension, the field and up to three labels
+- a label that a dimension with `one_of` does not list
+- a value of a property that refers to a dimension and is no label of it, NULL excepted
 - a label or frame column whose type does not fit its dtype
 - a sequence whose length differs from its keyword's
 

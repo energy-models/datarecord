@@ -4,7 +4,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" width="800" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="rc-t rc-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rc-t">The fold adds an overlap row where rows of two layers cross</title>
-  <desc id="rc-d">With partial dims entity and scenario, the root writes p_nom for gas and wind with scenario NULL, and the child writes p_nom 999 for scenario high with entity NULL. The owner map has these three rows and two overlap rows that it assigns to the child, gas high and wind high. The read returns five rows: gas NULL 50, wind NULL 100, NULL high 999, gas high 999 and wind high 999.</desc>
+  <desc id="rc-d">With partial dimensions entity and scenario, the root writes p_nom for gas and wind with scenario NULL, and the child writes p_nom 999 for scenario high with entity NULL. The owner map has these three rows and two overlap rows that it assigns to the child, gas high and wind high. The read returns five rows: gas NULL 50, wind NULL 100, NULL high 999, gas high 999 and wind high 999.</desc>
   <defs>
     <marker id="rc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>

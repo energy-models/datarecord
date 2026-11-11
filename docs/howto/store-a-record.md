@@ -52,7 +52,7 @@ ws.write(record, uri)
 ```
 
 ```text
-['attributes', 'dims', 'manifest.json']
+['attributes', 'dimensions', 'manifest.json']
 FileExistsError: /private/var/folders/.../plants/ already exists; a standalone record is written to a URI that does not exist yet
 ```
 

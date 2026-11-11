@@ -22,7 +22,7 @@ from datarecord.mutable import WorkingRecord
 from tests.fixtures import in_threads, nested_tables, scratch_tables
 from tests.test_mutable import _rows, _small, _staging
 
-KINDS = ("dims", "properties", "attributes")
+KINDS = ("dimensions", "properties", "attributes")
 
 EDITS = [
     lambda w: w.set("p_nom", 123.0, entity="Manchester Wind"),
@@ -35,7 +35,7 @@ EDITS = [
     lambda w: w.remove("entity", ["Manchester Wind"]),
     lambda w: w.rollback(),
 ]
-"""One edit script over `_small`: attribute, property, plain dim, multi-dim, rollback.
+"""One edit script over `_small`: attribute, property, flat dim, multi-dim, rollback.
 
 The last removal takes a label with its `connection` tuple.
 """
@@ -271,15 +271,15 @@ def test_unregister_leaves_a_schema_no_record_registered(workspace):
 def test_a_record_registers_under_a_database_name(workspace, small, name):
     """The workspace's database is always named, so a name that is also a database's is no catalog."""
     con = workspace.con
-    con.execute("CREATE SCHEMA memory.dims")
-    con.execute("CREATE TABLE memory.dims.bus AS SELECT 'decoy' AS bus")
+    con.execute("CREATE SCHEMA memory.dimensions")
+    con.execute("CREATE TABLE memory.dimensions.bus AS SELECT 'decoy' AS bus")
     small.record.register(name)
     declared = _declared(small.record)
     assert _views(con, name) == declared
     assert _read_views(con, name, declared) == _read_relations(small.record)
     workspace.unregister(name)
     assert _views(con, name) == dict.fromkeys(KINDS, [])
-    assert con.table("memory.dims.bus").fetchall() == [("decoy",)], (
+    assert con.table("memory.dimensions.bus").fetchall() == [("decoy",)], (
         "unregister drops the schema in the workspace's database alone"
     )
 
@@ -386,7 +386,7 @@ def test_use_lets_a_cursor_read_by_short_names(workspace, working):
             for view in views
         }
         assert short == _read_views(cur, "edit", declared), (
-            "`edit.dims.bus` reads as `datarecord.edit.dims.bus`"
+            "`edit.dimensions.bus` reads as `datarecord.edit.dimensions.bus`"
         )
         assert cur.sql("SELECT name, revision FROM registered").fetchall() == (
             workspace.registered().project("name, revision").fetchall()

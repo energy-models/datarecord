@@ -34,11 +34,11 @@ The cost is a clean-up you ask for. A failed write leaves files under its id unt
 
 ## Why relations are registered views
 
-`Record.register(name)` creates a DuckDB view per dim, property subject and attribute, under a schema of that name in the workspace's database ([the format](../reference/format.md)). Any client of that database then reads the record in SQL, a client with no Python included.
+`Record.register(name)` creates a DuckDB view per dimension, property subject and attribute, under a schema of that name in the workspace's database ([the format](../reference/format.md)). Any client of that database then reads the record in SQL, a client with no Python included.
 
 Over a `WorkingRecord`, each view is created once and never replaced. A relation's plan does not depend on the staged rows, so a view created once returns every later edit. A client's query stays valid through any edit, with no message between the server and the client. The rejected alternative replaces a view whenever an edit adds something new. That ties the record to its registrations, and a client's query can fail between two edits.
 
-The views are raw, as the relations are. A settled view would expand every broadcast and give up the lazy model, so a client applies the broadcast rule itself. Nested schemas keep the names of dims, properties and attributes apart, where one flat schema would need prefixed names such as `attr_p_nom`.
+The views are raw, as the relations are. A settled view would expand every broadcast and give up the lazy model, so a client applies the broadcast rule itself. Nested schemas keep the names of dimensions, properties and attributes apart, where one flat schema would need prefixed names such as `attr_p_nom`.
 
 The workspace attaches its database under a fixed name, `datarecord` unless given, and never as a connection's default. A server's connection keeps its own default database, which datarecord's tables do not fill, and every name datarecord writes names its database, so one it forgot to qualify fails in the tests rather than resolving by luck. One database also lets `register` write its schemas, views and row in one transaction, since a DuckDB transaction writes to one attached database. The rejected alternative registers into a separate target database: the row and the views could not commit together, and a view there would have to name the workspace's database, whose name each client chooses.
 
@@ -52,7 +52,7 @@ The rejected alternative is one schema per store, in a shared manifest that each
 
 With a manifest per layer, a commit checks its schema against its parent's manifest, which no later write changes. No write has a shared file to race on or retry, so two writers that widen one parent at once both commit.
 
-The cost is that a widening applies only to the revisions whose ancestry declares it. Two sibling branches may declare one name differently, which matters when you read them side by side. `materialise`, which caches a revision's fold under `resolved/`, writes the one kind of file that is not create-only. Two writers that materialise one revision write the same content. A standalone directory has no claim, so it takes one writer, and `ws.write` refuses a URI that already exists.
+The cost is that a widening applies only to the revisions whose ancestry declares it. Two sibling branches may declare one name differently, which matters when you read them side by side. `materialise` writes a revision's fold under `resolved/`, the one kind of file that is not create-only. Two writers that materialise one revision write the same content. A standalone directory has no claim, so it takes one writer, and `ws.write` refuses a URI that already exists.
 
 ## What you can now judge
 

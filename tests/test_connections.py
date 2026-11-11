@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Connections as bus-keyed rows, and `bus` in the owner-map key.
+"""Connections as bus-keyed rows, and `bus` in the owner map's index.
 
 Notes
 -----
-- [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+- [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
 """
 
 from contextlib import nullcontext
@@ -42,10 +42,10 @@ PROCESS = "Process"
 def _connections(revision):
     """The resolved `connection` multi-dim, which these tests need a row of.
 
-    No type: one `dims/connection.parquet` holds every type's rows, and these
+    No type: one `dimensions/connection.parquet` holds every type's rows, and these
     tests declare a single one.
     """
-    return revision.record.dims["connection"]
+    return revision.record.dimensions["connection"]
 
 
 def _root(store, declared: Schema | None = None) -> HandBuilt:
@@ -85,7 +85,7 @@ def test_connections_resolve_in_order(store):
 
 
 def test_patch_overrides_one_connection_only(store):
-    """The sibling-clobbering case: `bus` in `owner_map_key` scopes ownership per connection."""
+    """The sibling-clobbering case: `bus` in `owner_map_index` scopes ownership per connection."""
     root = _root(store).commit()
     root.materialise()
 
@@ -164,7 +164,7 @@ def test_patch_hits_the_bus_it_named_not_a_position(store):
 def test_component_level_attribute_is_unaffected(store):
     """A component attribute carries no `bus` column.
 
-    `bus` is the `connection` multi-dim's coordinate, so it is on the files of the
+    `bus` is the `connection` multi-dim's field, so it is on the files of the
     attributes addressed by that multi-dim and on no others.
 
     Notes
@@ -206,7 +206,7 @@ def test_restating_without_a_connection_removes_it(store):
     frame = unpacked(_connections(child))
     assert set(frame["bus"]) == {"h2_north", "dri"}
     # ... and the attribute rows go with it, which the map can scope per
-    # connection only because `bus` is in `owner_map_key`.
+    # connection only because `bus` is in `owner_map_index`.
     assert _efficiencies(child) == {"h2_north": 2.1, "dri": 1.0}
 
 
@@ -219,7 +219,7 @@ def test_a_dim_a_multi_dim_draws_on_still_broadcasts(store):
     Notes
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     price = AttributeSpec(dtype="float", dims={"bus", "snapshot"})
     declared = schema(attributes={"Bus": {"marginal_price": price}}, partial={"bus"})
@@ -271,10 +271,10 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
     }
 
 
-def test_a_multi_dim_outside_partial_is_owned_whole(store):
+def test_a_layer_owns_every_tuple_of_a_multi_dim_outside_partial(store):
     """Not `partial`, a layer touching one connection owns them all.
 
-    A removed tuple's values still go, though no owner key names it.
+    A removed tuple's values still go, though no map row names it.
 
     Notes
     -----
@@ -302,7 +302,7 @@ def _connection(entity, bus):
 
 
 def test_add_refuses_a_tuple_naming_a_removed_entity(store):
-    """Below a materialised node too: its cached axis lacks the label.
+    """Below a materialised node too: its resolved axis lacks the label.
 
     Notes
     -----
@@ -335,7 +335,7 @@ def _disconnect_steel(staged):
     staged.remove("connection", pairs)
 
 
-_DANGLING = r"dims/connection.parquet names 'entity' labels \['steel_dri'\]"
+_DANGLING = r"dimensions/connection.parquet names 'entity' labels \['steel_dri'\]"
 
 
 @pytest.mark.parametrize(
@@ -381,12 +381,14 @@ def test_set_requires_every_party_to_exist(store):
         staged.set("price", 3.0, **contract)
 
 
-def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
-    """Its values are owned per attribute, so only the cached dead tuples drop them.
+def test_a_removed_tuple_outside_partial_stays_removed_past_a_materialised_node(
+    store,
+):
+    """Its values are owned per attribute, so only the resolved dead tuples drop them.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root = _root(store, schema(partial={"scenario"})).commit()
     dead = Path(store.resolved_dir(root.id), "dead")
@@ -490,11 +492,11 @@ def test_remove_reaches_a_multi_dims_second_entity_before_and_after_commit(store
 
     child = root.store.commit(staged)
     assert _prices(child.record) == {"smelter": 20.0}, "the `to` entity's row is gone"
-    contracts = child.record.dims["contract"]
+    contracts = child.record.dimensions["contract"]
     assert len(contracts) == 1, "its tuple went with it"
 
 
-def test_set_addresses_a_multi_dims_coordinates_by_keyword(store):
+def test_set_addresses_a_multi_dims_fields_by_keyword(store):
     """Each party is its own keyword, one label or a list; `entity=` is neither.
 
     Notes
@@ -511,7 +513,7 @@ def test_set_addresses_a_multi_dims_coordinates_by_keyword(store):
     staged.set("price", 40.0, to=["smelter"], **plant)
     assert _prices(staged) == {"mill": 30.0, "smelter": 40.0}, "a list fills `to`"
 
-    with pytest.raises(ValueError, match=r"\['from', 'to'"):
+    with pytest.raises(ValueError, match=r"\['snapshot', 'from', 'to'\]"):
         staged.set("price", {"mill": 50.0})
     with pytest.raises(ValueError, match=r"\['to'\] was not given"):
         staged.set("price", 50.0, **plant)

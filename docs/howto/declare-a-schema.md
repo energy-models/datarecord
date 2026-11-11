@@ -24,14 +24,14 @@ schema = Schema(
     },
     properties={
         "entity": {
-            "ctype": PropertySpec(one_of="ctype"),
-            "carrier": PropertySpec(one_of="carrier"),
+            "ctype": PropertySpec(refers="ctype"),
+            "carrier": PropertySpec(refers="carrier"),
             "sign": PropertySpec(
                 dtype="float", default=1.0, default_by={"entity.ctype": {"Load": -1.0}}
             ),
         },
         "bus": {
-            "carrier": PropertySpec(one_of="carrier", default="AC"),
+            "carrier": PropertySpec(refers="carrier", default="AC"),
             "x": PropertySpec(dtype="float"),
         },
     },
@@ -52,37 +52,37 @@ schema = Schema(
 )
 ```
 
-## Declare the dims
+## Declare the dimensions
 
-Give each dim a `Dimension` with a `dtype` of `"str"`, `"int"`, `"float"` or `"datetime"`. Where the schema fixes the labels, as for `ctype`, pass `one_of` with the list instead. Such a dim has no axis file and no properties, and `add` refuses its labels.
+Give each dimension a `Dimension` with a `dtype` of `"str"`, `"int"`, `"float"` or `"datetime"`. Where the schema fixes the labels, as for `ctype`, pass `one_of` with the list instead. Such a dimension has no axis file and no properties, and `add` refuses its labels.
 
-## Declare a multi-dim
+## Declare a multi-dimension
 
-Pass `over` with the dims whose labels form its tuples. A list is short for a mapping in which each coordinate is named after its dim:
+Pass `over` with the dimensions whose labels form its tuples. A list is short for a mapping in which each field is named after its dimension:
 
 ```python
-print(schema.multi_dims, schema.over("connection"))
+print(schema.multi_dimensions, schema.over("connection"))
 ```
 
 ```text
 ('connection',) {'entity': 'entity', 'bus': 'bus'}
 ```
 
-`over("connection")` returns the mapping that the list stands for. To name a coordinate differently from its dim, pass the mapping, as in `Dimension(over={"from": "bus", "to": "bus"})` for a line between two buses.
+`over("connection")` returns the mapping that the list stands for. To name a field differently from its dimension, pass the mapping, as in `Dimension(over={"from": "bus", "to": "bus"})` for a line between two buses.
 
 ## Declare properties
 
-Under `properties`, key each property by its subject dim and give it exactly one of `dtype` and `one_of`. With `one_of`, the property's values are labels of the dim you give, as the values of `entity.carrier` are labels of `carrier`. A property name belongs to its subject, so `bus.x` and an attribute `x` are two names.
+Under `properties`, key each property by its subject dimension and give it exactly one of `dtype` and `refers`. With `refers`, the property's values are labels of the dimension you give, as the values of `entity.carrier` are labels of `carrier`. A property name belongs to its subject, so `bus.x` and an attribute `x` are two names.
 
 datarecord refuses a spec with both:
 
 ```python
-PropertySpec(one_of="carrier", dtype="str")
+PropertySpec(refers="carrier", dtype="str")
 ```
 
 ```text
 pydantic_core._pydantic_core.ValidationError: 1 validation error for PropertySpec
-  Value error, a property declares exactly one of `dtype` and `one_of`, not both [type=value_error, input_value={'one_of': 'carrier', 'dtype': 'str'}, input_type=dict]
+  Value error, a property declares exactly one of `dtype` and `refers`, not both [type=value_error, input_value={'refers': 'carrier', 'dtype': 'str'}, input_type=dict]
     For further information visit https://errors.pydantic.dev/2.13/v/value_error
 ```
 
@@ -102,7 +102,7 @@ print(schema.default_for("entity.sign", ctype="Load"))
 -1.0
 ```
 
-`ctype` is the one categorising property of `entity`, and a storage unit's `p_min_pu` and a load's `sign` both default to `-1.0`. If the subject dim is outside `partial`, datarecord refuses the `default_by`:
+`ctype` is the one categorising property of `entity`, and a storage unit's `p_min_pu` and a load's `sign` both default to `-1.0`. If the subject dimension is outside `partial`, datarecord refuses the `default_by`:
 
 ```python
 Schema(**schema.model_dump() | {"partial": {"bus", "connection"}})
@@ -116,17 +116,17 @@ pydantic_core._pydantic_core.ValidationError: 1 validation error for Schema
 
 ## Declare attributes
 
-Give each attribute a `dtype` and the `dims` it varies over, multi-dims included, and a `default` for a point that no row covers. `unit` and `description` are stored as written and never interpreted:
+Give each attribute a `dtype` and the `dims` it varies over, multi-dimensions included, and a `default` for a coordinate that no row covers. `unit` and `description` are stored as written and never interpreted:
 
 ```python
-print(schema.coordinates_of("efficiency"))
+print(schema.dimensions_of("efficiency"))
 ```
 
 ```text
 ('connection',)
 ```
 
-`efficiency` is keyed by the one `connection` coordinate, a struct of `entity` and `bus`. datarecord refuses a dim in `dims` that the schema does not declare:
+`efficiency` is over the one dimension `connection`, a multi-dimension whose tuples are structs of `entity` and `bus`. datarecord refuses a dimension in `dims` that the schema does not declare:
 
 ```python
 Schema(
@@ -137,13 +137,13 @@ Schema(
 
 ```text
 pydantic_core._pydantic_core.ValidationError: 1 validation error for Schema
-  Value error, attribute 'p_nom' is addressed by undeclared dims ['bus'] [type=value_error, input_value={'dimensions': {'entity':...}), breakpoints=False)}}, input_type=dict]
+  Value error, attribute 'p_nom' is addressed by undeclared dimensions ['bus'] [type=value_error, input_value={'dimensions': {'entity':...}), breakpoints=False)}}, input_type=dict]
     For further information visit https://errors.pydantic.dev/2.13/v/value_error
 ```
 
 ## Choose `partial`
 
-List in `partial` the dims along which a child layer overrides one label's value. Leave out a dim whose values change together, such as `snapshot` for a time series. [Layers](../reference/layers.md) states the rule.
+List in `partial` the dimensions along which a child layer overrides one label's value. Leave out a dimension whose values change together, such as `snapshot` for a time series. [Layers](../reference/layers.md) states the rule.
 
 `PyPSA.verify` reports `snapshot` in `partial`, and `PyPSA.build` raises for it ([tools](../reference/tools.md)).
 

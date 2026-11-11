@@ -97,7 +97,7 @@ def anchored(rel: DuckDBPyRelation, owner: object) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     """
     weakref.finalize(rel, _keep, owner)
     return rel
@@ -184,7 +184,7 @@ def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
     """
     return reduce(DuckDBPyRelation.union_by_name, rels)
@@ -205,8 +205,8 @@ def join_on(
 def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     """NULL-safe equality on `columns`, between two aliased relations.
 
-    What an address coordinate is matched on everywhere: a row exists or it does
-    not, so NULL means "this key has no value there" and must match the same
+    What a dimension's column is matched on everywhere: a row exists or it does
+    not, so NULL means every label of the dimension and must match the same
     NULL on the other side, which a plain `=` never does.
     """
     return ex_all(
@@ -215,8 +215,8 @@ def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     )
 
 
-def named_mask(dims: Sequence[str], alias: str | None = None) -> Expression:
-    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
+def null_pattern(dims: Sequence[str], alias: str | None = None) -> Expression:
+    """A row's pattern over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
     return reduce(
         operator.add,
         (
@@ -472,7 +472,7 @@ def scratch_table(
 
     Notes
     -----
-    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     """
     name = temp_table(con, rel, "t")
     try:

@@ -51,7 +51,7 @@ print(root.record.properties["connection"].df())
 4   {'entity': 'line', 'bus': 'south'}    output
 ```
 
-Each component is a label of `entity` with its type in `entity.ctype`, and each of its ports is a `connection` tuple with a `role`. Buses and carriers are labels of the dims `bus` and `carrier`. `to_datarecord` raises `UnsupportedRecordError` for a network in which two components of different types share a name.
+Each component is a label of `entity` with its type in `entity.ctype`, and each of its ports is a `connection` tuple with a `role`. Buses and carriers are labels of the dimensions `bus` and `carrier`. `to_datarecord` raises `UnsupportedRecordError` for a network in which two components of different types share a name.
 
 ## Check a record before a build
 
@@ -138,7 +138,7 @@ A result is an attribute like any input, and a read of `solved` returns both. `P
 
 ## Build from a selection
 
-`PyPSA.build` takes a [selection](../reference/selecting.md) of a record and builds the network of its labels. Along a dim the network keeps, such as `snapshot` or `bus`, pass a list, because one label of it is refused:
+`PyPSA.build` takes a [selection](../reference/selecting.md) of a record and builds the network of its labels. Along a dimension the network keeps, such as `snapshot` or `bus`, pass a list, because one label of it is refused:
 
 ```python
 try:
@@ -150,13 +150,13 @@ print(list(south.generators.index), list(south.lines.index))
 ```
 
 ```text
-A network is built from a selection squeezing `period`, `scenario` or a dim of the record's own, not ['bus']: select one label as a list of one to keep the dim
+A network is built from a selection squeezing `period`, `scenario` or a dimension of the record's own, not ['bus']: select one label as a list of one to keep the dimension
 ['gas1'] []
 ```
 
 `wind1` and `line` attach to the dropped bus `north`, so `build` leaves them out of the network.
 
-One label of `period` or `scenario` squeezes the dim, and a list of one keeps it. A network with two investment periods shows the difference:
+One label of `period` or `scenario` squeezes the dimension, and a list of one keeps it. A network with two investment periods shows the difference:
 
 ```python
 mp = pypsa.Network(snapshots=pd.date_range("2030-01-01", periods=2, freq="h"))
@@ -220,7 +220,7 @@ The layer has one row for each edit. `gas1`'s `p_max_pu` is back at PyPSA's defa
 
 ## Solve a collection
 
-A set of networks solved apart, such as one per weather year, is a `pypsa.NetworkCollection` whose index names a dim of its own. `PyPSACollection.to_datarecord` writes it as one record:
+A set of networks solved apart, such as one per weather year, is a `pypsa.NetworkCollection` whose index names a dimension of its own. `PyPSACollection.to_datarecord` writes it as one record:
 
 ```python
 from datarecord.tools.base import UnsupportedRecordError
@@ -239,9 +239,9 @@ print(sorted(attributes["p_max_pu"].dims), sorted(attributes["p_nom"].dims))
 ['entity', 'scenario', 'snapshot', 'weather_year'] ['entity', 'scenario']
 ```
 
-`p_max_pu` differs between the members, so it varies over `weather_year`. `p_nom` is the same in both and keeps the dims PyPSA declares.
+`p_max_pu` differs between the members, so it varies over `weather_year`. `p_nom` is the same in both and keeps the dimensions PyPSA declares.
 
-`PyPSA.build` refuses a record with a dim of its own. Build it with `PyPSACollection.build`, solve each member, and write the results over the record:
+`PyPSA.build` refuses a record with a dimension of its own. Build it with `PyPSACollection.build`, solve each member, and write the results over the record:
 
 ```python
 try:
@@ -261,7 +261,7 @@ print(south_price.pivot(index="snapshot", columns="weather_year", values="value"
 ```
 
 ```text
-record cannot build a pypsa model; missing: unsupported dims ['weather_year']
+record cannot build a pypsa model; missing: unsupported dimensions ['weather_year']
 weather_year         2012  2013
 snapshot
 2030-01-01 00:00:00  -0.0  50.0

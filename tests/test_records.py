@@ -27,7 +27,7 @@ from tests.fixtures import (
     write_multi_dim,
 )
 
-MEMBERS = ("dims", "properties", "attributes")
+MEMBERS = ("dimensions", "properties", "attributes")
 
 
 @pytest.fixture(scope="module")
@@ -89,7 +89,7 @@ def both(written):
 class DictRecord:
     schema: Schema
     con: DuckDBPyConnection
-    dims: Relations
+    dimensions: Relations
     properties: Relations
     attributes: Relations
 
@@ -102,8 +102,8 @@ def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
     entity_axis = store.workspace.con.sql(
         "SELECT 'wind' AS entity, 'Generator' AS ctype"
     )
-    # `p_nom`'s own coordinates and no others: no `ctype` in a long
-    # row, and no `bus`, which is the connection multi-dim's coordinate rather than
+    # `p_nom` carries a column per dim of its own: no `ctype` in a long
+    # row, and no `bus`, which is the connection multi-dim's field rather than
     # a column every attribute carries.
     long = store.workspace.con.sql(
         "SELECT 'wind' AS entity, 'p_nom' AS attribute,"
@@ -249,16 +249,16 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
 # -- more than one layer, which is where the fold stops being a scan ---------
 
 
-def test_node_record_orders_members(store):
-    """A `Record` promises member order: the deepest restatement's row order.
+def test_node_record_keeps_axis_order(store):
+    """A `Record` promises axis order: the deepest restatement's row order.
 
     The order holds through a closed intermediate node that changes nothing
-    about membership.
+    about which labels the axis has.
 
     Notes
     -----
     - [one record over one fold](https://energy-models.github.io/datarecord/reference/resolution/)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root_layer = empty_root(store, schema())
     write_component(
@@ -285,16 +285,16 @@ def test_node_record_orders_members(store):
 
 
 def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
-    """A record with no `dims/connection.parquet` reads an empty axis, not an error.
+    """A record with no `dimensions/connection.parquet` reads an empty axis, not an error.
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])
 
-    assert store.layer(layer.commit().id).dims["connection"].fetchall() == []
+    assert store.layer(layer.commit().id).dimensions["connection"].fetchall() == []
 
 
 def test_missing_key_raises(both):
@@ -336,8 +336,8 @@ def test_two_stores_on_one_workspace_read_their_own_schema(workspace, tmp_path):
 
     (_, revision_a), (store_b, revision_b) = stores["a"], stores["b"]
     a, b = revision_a.record.schema, revision_b.record.schema
-    assert a.broadcast_dims == ("entity", "bus", "scenario", "ctype", "connection")
-    assert b.broadcast_dims == ("entity", "bus", "vintage", "ctype", "connection"), (
+    assert tuple(a.dimensions) == ("entity", "bus", "scenario", "ctype", "connection")
+    assert tuple(b.dimensions) == ("entity", "bus", "vintage", "ctype", "connection"), (
         "each location's own dims beside `entity`, `bus` and the multi-dim"
     )
     assert store_b.layer(revision_b.id).schema == b, (

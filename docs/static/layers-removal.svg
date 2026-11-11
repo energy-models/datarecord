@@ -48,13 +48,13 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">root layer</text>
-    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity</text>
+    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/entity</text>
     <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
     <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
     <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
     <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">coal</text>
     <text x="16" y="140" font-weight="bold"></text>
-    <text x="16" y="140" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/connection</text>
+    <text x="16" y="140" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/connection</text>
     <text x="24" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
     <text x="24" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(gas, north)</text>
     <text x="24" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(coal, north)</text>

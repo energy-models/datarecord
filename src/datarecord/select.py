@@ -46,8 +46,8 @@ _ORDERED = frozenset({"bigint", "double", "timestamp"})
 class Selection:
     """A record at the labels `select` names, itself a `RecordLike`.
 
-    A dim given one label is squeezed out of `schema`; every other dim keeps
-    the labels that refer to no label the selection drops. `dims` and
+    A dimension given one label is squeezed out of `schema`; every other dimension keeps
+    the labels that refer to no label the selection drops. `dimensions` and
     `properties` keep the base's order, and every relation is a plan on the
     base's connection.
 
@@ -56,10 +56,10 @@ class Selection:
     base
         The record selected from, never a `Selection`.
     labels
-        The keywords asked for, normalized: one label for a squeezed dim, else
+        The keywords asked for, normalized: one label for a squeezed dimension, else
         the list of labels matched.
     schema
-        The base's schema without the squeezed dims, their axes, their
+        The base's schema without the squeezed dimensions, their axes, their
         properties and every property referring to one.
 
     Notes
@@ -79,9 +79,9 @@ class Selection:
         return self.base.con
 
     @property
-    def dims(self) -> LazyRelations:
-        """The axes of the dims left, each at its kept labels in axis order."""
-        names = _declared(self.base.dims, self.schema.dimensions)
+    def dimensions(self) -> LazyRelations:
+        """The axes of the dimensions left, each at its kept labels in axis order."""
+        names = _declared(self.base.dimensions, self.schema.dimensions)
         return LazyRelations(names, self._axis)
 
     @property
@@ -92,7 +92,7 @@ class Selection:
 
     @property
     def attributes(self) -> LazyRelations:
-        """Long rows at the kept labels or NULL there, each squeezed dim settled and dropped.
+        """Long rows at the kept labels or NULL there, each squeezed dimension settled and dropped.
 
         Notes
         -----
@@ -102,12 +102,12 @@ class Selection:
         return LazyRelations(names, self._attribute)
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """The base's flags without the squeezed dims, overstating the view's rows.
+        """The base's flags without the squeezed dimensions, overstating the view's rows.
 
         Raises
         ------
         ValueError
-            If the keywords categorize no dim of the view, or several.
+            If the keywords categorize no dimension of the view, or several.
 
         Notes
         -----
@@ -134,10 +134,10 @@ class Selection:
     def lift(self, attribute: str, rel: DuckDBPyRelation) -> DuckDBPyRelation:
         """`rel`, rows of `attribute` over this view, with the squeezed labels put back.
 
-        Each squeezed dim the base declares `attribute` over is added as a
-        column at its label, and each squeezed coordinate back into its
-        multi-dim's struct; a NULL struct stays NULL. An attribute the base
-        declares over no squeezed dim comes back as it came.
+        Each squeezed dimension the base declares `attribute` over is added as a
+        column at its label, and each squeezed field back into its
+        multi-dimension's struct; a NULL struct stays NULL. An attribute the base
+        declares over no squeezed dimension comes back as it came.
 
         Raises
         ------
@@ -149,16 +149,16 @@ class Selection:
         - [lifting rows back](https://energy-models.github.io/datarecord/reference/selecting/#lift)
         """
         base = self.base.schema
-        coordinates = base.coordinates_of(attribute)
+        dims = base.dimensions_of(attribute)
         changed = [
             c
-            for c in coordinates
+            for c in dims
             if c in self._squeezed or (c in rel.columns and self._shrunk(c))
         ]
         if not changed:
             return rel
         lifted: list[Expression] = []
-        for c in coordinates:
+        for c in dims:
             if c in self._squeezed:
                 lifted.append(_literal(self._squeezed[c], self._type(c)).alias(c))
             elif c in changed:
@@ -171,7 +171,7 @@ class Selection:
                 lifted.append(_tuple(c, fields, self._type(c)))
             elif c in rel.columns:
                 lifted.append(col(c))
-        rest = [col(c) for c in rel.columns if c not in coordinates]
+        rest = [col(c) for c in rel.columns if c not in dims]
         return rel.project(*lifted, *rest)
 
     def _type(self, dim: str) -> DuckDBPyType:
@@ -180,8 +180,8 @@ class Selection:
         return schema.duck_type(schema.dimensions[dim])
 
     def _shrunk(self, dim: str) -> bool:
-        """Whether `dim` is a multi-dim the view keeps with some coordinates squeezed."""
-        if dim not in self.schema.multi_dims:
+        """Whether `dim` is a multi-dimension the view keeps with some fields squeezed."""
+        if dim not in self.schema.multi_dimensions:
             return False
         return self.schema.over(dim) != self.base.schema.over(dim)
 
@@ -199,20 +199,20 @@ class Selection:
         return self._reduced(rel)
 
     def _reduced(self, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        """`rel` with each struct of a multi-dim the view keeps reduced to the view's coordinates."""
+        """`rel` with each struct of a multi-dimension the view keeps reduced to the view's fields."""
         if not any(self._shrunk(c) for c in rel.columns):
             return rel
         return rel.project(*(self._column(c) for c in rel.columns))
 
     def _column(self, c: str) -> Expression:
-        """Column `c`, a multi-dim's struct reduced to the view's coordinates."""
+        """Column `c`, a multi-dimension's struct reduced to the view's fields."""
         if not self._shrunk(c):
             return col(c)
         fields = {f: col(c)[f] for f in self.schema.over(c)}
         return _tuple(c, fields, self.schema.duck_type(self.schema.dimensions[c]))
 
     def _axis(self, dim: str) -> DuckDBPyRelation:
-        return self._keyed(dim, self.base.dims[dim])
+        return self._keyed(dim, self.base.dimensions[dim])
 
     def _subject(self, subject: str) -> DuckDBPyRelation:
         rel = self._keyed(subject, self.base.properties[subject])
@@ -238,13 +238,13 @@ class Selection:
 def select(record: RecordLike, /, **labels: Any) -> Selection:
     """`record` at the labels named, as xarray's `sel` takes them.
 
-    A keyword names a dim; one naming a multi-dim's coordinate that is no dim
+    A keyword names a dimension; one naming a multi-dimension's field that is no dimension
     narrows its tuples, and any other names a property by its bare name and
     narrows its subject to the labels whose value, its default applied, is
-    selected. One label squeezes its dim. A list, a slice (both ends
+    selected. One label squeezes its dimension. A list, a slice (both ends
     inclusive, `None` open) or a partial date string on a datetime axis keeps
     it. Every label referring to a dropped one goes with it, through
-    properties and multi-dim tuples, until nothing more goes. Over a
+    properties and multi-dimension tuples, until nothing more goes. Over a
     `Selection`, its keywords are merged and its base selected.
 
     Returns
@@ -256,13 +256,13 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
     Raises
     ------
     ValueError
-        Naming the keyword: one naming no dim, coordinate or property, a
-        multi-dim, a coordinate of several multi-dims or a property several
+        Naming the keyword: one naming no dimension, field or property, a
+        multi-dimension, a field of several multi-dimensions or a property several
         subjects declare; a label the axis lacks; an empty list; a slice with
         a step, of an axis neither numeric nor datetime, with an end the axis
         cannot compare or covering no label; a squeezed label another
         keyword's selection drops; a squeeze folding a category into the
-        default a kept label NULL on it does not take; squeezing every dim of
+        default a kept label NULL on it does not take; squeezing every dimension of
         a record with attributes.
 
     Notes
@@ -278,11 +278,11 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
     squeezed: dict[str, Any] = {}
     kept: dict[str, set[Any]] = {}
     for keyword, value in labels.items():
-        if keyword in schema.multi_dims:
+        if keyword in schema.multi_dimensions:
             raise _refusal(
                 keyword,
                 value,
-                "names a multi-dim, whose tuples are selected through its coordinates",
+                "names a multi-dimension, whose tuples are selected through its fields",
             )
         if keyword in schema.dimensions:
             matched = _match(
@@ -295,7 +295,7 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
             continue
         subject, allowed, asked[keyword] = _narrowing(schema, read, keyword, value)
         _narrow(kept, subject, allowed)
-    for m in schema.multi_dims:
+    for m in schema.multi_dimensions:
         over = schema.over(m)
         if all(d in squeezed for d in over.values()):
             squeezed[m] = {c: squeezed[d] for c, d in over.items()}
@@ -303,8 +303,8 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
     if schema.attributes and schema.dimensions.keys() <= squeezed.keys():
         raise _refused(
             {k: v for k, v in asked.items() if k in squeezed},
-            "squeezes every dim, and attributes over no axis are no record; "
-            "keep one dim as a list of one",
+            "squeezes every dimension, and attributes over no axis are no record; "
+            "keep one dimension as a list of one",
         )
     _propagate(schema, read, kept)
     for keyword, label in asked.items():
@@ -319,12 +319,12 @@ def select(record: RecordLike, /, **labels: Any) -> Selection:
         d: numbered_relation(
             record.con,
             d,
-            [label for label in read.axis(d) if _key(label) in keys],
+            [label for label in read.axis(d) if _key(label) in held],
             _dtype(schema, d),
             _AT,
         )
-        for d, keys in kept.items()
-        if d in squeezed or len(keys) < len(read.axis(d))
+        for d, held in kept.items()
+        if d in squeezed or len(held) < len(read.axis(d))
     }
     view = _schema(schema, squeezed, read.category(squeezed))
     return Selection(record, asked, view, squeezed, narrowed)
@@ -341,7 +341,9 @@ class _Read:
     def axis(self, dim: str) -> list[Any]:
         """The labels of `dim` in axis order, a tuple as a dict."""
         if dim not in self._axes:
-            self._axes[dim] = [label for (label,) in self.record.dims[dim].fetchall()]
+            self._axes[dim] = [
+                label for (label,) in self.record.dimensions[dim].fetchall()
+            ]
         return self._axes[dim]
 
     def values(self, subject: str, name: str) -> dict[Any, Any]:
@@ -357,14 +359,14 @@ class _Read:
     def category(self, squeezed: Mapping[str, Any]) -> Callable[[str, str], Any]:
         """What property `name` of `subject` holds where one of the two is squeezed.
 
-        The label of the dim the property refers to, where that is squeezed;
+        The label of the dimension the property refers to, where that is squeezed;
         else the value of the squeezed subject's label, None where it has none.
         """
 
         def category(subject: str, name: str) -> Any:
             spec = self.record.schema.properties[subject][name]
-            if spec.one_of is not None and spec.one_of in squeezed:
-                return squeezed[spec.one_of]
+            if spec.refers is not None and spec.refers in squeezed:
+                return squeezed[spec.refers]
             return self.values(subject, name).get(_key(squeezed[subject]))
 
         return category
@@ -373,25 +375,25 @@ class _Read:
 def _narrowing(
     schema: Schema, read: _Read, keyword: str, value: Any
 ) -> tuple[str, set[Any], list[Any]]:
-    """The subject a keyword naming no dim narrows, the keys of its labels kept, and the values matched.
+    """The subject a keyword naming no dimension narrows, the keys of its labels kept, and the values matched.
 
-    A coordinate of a multi-dim keeps the tuples holding a matched label
+    A field of a multi-dimension keeps the tuples holding a matched label
     there; a property keeps the labels whose value, its default applied, is
-    matched. The values a property is matched against are the axis of the dim
+    matched. The values a property is matched against are the axis of the dimension
     it refers to, else the values its labels hold, sorted.
 
     Raises
     ------
     ValueError
-        If `keyword` is a coordinate of several multi-dims, a property of
+        If `keyword` is a field of several multi-dimensions, a property of
         several subjects or neither, or as `_match` does.
     """
-    multis = [m for m in schema.multi_dims if keyword in schema.over(m)]
+    multis = [m for m in schema.multi_dimensions if keyword in schema.over(m)]
     if len(multis) > 1:
         raise _refusal(
             keyword,
             value,
-            f"names a coordinate of each of {multis}; select through a dim instead",
+            f"names a field of each of {multis}; select through a dimension instead",
         )
     if multis:
         (multi,) = multis
@@ -404,19 +406,19 @@ def _narrowing(
         return multi, {_key(t) for t in tuples if _key(t[keyword]) in wanted}, matched
     owners = [s for s, specs in schema.properties.items() if keyword in specs]
     if not owners:
-        raise _refusal(keyword, value, "names no dim, coordinate or property")
+        raise _refusal(keyword, value, "names no dimension, field or property")
     if len(owners) > 1:
         raise _refusal(
             keyword,
             value,
-            f"names a property of each of {owners}; select through a dim instead",
+            f"names a property of each of {owners}; select through a dimension instead",
         )
     (subject,) = owners
     spec = schema.properties[subject][keyword]
     values = read.values(subject, keyword)
     held = (
-        read.axis(spec.one_of)
-        if spec.one_of is not None
+        read.axis(spec.refers)
+        if spec.refers is not None
         else sorted({v for v in values.values() if v is not None})
     )
     matched = _listed(_match(keyword, value, held, schema.duck_type(spec)))
@@ -429,18 +431,18 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
     """Narrow `kept` until no kept label refers to one dropped.
 
     A label goes where a property, its default applied, names a dropped label,
-    and a tuple where one of its coordinates does; a NULL names none.
+    and a tuple where one of its fields does; a NULL names none.
 
     Notes
     -----
     - [what goes with a dropped label](https://energy-models.github.io/datarecord/reference/selecting/#what-goes-with-a-dropped-label)
     """
-    referring = schema.one_of_properties()
+    referring = schema.referring_properties()
     while True:
-        before = {d: len(keys) for d, keys in kept.items()}
+        before = {d: len(held) for d, held in kept.items()}
         dropped = {
-            d: {_key(label) for label in read.axis(d)} - keys
-            for d, keys in kept.items()
+            d: {_key(label) for label in read.axis(d)} - held
+            for d, held in kept.items()
         }
         for (subject, name), dim in referring.items():
             if dropped.get(dim):
@@ -451,8 +453,8 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
                     if v is not None and _key(v) in dropped[dim]
                 }
                 _narrow(kept, subject, set(values) - gone)
-        for multi in schema.multi_dims:
-            for coordinate, dim in schema.over(multi).items():
+        for multi in schema.multi_dimensions:
+            for f, dim in schema.over(multi).items():
                 if dropped.get(dim):
                     _narrow(
                         kept,
@@ -460,10 +462,10 @@ def _propagate(schema: Schema, read: _Read, kept: dict[str, set[Any]]) -> None:
                         {
                             _key(t)
                             for t in read.axis(multi)
-                            if _key(t[coordinate]) not in dropped[dim]
+                            if _key(t[f]) not in dropped[dim]
                         },
                     )
-        if {d: len(keys) for d, keys in kept.items()} == before:
+        if {d: len(held) for d, held in kept.items()} == before:
             return
 
 
@@ -476,20 +478,20 @@ def _refuse_uncategorized(
     """Refuse a squeeze whose category default a kept label NULL on the category would take.
 
     `_schema` folds a `default_by` keyed on a property referring to a squeezed
-    dim into the default for the squeezed label, which a label NULL there,
+    dimension into the default for the squeezed label, which a label NULL there,
     matching no key in the base, never took. Only a key listing that label
     misstates a default.
 
     Raises
     ------
     ValueError
-        Naming the squeezed dim's keyword.
+        Naming the squeezed dimension's keyword.
     """
     specs = [
         *schema.attributes.values(),
         *(spec for specs in schema.properties.values() for spec in specs.values()),
     ]
-    for (subject, name), dim in schema.one_of_properties().items():
+    for (subject, name), dim in schema.referring_properties().items():
         if dim not in squeezed:
             continue
         label, key = squeezed[dim], f"{subject}.{name}"
@@ -506,17 +508,17 @@ def _refuse_uncategorized(
 
 
 def _narrow(kept: dict[str, set[Any]], dim: str, allowed: set[Any]) -> None:
-    """Keep of `dim` only the keys in `allowed` too."""
+    """Keep of `dim` only the labels in `allowed` too."""
     kept[dim] = kept[dim] & allowed if dim in kept else set(allowed)
 
 
 def _schema(
     schema: Schema, squeezed: Mapping[str, Any], category: Callable[[str, str], Any]
 ) -> Schema:
-    """`schema` without the `squeezed` dims, their properties and the properties referring to one.
+    """`schema` without the `squeezed` dimensions, their properties and the properties referring to one.
 
-    A multi-dim loses the coordinates drawing on a squeezed dim, and an
-    attribute its squeezed dims. A `default_by` keyed on a property that goes
+    A multi-dimension loses the fields drawing on a squeezed dimension, and an
+    attribute its squeezed dimensions. A `default_by` keyed on a property that goes
     applies its entry for the squeezed label's category as the default, which
     the keys before it still override, and the keys after it never reach.
     """
@@ -524,7 +526,7 @@ def _schema(
         (subject, name)
         for subject, specs in schema.properties.items()
         for name, spec in specs.items()
-        if subject in squeezed or spec.one_of in squeezed
+        if subject in squeezed or spec.refers in squeezed
     }
 
     def defaulted[S: (PropertySpec, AttributeSpec)](spec: S) -> S:

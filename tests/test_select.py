@@ -70,9 +70,9 @@ def schema():
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(one_of="ctype"),
-                "tech": PropertySpec(one_of="tech"),
-                "carrier": PropertySpec(one_of="carrier"),
+                "ctype": PropertySpec(refers="ctype"),
+                "tech": PropertySpec(refers="tech"),
+                "carrier": PropertySpec(refers="carrier"),
                 "sign": PropertySpec(
                     dtype="float",
                     default=1.0,
@@ -81,11 +81,11 @@ def schema():
                 "note": PropertySpec(dtype="str"),
             },
             "bus": {
-                "carrier": PropertySpec(one_of="carrier", default="AC"),
-                "state": PropertySpec(one_of="state"),
+                "carrier": PropertySpec(refers="carrier", default="AC"),
+                "state": PropertySpec(refers="state"),
                 "note": PropertySpec(dtype="str"),
             },
-            "state": {"country": PropertySpec(one_of="country")},
+            "state": {"country": PropertySpec(refers="country")},
         },
         attributes={
             "capacity": AttributeSpec(dtype="float", dims={"entity"}),
@@ -209,7 +209,7 @@ def _rows(rel: DuckDBPyRelation) -> list[str]:
 def _relations(view: RecordLike) -> dict[tuple[str, str], Any]:
     """Every relation of `view`, fetched, by kind and name."""
     return {
-        **{("dims", d): r.fetchall() for d, r in view.dims.items()},
+        **{("dimensions", d): r.fetchall() for d, r in view.dimensions.items()},
         **{("properties", s): r.fetchall() for s, r in view.properties.items()},
         **{("attributes", a): _rows(r) for a, r in view.attributes.items()},
     }
@@ -223,15 +223,17 @@ def _at(record: RecordLike, labels: dict[str, Any]) -> dict[str, DuckDBPyRelatio
         for d, label in labels.items()
         if d in schema.dimensions and not isinstance(label, list)
     }
-    at = {d: record.dims[d].filter(col(d) == lit(label)) for d, label in one.items()}
-    for m in schema.multi_dims:
+    at = {
+        d: record.dimensions[d].filter(col(d) == lit(label)) for d, label in one.items()
+    }
+    for m in schema.multi_dimensions:
         over = schema.over(m)
         if set(over.values()) <= one.keys():
             fields = (
                 fn.struct_extract(col(m), lit(c)) == lit(one[d])
                 for c, d in over.items()
             )
-            at[m] = record.dims[m].filter(ex_all(fields))
+            at[m] = record.dimensions[m].filter(ex_all(fields))
     return at
 
 
@@ -259,7 +261,7 @@ VIEWS = [
         {"carrier": ["AC", "wind"]}, {"carrier": ["AC", "wind"]}, id="carriers"
     ),
     pytest.param({"country": ["DE"]}, {"country": ["DE"]}, id="chain"),
-    pytest.param({"from": "north"}, {"from": ["north"]}, id="coordinate"),
+    pytest.param({"from": "north"}, {"from": ["north"]}, id="field"),
     pytest.param({"sign": -1}, {"sign": [-1.0]}, id="property"),
 ]
 
@@ -363,18 +365,18 @@ ALL_BUSES = ["north", "south", "paris"]
         pytest.param(
             {"from": "north"},
             {"corridor": [{"from": "north", "to": "south"}], "bus": ALL_BUSES},
-            id="a-coordinate-narrows-tuples",
+            id="a-field-narrows-tuples",
         ),
         pytest.param(
             {"scenario": "high"},
             {"stage": [{"period": 2030}, {"period": 2040}]},
-            id="a-multi-dim-loses-a-coordinate",
+            id="a-multi-dim-loses-a-field",
         ),
     ],
 )
 def test_a_dropped_label_takes_what_refers_to_it(record, asked, kept):
     view = record.select(**asked)
-    assert {d: _labels(view.dims[d]) for d in kept} == kept
+    assert {d: _labels(view.dimensions[d]) for d in kept} == kept
 
 
 @pytest.mark.parametrize(
@@ -404,13 +406,13 @@ def test_a_dropped_label_takes_what_refers_to_it(record, asked, kept):
             {"scenario": "high"},
             "stage_cost",
             [(None, 4.0), ({"period": 2040}, 5.0)],
-            id="a-coordinate-leaves-its-struct",
+            id="a-field-leaves-its-struct",
         ),
         pytest.param(
             {"scenario": "high", "period": 2040},
             "stage_cost",
             [(5.0,)],
-            id="a-multi-dim-squeezed-with-its-coordinates",
+            id="a-multi-dim-squeezed-with-its-fields",
         ),
         pytest.param(
             {"period": 2030},
@@ -489,7 +491,7 @@ def test_a_default_by_a_squeezed_category_applies_its_entry(
             {"scenario": "high"},
             "stage_cost",
             [(None, 4.0), ({"scenario": "high", "period": 2040}, 5.0)],
-            id="a-coordinate-comes-back-into-its-struct",
+            id="a-field-comes-back-into-its-struct",
         ),
         pytest.param(
             {"scenario": "high", "period": 2040},
@@ -517,7 +519,7 @@ def test_a_selection_plans_on_the_base_and_reads_its_later_edits(record):
 @pytest.mark.parametrize(
     ("asked", "reason"),
     [
-        pytest.param({"pipeline": 1}, "names no dim", id="undeclared"),
+        pytest.param({"pipeline": 1}, "names no dimension", id="undeclared"),
         pytest.param({"bus": "Atlantis"}, "the axis lacks", id="unknown-label"),
         pytest.param({"bus": ["north", "Atlantis"]}, "the axis lacks", id="unknown"),
         pytest.param({"snapshot": "2014"}, "names no label", id="empty-span"),
@@ -554,19 +556,19 @@ def test_a_squeeze_never_defaults_a_label_null_on_its_category(record):
             w.select(ctype="Load")
         assert "select(ctype='Load')" in str(refused.value)
         for kept in ({"ctype": ["Load"]}, {"ctype": "Generator"}):
-            assert "spare" in _labels(w.select(**kept).dims["entity"]), (
+            assert "spare" in _labels(w.select(**kept).dimensions["entity"]), (
                 f"{kept} keeps a label NULL on its category, defaulting it as the base"
             )
 
 
 def test_flags_refuse_a_category_the_view_squeezed(record):
-    with pytest.raises(ValueError, match="categorize no dim"):
+    with pytest.raises(ValueError, match="categorize no dimension"):
         record.select(ctype="Load").flags(ctype="Load")
 
 
 @pytest.fixture(scope="module")
 def routes(module_store):
-    """Corridors and pipes between nodes, `from` a coordinate of both, `via` a coordinate and a property."""
+    """Corridors and pipes between nodes, `from` a field of both, `via` a field and a property."""
     schema = Schema(
         dimensions={
             "node": Dimension(),
@@ -585,17 +587,19 @@ def routes(module_store):
         return module_store.commit(w).record
 
 
-def test_a_coordinate_keyword_wins_over_a_property_of_its_name(routes):
+def test_a_field_keyword_wins_over_a_property_of_its_name(routes):
     view = routes.select(via=["b"])
-    assert _labels(view.dims["pipe"]) == [{"from": "a", "via": "b"}]
-    assert _labels(view.dims["node"]) == ["a", "b", "c"], "no node selected by `via`"
+    assert _labels(view.dimensions["pipe"]) == [{"from": "a", "via": "b"}]
+    assert _labels(view.dimensions["node"]) == ["a", "b", "c"], (
+        "no node selected by `via`"
+    )
 
 
 @pytest.mark.parametrize(
     ("asked", "reason"),
     [
-        pytest.param({"from": "a"}, "coordinate of each", id="several-multi-dims"),
-        pytest.param({"node": "a"}, "squeezes every dim", id="every-dim"),
+        pytest.param({"from": "a"}, "field of each", id="several-multi-dims"),
+        pytest.param({"node": "a"}, "squeezes every dimension", id="every-dim"),
     ],
 )
 def test_select_refuses_a_view_the_schema_cannot_hold(routes, asked, reason):

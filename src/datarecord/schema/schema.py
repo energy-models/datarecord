@@ -6,7 +6,7 @@
 
 Each layer's `manifest.json` carries the full schema it was written under.
 
-Framework-independent. Dims, properties and attributes are names a schema
+Framework-independent. Dimensions, properties and attributes are names a schema
 declares, because those vocabularies belong to a modelling framework and this
 package knows none: a label no tool recognises reads back fine and is reported
 by the tool that cannot build it, not rejected here.
@@ -23,19 +23,21 @@ import hashlib
 import json
 import operator
 import re
-from collections.abc import Container, Iterable, Mapping
-from functools import cached_property, reduce
-from typing import Any, Self, cast
+import threading
+from collections.abc import Callable, Container, Iterable, Mapping
+from functools import cached_property, reduce, wraps
+from typing import Any, Concatenate, Self, cast
 
 import duckdb
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression, sqltypes
+from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
+from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 from mathspec._expression_parser import NAME
 from pydantic import Field, model_validator
 
-from datarecord.duck import fn
+from datarecord.duck import empty_relation, fn
 from datarecord.schema.dtypes import DUCK_TYPES, enum_type, takes
 from datarecord.schema.specs import (
     AttributeSpec,
@@ -58,7 +60,7 @@ STRUCTURAL_TYPES = {
 }
 
 
-# Every long row's trailing columns, whatever coordinates precede them: the
+# Every long row's trailing columns, after one column per dim: the
 # attribute named, the abscissa of a piecewise-linear value, and the value
 # (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet).
 LONG_TAIL = ("attribute", "breakpoint", "value")
@@ -113,10 +115,10 @@ Notes
 
 
 def _misnamed(name: str) -> str | None:
-    """Why `name` cannot be a declared dim, coordinate or attribute, if so.
+    """Why `name` cannot be a declared dimension, field or attribute, if so.
 
     mathspec's `NAME` is the rule, since an expression must be able to write
-    the name; it also keeps a dim's name usable unquoted in the fold's shared
+    the name; it also keeps a dimension's name usable unquoted in the fold's shared
     table names (`_fold_name`).
     """
     if name.startswith("_"):
@@ -129,9 +131,9 @@ def _misnamed(name: str) -> str | None:
 
 
 def flag_type(dims: tuple[str, ...]) -> DuckDBPyType:
-    """One flag struct's type: a BOOLEAN field per declared dim.
+    """One flag struct's type: a BOOLEAN field per declared dimension.
 
-    `dims` is never empty: a schema declaring no dims describes no dimensioned
+    `dims` is never empty: a schema declaring no dimensions describes no dimensioned
     data, which `Schema` rejects - so the struct always has a field and
     needs no placeholder for DuckDB's want of an empty one.
 
@@ -145,7 +147,7 @@ def flag_type(dims: tuple[str, ...]) -> DuckDBPyType:
 
 def _typed_as(spec: Dimension | AttributeSpec | PropertySpec) -> str:
     """Show how `spec` declares its type: its dtype, or the fields its manifest writes."""
-    declared = spec.model_dump(include={"dtype", "one_of", "over"})
+    declared = spec.model_dump(include={"dtype", "one_of", "refers", "over"})
     return (
         str(declared["dtype"]) if declared.keys() == {"dtype"} else json.dumps(declared)
     )
@@ -154,7 +156,7 @@ def _typed_as(spec: Dimension | AttributeSpec | PropertySpec) -> str:
 def schema_digest(raw: Any) -> tuple[str, str]:
     """`raw`, a schema's JSON form, as compact JSON text and that text's sha256.
 
-    Keys keep their order, which a schema means: a multi-dim's members are
+    Keys keep their order, which a schema means: a multi-dimension's members are
     ordered.
     """
     text = json.dumps(raw, separators=(",", ":"))
@@ -170,19 +172,19 @@ class Schema(_Declared):
         Bumped by any change to the declarations. A reader meeting a
         version it was not written for should refuse rather than guess.
     dimensions
-        Every declared axis, keyed by dim name.
+        Every declared axis, keyed by dimension name.
     properties
-        Subject dim -> property name -> spec: the columns of
-        `dims/{dim}.parquet` that describe its labels. A name is unique
+        Subject dimension -> property name -> spec: the columns of
+        `dimensions/{dim}.parquet` that describe its labels. A name is unique
         within its subject only, addressed as `subject.name`. A property of a
-        dim in `partial` that refers to a dim with
-        `one_of` categorizes its subject. A dim with `one_of` has none.
+        dimension in `partial` that refers to a dimension with
+        `one_of` categorizes its subject. A dimension with `one_of` has none.
     attributes
         Attribute -> spec, record-wide. One attribute is one spec and
         one `attributes/<attr>.parquet` with one dtype.
     partial
-        Which dims a layer may patch value by value. `None` for a record
-        with no layers, since nothing overrides anything. A dim outside it is
+        Which dimensions a layer may patch value by value. `None` for a record
+        with no layers, since nothing overrides anything. A dimension outside it is
         one a layer owns entirely once it touches it.
     meta
         A framework's own top-level data - network attributes, CRS, free-form
@@ -229,7 +231,7 @@ class Schema(_Declared):
         Notes
         -----
         - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         - [names](https://energy-models.github.io/datarecord/reference/schema/#names)
         """
         self._check_names()
@@ -240,23 +242,25 @@ class Schema(_Declared):
         # no type for. A wholly empty `Schema()` stays legal: "no manifest yet".
         if self.attributes and not declared:
             msg = (
-                "a schema declaring attributes must declare at least one dim; "
+                "a schema declaring attributes must declare at least one dimension; "
                 "attribute data varying over no axis is not a record (https://energy-models.github.io/datarecord/reference/data-model/)"
             )
             raise ValueError(msg)
 
-        for multi in self.multi_dims:
+        for multi in self.multi_dimensions:
             drawn = set(self.over(multi).values())
             unknown = sorted(drawn - declared)
             if unknown:
-                msg = f"multi-dim {multi!r} is over undeclared dims {unknown}"
+                msg = (
+                    f"multi-dimension {multi!r} is over undeclared dimensions {unknown}"
+                )
                 raise ValueError(msg)
-            nested = sorted(drawn & set(self.multi_dims))
+            nested = sorted(drawn & set(self.multi_dimensions))
             if nested:
                 msg = (
-                    f"multi-dim {multi!r} is over the multi-dims {nested}; each "
-                    f"coordinate draws on a dim that is no multi-dim "
-                    f"(https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
+                    f"multi-dimension {multi!r} is over the multi-dimensions {nested}; each "
+                    f"field draws on a dimension that is no multi-dimension "
+                    f"(https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)"
                 )
                 raise ValueError(msg)
 
@@ -265,30 +269,30 @@ class Schema(_Declared):
         for attr, attr_spec in self.attributes.items():
             unknown = sorted(attr_spec.dims - declared)
             if unknown:
-                msg = f"attribute {attr!r} is addressed by undeclared dims {unknown}"
+                msg = f"attribute {attr!r} is addressed by undeclared dimensions {unknown}"
                 raise ValueError(msg)
-            for multi in self.multi_dims_of(attr):
+            for multi in self.multi_dimensions_of(attr):
                 twice = sorted(set(self.over(multi)) & attr_spec.dims)
                 if twice:
                     msg = (
-                        f"attribute {attr!r} is addressed by the multi-dim "
+                        f"attribute {attr!r} is addressed by the multi-dimension "
                         f"{multi!r} and by {twice}, which share a name with "
-                        f"the multi-dim's coordinates, so a keyword such as "
-                        f"{twice[0]}= would address both. Name the multi-dim's "
-                        f"coordinate differently, e.g. over={{..., 'port': "
-                        f"{twice[0]!r}}} (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)"
+                        f"the multi-dimension's fields, so a keyword such as "
+                        f"{twice[0]}= would address both. Name the multi-dimension's "
+                        f"field differently, e.g. over={{..., 'port': "
+                        f"{twice[0]!r}}} (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)"
                     )
                     raise ValueError(msg)
 
         if self.partial is not None:
             unknown = sorted(self.partial - declared)
             if unknown:
-                msg = f"`partial` names undeclared dims {unknown}"
+                msg = f"`partial` names undeclared dimensions {unknown}"
                 raise ValueError(msg)
         return self
 
     def _categorized_by(self, name: str, what: str) -> tuple[str, str]:
-        """Split the `default_by` key `name` into a dim and one of its categorizing properties.
+        """Split the `default_by` key `name` into a dimension and one of its categorizing properties.
 
         `what` names the declaration holding the key, for the error.
 
@@ -298,15 +302,17 @@ class Schema(_Declared):
             If `name` is not `subject.name` of a categorizing property.
         """
         subject, _, prop = name.partition(".")
-        coordinate = prop in self.over(subject) if subject in self.dimensions else False
-        if coordinate:
-            reason = f"is a coordinate of the multi-dim {subject!r}, part of its key"
+        field = prop in self.over(subject) if subject in self.dimensions else False
+        if field:
+            reason = f"is a field of the multi-dimension {subject!r}, not a property"
         elif prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
-        elif (one_of := self.properties[subject][prop].one_of) is None:
-            reason = "refers to no dim"
-        elif self.dimensions[one_of].one_of is None:
-            reason = f"refers to {one_of!r}, but {one_of!r} is not a one_of dim"
+        elif (referred := self.properties[subject][prop].refers) is None:
+            reason = "refers to no dimension"
+        elif self.dimensions[referred].one_of is None:
+            reason = (
+                f"refers to {referred!r}, but {referred!r} is not a one_of dimension"
+            )
         elif subject not in (self.partial or set()):
             reason = f"is a property of {subject!r}, which `partial` does not list"
         else:
@@ -315,35 +321,35 @@ class Schema(_Declared):
         raise ValueError(msg)
 
     def _check_properties(self) -> None:
-        """Refuse a property of an undeclared subject, one that refers to an undeclared dim, and a malformed `default_by`."""
+        """Refuse a property of an undeclared subject, one that refers to an undeclared dimension, and a malformed `default_by`."""
         unknown = sorted(set(self.properties) - set(self.dimensions))
         if unknown:
             msg = (
-                f"properties are declared on undeclared dims {unknown}; "
+                f"properties are declared on undeclared dimensions {unknown}; "
                 f"a property is a column of its subject's axis file"
             )
             raise ValueError(msg)
-        on_one_of = sorted(set(self.properties) & set(self.one_of_dims))
+        on_one_of = sorted(set(self.properties) & set(self.one_of_dimensions))
         if on_one_of:
             msg = (
                 f"properties are declared on {on_one_of}, which list their labels "
-                f"with `one_of`; such a dim's axis is the schema's list, with "
+                f"with `one_of`; such a dimension's axis is the schema's list, with "
                 f"no axis file to hold a property "
-                f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
+                f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)"
             )
             raise ValueError(msg)
-        for (subject, name), dim in self.one_of_properties().items():
+        for (subject, name), dim in self.referring_properties().items():
             if dim not in self.dimensions:
                 msg = (
                     f"property {subject}.{name} refers to {dim!r}, "
-                    f"an undeclared dim "
+                    f"an undeclared dimension "
                     f"(https://energy-models.github.io/datarecord/reference/data-model/#properties)"
                 )
                 raise ValueError(msg)
-            if dim in self.multi_dims:
+            if dim in self.multi_dimensions:
                 msg = (
-                    f"property {subject}.{name} refers to the multi-dim {dim!r}; "
-                    f"a property refers to a dim that is no multi-dim "
+                    f"property {subject}.{name} refers to the multi-dimension {dim!r}; "
+                    f"a property refers to a dimension that is no multi-dimension "
                     f"(https://energy-models.github.io/datarecord/reference/data-model/#properties)"
                 )
                 raise ValueError(msg)
@@ -377,7 +383,7 @@ class Schema(_Declared):
                 if subject not in reached:
                     msg = (
                         f"{what} has `default_by` {key!r} but does not reach "
-                        f"its dim {subject!r}, so no label of it has a category "
+                        f"its dimension {subject!r}, so no label of it has a category "
                         f"to default by"
                     )
                     raise ValueError(msg)
@@ -389,33 +395,33 @@ class Schema(_Declared):
                     )
                     raise ValueError(msg)
 
-    def one_of_properties(self) -> dict[tuple[str, str], str]:
-        """Map each property that refers to a dim, as `(subject, name)`, to that dim.
+    def referring_properties(self) -> dict[tuple[str, str], str]:
+        """Map each property that refers to a dimension, as `(subject, name)`, to that dimension.
 
         Notes
         -----
         - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         return {
-            (subject, name): spec.one_of
+            (subject, name): spec.refers
             for subject, by_name in self.properties.items()
             for name, spec in by_name.items()
-            if spec.one_of is not None
+            if spec.refers is not None
         }
 
     def _reached_by(self, subject: str) -> frozenset[str]:
-        """The dims a property of `subject` reaches: the dim, and those its coordinates draw on."""
+        """The dimensions a property of `subject` reaches: the dimension, and those its fields draw on."""
         return frozenset({subject, *self.over(subject).values()})
 
     def _check_names(self) -> None:
         """Refuse every declared name that cannot be a column of its own.
 
-        A multi-dim's coordinate is a column too, a field of its struct column,
+        A multi-dimension's field is a column too, inside its struct column,
         and so is a property's, in its subject's file only. Two spellings of one
         name differing only in case are refused record-wide, DuckDB resolving
         both to one column; one spelling declared twice is left to the rules
         that govern it - except a property named like a column of its subject's
-        file or a coordinate of its multi-dim.
+        file or a field of its multi-dimension.
 
         Notes
         -----
@@ -423,10 +429,10 @@ class Schema(_Declared):
         - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         declared = [
-            *(("dim", d) for d in self.dimensions),
+            *(("dimension", d) for d in self.dimensions),
             *(
-                (f"coordinate of multi-dim {m!r}", c)
-                for m in self.multi_dims
+                (f"field of multi-dimension {m!r}", c)
+                for m in self.multi_dimensions
                 for c in self.over(m)
             ),
             *(("attribute", a) for a in self.attributes),
@@ -442,20 +448,18 @@ class Schema(_Declared):
             if why is not None:
                 problems.append(f"{kind} {name!r} {why}")
         for subject, specs in self.properties.items():
-            keyed = sorted(set(specs) & self._key_of(subject))
-            if keyed:
+            if subject in specs:
                 msg = (
-                    f"properties {keyed} of {subject!r} are named like a column "
-                    f"of its key, which they would collide with - rename the "
-                    f"properties"
+                    f"property {subject!r} of {subject!r} is named like its column "
+                    f"{subject!r}, which it would collide with - rename the property"
                 )
                 raise ValueError(msg)
-            coordinates = self.over(subject) if subject in self.dimensions else {}
-            shared = sorted(set(specs) & set(coordinates))
+            fields = self.over(subject) if subject in self.dimensions else {}
+            shared = sorted(set(specs) & set(fields))
             if shared:
                 msg = (
-                    f"properties {shared} of multi-dim {subject!r} share their "
-                    f"names with its coordinates, which name a tuple's fields - "
+                    f"properties {shared} of multi-dimension {subject!r} share their "
+                    f"names with its fields, so `{subject}.<name>` would name both - "
                     f"rename the properties"
                 )
                 raise ValueError(msg)
@@ -475,18 +479,11 @@ class Schema(_Declared):
             )
             raise ValueError(msg)
 
-    def _key_of(self, subject: str) -> set[str]:
-        """Return the key column of the file of `subject`, a name no property of it may take.
-
-        That is the dim's own column, a multi-dim's struct column.
-        """
-        return {subject}
-
-    # -- derived key sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
+    # -- derived dim sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
 
     @property
-    def dims(self) -> tuple[str, ...]:
-        """Every declared dim but the multi-dims, in declaration order.
+    def flat_dimensions(self) -> tuple[str, ...]:
+        """Every dimension that is not a multi-dimension (a flat dimension), in declaration order.
 
         Notes
         -----
@@ -495,27 +492,27 @@ class Schema(_Declared):
         return tuple(d for d, spec in self.dimensions.items() if spec.over is None)
 
     @property
-    def multi_dims(self) -> tuple[str, ...]:
-        """Every declared multi-dim, in declaration order, each carried in a row as one struct column named for it.
+    def multi_dimensions(self) -> tuple[str, ...]:
+        """Every declared multi-dimension, in declaration order, each carried in a row as one struct column named for it.
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
         return tuple(d for d, spec in self.dimensions.items() if spec.over is not None)
 
     @property
-    def one_of_dims(self) -> tuple[str, ...]:
-        """Every dim with `one_of`, in declaration order: those whose axis is the schema's list.
+    def one_of_dimensions(self) -> tuple[str, ...]:
+        """Every dimension with `one_of`, in declaration order: those whose axis is the schema's list.
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+        - [a dimension with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
         """
         return tuple(d for d, spec in self.dimensions.items() if spec.one_of)
 
     def over(self, dim: str) -> dict[str, str]:
-        """The coordinates of `dim`, each to the dim it draws on, in field order; empty for a dim that is no multi-dim.
+        """The fields of `dim`, each to the dimension it draws on, in `over` order; empty for a dimension that is no multi-dimension.
 
         Raises
         ------
@@ -524,37 +521,29 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
         return self.dimensions[dim].over or {}
 
-    @property
-    def broadcast_dims(self) -> tuple[str, ...]:
-        """The coordinates a NULL broadcasts over: every declared dim, the multi-dims last.
+    def fields(self, dim: str) -> dict[str, str]:
+        """The fields of `dim`, each to the dimension it draws on: a multi-dimension's `over`, a flat dimension's one field named for itself.
 
-        A NULL here means "every value of this dim", which the fold expands
-        against the axis; a NULL struct means every tuple of the resolved
-        multi-dim.
-
-        What the `varies`/`broadcast` structs have a field per, and what
-        `expand_dims` joins.
+        Raises
+        ------
+        KeyError
+            If the schema declares no `dim`.
 
         Notes
         -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
-        return (*self.dims, *self.multi_dims)
+        return self.over(dim) or {dim: dim}
 
-    def coordinates_of(self, attribute: str) -> tuple[str, ...]:
-        """The coordinate columns one attribute's rows carry, multi-dims first.
+    def fields_of(self, attribute: str) -> dict[str, str]:
+        """The fields of every dimension `attribute` varies over, each to the dimension it draws on.
 
-        A multi-dim in `dims` is carried as one struct column named for it, so
-        `dims={"connection", "snapshot"}` gives `("connection", "snapshot")`.
-
-        Per attribute rather than schema-wide: one file per attribute means one
-        column set per attribute, and an all-NULL column of a dim the attribute
-        is not addressed by would claim a coordinate the value has none of.
+        These are the names `set` and `select` take labels by, such as `bus=`
+        for an attribute over `connection`.
 
         Raises
         ------
@@ -563,33 +552,54 @@ class Schema(_Declared):
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
-        - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+        - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
+        """
+        return {
+            f: d
+            for dim in self.dimensions_of(attribute)
+            for f, d in self.fields(dim).items()
+        }
+
+    def dimensions_of(self, attribute: str) -> tuple[str, ...]:
+        """The dimensions `attribute` varies over, in declaration order, which is its rows' column order.
+
+        A multi-dimension is one struct column named for it.
+
+        Per attribute rather than schema-wide: one file per attribute means one
+        column set per attribute, and an all-NULL column of a dimension the attribute
+        is not addressed by would claim a dimension the value has no label on.
+
+        Raises
+        ------
+        KeyError
+            If the schema does not declare `attribute`.
+
+        Notes
+        -----
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
+        - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
         if attribute not in self.attributes:
             msg = f"the schema declares no attribute {attribute!r}"
             raise KeyError(msg)
-        spec = self.attributes[attribute]
-        return (
-            *self.multi_dims_of(attribute),
-            *(d for d in self.dims if d in spec.dims),
-        )
+        dims = self.attributes[attribute].dims
+        return tuple(d for d in self.dimensions if d in dims)
 
     def duck_type(self, spec: Dimension | AttributeSpec | PropertySpec) -> DuckDBPyType:
-        """Return the DuckDB type of a declared dim, attribute or property.
+        """Return the DuckDB type of a declared dimension, attribute or property.
 
-        A dim with `one_of` has the `ENUM` of them, a multi-dim the struct of
-        a field per coordinate, typed as the dim it draws on. A property that
-        refers to a dim has the type of that dim.
+        A dimension with `one_of` has the `ENUM` of them, a multi-dimension the struct of
+        its fields, each typed as the dimension it draws on. A property that refers
+        to a dimension has the type of that dimension.
 
         Notes
         -----
         - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
-        if isinstance(spec, PropertySpec) and spec.one_of is not None:
-            return self.duck_type(self.dimensions[spec.one_of])
+        if isinstance(spec, PropertySpec) and spec.refers is not None:
+            return self.duck_type(self.dimensions[spec.refers])
         if isinstance(spec, Dimension) and spec.over is not None:
             return duckdb.struct_type(
                 {c: self.duck_type(self.dimensions[d]) for c, d in spec.over.items()}
@@ -598,17 +608,17 @@ class Schema(_Declared):
             return enum_type(spec.one_of)
         return DUCK_TYPES[cast("str", spec.dtype)]
 
-    def check_multi_dim_columns(
+    def check_multi_dimension_columns(
         self,
-        multi_dims: Iterable[str],
+        multi_dimensions: Iterable[str],
         rel: DuckDBPyRelation,
         *,
         carrier: str,
     ) -> None:
-        """Reject each of `multi_dims` carried other than as one struct column of exactly its coordinates.
+        """Reject each of `multi_dimensions` carried other than as one struct column of exactly its fields.
 
         Judged by the relation's columns and types, so no row is read. A
-        carrier without a multi-dim's column passes.
+        carrier without a multi-dimension's column passes.
 
         Parameters
         ----------
@@ -618,45 +628,45 @@ class Schema(_Declared):
         Raises
         ------
         ValueError
-            On a coordinate as a column of its own, or a multi-dim column not
-            a struct of exactly the coordinates, naming the struct to pass
+            On a field as a column of its own, or a multi-dimension's column
+            not a struct of exactly its fields, naming the struct to pass
             instead.
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
         types = dict(zip(rel.columns, rel.types, strict=True))
-        for multi in multi_dims:
-            key = list(self.over(multi))
-            flat = [c for c in key if c in types]
+        for multi in multi_dimensions:
+            over = list(self.over(multi))
+            flat = [c for c in over if c in types]
             dtype = types.get(multi)
             fields = (
-                key
+                over
                 if dtype is None
                 else [name for name, _ in dtype.children]
                 if dtype.id == "struct"
                 else None
             )
-            if flat or fields is None or set(fields) != set(key):
+            if flat or fields is None or set(fields) != set(over):
                 carried = f"{flat} flat" if flat else f"{multi!r} as {dtype}"
                 msg = (
                     f"{carrier} carries {carried}; pass {multi!r} as one struct "
-                    f"column with a field per coordinate, {key} (https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
+                    f"column of its fields, {over} (https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)"
                 )
                 raise ValueError(msg)
 
     def refuse_partial_tuples(
         self,
-        multi_dims: Iterable[str],
+        multi_dimensions: Iterable[str],
         rel: DuckDBPyRelation,
         *,
         carrier: str,
     ) -> None:
-        """Reject a struct of any of `multi_dims` in `rel` with some fields NULL and not all.
+        """Reject a struct of any of `multi_dimensions` in `rel` with some fields NULL and not all.
 
-        Reads the rows, unlike `check_multi_dim_columns`. A carrier without a
-        multi-dim's column passes.
+        Reads the rows, unlike `check_multi_dimension_columns`. A carrier without a
+        multi-dimension's column passes.
 
         Parameters
         ----------
@@ -666,13 +676,13 @@ class Schema(_Declared):
         Raises
         ------
         ValueError
-            Naming `carrier` and the multi-dim.
+            Naming `carrier` and the multi-dimension.
 
         Notes
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
-        for multi in multi_dims:
+        for multi in multi_dimensions:
             if multi not in rel.columns:
                 continue
             some = reduce(
@@ -682,15 +692,15 @@ class Schema(_Declared):
             if rel.filter(partly).limit(1).fetchall():
                 msg = (
                     f"{carrier} carries a {multi!r} with some fields NULL; a "
-                    f"multi-dim value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)"
+                    f"multi-dimension value is a whole tuple, or NULL for every tuple (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)"
                 )
                 raise ValueError(msg)
 
     def long_columns_for(self, attribute: str) -> tuple[str, ...]:
         """Return one attribute's full long column set, in order.
 
-        An attribute carries the coordinates its `dims` name and no others, so a
-        per-snapshot weighting has no column for any other dim.
+        An attribute carries a column per dimension its `dims` name, so a per-snapshot
+        weighting carries `snapshot` alone.
 
         Raises
         ------
@@ -701,13 +711,13 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        return (*self.coordinates_of(attribute), *LONG_TAIL)
+        return (*self.dimensions_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
 
-        A categorizing property is a property of `dim` that refers to a dim with
-        `one_of`. Only a dim in `partial` has any.
+        A categorizing property is a property of `dim` that refers to a dimension with
+        `one_of`. Only a dimension in `partial` has any.
 
         Notes
         -----
@@ -718,26 +728,26 @@ class Schema(_Declared):
         return tuple(
             name
             for name, spec in self.properties.get(dim, {}).items()
-            if spec.one_of is not None
-            and self.dimensions[spec.one_of].one_of is not None
+            if spec.refers is not None
+            and self.dimensions[spec.refers].one_of is not None
         )
 
     def _categories(self, dim: str, name: str) -> tuple[str, ...]:
         """Return the categories property `name` of `dim` can hold.
 
-        These are the `one_of` labels of the dim the property refers to; there are none if that dim has no `one_of`.
+        These are the `one_of` labels of the dimension the property refers to; there are none if that dimension has no `one_of`.
         """
         return self._one_of_labels(self.properties[dim][name]) or ()
 
     def _one_of_labels(self, spec: Dimension | PropertySpec) -> tuple[str, ...] | None:
-        """Return the `one_of` labels of a dim, or None if it has none.
+        """Return the `one_of` labels of a dimension, or None if it has none.
 
-        `spec` is the dim, or a property that refers to the dim.
+        `spec` is the dimension, or a property that refers to the dimension.
         """
         if isinstance(spec, PropertySpec):
-            if spec.one_of is None:
+            if spec.refers is None:
                 return None
-            spec = self.dimensions[spec.one_of]
+            spec = self.dimensions[spec.refers]
         return spec.one_of
 
     def require_categorizing(self, subject: str, keys: Iterable[str]) -> None:
@@ -764,17 +774,17 @@ class Schema(_Declared):
     def require_one_of(
         self, subject: str, data: Mapping[str, Iterable[Any]], what: str
     ) -> None:
-        """Refuse a label its dim does not list.
+        """Refuse a label its dimension does not list.
 
         `data` maps column names to values. A name is checked where it is
         `subject` and `subject` has `one_of`, or where it is a property of
-        `subject` that refers to a dim with `one_of`. Other names
+        `subject` that refers to a dimension with `one_of`. Other names
         and NULL values are skipped.
 
         Raises
         ------
         ValueError
-            Naming `what`, the column, the unknown labels and the dim's
+            Naming `what`, the column, the unknown labels and the dimension's
             `one_of` labels.
 
         Notes
@@ -794,7 +804,7 @@ class Schema(_Declared):
             unknown = sorted({str(v) for v in values if v is not None} - {*labels})
             if unknown:
                 msg = (
-                    f"{what} gives {name!r} labels {unknown}, which its dim's "
+                    f"{what} gives {name!r} labels {unknown}, which its dimension's "
                     f"`one_of` does not hold; `one_of` is {list(labels)}"
                 )
                 raise ValueError(msg)
@@ -809,7 +819,7 @@ class Schema(_Declared):
         Raises
         ------
         KeyError
-            As `resolve` does, and on a coordinate, which has no default.
+            As `resolve` does, and on a field, which has no default.
 
         Notes
         -----
@@ -819,7 +829,7 @@ class Schema(_Declared):
         resolved = self.resolve(name)
         spec = resolved[1] if isinstance(resolved, tuple) else resolved
         if isinstance(spec, Dimension):
-            msg = f"{name!r} is a coordinate, part of its multi-dim's key, and has no default"
+            msg = f"{name!r} is a field of a multi-dimension, not a property, and has no default"
             raise KeyError(msg)
         for key, by in spec.default_by.items():
             category = categories.get(key.partition(".")[2])
@@ -830,22 +840,30 @@ class Schema(_Declared):
     def addresses(self, attribute: str, dim: str) -> bool:
         """Whether `attribute` reaches a label of `dim` at all.
 
-        True where its `dims` name `dim`, or a multi-dim one of whose
-        coordinates draws on `dim`.
+        True where its `dims` name `dim`, or a multi-dimension one of whose
+        fields draws on `dim`.
+
+        Raises
+        ------
+        KeyError
+            If the schema does not declare `attribute`.
 
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
         """
-        spec = self.attributes.get(attribute)
-        return (spec is not None and dim in spec.dims) or any(
-            dim in self.over(m).values() for m in self.multi_dims_of(attribute)
+        return (
+            any(
+                dim in self.over(m).values()
+                for m in self.multi_dimensions_of(attribute)
+            )
+            or dim in self.attributes[attribute].dims
         )
 
     def resolve(
         self, name: str
     ) -> AttributeSpec | tuple[str, PropertySpec] | tuple[str, Dimension]:
-        """What `name` addresses: an attribute, or a property or coordinate as `subject.name`.
+        """What `name` addresses: an attribute, or a property or field as `subject.name`.
 
         Read off the name alone: a plain name is never a property.
 
@@ -853,7 +871,7 @@ class Schema(_Declared):
         -------
         AttributeSpec or tuple of str and PropertySpec or Dimension
             The attribute's spec, a property's subject and spec, or a
-            coordinate's multi-dim and the dim the coordinate draws on.
+            field's multi-dimension and the dimension the field draws on.
 
         Raises
         ------
@@ -864,7 +882,7 @@ class Schema(_Declared):
         Notes
         -----
         - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
-        - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         """
         subject, dot, prop = name.partition(".")
         if dot:
@@ -886,32 +904,32 @@ class Schema(_Declared):
         msg = f"the schema declares no attribute {name!r}{hint}"
         raise KeyError(msg)
 
-    def coordinate_over(self, multi: str, dim: str) -> str | None:
-        """The one coordinate of the multi-dim `multi` drawing on `dim`, if any.
+    def field_over(self, multi: str, dim: str) -> str | None:
+        """The one field of the multi-dimension `multi` drawing on `dim`, if any.
 
         Raises
         ------
         ValueError
-            If several coordinates of `multi` draw on `dim`.
+            If several fields of `multi` draw on `dim`.
         """
         fields = [f for f, d in self.over(multi).items() if d == dim]
         if len(fields) > 1:
             msg = (
-                f"multi-dim {multi!r} is over {dim!r} through {fields}, so no one "
+                f"multi-dimension {multi!r} is over {dim!r} through {fields}, so no one "
                 f"label of it decides what a tuple carries"
             )
             raise ValueError(msg)
         return fields[0] if fields else None
 
     def owned_per(self, attribute: str) -> frozenset[str]:
-        """Which dims a layer owns `attribute` per.
+        """Which dimensions a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
-        attribute may vary over, `partial_dims` the fold key (the `partial`
-        dims), and ownership is their intersection. A
-        dim in `dims` but not the fold key - a non-`partial` value axis like
-        `timestep` - is owned whole, so a patch to one of its values restates the
-        attribute's entire extent along it (`_owned_whole`).
+        attribute may vary over, `partial_dimensions` the owner map's index (the
+        `partial` dimensions), and ownership is their intersection. Along a
+        dimension in `dims` but not the owner map's index - a value axis outside `partial`,
+        like `timestep` - a patch to one of its values restates the
+        attribute's entire extent along it (`_outside_partial`).
 
         Notes
         -----
@@ -921,14 +939,14 @@ class Schema(_Declared):
         spec = self.attributes.get(attribute)
         if spec is None:
             return frozenset()
-        return spec.dims & set(self.partial_dims)
+        return spec.dims & set(self.partial_dimensions)
 
     @property
-    def partial_dims(self) -> tuple[str, ...]:
-        """The fold key's coordinates, in declaration order.
+    def partial_dimensions(self) -> tuple[str, ...]:
+        """The dimensions of the owner map's index, in declaration order.
 
-        The dims a layer may patch per value (`partial`). The fold's
-        key is one fixed tuple over all attributes, so it carries every axis *any* layer may patch by value or
+        The dimensions a layer may patch per value (`partial`). The owner map's
+        index is one fixed tuple over all attributes, so it carries every axis *any* layer may patch by value or
         by row, not only those some currently declared attribute varies over. An
         attribute not owned per one of them writes NULL there, the "NULL means
         all values" rule - which also lets a schema declare an axis before any
@@ -941,9 +959,9 @@ class Schema(_Declared):
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         partial = self.partial or frozenset()
-        return tuple(d for d in self.broadcast_dims if d in partial)
+        return tuple(d for d in self.dimensions if d in partial)
 
-    # -- key and column sets (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map) -----------------------------------
+    # -- index and column sets (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map) -----------------------------------
 
     @property
     def long_columns(self) -> tuple[str, ...]:
@@ -958,38 +976,42 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        return (*self.multi_dims, *self.dims, *LONG_TAIL)
+        return (*self.dimensions, *LONG_TAIL)
 
     @property
-    def owner_map_key(self) -> tuple[str, ...]:
-        """Owner-map key columns, compared NULL-safely when folding.
+    def owner_map_index(self) -> tuple[str, ...]:
+        """The owner map's index columns, compared NULL-safely when folding.
 
-        `partial_dims`, plus `attribute`: a layer may patch one value along a
-        `partial` dim without restating every other's.
+        `partial_dimensions`, plus `attribute`: a layer may patch one value along a
+        `partial` dimension without restating every other's.
 
-        A coordinate an attribute's own file does not carry reads as NULL,
-        which is what makes the key one fixed tuple over attributes whose
+        A column an attribute's own file does not carry reads as NULL,
+        which is what makes the index one fixed tuple over attributes whose
         columns differ.
 
         Notes
         -----
-        - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+        - [attributes over a multi-dimension](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
         - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        return (*self.partial_dims, "attribute")
+        return (*self.partial_dimensions, "attribute")
 
-    def multi_dims_of(self, attribute: str) -> tuple[str, ...]:
-        """Which declared multi-dims address `attribute`, in declaration order.
+    def multi_dimensions_of(self, attribute: str) -> tuple[str, ...]:
+        """Which declared multi-dimensions address `attribute`, in declaration order.
+
+        Raises
+        ------
+        KeyError
+            If the schema does not declare `attribute`.
 
         Notes
         -----
-        - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+        - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
         """
-        spec = self.attributes.get(attribute)
-        if spec is None:
-            return ()
-        return tuple(m for m in self.multi_dims if m in spec.dims)
+        return tuple(
+            m for m in self.dimensions_of(attribute) if m in self.multi_dimensions
+        )
 
     @property
     def owner_map_columns(self) -> tuple[str, ...]:
@@ -999,7 +1021,7 @@ class Schema(_Declared):
         -----
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        return (*self.owner_map_key, LAYER_COLUMN, *FLAG_COLUMNS)
+        return (*self.owner_map_index, LAYER_COLUMN, *FLAG_COLUMNS)
 
     # -- typing (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/layers/) -------------------------------------------------
 
@@ -1008,17 +1030,17 @@ class Schema(_Declared):
     ) -> DuckDBPyType | None:
         """Return the declared DuckDB type of `column`, or None if the schema declares none.
 
-        Covers the structural columns the format fixes, the declared dims,
+        Covers the structural columns the format fixes, the declared dimensions,
         the properties of `subject` - columns of its
         axis file, read first - and the owner map's two flag structs, whose fields
-        follow the schema's dims.
+        follow the schema's dimensions.
 
-        No dim is structural: each is declared, and typed from that
-        declaration. So the `ENUM` of a dim with `one_of` pins them
+        No dimension is structural: each is declared, and typed from that
+        declaration. So the `ENUM` of a dimension with `one_of` pins them
         everywhere the column is built. An attribute is no column but a long row's value,
         typed by `value_type`.
 
-        A schema declaring no dims at all is "no manifest yet" rather
+        A schema declaring no dimensions at all is "no manifest yet" rather
         than a record to fold, and DuckDB has no empty struct - so the flag
         columns are undeclared there, and a caller building an empty relation
         falls back to `VARCHAR` for a map that will never hold a row.
@@ -1036,7 +1058,7 @@ class Schema(_Declared):
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
         if column in ("varies", "broadcast"):
-            return flag_type(self.broadcast_dims) if self.broadcast_dims else None
+            return flag_type(tuple(self.dimensions)) if self.dimensions else None
         return None
 
     def declared(
@@ -1047,7 +1069,7 @@ class Schema(_Declared):
         Parameters
         ----------
         subject
-            The dim whose file holds the column. A column named like
+            The dimension whose file holds the column. A column named like
             one of its properties is that property, named `subject.name`.
         attribute
             The attribute whose long rows hold the column. Its `value` column
@@ -1168,10 +1190,12 @@ class Schema(_Declared):
         for dim, was in other.dimensions.items():
             now = self.dimensions.get(dim)
             if now is None:
-                problems.append(f"dim {dim!r} removed")
+                problems.append(f"dimension {dim!r} removed")
                 continue
             if _typed_as(now) != _typed_as(was):
-                problems.append(f"dim {dim!r} {_typed_as(was)} -> {_typed_as(now)}")
+                problems.append(
+                    f"dimension {dim!r} {_typed_as(was)} -> {_typed_as(now)}"
+                )
 
         for attr, was_spec in other.attributes.items():
             now_spec = self.attributes.get(attr)
@@ -1186,7 +1210,7 @@ class Schema(_Declared):
             if narrowed:
                 problems.append(
                     f"attribute {attr!r} no longer varies over {sorted(narrowed)}; "
-                    f"rows setting those dims have no valid reading"
+                    f"rows setting those dimensions have no valid reading"
                 )
 
         for dim, specs in other.properties.items():
@@ -1206,7 +1230,7 @@ class Schema(_Declared):
                 problems.append(
                     f"{sorted(lost)} no longer `partial`; a layer that patched one "
                     f"value along such an axis is now a partial override of an axis "
-                    f"owned whole"
+                    f"outside `partial`"
                 )
         return problems
 
@@ -1214,7 +1238,7 @@ class Schema(_Declared):
 def packed(
     schema: Schema, multi: str, present: Container[str], dims: Mapping[str, Any]
 ) -> Expression:
-    """The struct column of the multi-dim `multi`, packed from flat coordinates.
+    """The struct column of the multi-dimension `multi`, packed from flat field columns.
 
     A field is the column of that name where the relation carries one, else
     the caller's keyword. No field given at all is a NULL struct, every tuple.
@@ -1227,7 +1251,7 @@ def packed(
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     over = schema.over(multi)
@@ -1237,8 +1261,8 @@ def packed(
         return lit(None).cast(struct)
     if missing:
         msg = (
-            f"{multi!r} is keyed by {list(over)}, and {missing} was not given; "
-            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)"
+            f"{multi!r} has the fields {list(over)}, and {missing} was not given; "
+            f"name it as a keyword, e.g. `{missing[0]}=...` (https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)"
         )
         raise ValueError(msg)
     fields = {
@@ -1251,15 +1275,107 @@ def packed(
 
 
 def unpacked(schema: Schema, multi: str, rel: DuckDBPyRelation) -> DuckDBPyRelation:
-    """`rel` with the struct column of the multi-dim `multi` spelled as a column per coordinate, first; as it is where it carries no such column.
+    """`rel` with the struct column of the multi-dimension `multi` spelled as a column per field, first; as it is where it carries no such column.
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
-    if multi not in rel.columns or multi not in schema.multi_dims:
+    if multi not in rel.columns or multi not in schema.multi_dimensions:
         return rel
     return rel.project(
         *(col(multi)[c].alias(c) for c in schema.over(multi)),
         *(col(c) for c in rel.columns if c != multi),
     )
+
+
+def cast_declared(
+    schema: Schema,
+    rel: DuckDBPyRelation,
+    subject: str | None = None,
+    attribute: str | None = None,
+) -> DuckDBPyRelation:
+    """Return `rel` with each column the schema declares a type for cast to that type.
+
+    Other columns are left as they are. `subject` and `attribute` are as in
+    `Schema.declared`.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+    """
+    cols = [
+        col(c).cast(found[1]).alias(c)
+        if (found := schema.declared(c, subject, attribute))
+        else col(c)
+        for c in rel.columns
+    ]
+    return rel.project(*cols)
+
+
+def empty_declared(
+    schema: Schema, con: DuckDBPyConnection, *columns: str
+) -> DuckDBPyRelation:
+    """A zero-row relation with `columns`, cast to their declared type, `VARCHAR` if none.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+    """
+    return empty_relation(
+        con, **{c: schema.column_type(c) or sqltypes.VARCHAR for c in columns}
+    )
+
+
+def with_columns(
+    schema: Schema, rel: DuckDBPyRelation, *columns: str
+) -> DuckDBPyRelation:
+    """`rel` with any of `columns` it lacks added as typed NULLs.
+
+    One file carries a column per dimension of one attribute, so a column another
+    attribute uses is simply absent - and a dimension an attribute is not addressed by
+    means the value applies across every value of it, which is what NULL means.
+    Materialising it here lets every path downstream project the column
+    unconditionally instead of branching on its presence.
+
+    Notes
+    -----
+    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    """
+    missing = [c for c in columns if c not in rel.columns]
+    if not missing:
+        return rel
+    added = [
+        lit(None).cast(schema.column_type(c) or sqltypes.VARCHAR).alias(c)
+        for c in missing
+    ]
+    return rel.project(star(), *added)
+
+
+def per_schema[**P, T](
+    build: Callable[Concatenate[Schema, P], T],
+) -> Callable[Concatenate[Schema, P], T]:
+    """`build` memoised on a `Schema` and further hashable arguments, for the last 64 keys.
+
+    A schema is unhashable, and every layer holds its own equal copy, so it is
+    keyed by its `digest`.
+    """
+    held: dict[tuple[object, ...], T] = {}
+    lock = threading.Lock()
+
+    @wraps(build)
+    def memo(schema: Schema, *args: P.args, **kwargs: P.kwargs) -> T:
+        key = (schema.digest, *args, *sorted(kwargs.items()))
+        with lock:
+            found = held.get(key)
+        if found is not None:
+            return found
+        value = build(schema, *args, **kwargs)
+        with lock:
+            held[key] = value
+            if len(held) > 64:
+                del held[next(iter(held))]
+        return value
+
+    return memo

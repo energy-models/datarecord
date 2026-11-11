@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Each accessor holds one section: `dims`, `properties`, per-category `flags`.
+"""Each accessor holds one section: `dimensions`, `properties`, per-category `flags`.
 
 Notes
 -----
@@ -36,7 +36,7 @@ def schema():
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(one_of="ctype"),
+                "ctype": PropertySpec(refers="ctype"),
                 "carrier": PropertySpec(dtype="str", default=""),
                 "sign": PropertySpec(
                     dtype="float",
@@ -88,8 +88,8 @@ def _rows(rel: DuckDBPyRelation) -> dict:
     return {r.pop("entity"): r for r in rows}
 
 
-def test_an_axis_frame_is_its_key_only(record):
-    assert record.dims["entity"].columns == ["entity"]
+def test_an_axis_frame_is_its_column_only(record):
+    assert record.dimensions["entity"].columns == ["entity"]
 
 
 def test_properties_hold_stored_values_without_defaults(record):
@@ -103,7 +103,7 @@ def test_properties_hold_stored_values_without_defaults(record):
 
 
 def test_flags_refuse_a_plain_property(record):
-    with pytest.raises(ValueError, match="categorize no dim"):
+    with pytest.raises(ValueError, match="categorize no dimension"):
         record.flags(carrier="wind")
 
 
@@ -134,7 +134,7 @@ def test_a_category_no_label_has_selects_nothing(record):
     -----
     - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
     """
-    assert record.dims["ctype"].df()["ctype"].tolist() == [
+    assert record.dimensions["ctype"].df()["ctype"].tolist() == [
         "Generator",
         "Link",
         "Load",
@@ -199,7 +199,7 @@ def test_a_name_shared_by_attribute_property_and_dim_reaches_its_own(record):
     assert bus == [{"bus": "b0", "x": 10.2}], "`bus.x` is a column of the bus axis"
     efficiency = staged.attributes["efficiency"].to_arrow_table().to_pylist()
     assert [r["value"] for r in efficiency] == [0.7], (
-        "`bus=` is the connection's coordinate, not `entity.bus`"
+        "`bus=` is the connection's field, not `entity.bus`"
     )
 
 

@@ -98,7 +98,7 @@ questions page. `pixi run lint` fails on such a link.
 ## Architecture in one paragraph
 
 datarecord stores dimensioned attribute data with a declared schema. A record
-has entities (labels of the `entity` dim, unique record-wide) and multi-dims over
+has entities (labels of the `entity` dimension, unique record-wide) and multi-dimensions over
 them, such as `connection` over `(entity, bus)`. It also has attribute values
 over both, and the axes those values vary along. The `RecordLike` protocol defines a record by
 the relations it exposes, whatever the storage, and a parquet directory is its

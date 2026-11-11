@@ -12,7 +12,7 @@ You make a `WorkingRecord` over a committed `Record`, and a read of it returns t
 
 ## Set attribute values
 
-Name the attribute, then the value, then a keyword per coordinate. Pass a scalar for one value at each label named, a list for one value per label in order, or a mapping keyed by label:
+Name the attribute, then the value, then a keyword per dimension. Pass a scalar for one value at each label named, a list for one value per label in order, or a mapping keyed by label:
 
 ```python
 import pandas as pd
@@ -32,7 +32,7 @@ print(w.attributes["p_nom"].df())
 1   gas1     p_nom         NaN   60.0
 ```
 
-Each `set` replaces the rows it names, so the last one stands. Pass a series to set values along the coordinate its index is named after. Pass a property as a keyword to set values at the labels that match it when you call `set`:
+Each `set` replaces the rows it names, so the last one stands. Pass a series to set values along the dimension its index is named after. Pass a property as a keyword to set values at the labels that match it when you call `set`:
 
 ```python
 series = pd.Series([0.2, 0.6, 0.4], index=pd.Index([0, 1, 2], name="snapshot"))
@@ -49,7 +49,7 @@ print(w.attributes["p_max_pu"].df())
 3  wind1         0  p_max_pu         NaN   0.20
 ```
 
-`wind1` has its series, and `gas1`, the one gas generator, has one row with `snapshot` NULL. A coordinate you pass no keyword for is NULL, which means every label, those added later included. To set only the labels there are now, name them or their category. `set` also takes a long frame from pandas, polars, Arrow or DuckDB with a column per coordinate and a `value` column.
+`wind1` has its series, and `gas1`, the one gas generator, has one row with `snapshot` NULL. A dimension you pass no keyword for is NULL, which means every label, those added later included. To set only the labels there are now, name them or their category. `set` also takes a long frame from pandas, polars, Arrow or DuckDB with a column per dimension and a `value` column.
 
 ## Set a property
 
@@ -87,7 +87,7 @@ The properties are as committed again.
 
 ## Add and remove labels
 
-`add` takes a dim, its labels, and a keyword per property. A multi-dim takes tuples as mappings from coordinate to label. Add a label before you set a value at it or use it in a property or a tuple:
+`add` takes a dimension, its labels, and a keyword per property. A multi-dimension takes tuples as mappings from field to label. Add a label before you set a value at it or use it in a property or a tuple:
 
 ```python
 w.add("carrier", ["solar"])
@@ -95,7 +95,7 @@ w.add("entity", ["pv1"], ctype="Generator", carrier="solar")
 w.add("connection", [{"entity": "pv1", "bus": "south"}])
 w.set("p_nom", 40.0, entity="pv1")
 w.remove("bus", ["north"])
-print(w.dims["connection"].df())
+print(w.dimensions["connection"].df())
 ```
 
 ```text
@@ -154,7 +154,7 @@ print(rel.filter("entity = 'pv1'").df())
 child = store.commit(w)
 w.close()
 print(child.parent == rev.id)
-print(child.record.dims["bus"].df())
+print(child.record.dimensions["bus"].df())
 ```
 
 ```text

@@ -24,7 +24,6 @@ from pydantic import ValidationError
 from datarecord import Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.protocols import EMPTY, LazyRelations
-from datarecord.resolve import coords
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
@@ -89,8 +88,8 @@ class _Source:
         return LazyRelations(tuple(mapping), build)
 
     @property
-    def dims(self):
-        return self._frames(self._dims, "dims") if self._dims else EMPTY
+    def dimensions(self):
+        return self._frames(self._dims, "dimensions") if self._dims else EMPTY
 
     @property
     def properties(self):
@@ -109,7 +108,7 @@ def _named_multi_dims(schema, attributes) -> dict[str, pd.DataFrame]:
     named: dict[str, dict] = {}
     for frame in attributes.values():
         for column in frame.columns:
-            if column in schema.multi_dims:
+            if column in schema.multi_dimensions:
                 tuples = named.setdefault(column, {})
                 tuples.update((tuple(t.items()), t) for t in frame[column].dropna())
     return {g: pd.DataFrame({g: list(t.values())}) for g, t in named.items()}
@@ -120,7 +119,7 @@ def _named_axes(schema, frames) -> dict[str, pd.DataFrame]:
     named: dict[str, list] = {}
     for frame in frames.values():
         for column in frame.columns:
-            if column in schema.multi_dims:
+            if column in schema.multi_dimensions:
                 for field, dim in schema.over(column).items():
                     tuples = frame[column].dropna()
                     named.setdefault(dim, []).extend(t.get(field) for t in tuples)
@@ -137,7 +136,7 @@ _CTYPES = list(_SCHEMA.dimensions["ctype"].one_of or ())
 
 
 def _long(**overrides) -> pd.DataFrame:
-    """One long row carrying its attribute's own coordinates, and no others.
+    """One long row carrying a column per dim of its attribute.
 
     Shaped from the spec rather than spelled: a source handing over a column
     the attribute is not addressed by is what the writer rejects, so a
@@ -183,7 +182,7 @@ def test_a_write_builds_each_key_once(store):
     assert sorted(source.built) == [
         "attributes:e_nom",
         "attributes:p_nom",
-        "dims:entity",
+        "dimensions:entity",
         "properties:entity",
     ]
 
@@ -210,7 +209,7 @@ def test_a_write_creates_a_new_layer(store):
         id=revision.id,
         parent=None,
         schema=_SCHEMA,
-        files=LayerFiles(dims=("entity",), attributes=("p_nom",)),
+        files=LayerFiles(dimensions=("entity",), attributes=("p_nom",)),
         meta={"run": 1},
     ), "the full schema and every file written, by name"
     assert revision.manifest == manifest
@@ -246,17 +245,17 @@ def _with_ctype_axis(labels) -> _Source:
 
 
 def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
-    """Its axis is the schema's list: no write, cache or layer holds a file of it.
+    """Its axis is the schema's list: no write, layer or resolved files hold a file of it.
 
     A `RecordLike` answers every dim's axis, the list of a dim with `one_of`
     included, and the writer takes it without writing it.
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     """
     revision = store.commit(_with_ctype_axis(_CTYPES), parent=None)
-    assert revision.record.dims["ctype"].df()["ctype"].tolist() == _CTYPES
+    assert revision.record.dimensions["ctype"].df()["ctype"].tolist() == _CTYPES
     revision.materialise()
     out = tmp_path / "flat"
     store.workspace.write(revision.record, str(out))
@@ -265,8 +264,8 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
         Path(store.resolved_dir(revision.id)),
         out,
     ]
-    assert not [d for d in written if (d / "dims" / "ctype.parquet").exists()], (
-        "neither the layer, its cache nor a record written whole holds the list"
+    assert not [d for d in written if (d / "dimensions" / "ctype.parquet").exists()], (
+        "neither the layer, its resolved files nor a record written whole holds the list"
     )
 
     layer = empty_root(store, _SCHEMA)
@@ -275,7 +274,7 @@ def test_a_dim_with_one_of_has_no_layer_file(store, tmp_path):
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
         store.commit(ParquetLayer(forged.manifest, store), parent=None)
     with pytest.raises(ValueError, match=r"holds an axis file of \['ctype'\]"):
-        forged.record.dims["ctype"]
+        forged.record.dimensions["ctype"]
 
 
 @pytest.mark.parametrize(
@@ -295,7 +294,7 @@ def test_a_record_handing_over_another_one_of_axis_is_refused(store, labels, mat
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     """
     with pytest.raises(ValueError, match=match):
         store.commit(_with_ctype_axis(labels), parent=None)
@@ -496,7 +495,7 @@ def _nothing_reachable(store) -> None:
     ]
 
 
-def test_a_file_carries_only_its_own_attributes_coordinates(store):
+def test_a_file_carries_only_its_own_attributes_dims(store):
     """One attribute is one file, so one column set - not every declared dim.
 
     A component attribute has no `bus` column, a connection attribute does, and
@@ -544,12 +543,12 @@ def test_a_file_carries_only_its_own_attributes_coordinates(store):
 
     efficiency = columns("efficiency")
     assert "connection" in efficiency, "a connection attribute carries the multi-dim"
-    assert "bus" not in efficiency, "as one struct column, not its coordinates"
+    assert "bus" not in efficiency, "as one struct column, not its fields"
     assert columns("weight") & {"entity", "period"} == set(), (
         "and no dim it is not addressed by"
     )
     axis = store.workspace.con.read_parquet(
-        str(Path(store.layer_dir(revision.id), "dims", "entity.parquet"))
+        str(Path(store.layer_dir(revision.id), "dimensions", "entity.parquet"))
     )
     assert "p_max_pu" not in axis.columns, "a single-dim attribute is no axis column"
 
@@ -583,10 +582,10 @@ def test_a_write_rejects_an_undeclared_attribute_or_dim(store, source, match):
         store.commit(source, parent=None)
 
 
-def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
+def test_a_write_rejects_a_dim_the_attribute_lacks(store):
     """A column the attribute is not addressed by is a disagreement, not a spare.
 
-    The read path projects an attribute's own coordinates, so a `bus` on a
+    The read path projects a column per dim of an attribute, so a `bus` on a
     component attribute would be written and never read - and a source emitting
     one means something different by the attribute than the schema does.
     Reported rather than dropped, since silently narrowing would hide that.
@@ -604,15 +603,15 @@ def test_a_write_rejects_a_coordinate_the_attribute_lacks(store):
         store.commit(source, parent=None)
 
 
-def test_a_write_rejects_a_multi_dim_column_that_is_not_its_key(store):
-    """A multi-dim's column is a struct of exactly its coordinates.
+def test_a_write_rejects_a_multi_dim_column_not_of_its_fields(store):
+    """A multi-dim's column is a struct of exactly its fields.
 
     DuckDB casts a struct by field name, so a missing field would be written as
-    NULL rather than refused, re-keying every row.
+    NULL rather than refused, relabelling every row.
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     row = {"attribute": "efficiency", "breakpoint": None, "value": 1.0}
     row |= {"snapshot": None, "scenario": None, "period": None}
@@ -637,7 +636,7 @@ def _connection_source(tuples: list[dict], attributes=None) -> _Source:
 @pytest.mark.parametrize(
     ("source", "file"),
     [
-        (lambda: _connection_source([_PARTIAL]), "dims/connection"),
+        (lambda: _connection_source([_PARTIAL]), "dimensions/connection"),
         (
             lambda: _connection_source(
                 [_WHOLE],
@@ -646,7 +645,7 @@ def _connection_source(tuples: list[dict], attributes=None) -> _Source:
             "attributes/efficiency",
         ),
     ],
-    ids=["dims", "attributes"],
+    ids=["dimensions", "attributes"],
 )
 def test_a_write_rejects_a_tuple_with_some_fields_null(store, source, file):
     """A multi-dim value is a whole tuple or NULL, checked on the file the layer wrote.
@@ -693,17 +692,17 @@ def test_a_write_rejects_a_missing_long_column(store):
     _nothing_reachable(store)
 
 
-def test_a_write_rejects_a_multi_dim_frame_not_keyed_by_its_struct(store):
-    """A multi-dim's axis file is keyed by the struct of its coordinates, named for it.
+def test_a_write_rejects_a_multi_dim_frame_without_its_struct_column(store):
+    """A multi-dim's axis file has the struct of its fields as its column, named for it.
 
     Notes
     -----
-    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     frame = pd.DataFrame({"entity": ["steel_dri"], "bus": ["h2"]})
     source = _Source(_SCHEMA, connections={"connection": frame})
 
-    with pytest.raises(ValueError, match="missing its key column 'connection'"):
+    with pytest.raises(ValueError, match="missing its column 'connection'"):
         store.commit(source, parent=None)
 
 
@@ -723,7 +722,7 @@ def _write_junk(store, axes):  # noqa: ARG001
 def _read_junk(store, axes):  # noqa: ARG001
     root = empty_root(store, _SCHEMA)
     write_axis(root, "scenario", [{"scenario": "high", "junk": 1}])
-    root.commit().record.dims["scenario"].fetchall()
+    root.commit().record.dimensions["scenario"].fetchall()
 
 
 @pytest.mark.parametrize(
@@ -753,17 +752,17 @@ def _written_axis(store, frame):
 
 def _read_axis(store, frame):
     root = empty_root(store, _SCHEMA)
-    target = root.dir / "dims"
+    target = root.dir / "dimensions"
     target.mkdir(parents=True)
     frame.to_parquet(target / "scenario.parquet", index=False)
-    root.commit().record.dims["scenario"].fetchall()
+    root.commit().record.dimensions["scenario"].fetchall()
 
 
 @pytest.fixture
 def split_passes(request, monkeypatch):
     """Find a row held twice in one pass over the file, or across one pass per row."""
     if request.param:
-        monkeypatch.setattr(coords, "_ROWS_PER_PASS", 1)
+        monkeypatch.setattr("datarecord.resolve.axes._ROWS_PER_PASS", 1)
 
 
 @pytest.mark.parametrize(
@@ -787,7 +786,7 @@ def test_an_axis_file_holding_a_label_twice_is_refused(store, by):
 
 
 def _scenarios(record) -> list[str]:
-    return record.dims["scenario"].df()["scenario"].tolist()
+    return record.dimensions["scenario"].df()["scenario"].tolist()
 
 
 def _xyz(store):
@@ -805,7 +804,7 @@ def test_a_restatement_in_its_parents_order_is_written(store, order):
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
     root = _xyz(store)
@@ -821,7 +820,7 @@ def test_a_restatement_reordering_its_parents_labels_is_refused(store, order, fi
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     root = _xyz(store)
     restated = _Source(_SCHEMA, dims={"scenario": pd.DataFrame({"scenario": order})})
@@ -874,12 +873,12 @@ def axes(tmp_path_factory):
 def _rows_staged(base, rows: list[dict], attribute: str):
     """Return a staging area over `base` holding `rows` of `attribute`.
 
-    A coordinate a row leaves out is NULL there; a `connection` is set by its fields.
+    A dim a row leaves out is NULL there; a `connection` is set by its fields.
     """
     staged = WorkingRecord(base.record)
     for row in rows:
-        coords = {c: v for c, v in row.items() if c not in ("value", "connection")}
-        staged.set(attribute, row["value"], **coords, **row.get("connection", {}))
+        keywords = {c: v for c, v in row.items() if c not in ("value", "connection")}
+        staged.set(attribute, row["value"], **keywords, **row.get("connection", {}))
     return staged
 
 
@@ -888,7 +887,7 @@ def _rows_layer(
 ):
     """Return a revision whose top layer holds `rows` of `attribute`, written `via` `set` or a source.
 
-    A coordinate a row leaves out is NULL there. Written in `axes`' store, over
+    A dim a row leaves out is NULL there. Written in `axes`' store, over
     `axes` itself where `tuples` are its own.
     """
     store = axes.store
@@ -1149,7 +1148,7 @@ def test_a_label_removed_after_its_set_takes_the_value_with_it(axes):
 
 
 def test_a_later_layer_overrides_a_layer_holding_both_rows(axes):
-    """The lower layer still picks its more specific row where it keeps the key.
+    """The lower layer still picks its more specific row where it keeps the map row.
 
     Notes
     -----
@@ -1351,7 +1350,7 @@ def test_a_curve_is_no_pair_of_rows(axes):
     """The rows of one curve differ in `breakpoint`, so each is its own row."""
     rows: list[dict] = [{"entity": "a", "breakpoint": b, "value": b} for b in (0, 1)]
     df = _rows_layer(axes, rows, "write_layer").record.attributes["p_nom"].df()
-    assert sorted(df["breakpoint"]) == [0, 1], "both points held as written"
+    assert sorted(df["breakpoint"]) == [0, 1], "both breakpoints held as written"
 
 
 def test_a_stored_pair_naming_the_same_dims_fails_the_read(axes):
@@ -1367,7 +1366,9 @@ def test_a_stored_pair_naming_the_same_dims_fails_the_read(axes):
     twin = duckdb.read_parquet(str(file)).filter("entity = 'a'")
     duckdb.read_parquet(str(file)).union(twin).to_parquet(str(file) + ".twin")
     Path(str(file) + ".twin").replace(file)
-    with pytest.raises(duckdb.Error, match="'p_nom' covering entity=a, .*same dims"):
+    with pytest.raises(
+        duckdb.Error, match="'p_nom' covering entity=a, .*same dimensions"
+    ):
         revision.record.attributes["p_nom"].df()
 
 
@@ -1403,9 +1404,9 @@ def _typed(file: str, column: str, values: list) -> _Source:
     ("file", "column", "values", "stored"),
     [
         ("attributes/p_nom.parquet", "value", [1, 2], "DOUBLE"),
-        ("dims/entity.parquet", "tag", [None], "VARCHAR"),
+        ("dimensions/entity.parquet", "tag", [None], "VARCHAR"),
         (
-            "dims/snapshot.parquet",
+            "dimensions/snapshot.parquet",
             "snapshot",
             pd.to_datetime(["2030-01-01"]),
             "TIMESTAMP",
@@ -1438,7 +1439,7 @@ def test_a_write_stores_the_declared_type_widening_a_column(
             "does not fit 'p_nom' of dtype float \\(DOUBLE\\)",
         ),
         (
-            "dims/snapshot.parquet",
+            "dimensions/snapshot.parquet",
             "snapshot",
             ["2030-01-01"],
             "does not fit 'snapshot' of dtype datetime \\(TIMESTAMP\\)",
@@ -1593,12 +1594,12 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
 def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     """Key sets come off the network and its registry, so listing is cheap."""
     source = PyPSA.to_datarecord(ac_dc, store.workspace.con)
-    assert "entity" in source.dims
-    assert "connection" in source.dims
+    assert "entity" in source.dimensions
+    assert "connection" in source.dimensions
     assert "p_max_pu" in source.attributes
     assert "v_nom" in source.attributes, "a static attribute is long rows too"
     assert "carrier" not in source.attributes, "a property is no attribute"
-    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column).
+    # A port attribute is one bus-keyed attribute, not one per port (https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column).
     assert "efficiency" in source.attributes
     assert "efficiency2" not in source.attributes
 
@@ -1608,7 +1609,7 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store):
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
     import pypsa
@@ -1621,7 +1622,7 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store):
     revision = export_network(n, store)
     rows = unpacked(
         store.workspace.con.read_parquet(
-            store.layer_dir(revision.id) + "dims/connection.parquet"
+            store.layer_dir(revision.id) + "dimensions/connection.parquet"
         )
     )
     back = PyPSA.build(revision.record)
