@@ -563,27 +563,10 @@ class Schema(_Declared):
             f: d for dim in self.dims_of(attribute) for f, d in self.fields(dim).items()
         }
 
-    @property
-    def dims(self) -> tuple[str, ...]:
-        """The dims a NULL broadcasts over: every declared dim, the flat dims first.
-
-        A NULL means "every label of this dim", which the fold expands against
-        the axis; a NULL struct means every tuple of the resolved multi-dim.
-        The `varies` and `broadcast` structs have one field per dim, in this
-        order.
-
-        Notes
-        -----
-        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
-        """
-        return (*self.flat_dims, *self.multi_dims)
-
     def dims_of(self, attribute: str) -> tuple[str, ...]:
-        """The dims `attribute` varies over, in its rows' column order: multi-dims first.
+        """The dims `attribute` varies over, in declaration order, which is its rows' column order.
 
-        A multi-dim is one struct column named for it, so
-        `dims={"connection", "snapshot"}` gives `("connection", "snapshot")`.
+        A multi-dim is one struct column named for it.
 
         Per attribute rather than schema-wide: one file per attribute means one
         column set per attribute, and an all-NULL column of a dim the attribute
@@ -600,9 +583,11 @@ class Schema(_Declared):
         - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        multi = self.multi_dims_of(attribute)
-        spec = self.attributes[attribute]
-        return (*multi, *(d for d in self.flat_dims if d in spec.dims))
+        if attribute not in self.attributes:
+            msg = f"the schema declares no attribute {attribute!r}"
+            raise KeyError(msg)
+        dims = self.attributes[attribute].dims
+        return tuple(d for d in self.dimensions if d in dims)
 
     def duck_type(self, spec: Dimension | AttributeSpec | PropertySpec) -> DuckDBPyType:
         """Return the DuckDB type of a declared dim, attribute or property.
@@ -974,7 +959,7 @@ class Schema(_Declared):
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
         partial = self.partial or frozenset()
-        return tuple(d for d in self.dims if d in partial)
+        return tuple(d for d in self.dimensions if d in partial)
 
     # -- index and column sets (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet, https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map) -----------------------------------
 
@@ -991,7 +976,7 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        return (*self.multi_dims, *self.flat_dims, *LONG_TAIL)
+        return (*self.dimensions, *LONG_TAIL)
 
     @property
     def owner_map_index(self) -> tuple[str, ...]:
@@ -1024,10 +1009,7 @@ class Schema(_Declared):
         -----
         - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
         """
-        if attribute not in self.attributes:
-            msg = f"the schema declares no attribute {attribute!r}"
-            raise KeyError(msg)
-        return tuple(m for m in self.multi_dims if m in self.attributes[attribute].dims)
+        return tuple(m for m in self.dims_of(attribute) if m in self.multi_dims)
 
     @property
     def owner_map_columns(self) -> tuple[str, ...]:
@@ -1074,7 +1056,7 @@ class Schema(_Declared):
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
         if column in ("varies", "broadcast"):
-            return flag_type(self.dims) if self.dims else None
+            return flag_type(tuple(self.dimensions)) if self.dimensions else None
         return None
 
     def declared(

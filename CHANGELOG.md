@@ -265,11 +265,13 @@ All notable changes to datarecord are documented here. The format follows
 
 - `WorkingRecord.set(name, value, **labels)` takes labels as `select` does.
   It accepts the same names as before.
-- Breaking: `Schema.dims` returns every declared dim, the flat dims first and
-  the multi-dims last, which `Schema.broadcast_dims` returned before.
-  `Schema.flat_dims` returns the dims that are not multi-dims, which
-  `Schema.dims` returned before. `Schema.coordinates_of` is now
+- Breaking: `Schema.broadcast_dims` and `Schema.dims` are gone.
+  `Schema.dimensions` is the one ordered list of dims, and `Schema.flat_dims`
+  lists the dims that are not multi-dims. `Schema.coordinates_of` is now
   `Schema.dims_of`.
+- Breaking: every dim order is the schema's declaration order: the fields of
+  the `varies` and `broadcast` structs, the owner map's index and the columns
+  of an attribute file, which put the multi-dims first.
 - Breaking: a property names the dim it refers to with `refers`, which was
   `one_of`, so `one_of` is a dim's list of labels alone.
   `Schema.one_of_properties` is now `Schema.referring_properties`.

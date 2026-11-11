@@ -2554,7 +2554,7 @@ class TestPyPSA:
         """
         revision = _with_schema(exported, dims={**_DIMS, "vintage": "str"})
         record = revision.record
-        assert "vintage" in record.schema.dims
+        assert "vintage" in record.schema.dimensions
         assert record.dims["vintage"].fetchall() == [], "no axis rows anywhere"
         missing = PyPSA.verify(revision.record)
         assert missing.unsupported_dims == {"vintage"}, (

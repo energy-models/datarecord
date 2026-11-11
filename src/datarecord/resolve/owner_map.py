@@ -327,7 +327,7 @@ def _refuse_unfilled(
     - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
     """
     dims = schema.partial_dims
-    others = [d for d in schema.dims if d not in dims]
+    others = [d for d in schema.dimensions if d not in dims]
     if not others:
         return
     unset = lit(False)  # noqa: FBT003
@@ -441,11 +441,11 @@ def _widened(
     if was == now:
         return rel
     joining = [d for d in now.partial_dims if d not in was.partial_dims]
-    gained = {d: _gained(was, now, d) for d in now.dims}
-    unchanged = now.dims == was.dims
+    gained = {d: _gained(was, now, d) for d in now.dimensions}
+    unchanged = list(now.dimensions) == list(was.dimensions)
     if not joining and unchanged and not any(gained.values()):
         return rel
-    varying = [d for d in joining if d in was.dims]
+    varying = [d for d in joining if d in was.dimensions]
     splits = reduce(
         operator.or_,
         (_flag("varies", d) for d in varying),
@@ -457,7 +457,7 @@ def _widened(
         rel = rel.filter(~splits)
 
     def old(flag: str, d: str) -> Expression:
-        return _flag(flag, d) if d in was.dims else lit(False)  # noqa: FBT003
+        return _flag(flag, d) if d in was.dimensions else lit(False)  # noqa: FBT003
 
     def broadcast(d: str) -> Expression:
         held = old("broadcast", d)
@@ -467,8 +467,8 @@ def _widened(
 
     extended = with_columns(now, rel, *joining).project(
         *(col(c) for c in (*now.owner_map_index, LAYER_COLUMN)),
-        fn.struct_pack(**{d: old("varies", d) for d in now.dims}).alias("varies"),
-        fn.struct_pack(**{d: broadcast(d) for d in now.dims}).alias("broadcast"),
+        fn.struct_pack(**{d: old("varies", d) for d in now.dimensions}).alias("varies"),
+        fn.struct_pack(**{d: broadcast(d) for d in now.dimensions}).alias("broadcast"),
         col("breakpoints"),
     )
     return union_all_by_name([extended, *parts])
@@ -499,7 +499,7 @@ def _split(
     was_dims = was.partial_dims
     was_cols = [f"_was_{d}" for d in was_dims]
     carried = ["_was_varies", "_was_broadcast"]
-    filed = [*now.dims, "attribute", LAYER_COLUMN, "breakpoint"]
+    filed = [*now.dimensions, "attribute", LAYER_COLUMN, "breakpoint"]
     grouped = [*was_cols, *joining, "attribute", LAYER_COLUMN, *carried]
     pairs = rows.project(col(LAYER_COLUMN), col("attribute")).distinct().fetchall()
     attributes = tuple(sorted({a for _, a in pairs}))

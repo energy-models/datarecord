@@ -82,7 +82,7 @@ An attribute file contains the long rows of one attribute: a column per dim of t
 <dim> ... | attribute | breakpoint | value
 ```
 
-The dims are those the attribute's [`dims`](schema.md) declare, multi-dims first, a multi-dim's fields packed in one struct column.
+The dims are those the attribute's [`dims`](schema.md) declare, in the order the schema declares them, a multi-dim's fields packed in one struct column.
 
 | Attribute                               | Columns                                                        |
 | --------------------------------------- | -------------------------------------------------------------- |

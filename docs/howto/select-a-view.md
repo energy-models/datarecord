@@ -38,7 +38,7 @@ Pass one label to squeeze its dim out of the selection's schema:
 
 ```python
 view = select(record, carrier="wind")
-print(view.schema.dims)
+print(tuple(view.schema.dimensions))
 print(view.properties["entity"].df())
 ```
 

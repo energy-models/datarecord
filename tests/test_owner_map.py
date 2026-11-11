@@ -280,7 +280,7 @@ def test_a_record_with_no_manifest_folds(store):
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     revision = empty_root(store, Schema()).commit()
-    assert revision.record.schema.dims == ()
+    assert revision.record.schema.dimensions == {}
 
     owner_map = revision.record._fold.owner_map
     assert "varies" in owner_map.columns

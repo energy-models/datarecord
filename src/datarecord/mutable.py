@@ -661,9 +661,7 @@ class WorkingRecord(Record):
         outside = (
             frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
         )
-        return tuple(
-            d for d in (*self.schema.multi_dims, *self.schema.flat_dims) if d in outside
-        )
+        return tuple(d for d in self.schema.dimensions if d in outside)
 
     # -- edits (https://energy-models.github.io/datarecord/reference/editing/#set, https://energy-models.github.io/datarecord/reference/editing/#add-and-remove) ----------------------------------------
 
