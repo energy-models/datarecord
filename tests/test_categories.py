@@ -215,10 +215,13 @@ def test_a_multi_dim_is_categorized_by_its_property(ports):
     ]
 
 
-def test_a_multi_dims_category_selects_only_for_an_attribute_over_it(ports):
+@pytest.mark.parametrize(("name", "value"), [("p_nom", 1.0), ("entity.note", "x")])
+def test_a_multi_dims_category_selects_only_for_an_attribute_over_it(
+    ports, name: str, value: object
+):
     staged = WorkingRecord(ports.record)
-    with pytest.raises(ValueError, match="'p_nom' is not over"):
-        staged.set("p_nom", 1.0, role="output")
+    with pytest.raises(ValueError, match=f"{name!r} is not over"):
+        staged.set(name, value, role="output")
 
 
 def test_a_multi_dims_category_combines_with_a_category_of_its_field(ports):

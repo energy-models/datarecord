@@ -60,7 +60,6 @@ if TYPE_CHECKING:
 
 def flags_from_rows(
     schema: Schema,
-    dims: tuple[str, ...],
     rows: Iterable[tuple[str, Mapping[str, Any], Mapping[str, Any], Any]],
 ) -> dict[str, Flags]:
     """Fold `(attribute, varies, broadcast, breakpoints)` rows into `Flags`.
@@ -77,22 +76,18 @@ def flags_from_rows(
 
     Parameters
     ----------
-    dimensions
-        The dimensions the two mappings have an entry per.
+    rows
+        One row per attribute, whose two mappings are keyed by dimension name
+        and have an entry for every dimension the schema declares.
 
     Notes
     -----
     - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
-
-    def scope(attribute: str) -> tuple[str, ...]:
-        own = schema.dimensions_of(attribute)
-        return tuple(d for d in dims if d in own)
-
     return {
         attribute: Flags(
-            frozenset(d for d in scope(attribute) if varies[d]),
-            frozenset(d for d in scope(attribute) if broadcast[d]),
+            frozenset(d for d in schema.dimensions_of(attribute) if varies[d]),
+            frozenset(d for d in schema.dimensions_of(attribute) if broadcast[d]),
             bool(breakpoints),
         )
         for attribute, varies, broadcast, breakpoints in rows
@@ -155,18 +150,15 @@ class Fold:
         - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
         schema = self.axes.schema
-        dims = tuple(schema.dimensions)
         if not categories:
-            # The structs come back as dicts keyed by dim, so each set is a filter
-            # by name rather than a positional slice.
-            return flags_from_rows(schema, dims, self._flag_rows(self.owner_map, dims))
+            return flags_from_rows(schema, self._flag_rows(self.owner_map))
         dim = categorized_dim(schema, categories)
         chosen = selected(schema, dim, categories)
         axis = self.axes.get(dim)
         if axis is None:
             return {}
         rows = self._owned_reaching(dim, matching(axis, chosen).project(col(dim)))
-        return flags_from_rows(schema, dims, self._flag_rows(rows, dims))
+        return flags_from_rows(schema, self._flag_rows(rows))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
         """The owner-map rows reaching one of `labels`, on `dim` or a multi-dimension's field over it.
@@ -210,12 +202,11 @@ class Fold:
             return om.filter(lit(False))  # noqa: FBT003
         return reduce(DuckDBPyRelation.union, reached)
 
-    def _flag_rows(
-        self, rel: DuckDBPyRelation, dims: tuple[str, ...]
-    ) -> list[tuple[Any, ...]]:
-        """`rel`'s flag columns, aggregated per attribute."""
+    def _flag_rows(self, rel: DuckDBPyRelation) -> list[tuple[Any, ...]]:
+        """`rel`'s flag columns, aggregated per attribute and dimension."""
+        dimensions = self.axes.schema.dimensions
         flag = {
-            c: fn.struct_pack(**{d: fn.bool_or(col(c)[d]) for d in dims}).alias(c)
+            c: fn.struct_pack(**{d: fn.bool_or(col(c)[d]) for d in dimensions}).alias(c)
             for c in ("varies", "broadcast")
         }
         return rel.aggregate(

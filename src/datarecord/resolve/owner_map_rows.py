@@ -75,14 +75,13 @@ def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...
     -----
     - [flags](https://energy-models.github.io/datarecord/reference/resolution/#flags)
     """
-    broadcast = tuple(schema.dimensions)
-    over = {d: _over(schema, d, attributes) for d in broadcast}
+    over = {d: _over(schema, d, attributes) for d in schema.dimensions}
     return (
         fn.struct_pack(
-            **{d: fn.bool_or(col(d).isnotnull() & over[d]) for d in broadcast}
+            **{d: fn.bool_or(col(d).isnotnull() & over[d]) for d in over}
         ).alias("varies"),
         fn.struct_pack(
-            **{d: fn.bool_or(col(d).isnull() & over[d]) for d in broadcast}
+            **{d: fn.bool_or(col(d).isnull() & over[d]) for d in over}
         ).alias("broadcast"),
         fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
     )
