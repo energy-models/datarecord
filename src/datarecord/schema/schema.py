@@ -147,7 +147,7 @@ def flag_type(dims: tuple[str, ...]) -> DuckDBPyType:
 
 def _typed_as(spec: Dimension | AttributeSpec | PropertySpec) -> str:
     """Show how `spec` declares its type: its dtype, or the fields its manifest writes."""
-    declared = spec.model_dump(include={"dtype", "one_of", "over"})
+    declared = spec.model_dump(include={"dtype", "one_of", "refers", "over"})
     return (
         str(declared["dtype"]) if declared.keys() == {"dtype"} else json.dumps(declared)
     )
@@ -305,10 +305,10 @@ class Schema(_Declared):
             reason = f"is a field of the multi-dim {subject!r}, not a property"
         elif prop not in self.properties.get(subject, {}):
             reason = "is no property, named `subject.name`"
-        elif (one_of := self.properties[subject][prop].one_of) is None:
+        elif (referred := self.properties[subject][prop].refers) is None:
             reason = "refers to no dim"
-        elif self.dimensions[one_of].one_of is None:
-            reason = f"refers to {one_of!r}, but {one_of!r} is not a one_of dim"
+        elif self.dimensions[referred].one_of is None:
+            reason = f"refers to {referred!r}, but {referred!r} is not a one_of dim"
         elif subject not in (self.partial or set()):
             reason = f"is a property of {subject!r}, which `partial` does not list"
         else:
@@ -334,7 +334,7 @@ class Schema(_Declared):
                 f"(https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
             )
             raise ValueError(msg)
-        for (subject, name), dim in self.one_of_properties().items():
+        for (subject, name), dim in self.referring_properties().items():
             if dim not in self.dimensions:
                 msg = (
                     f"property {subject}.{name} refers to {dim!r}, "
@@ -391,7 +391,7 @@ class Schema(_Declared):
                     )
                     raise ValueError(msg)
 
-    def one_of_properties(self) -> dict[tuple[str, str], str]:
+    def referring_properties(self) -> dict[tuple[str, str], str]:
         """Map each property that refers to a dim, as `(subject, name)`, to that dim.
 
         Notes
@@ -399,10 +399,10 @@ class Schema(_Declared):
         - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         return {
-            (subject, name): spec.one_of
+            (subject, name): spec.refers
             for subject, by_name in self.properties.items()
             for name, spec in by_name.items()
-            if spec.one_of is not None
+            if spec.refers is not None
         }
 
     def _reached_by(self, subject: str) -> frozenset[str]:
@@ -616,8 +616,8 @@ class Schema(_Declared):
         - [dtypes](https://energy-models.github.io/datarecord/reference/schema/#dtypes)
         - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
-        if isinstance(spec, PropertySpec) and spec.one_of is not None:
-            return self.duck_type(self.dimensions[spec.one_of])
+        if isinstance(spec, PropertySpec) and spec.refers is not None:
+            return self.duck_type(self.dimensions[spec.refers])
         if isinstance(spec, Dimension) and spec.over is not None:
             return duckdb.struct_type(
                 {c: self.duck_type(self.dimensions[d]) for c, d in spec.over.items()}
@@ -746,8 +746,8 @@ class Schema(_Declared):
         return tuple(
             name
             for name, spec in self.properties.get(dim, {}).items()
-            if spec.one_of is not None
-            and self.dimensions[spec.one_of].one_of is not None
+            if spec.refers is not None
+            and self.dimensions[spec.refers].one_of is not None
         )
 
     def _categories(self, dim: str, name: str) -> tuple[str, ...]:
@@ -763,9 +763,9 @@ class Schema(_Declared):
         `spec` is the dim, or a property that refers to the dim.
         """
         if isinstance(spec, PropertySpec):
-            if spec.one_of is None:
+            if spec.refers is None:
                 return None
-            spec = self.dimensions[spec.one_of]
+            spec = self.dimensions[spec.refers]
         return spec.one_of
 
     def require_categorizing(self, subject: str, keys: Iterable[str]) -> None:

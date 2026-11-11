@@ -1417,7 +1417,7 @@ class TestPyPSA:
         assert record.dims["country"].df()["country"].tolist() == ["DE", "FR"], (
             "a shape-made dim's labels are the shapes' `idx` in network order"
         )
-        assert schema.properties["bus"]["country"].one_of == "country"
+        assert schema.properties["bus"]["country"].refers == "country"
         bus = record.properties["bus"].df().set_index("bus")
         assert bus.loc["north", "shape_onshore"] == (
             "POLYGON ((1 0, 1 1, 0 1, 0 0, 1 0))"
@@ -3677,7 +3677,7 @@ class TestPyPSA:
         schema = swept.manifest.schema
         entity = {
             **schema.properties["entity"],
-            "weather_year": PropertySpec(one_of="weather_year"),
+            "weather_year": PropertySpec(refers="weather_year"),
         }
         properties = {**schema.properties, "entity": entity}
         layer = empty_root(

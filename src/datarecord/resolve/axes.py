@@ -217,7 +217,9 @@ def refuse_unheld(
     - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
     - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     """
-    taken = {n: d for (s, n), d in schema.one_of_properties().items() if s == subject}
+    taken = {
+        n: d for (s, n), d in schema.referring_properties().items() if s == subject
+    }
     labels: dict[str, tuple[Expression, str]] = {}
     fields: dict[str, tuple[Expression, str]] = {}
     tuples: dict[str, tuple[Expression, str]] = {}
@@ -397,7 +399,7 @@ def mortal(schema: Schema) -> tuple[str, ...]:
     """
     drawn = {
         *(d for m in schema.multi_dims for d in schema.over(m).values()),
-        *schema.one_of_properties().values(),
+        *schema.referring_properties().values(),
     }
     outside_index = set(schema.dims) - set(schema.partial_dims)
     kept = (drawn | outside_index) - set(schema.one_of_dims)

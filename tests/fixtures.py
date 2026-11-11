@@ -516,7 +516,7 @@ def schema(
             "ctype": Dimension(one_of=TYPES),
             **{m: Dimension(over=over) for m, over in multi_dims.items()},
         },
-        properties={"entity": {"ctype": PropertySpec(one_of="ctype")}},
+        properties={"entity": {"ctype": PropertySpec(refers="ctype")}},
         attributes=flat,
         # The default names `connection`, which a caller's own `multi_dims` may drop.
         partial=frozenset(

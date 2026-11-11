@@ -2369,7 +2369,7 @@ def _property(name: str, spec: AttributeSpec) -> PropertySpec:
     if name == CARRIER:
         fields |= {
             "dtype": None,
-            "one_of": CARRIER,
+            "refers": CARRIER,
             "default": fields["default"] or None,
         }
     return PropertySpec(**fields)
@@ -2449,7 +2449,7 @@ def _registry() -> _Registry:
     properties = {
         ENTITY: {
             CTYPE: PropertySpec(
-                one_of=CTYPE, description="What kind of entity an entity is."
+                refers=CTYPE, description="What kind of entity an entity is."
             ),
             **{
                 name: _property(name, attributes.pop(name))
@@ -2466,7 +2466,7 @@ def _registry() -> _Registry:
         }
         held = tuple(specs) if ctype in _CATALOG_TYPES else _PROPERTIES[dim]
         properties[dim] = (
-            {CARRIER: PropertySpec(one_of=CARRIER, description=_SUB_NETWORK_CARRIER)}
+            {CARRIER: PropertySpec(refers=CARRIER, description=_SUB_NETWORK_CARRIER)}
             if dim == SUB_NETWORK
             else {name: _property(name, specs.pop(name)) for name in held}
         )
@@ -2486,7 +2486,7 @@ def _registry() -> _Registry:
             carries[ctype] = carries.get(ctype, frozenset()) | set(named.values())
     properties[CONNECTION] = {
         ROLE: PropertySpec(
-            one_of=ROLE,
+            refers=ROLE,
             description="Which end of the component this attachment is.",
         )
     }
@@ -2620,7 +2620,7 @@ class _NetworkSource:
         schema = self.schema
         for subject, typed in self.custom.properties.items():
             for name in typed:
-                dim = schema.properties[subject][name].one_of
+                dim = schema.properties[subject][name].refers
                 if dim is None:
                     continue
                 values = self.properties[subject].project(col(name)).df()[name]
@@ -2667,7 +2667,7 @@ class _NetworkSource:
         custom = self.custom
         for dim, typed in custom.properties.items():
             properties[dim] = properties[dim] | {
-                name: PropertySpec(one_of=name)
+                name: PropertySpec(refers=name)
                 if dtype == "str" and name in dimensions
                 else PropertySpec(dtype=dtype)
                 for name, dtype in typed.items()

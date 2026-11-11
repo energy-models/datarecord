@@ -68,7 +68,7 @@ Core reads its dtypes from `mathspec.program`. The environment pins mathspec at 
 
 ### How does a property that refers to a dim map onto mathspec?
 
-mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier }`, declared beside the dims. datarecord declares `one_of: carrier` on a property of `generator`. Unifying the two is left for later.
+mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier }`, declared beside the dims. datarecord declares `refers: carrier` on a property of `generator`. Unifying the two is left for later.
 
 ### Must a default name a live label?
 
@@ -170,7 +170,7 @@ It leaves the value out and reports it in `Requirements.ignored`, as it reports 
 
 ### May a multi-dim in `partial` have categories?
 
-It may, by the rule a dim follows. `connection.role: {one_of: role}` categorises `connection` in `partial`, so a `default_by` keyed `connection.role`, `flags(role=...)` and the keyword `role=` work as they do for `entity.ctype` ([the data model](data-model.md)).
+It may, by the rule a dim follows. `connection.role: {refers: role}` categorises `connection` in `partial`, so a `default_by` keyed `connection.role`, `flags(role=...)` and the keyword `role=` work as they do for `entity.ctype` ([the data model](data-model.md)).
 
 ### What should a connection value staged without its `bus` mean?
 

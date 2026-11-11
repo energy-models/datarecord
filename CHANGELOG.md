@@ -35,9 +35,8 @@ All notable changes to datarecord are documented here. The format follows
   returns the spec of a name, and `Schema.column_type` takes the property's
   subject. A property may share its name with an attribute, a dim or a
   property of another subject.
-- A property declares exactly one of `dtype` and `one_of: <dim>`. A property
-  with `one_of` refers to that dim, and its values are live labels
-  of that dim. `set` and `add` check them, and the writer checks every layer.
+- A property declares exactly one of `dtype` and `refers: <dim>`, the dim it
+  refers to, whose live labels are then its values. `set` and `add` check them, and the writer checks every layer.
   `remove(dim, labels)` fails while such a property still holds a label.
 - A property that refers to a dim with `one_of`, on a subject in
   `partial`, a multi-dim among them, categorizes the subject. Categories select labels in
@@ -112,7 +111,7 @@ All notable changes to datarecord are documented here. The format follows
   the layer holding each axis's deepest file in `resolved/dim_owners.parquet`.
 - `WorkingRecord.set` checks that each label of an attribute row is on its
   dim's axis as staged, a multi-dim's tuple among them. `add` checks that each label of a tuple is on its axis
-  as staged, and that a value of a property with `one_of` is a label of that
+  as staged, and that a value of a property with `refers` is a label of that
   dim as staged. `write_layer` checks every attribute row against the final
   axes of the layer, and every tuple of a multi-dim against the final axes of
   the dims its fields draw on.
@@ -176,7 +175,7 @@ All notable changes to datarecord are documented here. The format follows
   pypsa-eur's `country`, is a dim of its own whose labels are the shapes'
   `idx`. Such a dim is no dim of the record's own, and a network is built
   from no selection squeezing it. A custom text column named like a dim
-  refers to it, so pypsa-eur's `bus.country` is `{one_of: country}`. The CRS
+  refers to it, so pypsa-eur's `bus.country` is `{refers: country}`. The CRS
   is `crs` in the schema's `meta`, and `build` restores `n.shapes` in that
   CRS.
   `to_datarecord` refuses a shape without a `component`, `idx` or `type`, two
@@ -271,6 +270,9 @@ All notable changes to datarecord are documented here. The format follows
   `Schema.flat_dims` returns the dims that are not multi-dims, which
   `Schema.dims` returned before. `Schema.coordinates_of` is now
   `Schema.dims_of`.
+- Breaking: a property names the dim it refers to with `refers`, which was
+  `one_of`, so `one_of` is a dim's list of labels alone.
+  `Schema.one_of_properties` is now `Schema.referring_properties`.
 - The pages, docstrings and error messages take mathspec's words. A named
   part of a multi-dim's tuple, such as `bus` of `connection`, is a field. A
   coordinate is one label on each dim of an attribute, such as `(gas, high)`,
@@ -531,8 +533,8 @@ All notable changes to datarecord are documented here. The format follows
 - `set` takes no expression. Compute the new values from `attributes[name]`
   and `set` the frame.
 - `Dimension.within` is gone. Every axis is keyed by its label alone, with
-  labels unique across the dim. A nested dim is a property with `one_of` on
-  the parent dim, such as `snapshot.period` with `one_of: period`. `add`
+  labels unique across the dim. A nested dim is a property with `refers` on
+  the parent dim, such as `snapshot.period` with `refers: period`. `add`
   takes no parent keys, and `Schema.axis_key` is gone.
 - Traits are gone: `Trait`, `Schema.traits`, `Schema.attributes_for` and
   `Schema.properties_for`.

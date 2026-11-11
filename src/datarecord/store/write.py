@@ -388,7 +388,7 @@ def _require_living_references(
         ),
         *(
             (s, p, col("t", p), d, s in touched)
-            for (s, p), d in schema.one_of_properties().items()
+            for (s, p), d in schema.referring_properties().items()
         ),
     ]
     referenced = {r[3] for r in references}

@@ -24,14 +24,14 @@ schema = Schema(
     },
     properties={
         "entity": {
-            "ctype": PropertySpec(one_of="ctype"),
-            "carrier": PropertySpec(one_of="carrier"),
+            "ctype": PropertySpec(refers="ctype"),
+            "carrier": PropertySpec(refers="carrier"),
             "sign": PropertySpec(
                 dtype="float", default=1.0, default_by={"entity.ctype": {"Load": -1.0}}
             ),
         },
         "bus": {
-            "carrier": PropertySpec(one_of="carrier", default="AC"),
+            "carrier": PropertySpec(refers="carrier", default="AC"),
             "x": PropertySpec(dtype="float"),
         },
     },
@@ -72,17 +72,17 @@ print(schema.multi_dims, schema.over("connection"))
 
 ## Declare properties
 
-Under `properties`, key each property by its subject dim and give it exactly one of `dtype` and `one_of`. With `one_of`, the property's values are labels of the dim you give, as the values of `entity.carrier` are labels of `carrier`. A property name belongs to its subject, so `bus.x` and an attribute `x` are two names.
+Under `properties`, key each property by its subject dim and give it exactly one of `dtype` and `refers`. With `refers`, the property's values are labels of the dim you give, as the values of `entity.carrier` are labels of `carrier`. A property name belongs to its subject, so `bus.x` and an attribute `x` are two names.
 
 datarecord refuses a spec with both:
 
 ```python
-PropertySpec(one_of="carrier", dtype="str")
+PropertySpec(refers="carrier", dtype="str")
 ```
 
 ```text
 pydantic_core._pydantic_core.ValidationError: 1 validation error for PropertySpec
-  Value error, a property declares exactly one of `dtype` and `one_of`, not both [type=value_error, input_value={'one_of': 'carrier', 'dtype': 'str'}, input_type=dict]
+  Value error, a property declares exactly one of `dtype` and `refers`, not both [type=value_error, input_value={'refers': 'carrier', 'dtype': 'str'}, input_type=dict]
     For further information visit https://errors.pydantic.dev/2.13/v/value_error
 ```
 

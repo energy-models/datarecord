@@ -34,7 +34,7 @@ SCHEMA = Schema(
         "ctype": Dimension(one_of=["Generator", "Load"]),
         "snapshot": Dimension(dtype="int"),
     },
-    properties={"entity": {"ctype": PropertySpec(one_of="ctype")}},
+    properties={"entity": {"ctype": PropertySpec(refers="ctype")}},
     attributes={
         "p_nom": AttributeSpec(dtype="float", dims={"entity"}, default=0.0),
         "p_max_pu": AttributeSpec(
