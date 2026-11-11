@@ -53,18 +53,16 @@ from datarecord.duck import (
 )
 from datarecord.protocols import Flags, LazyRelations, RecordLike, Relations
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_map import uncovered
-from datarecord.resolve.owner_map_rows import cast_declared
 from datarecord.schema.categories import matching, with_defaults
 from datarecord.schema.schema import Schema as RecordSchema
-from datarecord.schema.schema import packed, unpacked
+from datarecord.schema.schema import cast_declared, packed, unpacked
 from datarecord.schema.specs import (
     AttributeSpec,
     Dimension,
     PropertySpec,
 )
 from datarecord.select import Selection, select
-from datarecord.settle import settle
+from datarecord.settle import settle, uncovered
 from datarecord.tools.base import (
     Requirements,
     Schema,

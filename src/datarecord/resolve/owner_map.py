@@ -16,10 +16,9 @@ Notes
 from __future__ import annotations
 
 import operator
-from collections.abc import Callable, Iterator, Mapping, Sequence, Set
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from functools import reduce
-from itertools import combinations
 from uuid import UUID
 
 import duckdb
@@ -34,7 +33,6 @@ from datarecord.duck import (
     FOLD,
     ex_all,
     fn,
-    join_on,
     null_pattern,
     null_safe,
     shared_table,
@@ -48,20 +46,16 @@ from datarecord.resolve.axes import (
     removed_labels,
 )
 from datarecord.resolve.fold import Fold, read_owner_map
-from datarecord.resolve.owner_map_rows import (
-    _empty_relation,
-    _flags,
-    _per_schema,
-    _tagged,
-    cast_declared,
-    owner_map_rows,
-    with_columns,
-)
+from datarecord.resolve.owner_map_rows import _flags, _tagged, owner_map_rows
 from datarecord.resolve.sources import LayerSource, ParquetLayer
 from datarecord.schema.schema import (
     FLAG_COLUMNS,
     LAYER_COLUMN,
     Schema,
+    cast_declared,
+    empty_declared,
+    per_schema,
+    with_columns,
 )
 
 
@@ -149,7 +143,7 @@ def _domain(schema: Schema, attribute: str) -> int:
     return sum(1 << i for i, d in enumerate(schema.partial_dims) if d in over)
 
 
-@_per_schema
+@per_schema
 def _domain_of(schema: Schema) -> Expression:
     """Each row's `_domain`, by a CASE over its attribute."""
     full = (1 << len(schema.partial_dims)) - 1
@@ -285,81 +279,6 @@ def _meeting(
         ]
     )
     return left.join(right, on)
-
-
-def null_patterns(rel: DuckDBPyRelation, dims: Sequence[str]) -> list[frozenset[str]]:
-    """The distinct sets of `dims` that rows of `rel` set."""
-    if not dims:
-        return [frozenset()]
-    rows = rel.project(*(col(d).isnotnull() for d in dims)).distinct().fetchall()
-    return [frozenset(d for d, n in zip(dims, row, strict=True) if n) for row in rows]
-
-
-def has_pattern(dims: Sequence[str], pattern: Set[str]) -> Expression:
-    """Whether a row sets exactly the `pattern` of `dims`."""
-    return reduce(
-        operator.and_,
-        (col(d).isnotnull() if d in pattern else col(d).isnull() for d in dims),
-        lit(True),  # noqa: FBT003
-    )
-
-
-def uncovered(
-    rel: DuckDBPyRelation, staged: DuckDBPyRelation, columns: Sequence[str]
-) -> DuckDBPyRelation:
-    """`rel` without the rows a row of `staged` reaches, equal or NULL on each of `columns`.
-
-    Split by which `columns` `staged` leaves NULL, each part an equi-join over
-    the columns it names: a match on "NULL or equal" cannot hash.
-
-    Notes
-    -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-    """
-    for pattern in null_patterns(staged, columns):
-        part = staged.filter(has_pattern(columns, pattern))
-        rel = rel.set_alias("r").join(
-            part.set_alias("s"),
-            null_safe("r", "s", [c for c in columns if c in pattern]),
-            how="anti",
-        )
-    return rel
-
-
-def unsettled(
-    rel: DuckDBPyRelation, dims: Sequence[str]
-) -> Iterator[tuple[frozenset[str], frozenset[str], DuckDBPyRelation]]:
-    """Each pair of patterns of `rel` neither holds, with the coordinates its rows meet at that no row names both at.
-
-    Two rows meet where they agree on every one of `dims` both name; a
-    coordinate where they meet takes the labels either names. There the
-    broadcast rule finds no row more specific than both. The relation is lazy
-    and yields one column per dim.
-
-    Notes
-    -----
-    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-    """
-    patterns = null_patterns(rel, dims)
-
-    def exactly(pattern: frozenset[str]) -> DuckDBPyRelation:
-        return rel.filter(has_pattern(dims, pattern)).project(*map(col, dims))
-
-    for a, b in combinations(patterns, 2):
-        if a <= b or b <= a:
-            continue
-        on = [col("a", c) == col("b", c) for c in dims if c in a & b]
-        meets = join_on(
-            exactly(a).distinct().set_alias("a"),
-            exactly(b).distinct().set_alias("b"),
-            on,
-        ).project(*(coalesce(col("a", c), col("b", c)).alias(c) for c in dims))
-        if a | b in patterns:
-            settled = ex_all(col("m", c) == col("u", c) for c in a | b)
-            meets = meets.set_alias("m").join(
-                exactly(a | b).set_alias("u"), settled, how="anti"
-            )
-        yield a, b, meets
 
 
 def _overlaps(pairs: DuckDBPyRelation, schema: Schema) -> DuckDBPyRelation:
@@ -772,7 +691,7 @@ def _fold_onto(
             rel = keep(rel)
             _drop_but_last(made, con)
     if rel is None:
-        return _empty_relation(keyed, con, *keyed.owner_map_columns)
+        return empty_declared(keyed, con, *keyed.owner_map_columns)
     return rel
 
 

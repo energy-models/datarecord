@@ -54,10 +54,9 @@ from datarecord.resolve.owner_map import (
     source_for,
     split_frozen,
 )
-from datarecord.resolve.owner_map_rows import with_columns
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties
-from datarecord.schema.schema import LAYER_COLUMN, Schema
+from datarecord.schema.schema import LAYER_COLUMN, Schema, with_columns
 from datarecord.select import Selection, select
 from datarecord.settle import most_specific
 
