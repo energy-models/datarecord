@@ -34,7 +34,7 @@ store = ws.store(tempfile.mkdtemp())
 
 n = pypsa.Network(snapshots=pd.date_range("2030-01-01", periods=3, freq="h"))
 root = store.commit(PyPSA.to_datarecord(n, ws.con), parent=None)
-print(root.record.dims["snapshot"].df())
+print(root.record.dimensions["snapshot"].df())
 print(list(root.record.schema.properties["entity"]))
 ```
 

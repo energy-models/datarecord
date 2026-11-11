@@ -7,7 +7,7 @@
 The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
 `(scenario, name)`, that its buses and carriers are the `bus` and `carrier`
-axes, and how its static/series split maps onto the record's `dims/` +
+axes, and how its static/series split maps onto the record's `dimensions/` +
 `attributes/` split.
 
 Notes
@@ -231,17 +231,17 @@ class NetworkShape:
     """
 
     schema: RecordSchema
-    dims: Relations
+    dimensions: Relations
 
     def _axis(self, dim: str) -> pd.DataFrame:
         """`dim`'s axis as a DataFrame, empty where the record holds no rows of it."""
-        rel = self.dims.get(dim)
+        rel = self.dimensions.get(dim)
         return rel.df() if rel is not None else pd.DataFrame(columns=[dim])
 
     @cached_property
     def snapshots(self) -> pd.DataFrame:
         """The `snapshot` axis in axis order, a multi-dim's tuples as a column per field."""
-        rel = self.dims.get(SNAPSHOT)
+        rel = self.dimensions.get(SNAPSHOT)
         if rel is None:
             return pd.DataFrame(columns=[SNAPSHOT])
         return unpacked(self.schema, SNAPSHOT, rel).df()
@@ -437,7 +437,7 @@ def _scenario_weights(record: RecordLike, scenarios: pd.Series) -> pd.Series:
 
 def _axis_labels(record: RecordLike, dim: str) -> list[Any]:
     """`dim`'s labels in axis order, none where the record holds no axis of it."""
-    axis = record.dims.get(dim)
+    axis = record.dimensions.get(dim)
     return [] if axis is None else [label for (label,) in axis.fetchall()]
 
 
@@ -451,7 +451,7 @@ def _resolved(record: RecordLike, fallbacks: Mapping[str, float]) -> pd.DataFram
     """
     schema = record.schema
     frame = record.properties[ENTITY].project(col(ENTITY), col(CTYPE)).df()
-    entities = {ENTITY: record.dims[ENTITY]}
+    entities = {ENTITY: record.dimensions[ENTITY]}
     over = Flags(frozenset(entities), frozenset(entities))
     columns = {}
     for attr, fallback in fallbacks.items():
@@ -546,7 +546,7 @@ def _apart(record: RecordLike, attr: str, dim: str) -> bool:
     the labels the rows name, since a row naming one label leaves the others
     at the default.
     """
-    if len(record.dims[dim]) < 2:
+    if len(record.dimensions[dim]) < 2:
         return False
     return bool(
         record.attributes[attr].filter(col(dim).isnotnull()).limit(1).fetchall()
@@ -564,7 +564,7 @@ def _one_labelled(record: RecordLike) -> dict[str, DuckDBPyRelation]:
     """
     return {
         dim: rel
-        for dim, rel in record.dims.items()
+        for dim, rel in record.dimensions.items()
         if dim != SNAPSHOT and len(rel) == 1
     }
 
@@ -1263,7 +1263,7 @@ def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFra
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
     restored = table.copy()
-    labels = {dim: record.dims[dim]}
+    labels = {dim: record.dimensions[dim]}
     overstated = Flags(frozenset({dim}), frozenset({dim}))
     for attribute, weighting in _WEIGHTINGS.items():
         frame = record.attributes.get(attribute)
@@ -1947,7 +1947,7 @@ class PyPSATool(Tool):
         known = self.component_types()
         ctypes = {ct for ct in _components(record) if ct in known}
         return Requirements(
-            dims=REQUIRED_DIMS,
+            dimensions=REQUIRED_DIMS,
             categories=frozenset(ctypes),
             attributes=frozenset(
                 (ct, src)
@@ -1991,9 +1991,9 @@ class PyPSATool(Tool):
         unsupported_dims = self._unsupported_dims(record)
         if unsupported_partial or unsupported_dims:
             return Requirements(
-                dims=frozenset(dims),
+                dimensions=frozenset(dims),
                 unsupported_partial=frozenset(unsupported_partial),
-                unsupported_dims=frozenset(unsupported_dims),
+                unsupported_dimensions=frozenset(unsupported_dims),
             ), {}
 
         categories: set[str] = set()
@@ -2045,7 +2045,7 @@ class PyPSATool(Tool):
                         continue
                     attributes.add((ctype, src))
         return Requirements(
-            dims=frozenset(dims),
+            dimensions=frozenset(dims),
             categories=frozenset(categories),
             attributes=frozenset(attributes),
             unsupported_values=frozenset(unsupported_values),
@@ -2062,7 +2062,7 @@ class PyPSATool(Tool):
         - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
         """
         defs = record.schema
-        return {SNAPSHOT} if SNAPSHOT in defs.partial_dims else set()
+        return {SNAPSHOT} if SNAPSHOT in defs.partial_dimensions else set()
 
     def _unsupported_dims(self, record: RecordLike) -> set[str]:
         """The record's dims of its own (`_own_dims`): one network has none, a collection (`PyPSACollection`) is over one.
@@ -2116,7 +2116,7 @@ class PyPSATool(Tool):
 
         con = record.con
         schema = record.schema
-        shape = NetworkShape(schema, record.dims)
+        shape = NetworkShape(schema, record.dimensions)
         n = _new_network(record, shape)
 
         periodless = {_INVESTMENT_PERIOD} if PERIOD in _squeezed(record) else set()
@@ -2127,8 +2127,8 @@ class PyPSATool(Tool):
         ]
         settled = _one_labelled(record)
         if shape.stochastic:
-            settled[SCENARIO] = record.dims[SCENARIO]
-        tuples = record.dims.get(CONNECTION)
+            settled[SCENARIO] = record.dimensions[SCENARIO]
+        tuples = record.dimensions.get(CONNECTION)
         for ctype in _AXIS_TYPES:
             self._add_labels(n, record, ctype, flagged, shape, settled, con)
         _attach_sub_networks(n)
@@ -2327,7 +2327,7 @@ class PyPSATool(Tool):
         if clashing:
             raise UnsupportedRecordError(self.name, Requirements(names=clashing))
         if results_only and base is not None:
-            axis = base.dims.get(SCENARIO)
+            axis = base.dimensions.get(SCENARIO)
             if axis is not None and axis.limit(1).fetchall() and not n.has_scenarios:
                 msg = (
                     "A deterministic network's results are not written over a "
@@ -2694,7 +2694,7 @@ class _NetworkSource:
                 if dim is None:
                     continue
                 values = self.properties[subject].project(col(name)).df()[name]
-                axis = self.dims.get(dim)
+                axis = self.dimensions.get(dim)
                 labels = (
                     schema.dimensions[dim].one_of or ()
                     if axis is None
@@ -2790,7 +2790,7 @@ class _NetworkSource:
     @cached_property
     def _snapshot_column(self) -> Expression:
         """The one `snapshot` column the schema declares, over the columns of `_snapshots`."""
-        if SNAPSHOT not in self.schema.multi_dims:
+        if SNAPSHOT not in self.schema.multi_dimensions:
             return col(SNAPSHOT)
         return packed(self.schema, SNAPSHOT, self._snapshots.columns, {}).alias(
             SNAPSHOT
@@ -2844,7 +2844,7 @@ class _NetworkSource:
         }
 
     @property
-    def dims(self) -> LazyRelations:
+    def dimensions(self) -> LazyRelations:
         """Every axis this network holds as keys, `entity` and the multi-dim `connection` among them."""
         present = tuple(d for d, frame in self._axes.items() if len(frame) > 0)
 
@@ -3547,7 +3547,9 @@ class _ResultsSource(_NetworkSource):
             If it holds one.
         """
         self._refuse_first_stage()
-        snapshots = _lacking(self._snapshot_rel, self.base.dims[SNAPSHOT], SNAPSHOT)
+        snapshots = _lacking(
+            self._snapshot_rel, self.base.dimensions[SNAPSHOT], SNAPSHOT
+        )
         held = {BUS: self._labels("Bus")[BUS], ENTITY: self._entity_frame[ENTITY]}
         unknown = {
             SNAPSHOT: [label for (label,) in snapshots.fetchall()],
@@ -3590,7 +3592,7 @@ class _ResultsSource(_NetworkSource):
     @cached_property
     def _elsewhere(self) -> DuckDBPyRelation | None:
         """`base`'s snapshots the network lacks, at which `base`'s series stand; `None` where it holds them all."""
-        rest = _lacking(self.base.dims[SNAPSHOT], self._snapshot_rel, SNAPSHOT)
+        rest = _lacking(self.base.dimensions[SNAPSHOT], self._snapshot_rel, SNAPSHOT)
         return rest if rest.limit(1).fetchall() else None
 
     @cached_property
@@ -3620,7 +3622,7 @@ class _ResultsSource(_NetworkSource):
         return {**labels, CONNECTION: self._connection_frame.project(col(CONNECTION))}
 
     @property
-    def dims(self) -> LazyRelations:
+    def dimensions(self) -> LazyRelations:
         """The `sub_network` axis: this solve's SubNetworks, as `_restates` says."""
         return LazyRelations(
             self._restates, lambda _: self._sub_network_rel().project(col(SUB_NETWORK))
@@ -3634,7 +3636,7 @@ class _ResultsSource(_NetworkSource):
     @cached_property
     def _restates(self) -> tuple[str, ...]:
         """The axes this layer restates: `sub_network` where the solve or the record has one and it is not left to `base` (`_left_to_base`)."""
-        axis = _root(self.base).dims.get(SUB_NETWORK)
+        axis = _root(self.base).dimensions.get(SUB_NETWORK)
         held = len(self._sub_networks) > 0 or (
             axis is not None and bool(axis.limit(1).fetchall())
         )
@@ -3661,7 +3663,7 @@ class _ResultsSource(_NetworkSource):
 
     def _dead_sub_networks(self) -> DuckDBPyRelation | None:
         """The record's SubNetworks this solve does not number, aliased `d`; `None` where it has no axis."""
-        axis = _root(self.base).dims.get(SUB_NETWORK)
+        axis = _root(self.base).dimensions.get(SUB_NETWORK)
         if axis is None:
             return None
         live = self._sub_network_rel().set_alias("n")
@@ -3902,7 +3904,7 @@ def _axis_union(
     }
     frame = pd.DataFrame(agreed, index=order, columns=columns)
     rel = con.from_df(frame.reset_index(names=fields))
-    if subject in schema.multi_dims:
+    if subject in schema.multi_dimensions:
         struct = packed(schema, subject, fields, {}).alias(subject)
         rel = rel.project(struct, *map(col, columns))
     return cast_declared(schema, rel, subject)
@@ -3933,7 +3935,7 @@ class _StackedSource:
     """
 
     schema: RecordSchema
-    dims: Relations
+    dimensions: Relations
     properties: Relations
     attributes: Relations
     con: DuckDBPyConnection
@@ -3994,7 +3996,7 @@ class _StackedSource:
             raise ValueError(msg)
         apart = len(labels) < len(whole)
         left = _sub_network_results(schema) if apart else frozenset()
-        held_dims = {label: m.dims for label, m in members.items()}
+        held_dims = {label: m.dimensions for label, m in members.items()}
         dims = {
             d: _axis_union(schema, d, _held(held_dims, d), dim, con)
             for d in _keys(held_dims)
@@ -4257,7 +4259,7 @@ class PyPSACollectionTool(Tool):
         """What the record fails to supply for any member's build (`PyPSATool.verify`), each member narrowed on its own; falsy if it is usable.
 
         Reports each dim of its own of a record declaring more than one in
-        `unsupported_dims`, and nothing else then.
+        `unsupported_dimensions`, and nothing else then.
 
         Raises
         ------
@@ -4372,7 +4374,7 @@ class PyPSACollectionTool(Tool):
 def _nested(record: RecordLike) -> Requirements:
     """The record's dims of its own where it declares more than one, which no collection is over; empty otherwise."""
     own = _own_dims(record.schema)
-    return Requirements(unsupported_dims=frozenset(own if len(own) > 1 else ()))
+    return Requirements(unsupported_dimensions=frozenset(own if len(own) > 1 else ()))
 
 
 def _collected(record: RecordLike) -> tuple[str, dict[Any, Selection]]:

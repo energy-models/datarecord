@@ -81,22 +81,25 @@ def test_ownership_is_derived_not_declared():
     assert s.owned_per("carrier") == frozenset({"entity"})
 
 
-def test_partial_dims_is_the_union_over_attributes():
+def test_partial_dimensions_is_the_union_over_attributes():
     """The owner map's index is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    assert s.partial_dims == ("entity", "scenario"), "only what `partial` lists"
+    assert s.partial_dimensions == ("entity", "scenario"), "only what `partial` lists"
 
     wider = _schema(partial=frozenset({"entity", "scenario", "timestep", "connection"}))
-    assert wider.partial_dims == ("entity", "timestep", "scenario", "connection"), (
-        "a `partial` dim joins the index"
-    )
+    assert wider.partial_dimensions == (
+        "entity",
+        "timestep",
+        "scenario",
+        "connection",
+    ), "a `partial` dim joins the index"
 
     dims = {
         "entity": Dimension(dtype="str"),
         "scenario": Dimension(dtype="str"),
     }
     unlisted = Schema(dimensions=dims, partial=frozenset({"scenario"}))
-    assert unlisted.partial_dims == ("scenario",), (
+    assert unlisted.partial_dimensions == ("scenario",), (
         "no dim is in the index by name: `entity`, outside `partial`, is not in it"
     )
 
@@ -125,11 +128,11 @@ def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
 @pytest.mark.parametrize(
     "lookup",
     [
-        lambda s: s.multi_dims_of("absent"),
-        lambda s: s.dims_of("absent"),
+        lambda s: s.multi_dimensions_of("absent"),
+        lambda s: s.dimensions_of("absent"),
         lambda s: s.addresses("absent", "entity"),
     ],
-    ids=["multi_dims_of", "dims_of", "addresses"],
+    ids=["multi_dimensions_of", "dimensions_of", "addresses"],
 )
 def test_a_per_attribute_lookup_refuses_an_undeclared_attribute(lookup):
     with pytest.raises(KeyError, match="the schema declares no attribute 'absent'"):
@@ -156,11 +159,11 @@ def test_the_section_decides_where_a_value_lives():
         "a property that refers to a dim takes its type"
     )
     assert s.categorizing("entity") == ("ctype",)
-    assert "ctype" not in s.partial_dims
+    assert "ctype" not in s.partial_dimensions
 
 
 def test_a_multi_dim_may_have_properties_and_categories():
-    """A column of `dims/<multi-dim>.parquet`, typed and categorizing like a dim's property."""
+    """A column of `dimensions/<multi-dim>.parquet`, typed and categorizing like a dim's property."""
     s = _schema(
         dimensions=_listing_dims(role=["in", "out"]),
         properties={

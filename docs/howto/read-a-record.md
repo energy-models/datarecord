@@ -12,10 +12,10 @@ Every value is a DuckDB relation, a query plan that DuckDB runs only when you ca
 
 ## Read labels and properties
 
-`dims[dim]` returns a dim's axis in axis order, and `properties[dim]` returns its labels with every property, one row per label. To read one category, filter on the property:
+`dimensions[dim]` returns a dim's axis in axis order, and `properties[dim]` returns its labels with every property, one row per label. To read one category, filter on the property:
 
 ```python
-print(record.dims["snapshot"].df())
+print(record.dimensions["snapshot"].df())
 print(record.properties["entity"].filter("ctype = 'Generator'").df())
 ```
 
@@ -71,7 +71,7 @@ To get one row per label at each coordinate, pass `settle` the rows, the labels 
 from datarecord import settle
 
 gens = record.properties["entity"].filter("ctype = 'Generator'").select("entity")
-labels = {"entity": gens, "snapshot": record.dims["snapshot"]}
+labels = {"entity": gens, "snapshot": record.dimensions["snapshot"]}
 print(settle(record.attributes["p_max_pu"], labels, flags["p_max_pu"]).df())
 ```
 
@@ -113,7 +113,7 @@ print(ws.at(uri).attributes["p_nom"].df())
 ```
 
 ```text
-['attributes', 'dims', 'manifest.json']
+['attributes', 'dimensions', 'manifest.json']
   entity attribute  breakpoint  value
 0  wind1     p_nom         NaN  100.0
 1   gas1     p_nom         NaN   50.0

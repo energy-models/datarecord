@@ -61,7 +61,7 @@ Give each dim a `Dimension` with a `dtype` of `"str"`, `"int"`, `"float"` or `"d
 Pass `over` with the dims whose labels form its tuples. A list is short for a mapping in which each field is named after its dim:
 
 ```python
-print(schema.multi_dims, schema.over("connection"))
+print(schema.multi_dimensions, schema.over("connection"))
 ```
 
 ```text
@@ -119,7 +119,7 @@ pydantic_core._pydantic_core.ValidationError: 1 validation error for Schema
 Give each attribute a `dtype` and the `dims` it varies over, multi-dims included, and a `default` for a coordinate that no row covers. `unit` and `description` are stored as written and never interpreted:
 
 ```python
-print(schema.dims_of("efficiency"))
+print(schema.dimensions_of("efficiency"))
 ```
 
 ```text

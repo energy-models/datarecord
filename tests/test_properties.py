@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Each accessor holds one section: `dims`, `properties`, per-category `flags`.
+"""Each accessor holds one section: `dimensions`, `properties`, per-category `flags`.
 
 Notes
 -----
@@ -89,7 +89,7 @@ def _rows(rel: DuckDBPyRelation) -> dict:
 
 
 def test_an_axis_frame_is_its_column_only(record):
-    assert record.dims["entity"].columns == ["entity"]
+    assert record.dimensions["entity"].columns == ["entity"]
 
 
 def test_properties_hold_stored_values_without_defaults(record):
@@ -134,7 +134,7 @@ def test_a_category_no_label_has_selects_nothing(record):
     -----
     - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
     """
-    assert record.dims["ctype"].df()["ctype"].tolist() == [
+    assert record.dimensions["ctype"].df()["ctype"].tolist() == [
         "Generator",
         "Link",
         "Load",

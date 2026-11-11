@@ -35,7 +35,7 @@ class Requirements:
 
     Parameters
     ----------
-    dims : frozenset of str
+    dimensions : frozenset of str
         Dims the tool cannot build a model without.
     categories : frozenset of str
         Categories the tool requires the record to define labels of, or, in a
@@ -50,7 +50,7 @@ class Requirements:
         Dims the schema declares in `partial` that this tool cannot honour.
         The record layer trusts every `partial`, so this is a tool's verdict
         on the record it was handed, not a schema rejection.
-    unsupported_dims : frozenset of str
+    unsupported_dimensions : frozenset of str
         Dims the record declares that this tool has no place for in the model
         it builds.
     unsupported_values : frozenset of tuple of (str, str)
@@ -73,11 +73,11 @@ class Requirements:
     - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
 
-    dims: frozenset[str] = frozenset()
+    dimensions: frozenset[str] = frozenset()
     categories: frozenset[str] = frozenset()
     attributes: frozenset[tuple[str, str]] = frozenset()
     unsupported_partial: frozenset[str] = frozenset()
-    unsupported_dims: frozenset[str] = frozenset()
+    unsupported_dimensions: frozenset[str] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
     ignored: frozenset[tuple[str, str]] = frozenset()
@@ -85,11 +85,11 @@ class Requirements:
     def __bool__(self) -> bool:
         """Whether anything is required (or, for a `verify` result, missing); `ignored` aside."""
         return bool(
-            self.dims
+            self.dimensions
             or self.categories
             or self.attributes
             or self.unsupported_partial
-            or self.unsupported_dims
+            or self.unsupported_dimensions
             or self.unsupported_values
             or self.names
         )
@@ -102,16 +102,18 @@ class Requirements:
     def describe(self) -> str:
         """A one-line summary, for an error message or a log line."""
         parts = []
-        if self.dims:
-            parts.append(f"dims {sorted(self.dims)}")
+        if self.dimensions:
+            parts.append(f"dimensions {sorted(self.dimensions)}")
         if self.categories:
             parts.append(f"categories {sorted(self.categories)}")
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
         if self.unsupported_partial:
             parts.append(f"unsupported partial {sorted(self.unsupported_partial)}")
-        if self.unsupported_dims:
-            parts.append(f"unsupported dims {sorted(self.unsupported_dims)}")
+        if self.unsupported_dimensions:
+            parts.append(
+                f"unsupported dimensions {sorted(self.unsupported_dimensions)}"
+            )
         if self.unsupported_values:
             parts.append(f"unsupported values {sorted(self.unsupported_values)}")
         if self.names:

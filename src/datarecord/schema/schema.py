@@ -175,7 +175,7 @@ class Schema(_Declared):
         Every declared axis, keyed by dim name.
     properties
         Subject dim -> property name -> spec: the columns of
-        `dims/{dim}.parquet` that describe its labels. A name is unique
+        `dimensions/{dim}.parquet` that describe its labels. A name is unique
         within its subject only, addressed as `subject.name`. A property of a
         dim in `partial` that refers to a dim with
         `one_of` categorizes its subject. A dim with `one_of` has none.
@@ -247,13 +247,13 @@ class Schema(_Declared):
             )
             raise ValueError(msg)
 
-        for multi in self.multi_dims:
+        for multi in self.multi_dimensions:
             drawn = set(self.over(multi).values())
             unknown = sorted(drawn - declared)
             if unknown:
                 msg = f"multi-dim {multi!r} is over undeclared dims {unknown}"
                 raise ValueError(msg)
-            nested = sorted(drawn & set(self.multi_dims))
+            nested = sorted(drawn & set(self.multi_dimensions))
             if nested:
                 msg = (
                     f"multi-dim {multi!r} is over the multi-dims {nested}; each "
@@ -269,7 +269,7 @@ class Schema(_Declared):
             if unknown:
                 msg = f"attribute {attr!r} is addressed by undeclared dims {unknown}"
                 raise ValueError(msg)
-            for multi in self.multi_dims_of(attr):
+            for multi in self.multi_dimensions_of(attr):
                 twice = sorted(set(self.over(multi)) & attr_spec.dims)
                 if twice:
                     msg = (
@@ -325,7 +325,7 @@ class Schema(_Declared):
                 f"a property is a column of its subject's axis file"
             )
             raise ValueError(msg)
-        on_one_of = sorted(set(self.properties) & set(self.one_of_dims))
+        on_one_of = sorted(set(self.properties) & set(self.one_of_dimensions))
         if on_one_of:
             msg = (
                 f"properties are declared on {on_one_of}, which list their labels "
@@ -342,7 +342,7 @@ class Schema(_Declared):
                     f"(https://energy-models.github.io/datarecord/reference/data-model/#properties)"
                 )
                 raise ValueError(msg)
-            if dim in self.multi_dims:
+            if dim in self.multi_dimensions:
                 msg = (
                     f"property {subject}.{name} refers to the multi-dim {dim!r}; "
                     f"a property refers to a dim that is no multi-dim "
@@ -428,7 +428,7 @@ class Schema(_Declared):
             *(("dim", d) for d in self.dimensions),
             *(
                 (f"field of multi-dim {m!r}", c)
-                for m in self.multi_dims
+                for m in self.multi_dimensions
                 for c in self.over(m)
             ),
             *(("attribute", a) for a in self.attributes),
@@ -487,7 +487,7 @@ class Schema(_Declared):
     # -- derived dim sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
 
     @property
-    def flat_dims(self) -> tuple[str, ...]:
+    def flat_dimensions(self) -> tuple[str, ...]:
         """Every dim that is not a multi-dim (a flat dim), in declaration order.
 
         Notes
@@ -497,7 +497,7 @@ class Schema(_Declared):
         return tuple(d for d, spec in self.dimensions.items() if spec.over is None)
 
     @property
-    def multi_dims(self) -> tuple[str, ...]:
+    def multi_dimensions(self) -> tuple[str, ...]:
         """Every declared multi-dim, in declaration order, each carried in a row as one struct column named for it.
 
         Notes
@@ -507,7 +507,7 @@ class Schema(_Declared):
         return tuple(d for d, spec in self.dimensions.items() if spec.over is not None)
 
     @property
-    def one_of_dims(self) -> tuple[str, ...]:
+    def one_of_dimensions(self) -> tuple[str, ...]:
         """Every dim with `one_of`, in declaration order: those whose axis is the schema's list.
 
         Notes
@@ -560,10 +560,12 @@ class Schema(_Declared):
         - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
         return {
-            f: d for dim in self.dims_of(attribute) for f, d in self.fields(dim).items()
+            f: d
+            for dim in self.dimensions_of(attribute)
+            for f, d in self.fields(dim).items()
         }
 
-    def dims_of(self, attribute: str) -> tuple[str, ...]:
+    def dimensions_of(self, attribute: str) -> tuple[str, ...]:
         """The dims `attribute` varies over, in declaration order, which is its rows' column order.
 
         A multi-dim is one struct column named for it.
@@ -611,14 +613,14 @@ class Schema(_Declared):
             return enum_type(spec.one_of)
         return DUCK_TYPES[cast("str", spec.dtype)]
 
-    def check_multi_dim_columns(
+    def check_multi_dimension_columns(
         self,
-        multi_dims: Iterable[str],
+        multi_dimensions: Iterable[str],
         rel: DuckDBPyRelation,
         *,
         carrier: str,
     ) -> None:
-        """Reject each of `multi_dims` carried other than as one struct column of exactly its fields.
+        """Reject each of `multi_dimensions` carried other than as one struct column of exactly its fields.
 
         Judged by the relation's columns and types, so no row is read. A
         carrier without a multi-dim's column passes.
@@ -640,7 +642,7 @@ class Schema(_Declared):
         - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
         types = dict(zip(rel.columns, rel.types, strict=True))
-        for multi in multi_dims:
+        for multi in multi_dimensions:
             over = list(self.over(multi))
             flat = [c for c in over if c in types]
             dtype = types.get(multi)
@@ -661,14 +663,14 @@ class Schema(_Declared):
 
     def refuse_partial_tuples(
         self,
-        multi_dims: Iterable[str],
+        multi_dimensions: Iterable[str],
         rel: DuckDBPyRelation,
         *,
         carrier: str,
     ) -> None:
-        """Reject a struct of any of `multi_dims` in `rel` with some fields NULL and not all.
+        """Reject a struct of any of `multi_dimensions` in `rel` with some fields NULL and not all.
 
-        Reads the rows, unlike `check_multi_dim_columns`. A carrier without a
+        Reads the rows, unlike `check_multi_dimension_columns`. A carrier without a
         multi-dim's column passes.
 
         Parameters
@@ -685,7 +687,7 @@ class Schema(_Declared):
         -----
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         """
-        for multi in multi_dims:
+        for multi in multi_dimensions:
             if multi not in rel.columns:
                 continue
             some = reduce(
@@ -714,7 +716,7 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        return (*self.dims_of(attribute), *LONG_TAIL)
+        return (*self.dimensions_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
@@ -856,7 +858,10 @@ class Schema(_Declared):
         - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
         """
         return (
-            any(dim in self.over(m).values() for m in self.multi_dims_of(attribute))
+            any(
+                dim in self.over(m).values()
+                for m in self.multi_dimensions_of(attribute)
+            )
             or dim in self.attributes[attribute].dims
         )
 
@@ -925,7 +930,7 @@ class Schema(_Declared):
         """Which dims a layer owns `attribute` per.
 
         Derived rather than declared: `AttributeSpec.dims` says which axes the
-        attribute may vary over, `partial_dims` the owner map's index (the
+        attribute may vary over, `partial_dimensions` the owner map's index (the
         `partial` dims), and ownership is their intersection. Along a
         dim in `dims` but not the owner map's index - a value axis outside `partial`,
         like `timestep` - a patch to one of its values restates the
@@ -939,10 +944,10 @@ class Schema(_Declared):
         spec = self.attributes.get(attribute)
         if spec is None:
             return frozenset()
-        return spec.dims & set(self.partial_dims)
+        return spec.dims & set(self.partial_dimensions)
 
     @property
-    def partial_dims(self) -> tuple[str, ...]:
+    def partial_dimensions(self) -> tuple[str, ...]:
         """The dims of the owner map's index, in declaration order.
 
         The dims a layer may patch per value (`partial`). The owner map's
@@ -982,7 +987,7 @@ class Schema(_Declared):
     def owner_map_index(self) -> tuple[str, ...]:
         """The owner map's index columns, compared NULL-safely when folding.
 
-        `partial_dims`, plus `attribute`: a layer may patch one value along a
+        `partial_dimensions`, plus `attribute`: a layer may patch one value along a
         `partial` dim without restating every other's.
 
         A column an attribute's own file does not carry reads as NULL,
@@ -995,9 +1000,9 @@ class Schema(_Declared):
         - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        return (*self.partial_dims, "attribute")
+        return (*self.partial_dimensions, "attribute")
 
-    def multi_dims_of(self, attribute: str) -> tuple[str, ...]:
+    def multi_dimensions_of(self, attribute: str) -> tuple[str, ...]:
         """Which declared multi-dims address `attribute`, in declaration order.
 
         Raises
@@ -1009,7 +1014,9 @@ class Schema(_Declared):
         -----
         - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
         """
-        return tuple(m for m in self.dims_of(attribute) if m in self.multi_dims)
+        return tuple(
+            m for m in self.dimensions_of(attribute) if m in self.multi_dimensions
+        )
 
     @property
     def owner_map_columns(self) -> tuple[str, ...]:
@@ -1277,7 +1284,7 @@ def unpacked(schema: Schema, multi: str, rel: DuckDBPyRelation) -> DuckDBPyRelat
     -----
     - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
     """
-    if multi not in rel.columns or multi not in schema.multi_dims:
+    if multi not in rel.columns or multi not in schema.multi_dimensions:
         return rel
     return rel.project(
         *(col(multi)[c].alias(c) for c in schema.over(multi)),

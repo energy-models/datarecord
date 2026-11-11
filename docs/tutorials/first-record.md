@@ -40,8 +40,8 @@ schema = Schema(
     },
     partial={"entity", "bus", "connection"},
 )
-print(schema.flat_dims)
-print(schema.multi_dims)
+print(schema.flat_dimensions)
+print(schema.multi_dimensions)
 ```
 
 Check it:
@@ -70,7 +70,7 @@ from datarecord import Workspace
 class Empty:
     schema: Schema
     con: DuckDBPyConnection
-    dims: dict = field(default_factory=dict)
+    dimensions: dict = field(default_factory=dict)
     properties: dict = field(default_factory=dict)
     attributes: dict = field(default_factory=dict)
 
@@ -81,7 +81,7 @@ class Empty:
 ws = Workspace()
 store = ws.store(tempfile.mkdtemp())
 root = store.commit(Empty(schema, ws.con), parent=None)
-print(root.record.dims["entity"].df())
+print(root.record.dimensions["entity"].df())
 ```
 
 Check it:
@@ -111,7 +111,7 @@ w.add(
 )
 w.add("snapshot", [0, 1, 2])
 print(w.properties["entity"].df())
-print(w.dims["connection"].df())
+print(w.dimensions["connection"].df())
 ```
 
 Check it:
@@ -157,7 +157,7 @@ Check it:
 ```python
 from datarecord import settle
 
-labels = {"entity": w.dims["entity"], "snapshot": w.dims["snapshot"]}
+labels = {"entity": w.dimensions["entity"], "snapshot": w.dimensions["snapshot"]}
 settled = settle(w.attributes["p_max_pu"], labels, w.flags()["p_max_pu"])
 print(settled.df().pivot(index="snapshot", columns="entity", values="value"))
 ```

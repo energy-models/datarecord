@@ -32,7 +32,7 @@ A `Selection` is itself a `RecordLike`, with three more members:
 | `labels` | the keywords asked for, normalised: one label for a squeezed dim, else a list of labels |
 | `schema` | the base's schema without the squeezed dims and what refers to them                     |
 
-`labels` has what you asked for, and the labels that a selection drops through references show only in `view.dims`.
+`labels` has what you asked for, and the labels that a selection drops through references show only in `view.dimensions`.
 `view.select(**labels)` merges its keywords into `labels`, a later keyword replacing one of the same name, and selects `base` once.
 
 ## Keywords

@@ -138,15 +138,15 @@ def _prune(
 def _domain(schema: Schema, attribute: str) -> int:
     """The `partial` dims `attribute` is over, as a `null_pattern`; every one for an undeclared attribute."""
     if attribute not in schema.attributes:
-        return (1 << len(schema.partial_dims)) - 1
-    over = schema.dims_of(attribute)
-    return sum(1 << i for i, d in enumerate(schema.partial_dims) if d in over)
+        return (1 << len(schema.partial_dimensions)) - 1
+    over = schema.dimensions_of(attribute)
+    return sum(1 << i for i, d in enumerate(schema.partial_dimensions) if d in over)
 
 
 @per_schema
 def _domain_of(schema: Schema) -> Expression:
     """Each row's `_domain`, by a CASE over its attribute."""
-    full = (1 << len(schema.partial_dims)) - 1
+    full = (1 << len(schema.partial_dimensions)) - 1
     by: dict[int, list[str]] = {}
     for name in schema.attributes:
         by.setdefault(_domain(schema, name), []).append(name)
@@ -183,7 +183,7 @@ def _choices(
     as 4 to the number of `partial` dims.
     """
     dom = _domain_of(schema) if attribute is None else lit(_domain(schema, attribute))
-    n = 1 << len(schema.partial_dims)
+    n = 1 << len(schema.partial_dimensions)
     return fn.list_filter(
         fn.range(lit(n)), sql(f"lambda x: (x & {dom}) = x AND {allowed('_p', 'x')}")
     )
@@ -199,7 +199,7 @@ def _expanded(
     row agrees with any row with exactly that pattern on. Every column is
     prefixed `prefix`.
     """
-    dims = schema.partial_dims
+    dims = schema.partial_dimensions
     rel = rel.project(star(), null_pattern(dims).alias("_p"))
     rel = rel.project(star(), fn.unnest(choices).alias("_x"))
     keys = [
@@ -220,7 +220,7 @@ def _uncovered_by(
     subset equals: one semi-join finds the covered rows, one anti-join drops
     them.
     """
-    dims = schema.partial_dims
+    dims = schema.partial_dimensions
     probe = _expanded(
         kept.project(col("attribute"), *map(col, dims)),
         schema,
@@ -265,7 +265,7 @@ def _meeting(
     equi-join on (attribute, the two patterns, those labels) then matches
     each pair exactly once. The own row's columns are prefixed `_o_`.
     """
-    dims = schema.partial_dims
+    dims = schema.partial_dimensions
     left = _expanded(kept, schema, _choices(schema, attribute, allowed))
     right = _expanded(
         own, schema, _choices(schema, attribute, lambda o, p: allowed(p, o)), "_o_"
@@ -305,7 +305,9 @@ def _overlaps(pairs: DuckDBPyRelation, schema: Schema) -> DuckDBPyRelation:
 
 def _met(schema: Schema) -> list[Expression]:
     """A pair's common index values: the own row's label on each dim it names, the parent row's elsewhere."""
-    return [coalesce(col(f"_o_{d}"), col(d)).alias(d) for d in schema.partial_dims]
+    return [
+        coalesce(col(f"_o_{d}"), col(d)).alias(d) for d in schema.partial_dimensions
+    ]
 
 
 def _refuse_unfilled(
@@ -326,7 +328,7 @@ def _refuse_unfilled(
     -----
     - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
     """
-    dims = schema.partial_dims
+    dims = schema.partial_dimensions
     others = [d for d in schema.dimensions if d not in dims]
     if not others:
         return
@@ -379,7 +381,9 @@ def _refuse_unfilled(
 def _gained(was: Schema, now: Schema, dim: str) -> list[str]:
     """The attributes of `was` over `dim` under `now` but not under `was`."""
     return [
-        a for a in was.attributes if dim in now.dims_of(a) and dim not in was.dims_of(a)
+        a
+        for a in was.attributes
+        if dim in now.dimensions_of(a) and dim not in was.dimensions_of(a)
     ]
 
 
@@ -440,7 +444,7 @@ def _widened(
     """
     if was == now:
         return rel
-    joining = [d for d in now.partial_dims if d not in was.partial_dims]
+    joining = [d for d in now.partial_dimensions if d not in was.partial_dimensions]
     gained = {d: _gained(was, now, d) for d in now.dimensions}
     unchanged = list(now.dimensions) == list(was.dimensions)
     if not joining and unchanged and not any(gained.values()):
@@ -496,7 +500,7 @@ def _split(
     -----
     - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
     """
-    was_dims = was.partial_dims
+    was_dims = was.partial_dimensions
     was_cols = [f"_was_{d}" for d in was_dims]
     carried = ["_was_varies", "_was_broadcast"]
     filed = [*now.dimensions, "attribute", LAYER_COLUMN, "breakpoint"]
@@ -526,7 +530,7 @@ def _split(
     split = joined.aggregate([*map(col, grouped), *_flags(now, attributes)]).project(
         *(
             col(f"_was_{d}").alias(d) if d in was_dims else col(d)
-            for d in now.partial_dims
+            for d in now.partial_dimensions
         ),
         *(col(c) for c in ("attribute", LAYER_COLUMN, *FLAG_COLUMNS)),
     )
@@ -610,7 +614,7 @@ def _pruned(schema: Schema) -> tuple[str, ...]:
     -----
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
-    return schema.partial_dims
+    return schema.partial_dimensions
 
 
 def _fold_onto(
@@ -679,7 +683,7 @@ def _fold_onto(
             now = source.axis(name)
             if now is None:
                 continue
-            if name not in keyed.partial_dims:
+            if name not in keyed.partial_dimensions:
                 past[name].append(now)
             elif before is not None:
                 removed[name] = removed_labels(before, now, name)

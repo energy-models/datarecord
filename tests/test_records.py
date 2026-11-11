@@ -27,7 +27,7 @@ from tests.fixtures import (
     write_multi_dim,
 )
 
-MEMBERS = ("dims", "properties", "attributes")
+MEMBERS = ("dimensions", "properties", "attributes")
 
 
 @pytest.fixture(scope="module")
@@ -89,7 +89,7 @@ def both(written):
 class DictRecord:
     schema: Schema
     con: DuckDBPyConnection
-    dims: Relations
+    dimensions: Relations
     properties: Relations
     attributes: Relations
 
@@ -285,7 +285,7 @@ def test_node_record_keeps_axis_order(store):
 
 
 def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
-    """A record with no `dims/connection.parquet` reads an empty axis, not an error.
+    """A record with no `dimensions/connection.parquet` reads an empty axis, not an error.
 
     Notes
     -----
@@ -294,7 +294,7 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])
 
-    assert store.layer(layer.commit().id).dims["connection"].fetchall() == []
+    assert store.layer(layer.commit().id).dimensions["connection"].fetchall() == []
 
 
 def test_missing_key_raises(both):

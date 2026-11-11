@@ -59,7 +59,7 @@ def _schema(**overrides) -> Schema:
 
 
 def test_a_multi_dim_in_dims_is_one_struct_column():
-    """A multi-dim in `dims` is carried as itself, a struct over its fields."""
+    """A multi-dim in `dimensions` is carried as itself, a struct over its fields."""
     s = _schema(
         dimensions={
             **_schema().dimensions,
@@ -67,11 +67,11 @@ def test_a_multi_dim_in_dims_is_one_struct_column():
         },
         attributes={"capacity": AttributeSpec(dtype="float", dims={"connection"})},
     )
-    assert s.dims_of("capacity") == ("connection",), "the multi-dim, not expanded"
+    assert s.dimensions_of("capacity") == ("connection",), "the multi-dim, not expanded"
     assert s.column_type("connection") == duckdb.struct_type(
         {"bus": sqltypes.VARCHAR, "state": sqltypes.VARCHAR}
     )
-    assert s.multi_dims_of("capacity") == ("connection",)
+    assert s.multi_dimensions_of("capacity") == ("connection",)
 
 
 def test_the_over_list_form_is_sugar_for_the_dict():
@@ -167,7 +167,7 @@ def test_removing_a_label_of_a_dim_outside_partial_drops_its_tuples(store):
 
 
 def _tuples(record) -> list[dict]:
-    return record.dims["bus_state"].df()["bus_state"].tolist()
+    return record.dimensions["bus_state"].df()["bus_state"].tolist()
 
 
 def test_a_property_of_a_named_dim_is_a_column_of_its_axis(store):
@@ -396,7 +396,7 @@ def test_remove_is_refused_while_a_property_names_the_label(classified):
     with pytest.raises(KeyError, match=r"names 'state' labels \['lower'\]"):
         staged.set("bus.state", "lower", bus="south")
     child = classified.store.commit(staged)
-    assert child.record.dims["state"].df()["state"].tolist() == ["upper"]
+    assert child.record.dimensions["state"].df()["state"].tolist() == ["upper"]
 
 
 def test_the_writer_refuses_a_property_naming_a_removed_label(classified):

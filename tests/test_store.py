@@ -776,7 +776,7 @@ def test_a_dim_listing_labels_resolves_after_a_widening(store):
     assert resolved(revision) == expected
     after = empty_child(revision, schema(dims={**dims, "region": "str"})).commit()
     assert resolved(after) == expected, "a child reads the root under the wider schema"
-    labels = after.record.dims["scenario"].df()["scenario"].tolist()
+    labels = after.record.dimensions["scenario"].df()["scenario"].tolist()
     assert labels == ["low", "high"], "the axis is the list, in its order"
 
 
@@ -797,7 +797,7 @@ def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkey
     monkeypatch.setattr(materialise, "_checkpointed", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
-    assert Path(store.dim_owners_uri(root.id)).exists()
+    assert Path(store.dimension_owners_uri(root.id)).exists()
     assert not materialise.materialised(root.id, store), (
         "the rest does not make it materialised"
     )
@@ -827,13 +827,13 @@ def test_a_relation_from_another_connection_is_rejected(tree):
 def _read_all(record):
     """Every dim, attribute and flag of `record`, rows sorted so two folds compare."""
     return (
-        {d: sorted(r.fetchall(), key=str) for d, r in record.dims.items()},
+        {d: sorted(r.fetchall(), key=str) for d, r in record.dimensions.items()},
         {a: sorted(r.fetchall(), key=str) for a, r in record.attributes.items()},
         record.flags(),
     )
 
 
-@pytest.mark.parametrize("held", [("dims",), ("dims", "attributes")])
+@pytest.mark.parametrize("held", [("dimensions",), ("dimensions", "attributes")])
 def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
     """A record on a commit's child folds onto the fold its workspace holds of the parent.
 
@@ -851,7 +851,7 @@ def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
     w.set("p_max_pu", 0.7, entity="solar")
     w.set("p_max_pu", 0.9, scenario="high")
     w.remove("entity", ["wind"])
-    relations = {"dims": w.dims, "attributes": w.attributes}
+    relations = {"dimensions": w.dimensions, "attributes": w.attributes}
     for kind in held:
         for rel in relations[kind].values():
             rel.fetchall()

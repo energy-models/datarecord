@@ -125,7 +125,7 @@ def write_layer(
     """
     schema = data.schema
     con = workspace.con
-    written: dict[str, list[str]] = {"dims": [], "attributes": []}
+    written: dict[str, list[str]] = {"dimensions": [], "attributes": []}
 
     def _written(
         read: Callable[[str], DuckDBPyRelation | None], kind: str, name: str
@@ -137,9 +137,9 @@ def write_layer(
         _validate_frame(rel, kind, name, schema)
         frame = con.read_parquet(_write_frame(rel, base, kind, name, schema, con))
         multi_dims = (
-            schema.multi_dims_of(name)
+            schema.multi_dimensions_of(name)
             if kind == "attributes"
-            else {name} & set(schema.multi_dims)
+            else {name} & set(schema.multi_dimensions)
         )
         schema.refuse_partial_tuples(
             multi_dims, frame, carrier=f"{kind}/{name}.parquet"
@@ -147,12 +147,12 @@ def write_layer(
         return frame
 
     refuse_one_of_file(schema, data.axes(), "the layer")
-    for dim in sorted(data.axes(), key=schema.multi_dims.__contains__):
-        frame = _written(data.axis, "dims", dim)
+    for dim in sorted(data.axes(), key=schema.multi_dimensions.__contains__):
+        frame = _written(data.axis, "dimensions", dim)
         if frame is None:
             continue
-        written["dims"].append(dim)
-        file = f"dims/{dim}.parquet"
+        written["dimensions"].append(dim)
+        file = f"dimensions/{dim}.parquet"
         refuse_twice(frame, [dim], file)
         before = _parent_axis(parent, schema, dim, con)
         if before is not None:
@@ -160,16 +160,16 @@ def write_layer(
     held: Callable[[str], DuckDBPyRelation | None]
     held = partial(_parent_axis, parent, schema, con=con)
     if data.axes():
-        dims = LayerFiles(dims=tuple(written["dims"]), attributes=())
+        dims = LayerFiles(dimensions=tuple(written["dimensions"]), attributes=())
         manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
         layer = DirectorySource(base, manifest, workspace, manifest.id)
         parents = [] if parent is None else parent.sources
         axes = Axes.resolve([*parents, layer])
         held = axes.get
-        for dim in written["dims"]:
-            if dim not in schema.multi_dims:
+        for dim in written["dimensions"]:
+            if dim not in schema.multi_dimensions:
                 continue
-            file = f"dims/{dim}.parquet"
+            file = f"dimensions/{dim}.parquet"
             refuse_unheld(
                 axes[dim],
                 schema,
@@ -187,10 +187,10 @@ def write_layer(
         file = f"attributes/{attribute}.parquet"
         _refuse_unordered(frame, attribute, schema)
         refuse_unheld(
-            frame, schema, schema.dims_of(attribute), held, file, staged=False
+            frame, schema, schema.dimensions_of(attribute), held, file, staged=False
         )
     files = LayerFiles(
-        dims=tuple(written["dims"]), attributes=tuple(written["attributes"])
+        dimensions=tuple(written["dimensions"]), attributes=tuple(written["attributes"])
     )
     if data.axes():
         _require_living_references(parent, layer, axes)
@@ -231,11 +231,11 @@ def _write_frame(
     unwritable = [c for c in DERIVED if c in rel.columns]
     if unwritable:
         rel = rel.project(star(exclude=unwritable))
-    subject = name if kind == "dims" else None
+    subject = name if kind == "dimensions" else None
     attribute = name if kind == "attributes" else None
     rel = schema.require_takes(rel, file, subject, attribute)
     rel = cast_declared(schema, rel, subject, attribute)
-    write_parquet(rel, uri, con, ordered=kind == "dims")
+    write_parquet(rel, uri, con, ordered=kind == "dimensions")
     return uri
 
 
@@ -264,7 +264,7 @@ def _refuse_unordered(rel: DuckDBPyRelation, attribute: str, schema: Schema) -> 
     -----
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    dims = schema.dims_of(attribute)
+    dims = schema.dimensions_of(attribute)
     refuse_twice(
         rel,
         [*dims, "breakpoint"],
@@ -346,11 +346,11 @@ def _parent_axis(
     The axis every read of `parent` takes, its labels alone; a declared dim
     without rows is an empty one, which holds nothing as `None` does.
     """
-    if name in schema.one_of_dims:
+    if name in schema.one_of_dimensions:
         return one_of_axis(schema, name, con)
-    if parent is None or name not in parent.dims:
+    if parent is None or name not in parent.dimensions:
         return None
-    return parent.dims[name]
+    return parent.dimensions[name]
 
 
 def _require_living_references(
@@ -383,7 +383,7 @@ def _require_living_references(
     references = [
         *(
             (m, f, col("t", m)[f], d, False)
-            for m in schema.multi_dims
+            for m in schema.multi_dimensions
             for f, d in schema.over(m).items()
         ),
         *(
@@ -408,7 +408,7 @@ def _require_living_references(
     for subject, column, label, dim, restated in references:
         dead = axes.dead.get(dim)
         resolved = axes.get(subject)
-        stored = subject if subject in schema.multi_dims else column
+        stored = subject if subject in schema.multi_dimensions else column
         if dead is None or resolved is None or stored not in resolved.columns:
             continue
         labels = dead if restated else killed.get(dim)
@@ -439,7 +439,7 @@ def _validate_frame(
     """Check one frame is shaped for the fold to resolve it.
 
     Structural only: a long frame carries a column per dim of its attribute, and a
-    `dims/` frame carries its dim's column. Values
+    `dimensions/` frame carries its dim's column. Values
     are not checked - which labels and attribute names are valid
     belongs to whatever vocabulary the schema declares, and the record layer
     knows none.
@@ -489,26 +489,28 @@ def _validate_frame(
                 f"not addressed by; its `dims` say {sorted(required)} (https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)"
             )
             raise ValueError(msg)
-        schema.check_multi_dim_columns(
-            schema.multi_dims_of(name), rel, carrier=f"attributes/{name}.parquet"
+        schema.check_multi_dimension_columns(
+            schema.multi_dimensions_of(name), rel, carrier=f"attributes/{name}.parquet"
         )
         return
 
-    if kind == "dims":
+    if kind == "dimensions":
         if name not in schema.dimensions:
             msg = (
-                f"dims/{name}.parquet is not a declared dim; a descendant "
+                f"dimensions/{name}.parquet is not a declared dim; a descendant "
                 f"declaring it would read these labels (https://energy-models.github.io/datarecord/reference/layers/#what-a-layer-may-contain)"
             )
             raise ValueError(msg)
         if name not in columns:
-            msg = f"dims/{name}.parquet is missing its column {name!r} (https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)"
+            msg = f"dimensions/{name}.parquet is missing its column {name!r} (https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)"
             raise ValueError(msg)
         refuse_foreign_columns(
-            columns, {name, "order_key"}, schema, name, f"dims/{name}.parquet"
+            columns, {name, "order_key"}, schema, name, f"dimensions/{name}.parquet"
         )
-        if name in schema.multi_dims:
-            schema.check_multi_dim_columns([name], rel, carrier=f"dims/{name}.parquet")
+        if name in schema.multi_dimensions:
+            schema.check_multi_dimension_columns(
+                [name], rel, carrier=f"dimensions/{name}.parquet"
+            )
 
 
 class _RecordLikeAsLayerData:
@@ -535,13 +537,13 @@ class _RecordLikeAsLayerData:
 
     @cached_property
     def _dims(self) -> Relations:
-        """Return the source's `dims`, enumerated once per adapter.
+        """Return the source's `dimensions`, enumerated once per adapter.
 
         A `RecordLike`'s mappings may be properties that re-enumerate the whole
         source on each access, which per key would be quadratic in the keys, so
         `_properties` and `_attributes` are kept the same way.
         """
-        return self._source.dims
+        return self._source.dimensions
 
     @cached_property
     def _properties(self) -> Relations:
@@ -568,7 +570,7 @@ class _RecordLikeAsLayerData:
 
     @cached_property
     def _axes(self) -> set[str]:
-        one_of = set(self._dims) & set(self.schema.one_of_dims)
+        one_of = set(self._dims) & set(self.schema.one_of_dimensions)
         for dim in sorted(one_of):
             self._require_one_of_axis(dim)
         return set(self._dims) - one_of

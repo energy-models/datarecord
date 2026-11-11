@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS {revisions} (
   id       UUID,
   parent   UUID,
   meta     JSON,
-  files    STRUCT(dims VARCHAR[], attributes VARCHAR[]),
+  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[]),
   schema   VARCHAR,
   PRIMARY KEY (location, id)
 )
@@ -574,7 +574,7 @@ class Store:
         -----
         - [the record format](https://energy-models.github.io/datarecord/reference/format/)
         """
-        return f"{self.layer_dir(id)}dims/{dim}.parquet"
+        return f"{self.layer_dir(id)}dimensions/{dim}.parquet"
 
     def resolved_dir(self, id: UUID | str) -> str:
         """Revision `id`'s resolved files, under its layer where no manifest lists them.
@@ -594,14 +594,14 @@ class Store:
         """
         return f"{self.resolved_dir(id)}owner_map.parquet"
 
-    def dim_owners_uri(self, id: UUID | str) -> str:
+    def dimension_owners_uri(self, id: UUID | str) -> str:
         """Where revision `id`'s dim owners are materialised.
 
         Notes
         -----
         - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
-        return f"{self.resolved_dir(id)}dim_owners.parquet"
+        return f"{self.resolved_dir(id)}dimension_owners.parquet"
 
     # -- writing -------------------------------------------------------------
 
@@ -724,7 +724,7 @@ class Store:
             digest = schema.digest
             self.workspace._schemas.setdefault(digest, schema)
             files = {
-                "dims": list(manifest.files.dims),
+                "dimensions": list(manifest.files.dimensions),
                 "attributes": list(manifest.files.attributes),
             }
             self._insert(

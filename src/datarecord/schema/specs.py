@@ -254,7 +254,7 @@ class PropertySpec(_ValueSpec):
     """One value per label of a dim, describing it.
 
     A property is keyed by its subject (`Schema.properties`) and stored as a
-    column of `dims/{dim}.parquet`.
+    column of `dimensions/{dim}.parquet`.
     Its name is its subject's alone, so it is addressed as `subject.name`
     (`Schema.resolve`).
     A property declares exactly one of `dtype` and `refers`. A property of a

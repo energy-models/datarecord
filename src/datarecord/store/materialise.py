@@ -150,4 +150,4 @@ def _materialise_dims(
     ensure_local_dir(dead if axes.dead else store.resolved_dir(revision_id))
     for name, rel in axes.dead.items():
         _to_parquet(rel, f"{dead}{name}.parquet", con)
-    _to_parquet(axes.owners(con), store.dim_owners_uri(revision_id), con)
+    _to_parquet(axes.owners(con), store.dimension_owners_uri(revision_id), con)

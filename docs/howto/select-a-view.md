@@ -18,8 +18,8 @@ Pass a list to keep those labels and the dim:
 from datarecord import select
 
 view = select(record, bus=["north"])
-print(view.dims["connection"].df())
-print(view.dims["entity"].df())
+print(view.dimensions["connection"].df())
+print(view.dimensions["entity"].df())
 ```
 
 ```text
@@ -82,7 +82,7 @@ Call `select` on a selection to add keywords. `labels` returns what you asked fo
 ```python
 narrow = view.select(carrier=["gas"])
 print(narrow.labels, narrow.base is record)
-print(narrow.dims["entity"].df())
+print(narrow.dimensions["entity"].df())
 ```
 
 ```text
