@@ -276,9 +276,8 @@ All notable changes to datarecord are documented here. The format follows
   `dimensions`. `RecordLike.dims` is `dimensions`, on a `Record`, a
   `Selection` and a `WorkingRecord` too, and its registered views sit in
   `name.dimensions`. `Requirements.dims` and `unsupported_dims`,
-  `LayerFiles.dims` and, on `Schema`, `dims_of`, `flat_dims`, `multi_dims`,
-  `multi_dims_of`, `partial_dims` and `one_of_dims` end in `dimensions`
-  instead, and `check_multi_dim_columns` is `check_multi_dimension_columns`. A
+  `LayerFiles.dims` and, on `Schema`, `multi_dims`, `multi_dims_of`,
+  `partial_dims` and `one_of_dims` end in `dimensions` instead, and `check_multi_dim_columns` is `check_multi_dimension_columns`. A
   layer's axis files sit under `dimensions/`, not `dims/`, and a materialised
   node's `resolved/dim_owners.parquet` is `resolved/dimension_owners.parquet`,
   with its column `dim` now `dimension`, so a store written before does not

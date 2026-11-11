@@ -429,7 +429,7 @@ class Schema(_Declared):
         - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
         """
         declared = [
-            *(("dim", d) for d in self.dimensions),
+            *(("dimension", d) for d in self.dimensions),
             *(
                 (f"field of multi-dimension {m!r}", c)
                 for m in self.multi_dimensions
@@ -448,12 +448,10 @@ class Schema(_Declared):
             if why is not None:
                 problems.append(f"{kind} {name!r} {why}")
         for subject, specs in self.properties.items():
-            clashing = sorted(set(specs) & self._column_of(subject))
-            if clashing:
+            if subject in specs:
                 msg = (
-                    f"properties {clashing} of {subject!r} are named like its column "
-                    f"{subject!r}, which they would collide with - rename the "
-                    f"properties"
+                    f"property {subject!r} of {subject!r} is named like its column "
+                    f"{subject!r}, which it would collide with - rename the property"
                 )
                 raise ValueError(msg)
             fields = self.over(subject) if subject in self.dimensions else {}
@@ -480,13 +478,6 @@ class Schema(_Declared):
                 f"with `_` (https://energy-models.github.io/datarecord/reference/schema/#names)"
             )
             raise ValueError(msg)
-
-    def _column_of(self, subject: str) -> set[str]:
-        """Return the column of the file of `subject`, a name no property of it may take.
-
-        That is the dimension's own column, a multi-dimension's struct column.
-        """
-        return {subject}
 
     # -- derived dim sets (https://energy-models.github.io/datarecord/reference/layers/#partial) --------------------------------------
 

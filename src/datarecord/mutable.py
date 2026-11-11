@@ -877,7 +877,7 @@ class WorkingRecord(Record):
     @_atomic
     def set(
         self,
-        attribute: str,
+        name: str,
         value: Any,
         **labels: Any,
     ) -> None:
@@ -888,7 +888,7 @@ class WorkingRecord(Record):
         exist is declared rather than fixed. A keyword holds one label, fixing
         that dimension, or a list of labels the value is staged at each of. A dimension no
         keyword names is NULL, which by the broadcast rule is every label of
-        it. The call replaces every row of `attribute` staged earlier that its
+        it. The call replaces every row of `name` staged earlier that its
         own rows cover.
 
         `value` takes five forms:
@@ -912,17 +912,22 @@ class WorkingRecord(Record):
         A property is named `subject.name` - `set("entity.carrier", ...)` -
         and a plain name is an attribute.
 
-        A keyword naming no dimension or field of `attribute` is a property of a dimension it
+        A keyword naming no dimension or field of `name` is a property of a dimension it
         reaches - `ctype="Generator"`, or a list of values - and selects
         the labels of that dimension matching it on the record as staged, the
         keywords combining as an intersection; `set` writes one row per label,
         and stores nothing of the filter, so a label added later is not reached.
-        A property of a multi-dimension `attribute` is over - `role="output"` -
+        A property of a multi-dimension `name` is over - `role="output"` -
         selects its tuples the same way, narrowed by any keyword naming one of
         its fields. On a multi-dimension's property, the keywords select its
         tuples as on an attribute over it: `set("connection.note", v,
         role="output")` patches the output connections, and `ctype="Link"`
         the connections of links.
+
+        Parameters
+        ----------
+        name
+            An attribute, or a property as `subject.name`.
 
         Raises
         ------
@@ -939,7 +944,7 @@ class WorkingRecord(Record):
             list, a property keyword whose dimension the attribute does not reach
             through exactly one keyword, or that is given beside that
             keyword, a frame column the schema does not
-            declare for `attribute`, or a frame column or label whose type
+            declare for `name`, or a frame column or label whose type
             does not fit its dtype, timestamps with a time zone among them.
 
         Notes
@@ -949,58 +954,56 @@ class WorkingRecord(Record):
         - [validation](https://energy-models.github.io/datarecord/reference/editing/#validation)
         """
         keyed = isinstance(value, Mapping) or _series_index(value) is not None
-        if isinstance(self.schema.resolve(attribute), tuple):
-            self._set_dotted(attribute, value, labels)
+        if isinstance(self.schema.resolve(name), tuple):
+            self._set_dotted(name, value, labels)
             return
-        labels, tuples = self._select(attribute, labels)
+        labels, tuples = self._select(name, labels)
         listed = {c: list(v) for c, v in labels.items() if _is_labels(v)}
 
         if is_frame(value) and not keyed:
             if listed or tuples:
                 msg = (
-                    f"`set({attribute!r}, <frame>)` supplies its own labels, so "
+                    f"`set({name!r}, <frame>)` supplies its own labels, so "
                     f"keywords {sorted(listed)} may give one label each, not a "
                     f"list, and none may select the tuples of {sorted(tuples)}"
                 )
                 raise ValueError(msg)
-            call = f"`set({attribute!r}, <frame>)`"
+            call = f"`set({name!r}, <frame>)`"
             rel = as_relation(value, self.con)
-            multi_dims = self.schema.multi_dimensions_of(attribute)
+            multi_dims = self.schema.multi_dimensions_of(name)
             self.schema.check_multi_dimension_columns(multi_dims, rel, carrier=call)
             self.schema.refuse_partial_tuples(multi_dims, rel, carrier=call)
-            self._validate_input(attribute, labels)
-            table = self._ensure(_ATTRIBUTES, attribute)
+            self._validate_input(name, labels)
+            table = self._ensure(_ATTRIBUTES, name)
             known = [
-                *self.schema.dimensions_of(attribute),
-                *self.schema.fields_of(attribute),
+                *self.schema.dimensions_of(name),
+                *self.schema.fields_of(name),
                 "value",
             ]
             extra = sorted(set(rel.columns) - set(known))
             if extra:
                 msg = (
                     f"{call} was given columns {extra} the schema does not "
-                    f"declare for {attribute!r}; it takes {sorted(set(known))}"
+                    f"declare for {name!r}; it takes {sorted(set(known))}"
                 )
                 raise ValueError(msg)
-            rel = self.schema.require_takes(rel, call, attribute=attribute)
-            self._insert_long(rel, table, attribute, set(rel.columns), labels)
+            rel = self.schema.require_takes(rel, call, attribute=name)
+            self._insert_long(rel, table, name, set(rel.columns), labels)
             return
 
-        self._validate_input(attribute, labels)
+        self._validate_input(name, labels)
 
         if keyed:
             selected = [c for m in tuples for c in self.schema.over(m)]
-            field = self._labelled_field(attribute, value, [*labels, *selected])
+            field = self._labelled_field(name, value, [*labels, *selected])
             picked, values = normalise_value(value)
-            dim = self.schema.fields_of(attribute)[field]
-            self._require_typed(
-                dim, cast("list[Any]", picked), f"`set({attribute!r}, ...)`"
-            )
+            dim = self.schema.fields_of(name)[field]
+            self._require_typed(dim, cast("list[Any]", picked), f"`set({name!r}, ...)`")
             column: dict[str, Sequence[Any]] = {field: cast("list[Any]", picked)}
         elif _is_labels(value):
             if len(listed) != 1:
                 msg = (
-                    f"`set({attribute!r}, <sequence>)` aligns to exactly one list "
+                    f"`set({name!r}, <sequence>)` aligns to exactly one list "
                     f"keyword, and was given {sorted(listed) or 'none'}"
                 )
                 raise ValueError(msg)
@@ -1014,21 +1017,21 @@ class WorkingRecord(Record):
         rel = self._columns_relation(
             {**column, "value": values},
             {
-                **{c: self._label_type(attribute, c) for c in column},
+                **{c: self._label_type(name, c) for c in column},
                 "value": None,
             },
         )
         for c, picked in listed.items():
             rel = rel.cross(
-                self._columns_relation({c: picked}, {c: self._label_type(attribute, c)})
+                self._columns_relation({c: picked}, {c: self._label_type(name, c)})
             )
         for chosen in tuples.values():
             rel = rel.cross(chosen)
         fixed = {c: v for c, v in labels.items() if not _is_labels(v)}
         self._insert_long(
             rel,
-            self._ensure(_ATTRIBUTES, attribute),
-            attribute,
+            self._ensure(_ATTRIBUTES, name),
+            name,
             set(rel.columns),
             fixed,
         )
@@ -1311,9 +1314,10 @@ class WorkingRecord(Record):
             property of it, or a value is a label its dimension does not list.
         """
         call = f"set({name!r}, ...)"
-        if multi != name.partition(".")[
-            0
-        ] and multi not in self.schema.multi_dimensions_of(name):
+        subject, dot, _ = name.partition(".")
+        if multi != subject and (
+            dot or multi not in self.schema.multi_dimensions_of(name)
+        ):
             msg = (
                 f"`{call}` selects by {sorted(wanted)}, properties of the "
                 f"multi-dimension {multi!r}, which {name!r} is not over"
@@ -1633,16 +1637,18 @@ class WorkingRecord(Record):
         # Intersected with the attribute's own columns: an index column its file
         # does not carry is absent from both sides rather than NULL in them,
         # and joining on it would fail to bind (`long_columns_for`).
-        columns = set(self.schema.long_columns_for(attribute))
+        long_columns = set(self.schema.long_columns_for(attribute))
         scope = [
-            c for c in self.schema.owner_map_index if c not in outside and c in columns
+            c
+            for c in self.schema.owner_map_index
+            if c not in outside and c in long_columns
         ]
-        present = [d for d in outside if d in columns]
+        present = [d for d in outside if d in long_columns]
         if not present:
             # No column for any dim outside `partial`, so the file holds one row per
             # map row and there is no extent to complete.
             return
-        dims = [*self.schema.dimensions_of(attribute), "attribute"]
+        columns = [*self.schema.dimensions_of(attribute), "attribute"]
         staged = self.con.table(table)
 
         axes: dict[str, DuckDBPyRelation | None] = {
@@ -1658,9 +1664,9 @@ class WorkingRecord(Record):
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
         base = self._base.attributes[attribute]
-        carried = uncovered(_reaching(base, named, scope, axes), staged, dims)
+        carried = uncovered(_reaching(base, named, scope, axes), staged, columns)
         self._insert(carried, table, {})
-        spread = _spread(self.con.table(table), base, scope, present, dims)
+        spread = _spread(self.con.table(table), base, scope, present, columns)
         if spread is not None:
             self._insert(spread, table, {})
 

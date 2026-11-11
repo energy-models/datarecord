@@ -463,7 +463,7 @@ class Record:
 
         Notes
         -----
-        - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+        - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
         """
         return anchored(build(key), self)
 

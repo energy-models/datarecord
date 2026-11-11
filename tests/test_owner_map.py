@@ -19,12 +19,12 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from datarecord import WorkingRecord, Workspace
+from datarecord import Flags, WorkingRecord, Workspace
 from datarecord.duck import union_all_by_name
 from datarecord.resolve.fold import read_dimension_owners
 from datarecord.resolve.owner_map import _fold_map
 from datarecord.schema.schema import Schema
-from datarecord.schema.specs import AttributeSpec
+from datarecord.schema.specs import AttributeSpec, Dimension
 from datarecord.store.manifest import LayerFiles
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
@@ -207,7 +207,9 @@ def test_a_materialised_node_points_at_the_layers_holding_its_axes(
         "`has_dead` marks exactly the dims the full fold finds dead labels for"
     )
     assert _axes(store, reader) == full, "materialising changes no answer"
-    assert not list(Path(store.uri, "layers").glob("*/resolved/dims")), (
+    resolved = Path(store.uri, "layers").glob("*/resolved")
+    entries = {frozenset(p.name for p in d.iterdir()) - {"dead"} for d in resolved}
+    assert entries == {frozenset({"owner_map.parquet", "dimension_owners.parquet"})}, (
         "no axis is copied under `resolved/`"
     )
     assert bool(list(Path(store.uri, "layers").glob("*/resolved/dead/*"))) == bool(
@@ -926,6 +928,86 @@ def test_a_widening_of_partial_reads_what_the_narrower_layers_wrote(store, build
     """
     read, expected = build(store)
     assert read == expected, build.__doc__
+
+
+_CONNECTION_FIRST = ("connection", "entity", "bus", "snapshot")
+_DECLARED = ("entity", "bus", "snapshot", "connection")
+_SNAPSHOT_FIRST = ("snapshot", "connection", "bus", "entity")
+
+
+def _ordered(order: tuple[str, ...]) -> Schema:
+    """`efficiency` over `(connection, snapshot)` and `p_nom` over `entity`, the dimensions declared in `order`."""
+    dimensions = {
+        "entity": Dimension(dtype="str"),
+        "bus": Dimension(dtype="str"),
+        "snapshot": Dimension(dtype="int"),
+        "connection": Dimension(over=["entity", "bus"]),
+    }
+    return Schema(
+        dimensions={d: dimensions[d] for d in order},
+        attributes={
+            "efficiency": AttributeSpec(dtype="float", dims={"connection", "snapshot"}),
+            "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
+        },
+        partial=frozenset({"entity", "bus", "connection"}),
+    )
+
+
+@pytest.mark.parametrize(
+    ("first", "then"),
+    [
+        (_CONNECTION_FIRST, _DECLARED),
+        (_DECLARED, _CONNECTION_FIRST),
+        (_CONNECTION_FIRST, _SNAPSHOT_FIRST),
+    ],
+)
+def test_a_child_reordering_the_dimensions_reads_as_its_parent(store, first, then):
+    """A materialised root under `first`, an empty child under `then`, and a grandchild edit.
+
+    Notes
+    -----
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
+    """
+    staged = WorkingRecord(empty_root(store, _ordered(first)).commit().record)
+    staged.add("entity", ["l", "g"])
+    staged.add("bus", ["a", "b"])
+    staged.add("snapshot", [0, 1])
+    staged.add("connection", [{"entity": "l", "bus": "a"}, {"entity": "g", "bus": "b"}])
+    staged.set("efficiency", [0.1, 0.2], entity="l", bus="a", snapshot=[0, 1])
+    staged.set("efficiency", 0.7, entity="g", bus="b")
+    staged.set("p_nom", 3.0, entity="g")
+    root = store.commit(staged)
+
+    def read(revision):
+        return broadcast(revision.record, "efficiency", "connection", "snapshot")
+
+    expected = {
+        (("l", "a"), 0): 0.1,
+        (("l", "a"), 1): 0.2,
+        (("g", "b"), 0): 0.7,
+        (("g", "b"), 1): 0.7,
+    }
+    flags = {
+        "efficiency": Flags(
+            frozenset({"connection", "snapshot"}), frozenset({"snapshot"})
+        ),
+        "p_nom": Flags(frozenset({"entity"}), frozenset()),
+    }
+    assert read(root) == expected
+    assert root.record.flags() == flags
+    root.materialise()
+    child = empty_child(root, _ordered(then)).commit()
+    assert read(child) == expected, "a reordering changes no value"
+    assert child.record.flags() == flags, "nor any flag"
+
+    staged = WorkingRecord(child.record)
+    staged.set("efficiency", 0.9, entity="g", bus="b", snapshot=1)
+    grandchild = store.commit(staged)
+    assert read(grandchild) == {**expected, (("g", "b"), 1): 0.9}
+    assert grandchild.record.flags()["efficiency"].broadcast == frozenset(), (
+        "`snapshot` is outside `partial`, so the edit writes `g`'s row out along it"
+    )
 
 
 def test_a_layer_leaving_a_dim_outside_partial_unfilled_is_refused(store):

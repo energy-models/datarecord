@@ -97,7 +97,7 @@ def anchored(rel: DuckDBPyRelation, owner: object) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     """
     weakref.finalize(rel, _keep, owner)
     return rel
@@ -472,7 +472,7 @@ def scratch_table(
 
     Notes
     -----
-    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     """
     name = temp_table(con, rel, "t")
     try:
