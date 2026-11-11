@@ -35,7 +35,7 @@ EDITS = [
     lambda w: w.remove("entity", ["Manchester Wind"]),
     lambda w: w.rollback(),
 ]
-"""One edit script over `_small`: attribute, property, plain dim, multi-dim, rollback.
+"""One edit script over `_small`: attribute, property, flat dim, multi-dim, rollback.
 
 The last removal takes a label with its `connection` tuple.
 """

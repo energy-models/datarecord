@@ -102,7 +102,7 @@ def _dict_record(store, snapshot: str = "NULL::VARCHAR") -> DictRecord:
     entity_axis = store.workspace.con.sql(
         "SELECT 'wind' AS entity, 'Generator' AS ctype"
     )
-    # `p_nom`'s own dim columns and no others: no `ctype` in a long
+    # `p_nom` carries a column per dim of its own: no `ctype` in a long
     # row, and no `bus`, which is the connection multi-dim's field rather than
     # a column every attribute carries.
     long = store.workspace.con.sql(
@@ -249,11 +249,11 @@ def test_flags_are_scoped_to_what_an_attribute_is_addressed_by(store):
 # -- more than one layer, which is where the fold stops being a scan ---------
 
 
-def test_node_record_orders_members(store):
-    """A `Record` promises member order: the deepest restatement's row order.
+def test_node_record_keeps_axis_order(store):
+    """A `Record` promises axis order: the deepest restatement's row order.
 
     The order holds through a closed intermediate node that changes nothing
-    about membership.
+    about which labels the axis has.
 
     Notes
     -----

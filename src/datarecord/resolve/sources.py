@@ -158,7 +158,7 @@ class LayerSource(Protocol):
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every `attributes/*.parquet` unioned by name, unprojected.
 
-        Only attributes have one: they share `owner_map_key`, so a single scan
+        Only attributes have one: they share `owner_map_index`, so a single scan
         answers the ownership `GROUP BY` for every attribute at once. An axis
         folds on a key of its own, so a union across them would have
         nothing to fold on.

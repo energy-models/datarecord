@@ -144,7 +144,7 @@ record.attributes["p_max_pu"].order("snapshot").fetchall()
 
 `wind` has a value per snapshot, and the last row, NULL on both dims, gives 1.0 at every other coordinate.
 
-An attribute's dim columns are the entries of its `dims`, with a multi-dim as its one struct column, so `p_nom` has `entity` alone.
+An attribute is stored with a column per entry of its `dims`, a multi-dim's fields packed in one struct column, so `p_nom` is stored with `entity`.
 An attribute **is indexed over** each dim its `dims` lists and each dim that a field of one of its multi-dims draws on.
 `dims` sets which dims address a value and nothing about what the value means.
 A solve's results are attributes too, which a child layer inherits like any other row.

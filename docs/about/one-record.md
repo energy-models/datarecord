@@ -38,7 +38,7 @@ The cost is DuckDB as a hard dependency. A reader written in polars or pandas ex
 
 ## Rows as written
 
-A record exposes an attribute's rows as its layers wrote them, with each NULL left NULL. A NULL in a dim's column means every label of its dim, which is [the broadcast rule](../reference/data-model.md). You, or a tool, apply the rule with `settle` when you need one value per point ([read a record](../howto/read-a-record.md)).
+A record exposes an attribute's rows as its layers wrote them, with each NULL left NULL. A NULL in a dim's column means every label of its dim, which is [the broadcast rule](../reference/data-model.md). You, or a tool, apply the rule with `settle` when you need one value per coordinate ([read a record](../howto/read-a-record.md)).
 
 The rejected alternative is a read that applies the rule first. It would expand a constant `p_max_pu` to one row per snapshot, and DuckDB would run the expansion for every reader, needed or not. With rows as written, a value stored once is returned once. A framework that stores a constant apart from a series then tells the two apart without comparing values.
 

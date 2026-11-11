@@ -19,7 +19,7 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
-from datarecord.duck import fn, named_mask, null_safe
+from datarecord.duck import fn, null_pattern, null_safe
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
@@ -68,7 +68,7 @@ def settle(
     over = [d for d in labels if d in rel.columns and (filter or d in flags.broadcast)]
     mixed = [d for d in over if d in flags.broadcast and d in flags.varies]
     if mixed:
-        rel = rel.project(star(), named_mask(mixed).alias("_named"))
+        rel = rel.project(star(), null_pattern(mixed).alias("_named"))
     for d in over:
         rows = rel.set_alias("_r")
         if d not in flags.broadcast:
@@ -111,7 +111,7 @@ def most_specific(
 ) -> DuckDBPyRelation:
     """Keep, at each coordinate, the row of `rel` naming every dim the other rows there name.
 
-    `rel` carries each row's named dims as a `named_mask` in `_named`, which the
+    `rel` carries each row's pattern as a `null_pattern` in `_named`, which the
     result drops. `breakpoint` is no dim, so a curve is kept or
     dropped whole.
 

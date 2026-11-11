@@ -73,11 +73,11 @@ These restate examples from SKILL.md in this project's terms.
 - Other headings: "Crossing rows", "Where a row applies". "Labels outside
   the key", not "The fold cannot see a label outside the key". "Concurrent
   writers", not "Writers never share a file".
-- A list item that skims: "A NULL coordinate means every label of its dim. A
-  `p_max_pu` row with `snapshot` NULL applies at every snapshot."
-- A reference entry for `settle`: "Expands each NULL coordinate over the
-  labels passed, and keeps the most specific row at each point." "A
-  coordinate left out of `labels` stays as written." "`flags` sets how much
+- A list item that skims: "A NULL in a dim's column means every label of its
+  dim. A `p_max_pu` row with `snapshot` NULL applies at every snapshot."
+- A reference entry for `settle`: "Expands each NULL in a dim's column over
+  the labels passed, and keeps the most specific row at each coordinate." "A
+  dim left out of `labels` stays as written." "`flags` sets how much
   work the query does."
 - Structure gate: a section about refused schemas under "Categories" is
   misfiled, and a table of `select`'s keywords inside an about page is

@@ -38,8 +38,8 @@ from datarecord.duck import (
     anchored,
     empty_relation,
     fn,
-    named_mask,
     nested,
+    null_pattern,
     null_safe,
     transaction,
     union_all_by_name,
@@ -154,7 +154,7 @@ def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelat
     value row of such a layer can meet another at one coordinate, so only
     those rows need `_most_specific`: as data, so the plan stays fixed.
     """
-    named = named_mask(dims)
+    named = null_pattern(dims)
     by = [col(LAYER_COLUMN)]
     contested = named.min().over(partition_by=by) != named.max().over(partition_by=by)
     return stored.project(star(), contested.alias("_contested"))
@@ -558,7 +558,7 @@ class Record:
         """
         return frozenset(nested(FOLD, s.layer_id) for s in self.sources)
 
-    # -- relations, in member order (the resolved file's row order) (https://energy-models.github.io/datarecord/reference/resolution/#axes) --
+    # -- relations, in axis order (the resolved file's row order) (https://energy-models.github.io/datarecord/reference/resolution/#axes) --
 
     def _axis(self, dim: str) -> DuckDBPyRelation:
         axis = self._axes.get(dim)
@@ -732,7 +732,7 @@ class Record:
         ranked = _most_specific(
             joined(
                 stored.filter(col("_contested")),
-                named_mask(broadcast_over, "l").alias("_named"),
+                null_pattern(broadcast_over, "l").alias("_named"),
             ),
             dims,
             attribute,
