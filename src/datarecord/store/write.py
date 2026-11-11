@@ -34,11 +34,10 @@ from datarecord.resolve.axes import (
     refuse_unheld,
     removed_labels,
 )
-from datarecord.resolve.owner_map import unsettled
-from datarecord.resolve.owner_map_rows import cast_declared
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
-from datarecord.schema.schema import DERIVED, Schema
+from datarecord.schema.schema import DERIVED, Schema, cast_declared
+from datarecord.settle import unsettled
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Settle a record's long rows by the broadcast rule.
+"""Settle a record's long rows by the broadcast rule, and check what they cover.
 
 Notes
 -----
@@ -11,6 +11,10 @@ Notes
 
 from __future__ import annotations
 
+import operator
+from collections.abc import Iterator, Sequence, Set
+from functools import reduce
+from itertools import combinations
 from typing import TYPE_CHECKING
 
 from duckdb import CaseExpression, DuckDBPyRelation, Expression, count_all, sqltypes
@@ -19,10 +23,10 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import StarExpression as star
 
-from datarecord.duck import fn, null_pattern, null_safe
+from datarecord.duck import ex_all, fn, join_on, null_pattern, null_safe
 
 if TYPE_CHECKING:
-    from collections.abc import Mapping, Sequence
+    from collections.abc import Mapping
 
     from datarecord.protocols import Flags
 
@@ -189,3 +193,78 @@ def _broadcast_beside(
         )
         .filter(col(d).isnotnull())
     )
+
+
+def null_patterns(rel: DuckDBPyRelation, dims: Sequence[str]) -> list[frozenset[str]]:
+    """The distinct sets of `dims` that rows of `rel` set."""
+    if not dims:
+        return [frozenset()]
+    rows = rel.project(*(col(d).isnotnull() for d in dims)).distinct().fetchall()
+    return [frozenset(d for d, n in zip(dims, row, strict=True) if n) for row in rows]
+
+
+def has_pattern(dims: Sequence[str], pattern: Set[str]) -> Expression:
+    """Whether a row sets exactly the `pattern` of `dims`."""
+    return reduce(
+        operator.and_,
+        (col(d).isnotnull() if d in pattern else col(d).isnull() for d in dims),
+        lit(True),  # noqa: FBT003
+    )
+
+
+def uncovered(
+    rel: DuckDBPyRelation, staged: DuckDBPyRelation, columns: Sequence[str]
+) -> DuckDBPyRelation:
+    """`rel` without the rows a row of `staged` reaches, equal or NULL on each of `columns`.
+
+    Split by which `columns` `staged` leaves NULL, each part an equi-join over
+    the columns it names: a match on "NULL or equal" cannot hash.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    """
+    for pattern in null_patterns(staged, columns):
+        part = staged.filter(has_pattern(columns, pattern))
+        rel = rel.set_alias("r").join(
+            part.set_alias("s"),
+            null_safe("r", "s", [c for c in columns if c in pattern]),
+            how="anti",
+        )
+    return rel
+
+
+def unsettled(
+    rel: DuckDBPyRelation, dims: Sequence[str]
+) -> Iterator[tuple[frozenset[str], frozenset[str], DuckDBPyRelation]]:
+    """Each pair of patterns of `rel` neither holds, with the coordinates its rows meet at that no row names both at.
+
+    Two rows meet where they agree on every one of `dims` both name; a
+    coordinate where they meet takes the labels either names. There the
+    broadcast rule finds no row more specific than both. The relation is lazy
+    and yields one column per dim.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    """
+    patterns = null_patterns(rel, dims)
+
+    def exactly(pattern: frozenset[str]) -> DuckDBPyRelation:
+        return rel.filter(has_pattern(dims, pattern)).project(*map(col, dims))
+
+    for a, b in combinations(patterns, 2):
+        if a <= b or b <= a:
+            continue
+        on = [col("a", c) == col("b", c) for c in dims if c in a & b]
+        meets = join_on(
+            exactly(a).distinct().set_alias("a"),
+            exactly(b).distinct().set_alias("b"),
+            on,
+        ).project(*(coalesce(col("a", c), col("b", c)).alias(c) for c in dims))
+        if a | b in patterns:
+            settled = ex_all(col("m", c) == col("u", c) for c in a | b)
+            meets = meets.set_alias("m").join(
+                exactly(a | b).set_alias("u"), settled, how="anti"
+            )
+        yield a, b, meets

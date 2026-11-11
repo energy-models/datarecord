@@ -39,13 +39,13 @@ from duckdb import DuckDBPyRelation, Expression
 from datarecord.duck import FOLD, fn, tables_in, union_all_by_name
 from datarecord.protocols import Flags
 from datarecord.resolve.axes import Axes, _fold_name
-from datarecord.resolve.owner_map_rows import _empty_relation, owner_map_rows
+from datarecord.resolve.owner_map_rows import owner_map_rows
 from datarecord.schema.categories import (
     categorized_dim,
     matching,
     selected,
 )
-from datarecord.schema.schema import LAYER_COLUMN
+from datarecord.schema.schema import LAYER_COLUMN, empty_declared
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -246,7 +246,7 @@ class Fold:
         owner_map = (
             union_all_by_name(owned)
             if owned
-            else _empty_relation(schema, con, *schema.owner_map_columns)
+            else empty_declared(schema, con, *schema.owner_map_columns)
         )
         axes = Axes(schema, dict(record.properties), {})
         return cls(axes, owner_map.materialize())

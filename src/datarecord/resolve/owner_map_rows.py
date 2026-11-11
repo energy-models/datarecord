@@ -12,111 +12,21 @@ Notes
 
 from __future__ import annotations
 
-import threading
-from collections.abc import Callable
-from functools import wraps
-from typing import Concatenate
 from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
-from duckdb import StarExpression as star
+from duckdb import DuckDBPyRelation, Expression
 
-from datarecord.duck import empty_relation, fn
-from datarecord.schema.schema import LAYER_COLUMN, LAYER_UUID_TYPE, Schema
-
-
-def cast_declared(
-    schema: Schema,
-    rel: DuckDBPyRelation,
-    subject: str | None = None,
-    attribute: str | None = None,
-) -> DuckDBPyRelation:
-    """Return `rel` with each column the schema declares a type for cast to that type.
-
-    Other columns are left as they are. `subject` and `attribute` are as in
-    `Schema.declared`.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
-    """
-    cols = [
-        col(c).cast(found[1]).alias(c)
-        if (found := schema.declared(c, subject, attribute))
-        else col(c)
-        for c in rel.columns
-    ]
-    return rel.project(*cols)
-
-
-def _empty_relation(
-    schema: Schema, con: DuckDBPyConnection, *columns: str
-) -> DuckDBPyRelation:
-    """A zero-row relation with `columns`, cast to their declared type, `VARCHAR` if none.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
-    """
-    return empty_relation(
-        con, **{c: schema.column_type(c) or sqltypes.VARCHAR for c in columns}
-    )
-
-
-def with_columns(
-    schema: Schema, rel: DuckDBPyRelation, *columns: str
-) -> DuckDBPyRelation:
-    """`rel` with any of `columns` it lacks added as typed NULLs.
-
-    One file carries a column per dim of one attribute, so a column another
-    attribute uses is simply absent - and a dim an attribute is not addressed by
-    means the value applies across every value of it, which is what NULL means.
-    Materialising it here lets every path downstream project the column
-    unconditionally instead of branching on its presence.
-
-    Notes
-    -----
-    - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
-    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-    """
-    missing = [c for c in columns if c not in rel.columns]
-    if not missing:
-        return rel
-    added = [
-        lit(None).cast(schema.column_type(c) or sqltypes.VARCHAR).alias(c)
-        for c in missing
-    ]
-    return rel.project(star(), *added)
-
-
-def _per_schema[**P, T](
-    build: Callable[Concatenate[Schema, P], T],
-) -> Callable[Concatenate[Schema, P], T]:
-    """`build` memoised on a `Schema` and further hashable arguments, for the last 64 keys.
-
-    A schema is unhashable, and every layer holds its own equal copy, so it is
-    keyed by its `digest`.
-    """
-    held: dict[tuple[object, ...], T] = {}
-    lock = threading.Lock()
-
-    @wraps(build)
-    def memo(schema: Schema, *args: P.args, **kwargs: P.kwargs) -> T:
-        key = (schema.digest, *args, *sorted(kwargs.items()))
-        with lock:
-            found = held.get(key)
-        if found is not None:
-            return found
-        value = build(schema, *args, **kwargs)
-        with lock:
-            held[key] = value
-            if len(held) > 64:
-                del held[next(iter(held))]
-        return value
-
-    return memo
+from datarecord.duck import fn
+from datarecord.schema.schema import (
+    LAYER_COLUMN,
+    LAYER_UUID_TYPE,
+    Schema,
+    cast_declared,
+    per_schema,
+    with_columns,
+)
 
 
 def owner_map_rows(
@@ -153,7 +63,7 @@ def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelat
     )
 
 
-@_per_schema
+@per_schema
 def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...]:
     """The aggregates giving one map row's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
 

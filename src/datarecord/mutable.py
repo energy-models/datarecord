@@ -58,17 +58,12 @@ from datarecord.duck import (
 from datarecord.protocols import RecordLike
 from datarecord.resolve.axes import refuse_unheld
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_map import (
-    has_pattern,
-    null_patterns,
-    uncovered,
-    unsettled,
-)
 from datarecord.resolve.owner_map_rows import owner_map_rows
 from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import Schema, packed, unpacked
+from datarecord.settle import has_pattern, null_patterns, uncovered, unsettled
 
 if TYPE_CHECKING:
     from datarecord.store.store import Workspace
