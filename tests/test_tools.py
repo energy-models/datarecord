@@ -975,7 +975,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [entity types](https://energy-models.github.io/datarecord/reference/data-model/#categories)
+        - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         """
         # Declared alongside PyPSA's own types, since the `one_of` labels pin the
@@ -1253,7 +1253,7 @@ class TestPyPSA:
         assert not held & {"line_type", "transformer_type"}
 
     def test_to_datarecord_rejects_a_cross_type_name_collision(self, workspace):
-        """PyPSA scopes names per type; a record scopes them across every entity type.
+        """PyPSA scopes names per type; a record scopes them across every component type.
 
         Reported rather than repaired: renaming to `Generator:north` would hand back
         a network whose components PyPSA can no longer find by their own names, so

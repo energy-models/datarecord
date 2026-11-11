@@ -21,7 +21,7 @@ from datarecord.resolve.record import Record
 from datarecord.resolve.sources import ParquetLayer
 from datarecord.schema.schema import schema_digest
 from datarecord.schema.specs import AttributeSpec
-from datarecord.store.cache import sources_to_read
+from datarecord.store.materialise import sources_to_read
 from datarecord.store.store import lineage
 from tests.fixtures import (
     empty_child,
@@ -85,7 +85,7 @@ def test_child_overwrites_component(parent):
     assert len(df[df["entity"] == "Norway Wind"]) == 3
 
 
-def test_closed_child_reads_own_cache(store, parent):
+def test_closed_child_reads_its_own_resolved_files(store, parent):
     """Reading a closed non-root record uses its own persisted dims/manifest/map.
 
     Its `ancestry_since_closed` is just itself, so the raw layer (which has
@@ -93,7 +93,7 @@ def test_closed_child_reads_own_cache(store, parent):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     child = empty_child(parent)
     write_attribute(child, "p_max_pu", [{"entity": "Manchester Wind", "value": 0.42}])
@@ -103,7 +103,7 @@ def test_closed_child_reads_own_cache(store, parent):
     assert set(reloaded.record.dims["entity"].df()["entity"]) == {
         "Manchester Wind",
         "Norway Wind",
-    }, "the entity axis comes from the root through the cache"
+    }, "the entity axis comes from the root through the resolved files"
     df = relation(reloaded, "p_max_pu").df()
     assert df[df["entity"] == "Manchester Wind"]["value"].tolist() == [0.42]
     assert len(df[df["entity"] == "Norway Wind"]) == 3
@@ -115,7 +115,7 @@ def test_resolved_reads_same_as_unresolved(store, parent):
     The invariant the base/source split protects: a materialised ancestor's
     resolved fold, read as the base, gives every reader the same answer as
     re-folding the whole ancestry from the root. Materialise a grandchild, then
-    build one node cache the truncated way (base = the materialised parent) and
+    build one fold the truncated way (base = the materialised parent) and
     one the long way (every layer as its own `ParquetLayer`, no truncation), and
     assert they agree on the owner map, the entity axis, every attribute
     relation, and the multi-dim axes.

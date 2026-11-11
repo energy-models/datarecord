@@ -204,7 +204,7 @@ A custom column is a static column that PyPSA's registry lacks, placed on its ty
 
 A custom property takes its dtype from its values, and has no default.
 A text property named like a dim refers to that dim.
-`meta["custom_columns"]` lists each entity type's custom columns.
+`meta["custom_columns"]` lists each component type's custom columns.
 `to_datarecord` raises `ValueError` for a custom property that two types of one dim have with two dtypes.
 It also raises for a value of a referring property that names no label.
 It raises for a custom column on a Shape, or named `shape_…`, `snapshot`, `timestep`, `period`, `scenario`, `entity` or `connection`.
@@ -234,7 +234,7 @@ A label that no weighting row applies to keeps PyPSA's default, which for a scen
 ### Geometry
 
 A shape is the property `shape_{type}` of the label `idx` it outlines, as well-known text (WKT) of dtype `str`.
-A `Bus` shape is a property of `bus`, and an entity type's of `entity`.
+A `Bus` shape is a property of `bus`, and a component type's of `entity`.
 Any other `component`, such as `country`, is a dim of that name, outside `partial`, with the shapes' `idx` as labels.
 Such a dim is no dim of the record's own.
 So Germany's offshore waters are `country.shape_offshore` at label `DE`.

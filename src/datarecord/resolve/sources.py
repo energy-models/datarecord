@@ -103,10 +103,10 @@ class LayerSource(Protocol):
         """This layer's resolved `Fold` if it is materialised, else `None`.
 
         A filesystem fact, distinct from `frozen`: `frozen` says the rows cannot
-        change under a reader, `materialised` says a `resolved/` cache exists on
-        disk. The deepest materialised source in a fold's list is its base - the
+        change under a reader, `materialised` says the layer's `resolved/` files exist
+        on disk. The deepest materialised source in a fold's list is its base - the
         prior fold it starts from rather than re-folds. Only a `ParquetLayer`
-        ever answers non-`None`; a directory or a staging area has no cache.
+        ever answers non-`None`; a directory or a staging area has no `resolved/`.
         """
         ...
 
@@ -242,7 +242,7 @@ class _FileLayer:
         return self._read("attributes", list(self.files.attributes))
 
     def materialised(self) -> Fold | None:
-        """No cache by default: only a `ParquetLayer` has a revision to key one by."""
+        """Not materialised by default: only a `ParquetLayer` has a revision to materialise."""
         return None
 
 
@@ -311,7 +311,7 @@ class ParquetLayer(_FileLayer):
         return self.store.layer_dir(self.layer_id) + path
 
     def materialised(self) -> Fold | None:
-        """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
+        """This node's resolved `Fold` if its `resolved/` files exist, else `None`."""
         return Fold.read(self)
 
     def sibling(self, layer_id: UUID) -> ParquetLayer:

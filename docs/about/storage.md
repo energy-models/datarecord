@@ -52,7 +52,7 @@ The rejected alternative is one schema per store, in a shared manifest that each
 
 With a manifest per layer, a commit checks its schema against its parent's manifest, which no later write changes. No write has a shared file to race on or retry, so two writers that widen one parent at once both commit.
 
-The cost is that a widening applies only to the revisions whose ancestry declares it. Two sibling branches may declare one name differently, which matters when you read them side by side. `materialise`, which caches a revision's fold under `resolved/`, writes the one kind of file that is not create-only. Two writers that materialise one revision write the same content. A standalone directory has no claim, so it takes one writer, and `ws.write` refuses a URI that already exists.
+The cost is that a widening applies only to the revisions whose ancestry declares it. Two sibling branches may declare one name differently, which matters when you read them side by side. `materialise` writes a revision's fold under `resolved/`, the one kind of file that is not create-only. Two writers that materialise one revision write the same content. A standalone directory has no claim, so it takes one writer, and `ws.write` refuses a URI that already exists.
 
 ## What you can now judge
 

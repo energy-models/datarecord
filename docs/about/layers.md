@@ -12,9 +12,9 @@ A layer's data is written once, and the rules for overriding values, restating a
 
 A layer is the data one revision adds on top of its parent, and revisions form a tree ([layers](../reference/layers.md)). Once `store.commit` writes a layer, nothing changes its data. A `WorkingRecord` stages edits until a commit writes them as a new child.
 
-The rejected alternative is a layer edited in place. Its descendants would then read a base that can shift under them, so branching from it would be unsafe. Every cache derived from it would also need invalidating on each edit.
+The rejected alternative is a layer edited in place. Its descendants would then read a base that can shift under them, so branching from it would be unsafe. Every materialised revision below it would also need its resolved files rewritten on each edit.
 
-With an immutable base, both problems go. Any revision can be a parent, so a scenario branches from any revision without a copy. A materialised revision has its owner map and resolved axes written under `resolved/`. That cache derives only from immutable layers, so it never goes stale, and a read returns the same rows with or without it.
+With an immutable base, both problems go. Any revision can be a parent, so a scenario branches from any revision without a copy. A materialised revision has its owner map and resolved axes written under `resolved/`. Those files derive only from immutable layers, so they never go stale, and a read returns the same rows with or without them.
 
 The cost is depth. Every change is a new layer, and a read folds the layers from the root or from the nearest materialised ancestor. In a fresh workspace that fold grows with the depth of the tree until you materialise ([branch and materialise](../howto/branch-and-materialise.md)).
 
@@ -32,9 +32,9 @@ The rejected alternatives are `partial` per attribute, and every dim in `partial
 
 A layer that changes an axis writes its file whole: every label, with its properties, in order. A revision's axis is the deepest file for that dim on its path from the root.
 
-The rejected alternative patches an axis label by label, with a tombstone row for each removed label. No single file then states which labels an axis has, or in which order. The order matters, because the PyPSA tool numbers a component's ports by the order of its connections. Every cache and staged fold would derive that order from the history, and a patched axis would need an owner map of its own.
+The rejected alternative patches an axis label by label, with a tombstone row for each removed label. No single file then states which labels an axis has, or in which order. The order matters, because the PyPSA tool numbers a component's ports by the order of its connections. Every materialised revision and staged fold would derive that order from the history, and a patched axis would need an owner map of its own.
 
-With one file per axis, a cache or a staged fold always lists the same labels, in the same order, as a full fold. The writer refuses a restatement that reorders its parent's labels, so an edit renumbers no port.
+With one file per axis, a materialised revision or a staged fold always lists the same labels, in the same order, as a full fold. The writer refuses a restatement that reorders its parent's labels, so an edit renumbers no port.
 
 The cost is storage that grows with the axis and not with the edit. On a record of 60,000 entities and 150,000 connections, a one-entity property edit wrote 0.30 MB where a label patch wrote 0.8 kB. An axis is small beside the series over it, so the cost stays small beside a solve's results.
 
@@ -48,7 +48,7 @@ The rejected alternative expands each NULL to the labels of its dim when the fol
 --8<-- "docs/static/about-layers-keys.svg"
 </figure>
 
-Kept as written, the parent's NULL means every label the axis has at the revision you read, `solar` included. A label added below a materialised revision, or staged in a `WorkingRecord`, gets the broadcast value as it would without the cache.
+Kept as written, the parent's NULL means every label the axis has at the revision you read, `solar` included. A label added below a materialised revision, or staged in a `WorkingRecord`, gets the broadcast value as it would if the revision were not materialised.
 
 A second alternative keeps a depth on each row and works out at every read which layer's row applies. Every read would then repeat work the fold does once, and a reader would have to handle layers.
 

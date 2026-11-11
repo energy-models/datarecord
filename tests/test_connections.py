@@ -271,7 +271,7 @@ def test_a_null_connection_broadcasts_to_every_connection(store):
     }
 
 
-def test_a_multi_dim_outside_partial_is_owned_whole(store):
+def test_a_layer_owns_every_tuple_of_a_multi_dim_outside_partial(store):
     """Not `partial`, a layer touching one connection owns them all.
 
     A removed tuple's values still go, though no map row names it.
@@ -302,7 +302,7 @@ def _connection(entity, bus):
 
 
 def test_add_refuses_a_tuple_naming_a_removed_entity(store):
-    """Below a materialised node too: its cached axis lacks the label.
+    """Below a materialised node too: its resolved axis lacks the label.
 
     Notes
     -----
@@ -381,12 +381,14 @@ def test_set_requires_every_party_to_exist(store):
         staged.set("price", 3.0, **contract)
 
 
-def test_a_removed_tuple_outside_partial_stays_removed_past_a_cache(store):
-    """Its values are owned per attribute, so only the cached dead tuples drop them.
+def test_a_removed_tuple_outside_partial_stays_removed_past_a_materialised_node(
+    store,
+):
+    """Its values are owned per attribute, so only the resolved dead tuples drop them.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     root = _root(store, schema(partial={"scenario"})).commit()
     dead = Path(store.resolved_dir(root.id), "dead")

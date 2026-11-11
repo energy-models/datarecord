@@ -551,7 +551,7 @@ def _fold_map(
     Notes
     -----
     - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     schema, con = sources[-1].schema, sources[-1].workspace.con
@@ -785,7 +785,7 @@ def _table(
     Notes
     -----
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     schema = sources[-1].schema
@@ -824,7 +824,7 @@ def _frozen_table(
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     if not sources:
         return None

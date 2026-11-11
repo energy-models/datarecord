@@ -138,7 +138,7 @@ class _Recording(LocalFiles):
 def test_a_commit_writes_each_file_once(workspace, store, monkeypatch):
     """A commit without a retry writes its claim, data and manifest once each.
 
-    Node caches are not counted.
+    Resolved files are not counted.
 
     Notes
     -----
@@ -781,24 +781,26 @@ def test_a_dim_listing_labels_resolves_after_a_widening(store):
 
 
 def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkeypatch):
-    """`owner_map.parquet` is the cache's presence, so it is written last.
+    """`owner_map.parquet` marks a node materialised, so it is written last.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
-    from datarecord.store import cache
+    from datarecord.store import materialise
 
     root, _ = tree
 
     def fail(*args, **kwargs):
         raise RuntimeError("the owner map write fails")
 
-    monkeypatch.setattr(cache, "_checkpointed", fail)
+    monkeypatch.setattr(materialise, "_checkpointed", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
     assert Path(store.dim_owners_uri(root.id)).exists()
-    assert not cache.materialised(root.id, store), "the rest is no cache yet"
+    assert not materialise.materialised(root.id, store), (
+        "the rest does not make it materialised"
+    )
     assert not list(Path(store.resolved_dir(root.id)).rglob("*.tmp")), (
         "no temporary file is left behind"
     )
@@ -840,7 +842,7 @@ def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     _, child = tree
     w = WorkingRecord(child.record)
@@ -864,11 +866,11 @@ def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
 
 @pytest.mark.parametrize("read", [False, True], ids=["cold", "held"])
 def test_a_materialised_node_reads_as_folded_afresh(store, tree, read):
-    """A node materialises the fold its workspace holds, or folds afresh, to the same caches.
+    """A node materialises the fold its workspace holds, or folds afresh, to the same resolved files.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     _, child = tree
     w = WorkingRecord(child.record)

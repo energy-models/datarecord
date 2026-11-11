@@ -360,13 +360,13 @@ def _base_and_above[B](
     sources above it are folded on top. No fold at hand means no base and the
     whole list folds from the root.
 
-    The last source is never the base: its own fold would return the cached
-    answer and fold nothing on top, the reason `sources_to_read` truncates only
+    The last source is never the base: its own fold would return the answer
+    already folded and fold nothing on top, the reason `sources_to_read` truncates only
     at proper ancestors.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     for i in range(len(sources) - 2, -1, -1):
         base = at_hand(sources[i])
@@ -634,7 +634,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
         """
         return con.sql(

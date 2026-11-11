@@ -221,7 +221,7 @@ class StagedSource:
         return self.record.workspace
 
     def materialised(self) -> Fold | None:
-        """A staging area has no `resolved/` cache: it is never a fold's base."""
+        """A staging area has no `resolved/` files: it is never a fold's base."""
         return None
 
     def axes(self) -> set[str]:
@@ -644,13 +644,13 @@ class WorkingRecord(Record):
     # exists to have: a staged edit is read by the same fold that reads a
     # committed layer, so there is no second overlay to keep in step.
 
-    def _owned_whole(self, attribute: str) -> tuple[str, ...]:
-        """`AttributeSpec.dims` minus the owner map's index - the value axes owned whole.
+    def _outside_partial(self, attribute: str) -> tuple[str, ...]:
+        """`AttributeSpec.dims` minus the owner map's index - the value axes outside `partial`.
 
-        The complement of `owned_per`: a dim the attribute varies over
-        but that is not in `partial_dims` (a non-`partial` `timestep`, or
-        `connection`) is owned whole, so a patch to one value restates the
-        attribute's whole extent along it.
+        The complement of `owned_per`: along a dim the attribute varies over
+        but that is not in `partial_dims` (a `timestep` or `connection`
+        outside `partial`), a patch to one value restates the attribute's
+        whole extent along it.
 
         Notes
         -----
@@ -658,11 +658,11 @@ class WorkingRecord(Record):
         - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
         """
         spec = self.schema.attributes.get(attribute)
-        whole = (
+        outside = (
             frozenset() if spec is None else spec.dims - set(self.schema.partial_dims)
         )
         return tuple(
-            d for d in (*self.schema.multi_dims, *self.schema.flat_dims) if d in whole
+            d for d in (*self.schema.multi_dims, *self.schema.flat_dims) if d in outside
         )
 
     # -- edits (https://energy-models.github.io/datarecord/reference/editing/#set, https://energy-models.github.io/datarecord/reference/editing/#add-and-remove) ----------------------------------------
@@ -1458,7 +1458,7 @@ class WorkingRecord(Record):
             ),
             broadcast=own_dims,
         )
-        self._complete_owned_whole(attribute, table)
+        self._complete_outside_partial(attribute, table)
         self._overwrite_crossing(attribute, shaped, table)
         self._refuse_crossing(attribute)
 
@@ -1590,7 +1590,7 @@ class WorkingRecord(Record):
             where = f"{part} AND {equal}" if part else str(equal)
             self.con.execute(f"DELETE FROM {table} AS t USING _dr_rel p WHERE {where}")
 
-    def _complete_owned_whole(self, attribute: str, table: str) -> None:
+    def _complete_outside_partial(self, attribute: str, table: str) -> None:
         """Carry the base extent a non-partial axis obliges the staged rows to hold.
 
         Done as the rows are staged rather than at write, so the staging table
@@ -1604,10 +1604,10 @@ class WorkingRecord(Record):
         an entity this record never touched stays in the parent. A map row NULL on a
         dim the base holds labels of carries nothing.
 
-        A carried row is expanded along the whole-owned dims it leaves NULL, and
+        A carried row is expanded along the dims outside `partial` it leaves NULL, and
         every coordinate a staged row covers is dropped (`uncovered`), so no
         fill sits beside a staged row neither of which is the more specific.
-        A staged row leaving a whole-owned dim NULL is itself written out along
+        A staged row leaving a dim outside `partial` NULL is itself written out along
         the labels the base rows it crosses name there (`_spread`).
 
         Idempotent, which is what lets it run per insert instead of once: the
@@ -1624,8 +1624,8 @@ class WorkingRecord(Record):
         - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
         - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
         """
-        whole = self._owned_whole(attribute)
-        if not whole:
+        outside = self._outside_partial(attribute)
+        if not outside:
             return
 
         # Intersected with the attribute's own columns: an index column its file
@@ -1633,11 +1633,11 @@ class WorkingRecord(Record):
         # and joining on it would fail to bind (`long_columns_for`).
         columns = set(self.schema.long_columns_for(attribute))
         scope = [
-            c for c in self.schema.owner_map_index if c not in whole and c in columns
+            c for c in self.schema.owner_map_index if c not in outside and c in columns
         ]
-        present = [d for d in whole if d in columns]
+        present = [d for d in outside if d in columns]
         if not present:
-            # No column for any whole-owned dim, so the file holds one row per
+            # No column for any dim outside `partial`, so the file holds one row per
             # map row and there is no extent to complete.
             return
         dims = [*self.schema.dims_of(attribute), "attribute"]
@@ -2332,12 +2332,12 @@ def _spread(
     staged: DuckDBPyRelation,
     base: DuckDBPyRelation,
     scope: Sequence[str],
-    whole: Sequence[str],
+    outside: Sequence[str],
     columns: Sequence[str],
 ) -> DuckDBPyRelation | None:
-    """Each staged row leaving a `whole` dim NULL, at every base row's label it reaches there.
+    """Each staged row leaving an `outside` dim NULL, at every base row's label it reaches there.
 
-    A base row it reaches names a `whole` dim the staged row leaves NULL and is
+    A base row it reaches names an `outside` dim the staged row leaves NULL and is
     not covered by it on `scope`: the staged row names a `scope` column the
     base row leaves NULL. The row written takes every label either names, and
     the staged row's value. Of the staged rows covering one coordinate the one
@@ -2352,15 +2352,15 @@ def _spread(
     - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     """
-    matched = [*scope, *whole]
-    open_ = reduce(operator.or_, (col(c).isnull() for c in whole))
-    named = reduce(operator.or_, (col(c).isnotnull() for c in whole))
+    matched = [*scope, *outside]
+    open_ = reduce(operator.or_, (col(c).isnull() for c in outside))
+    named = reduce(operator.or_, (col(c).isnotnull() for c in outside))
     parts = []
     for staged_pattern in null_patterns(staged.filter(open_), matched):
         for base_pattern in null_patterns(base.filter(named), matched):
             base_only = base_pattern - staged_pattern
             if staged_pattern & set(scope) <= base_pattern or base_only.isdisjoint(
-                whole
+                outside
             ):
                 continue
             left = staged.filter(has_pattern(matched, staged_pattern)).set_alias("s")

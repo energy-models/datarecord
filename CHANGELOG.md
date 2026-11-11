@@ -401,8 +401,8 @@ All notable changes to datarecord are documented here. The format follows
   They refuse timestamps with a time zone and cast a column only to a wider
   type of its kind. A dtype is mathspec's: `float`, `int`, `bool`, `str` or
   `datetime`.
-- The owner map's index is the `partial` dims plus `attribute`. A dim outside
-  `partial` is owned whole, so a layer that patches one
+- The owner map's index is the `partial` dims plus `attribute`. Along a dim
+  outside `partial`, a layer that patches one
   connection's value restates every connection's. The PyPSA tool declares
   `partial` so that it keeps per-connection ownership.
   `Schema.input_key` is `Schema.owner_map_index`, `Schema.input_columns` is
@@ -655,8 +655,8 @@ All notable changes to datarecord are documented here. The format follows
   field. A `contract` over `(from, to)` loses its values when either party is
   removed, and `flags(ctype)` counts such a row for the type of each party.
 - `materialise()` writes `owner_map/inputs.parquet` last and each file through
-  a temporary name, so a node reads as materialised only when its cache is
-  complete.
+  a temporary name, so a node reads as materialised only when its resolved
+  files are complete.
 - A map materialised under a parent's schema reads under a child's wider one.
 - An attribute whose `dims` gained a dim reads its earlier rows, NULL along
   it, where that dim is in `partial` too. `flags()` reports such rows as

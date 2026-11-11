@@ -2,11 +2,11 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Materialised node caches: a node's dim owners, dead labels and owner map, on disk.
+"""Materialised revisions: a node's dim owners, dead labels and owner map, on disk.
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+- [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
 - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
 """
 
@@ -32,19 +32,19 @@ if TYPE_CHECKING:
 
 
 def materialised(revision_id: UUID, store: Store) -> bool:
-    """Whether `revision_id`'s node caches are materialised.
+    """Whether `revision_id` is materialised.
 
-    A node's caches are written together (`materialise`), the map last, so
-    one map answers for the dim owners and dead labels beside it.
+    A node's resolved files are written together (`materialise`), the map
+    last, so one map answers for the dim owners and dead labels beside it.
 
     This is a filesystem question rather than recorded state: layers are
-    write-once, so a materialised cache is valid forever and its
+    write-once, so a node's resolved files are valid forever and their
     presence is the whole answer.
 
     Notes
     -----
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     return store.files.exists(store.owner_map_uri(revision_id))
 
@@ -58,8 +58,8 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
     starts from, so the fold folds only the layers below it.
 
     Only proper ancestors count: the node being resolved is always read from its
-    own layer, since stopping *at* it would return its cached answer instead of
-    resolving it.
+    own layer, since stopping *at* it would return its resolved answer instead
+    of resolving it.
 
     Parameters
     ----------
@@ -73,7 +73,7 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     start = next(
         (
@@ -89,7 +89,7 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
 def materialise(
     revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
-    """Write `revision_id`'s node caches: owner map, dim owners and dead labels.
+    """Write `revision_id`'s resolved files: owner map, dim owners and dead labels.
 
     Purely additive. It changes no answer a read would give, only how many
     layers a read touches to reach it: once these files exist, a descendant's
@@ -101,14 +101,14 @@ def materialise(
     the node's fold as tables (`Axes.held`), they are written rather than folded
     again.
 
-    `owner_map.parquet` is what `materialised` reads as the whole
-    cache's presence, so it is written last: a reader that sees it finds the
+    `owner_map.parquet` is what `materialised` reads as the presence of all
+    the resolved files, so it is written last: a reader that sees it finds the
     rest, and a write that fails part-way leaves the node unmaterialised.
 
     Notes
     -----
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     if materialised(revision_id, store):
         return
@@ -138,11 +138,11 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection) -> Non
 def _materialise_dims(
     revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
-    """Write this node's dim owners and dead labels into its node cache, not its layer.
+    """Write this node's dim owners and dead labels under its `resolved/`, not its layer.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     con = store.workspace.con
     axes = Axes.held(sources[-1]) or Axes.resolve(sources)

@@ -556,7 +556,7 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
     Writing the edits as a child folds every layer from its files, which the
     seeded fold has to match: the same labels, tuples, properties and values,
     in axis order. One case materialises the root, below every removal, and
-    one the base, above them, where its node cache keeps a removed label at most
+    one the base, above them, where its resolved files keep a removed label at most
     as a dead label. In every case a child over the base reads the same once
     the base is materialised.
 
@@ -633,14 +633,14 @@ def test_a_staged_fold_reads_as_the_fold_over_every_layer(store, materialised):
 # -- ownership granularity (https://energy-models.github.io/datarecord/reference/layers/#partial, https://energy-models.github.io/datarecord/reference/editing/#edits) -------------------------------------
 
 
-def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
+def test_two_edits_on_one_series_outside_partial_both_land(staged, root):
     """A second `set` replaces its own fill without disturbing the first edit's.
 
-    The case `staging-without-seq` leans on hardest: a `set` on a whole-owned
-    axis stages the touched value plus the untouched coordinates as fills, and a
+    The case `staging-without-seq` leans on hardest: a `set` on an axis outside
+    `partial` stages the touched value plus the untouched coordinates as fills, and a
     second `set` at another coordinate must replace only the fill at *its* coordinate -
     the first edit's value and its fills have to survive. Idempotence of
-    `_complete_owned_whole` and replace-by-coordinate are what make it hold with
+    `_complete_outside_partial` and replace-by-coordinate are what make it hold with
     no ordering column to rank a fill below an edit.
 
     Notes
@@ -671,7 +671,7 @@ def test_two_edits_on_one_whole_owned_series_both_land(staged, root):
         "every untouched snapshot keeps the base value"
     )
     assert set(rows["entity"]) == {"Manchester Wind"}, (
-        "an axis owned whole restates the touched map row's extent, not every map row's"
+        "an axis outside `partial` restates the touched map row's extent, not every map row's"
     )
 
 

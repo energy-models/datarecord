@@ -52,7 +52,6 @@ from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource
 from datarecord.schema.schema import Schema
-from datarecord.store.cache import materialise, sources_to_read
 from datarecord.store.files import Files, LocalFiles, RemoteFiles
 from datarecord.store.manifest import (
     ClaimFile,
@@ -62,6 +61,7 @@ from datarecord.store.manifest import (
     merge_meta,
     validate_meta,
 )
+from datarecord.store.materialise import materialise, sources_to_read
 from datarecord.store.write import layer_data, write_layer
 
 #: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
@@ -577,11 +577,11 @@ class Store:
         return f"{self.layer_dir(id)}dims/{dim}.parquet"
 
     def resolved_dir(self, id: UUID | str) -> str:
-        """Revision `id`'s node caches, under its layer where no manifest lists them.
+        """Revision `id`'s resolved files, under its layer where no manifest lists them.
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         return f"{self.layer_dir(id)}resolved/"
 
@@ -590,7 +590,7 @@ class Store:
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         return f"{self.resolved_dir(id)}owner_map.parquet"
 
@@ -599,7 +599,7 @@ class Store:
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         return f"{self.resolved_dir(id)}dim_owners.parquet"
 
@@ -1193,8 +1193,8 @@ def ancestry(store: Store, revision_id: UUID) -> list[UUID]:
     """Revision ids along the root->node path, root first - resolution order.
 
     The whole path. Truncating it at the nearest materialised node is the
-    reader's business (`cache.sources_to_read`), since whether a node's
-    caches exist is a fact about the filesystem rather than about the tree.
+    reader's business (`materialise.sources_to_read`), since whether a node's
+    resolved files exist is a fact about the filesystem rather than about the tree.
 
     Raises
     ------
@@ -1203,7 +1203,7 @@ def ancestry(store: Store, revision_id: UUID) -> list[UUID]:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     return [manifest.id for manifest in lineage(store, revision_id)]
 
@@ -1306,7 +1306,7 @@ class Revision(_OfStore):
         - [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
         - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
         """
         if self._record is None or self._record.closed:
@@ -1346,7 +1346,7 @@ class Revision(_OfStore):
     # -- tree ---------------------------------------------------------------
 
     def materialise(self) -> None:
-        """Write this node's caches - owner map, dim owners and dead labels.
+        """Write this node's resolved files - owner map, dim owners and dead labels.
 
         A policy rather than a lifecycle step, and purely additive: it changes
         no answer, only how many layers a descendant's read touches. Once these
@@ -1354,7 +1354,7 @@ class Revision(_OfStore):
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         materialise(self.id, self.record.sources, self.store)
 
@@ -1365,7 +1365,7 @@ class Revision(_OfStore):
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         return ancestry(self.store, self.id)
 

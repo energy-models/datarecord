@@ -322,7 +322,7 @@ class Record:
     -----
     - [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
     - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
