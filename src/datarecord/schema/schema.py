@@ -544,10 +544,10 @@ class Schema(_Declared):
         """
         return (*self.flat_dims, *self.multi_dims)
 
-    def coordinates_of(self, attribute: str) -> tuple[str, ...]:
-        """The coordinate columns one attribute's rows carry, multi-dims first.
+    def dims_of(self, attribute: str) -> tuple[str, ...]:
+        """The dims `attribute` varies over, in its rows' column order: multi-dims first.
 
-        A multi-dim in `dims` is carried as one struct column named for it, so
+        A multi-dim is one struct column named for it, so
         `dims={"connection", "snapshot"}` gives `("connection", "snapshot")`.
 
         Per attribute rather than schema-wide: one file per attribute means one
@@ -565,14 +565,9 @@ class Schema(_Declared):
         - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        if attribute not in self.attributes:
-            msg = f"the schema declares no attribute {attribute!r}"
-            raise KeyError(msg)
+        multi = self.multi_dims_of(attribute)
         spec = self.attributes[attribute]
-        return (
-            *self.multi_dims_of(attribute),
-            *(d for d in self.flat_dims if d in spec.dims),
-        )
+        return (*multi, *(d for d in self.flat_dims if d in spec.dims))
 
     def duck_type(self, spec: Dimension | AttributeSpec | PropertySpec) -> DuckDBPyType:
         """Return the DuckDB type of a declared dim, attribute or property.
@@ -699,7 +694,7 @@ class Schema(_Declared):
         -----
         - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
         """
-        return (*self.coordinates_of(attribute), *LONG_TAIL)
+        return (*self.dims_of(attribute), *LONG_TAIL)
 
     def categorizing(self, dim: str) -> tuple[str, ...]:
         """Return the categorizing properties of `dim`, the ones `default_by` keys on.
@@ -831,13 +826,18 @@ class Schema(_Declared):
         True where its `dims` name `dim`, or a multi-dim one of whose
         coordinates draws on `dim`.
 
+        Raises
+        ------
+        KeyError
+            If the schema does not declare `attribute`.
+
         Notes
         -----
         - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
         """
-        spec = self.attributes.get(attribute)
-        return (spec is not None and dim in spec.dims) or any(
-            dim in self.over(m).values() for m in self.multi_dims_of(attribute)
+        return (
+            any(dim in self.over(m).values() for m in self.multi_dims_of(attribute))
+            or dim in self.attributes[attribute].dims
         )
 
     def resolve(
@@ -980,14 +980,19 @@ class Schema(_Declared):
     def multi_dims_of(self, attribute: str) -> tuple[str, ...]:
         """Which declared multi-dims address `attribute`, in declaration order.
 
+        Raises
+        ------
+        KeyError
+            If the schema does not declare `attribute`.
+
         Notes
         -----
         - [addressing](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
         """
-        spec = self.attributes.get(attribute)
-        if spec is None:
-            return ()
-        return tuple(m for m in self.multi_dims if m in spec.dims)
+        if attribute not in self.attributes:
+            msg = f"the schema declares no attribute {attribute!r}"
+            raise KeyError(msg)
+        return tuple(m for m in self.multi_dims if m in self.attributes[attribute].dims)
 
     @property
     def owner_map_columns(self) -> tuple[str, ...]:

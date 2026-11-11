@@ -263,7 +263,8 @@ All notable changes to datarecord are documented here. The format follows
 - Breaking: `Schema.dims` returns every declared dim, the flat dims first and
   the multi-dims last, which `Schema.broadcast_dims` returned before.
   `Schema.flat_dims` returns the dims that are not multi-dims, which
-  `Schema.dims` returned before.
+  `Schema.dims` returned before. `Schema.coordinates_of` is now
+  `Schema.dims_of`.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`
   or `datarecord.edit.dims.bus`, or runs `USE datarecord` once on its own

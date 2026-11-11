@@ -695,8 +695,8 @@ class Record:
         #
         # Of those that are, each matches NULL-aware
         # (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule).
-        coordinates = schema.coordinates_of(attribute)
-        broadcast_over = tuple(d for d in partial_dims if d in coordinates)
+        dims = schema.dims_of(attribute)
+        broadcast_over = tuple(d for d in partial_dims if d in dims)
         owners, contested = self._owners(attribute)
         layers: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
@@ -734,7 +734,7 @@ class Record:
                 stored.filter(col("_contested")),
                 named_mask(broadcast_over, "l").alias("_named"),
             ),
-            coordinates,
+            dims,
             attribute,
         )
         return _living(alone.union(ranked), dead, unkeyed)

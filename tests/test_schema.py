@@ -122,6 +122,20 @@ def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
     assert s.addresses(attribute, "entity") is addresses
 
 
+@pytest.mark.parametrize(
+    "lookup",
+    [
+        lambda s: s.multi_dims_of("absent"),
+        lambda s: s.dims_of("absent"),
+        lambda s: s.addresses("absent", "entity"),
+    ],
+    ids=["multi_dims_of", "dims_of", "addresses"],
+)
+def test_a_per_attribute_lookup_refuses_an_undeclared_attribute(lookup):
+    with pytest.raises(KeyError, match="the schema declares no attribute 'absent'"):
+        lookup(_schema())
+
+
 def _with_entity_property(name: str, spec: PropertySpec) -> dict:
     """`_schema`'s properties with `name` added to `entity`'s."""
     return {"entity": {**_schema().properties["entity"], name: spec}}

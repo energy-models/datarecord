@@ -119,14 +119,14 @@ pydantic_core._pydantic_core.ValidationError: 1 validation error for Schema
 Give each attribute a `dtype` and the `dims` it varies over, multi-dims included, and a `default` for a point that no row covers. `unit` and `description` are stored as written and never interpreted:
 
 ```python
-print(schema.coordinates_of("efficiency"))
+print(schema.dims_of("efficiency"))
 ```
 
 ```text
 ('connection',)
 ```
 
-`efficiency` is keyed by the one `connection` coordinate, a struct of `entity` and `bus`. datarecord refuses a dim in `dims` that the schema does not declare:
+`efficiency` is keyed by the one dim `connection`, a multi-dim whose tuples are structs of `entity` and `bus`. datarecord refuses a dim in `dims` that the schema does not declare:
 
 ```python
 Schema(

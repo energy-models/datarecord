@@ -721,9 +721,7 @@ class TestPyPSA:
         record = single_revision.record
         tuples = matching(record.properties["connection"], {"role": (role,)})
         over = [
-            a
-            for a in record.attributes
-            if "connection" in record.schema.coordinates_of(a)
+            a for a in record.attributes if "connection" in record.schema.dims_of(a)
         ]
         reaching = {
             a

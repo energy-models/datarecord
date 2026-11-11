@@ -637,7 +637,7 @@ class WorkingRecord(Record):
     def _column_type(self, column: str, subject: str | None = None) -> DuckDBPyType:
         return _column_type(self.schema, column, subject)
 
-    def _staged_coordinates(self, attribute: str) -> tuple[str, ...]:
+    def _staged_dims_of(self, attribute: str) -> tuple[str, ...]:
         """The dim columns one attribute's staging table has, in table order.
 
         Notes
@@ -678,31 +678,31 @@ class WorkingRecord(Record):
 
     # -- edits (https://energy-models.github.io/datarecord/reference/editing/#set, https://energy-models.github.io/datarecord/reference/editing/#add-and-remove) ----------------------------------------
 
-    def _key_coordinate(self, attribute: str, value: Any, given: Container[str]) -> str:
-        """Which coordinate a mapping's keys or a labelled series' index holds.
+    def _index_keyword(self, attribute: str, value: Any, given: Container[str]) -> str:
+        """Which keyword a mapping's keys or a labelled series' index holds.
 
-        The series' own `index.name` where it names a coordinate of this
-        attribute, else the one coordinate no keyword names. Never read off the
+        The series' own `index.name` where it names a keyword of this
+        attribute, else the one keyword not given. Never read off the
         labels: one dim's label may be a string just like another's, so a
         membership test would make one call mean different things in two
         records.
 
-        An `index.name` naming no coordinate is ignored rather than rejected; it
+        An `index.name` naming no keyword is ignored rather than rejected; it
         may be `None`, or a pandas artefact like `"index"`.
 
         Raises
         ------
         ValueError
-            Where the index names a coordinate also given as a keyword, or
-            nothing says which of several open coordinates is meant.
+            Where the index names a keyword also given, or nothing says which
+            of several open keywords is meant.
 
         Notes
         -----
         - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
         """
-        coordinates = _flat_coordinates(self.schema, attribute)
+        keywords = _keyword_dims(self.schema, attribute)
         named = _series_index_name(value)
-        if named in coordinates:
+        if named in keywords:
             if named in given:
                 msg = (
                     f"`set({attribute!r}, ...)` keys its values by {named!r} and "
@@ -710,7 +710,7 @@ class WorkingRecord(Record):
                 )
                 raise ValueError(msg)
             return cast("str", named)
-        open_ = [c for c in coordinates if c not in given]
+        open_ = [k for k in keywords if k not in given]
         if len(open_) != 1:
             msg = (
                 f"`set({attribute!r}, ...)` keys its values by one of {open_}; "
@@ -720,9 +720,9 @@ class WorkingRecord(Record):
             raise ValueError(msg)
         return open_[0]
 
-    def _coordinate_type(self, attribute: str, coordinate: str) -> DuckDBPyType:
-        """The declared type of one flat coordinate of `attribute` - a multi-dim coordinate's dim's."""
-        dim = _flat_coordinates(self.schema, attribute).get(coordinate, coordinate)
+    def _keyword_type(self, attribute: str, keyword: str) -> DuckDBPyType:
+        """The declared type of one keyword of `attribute`: the type of the dim it draws on."""
+        dim = _keyword_dims(self.schema, attribute).get(keyword, keyword)
         return self._column_type(dim)
 
     def _axis_values(
@@ -842,7 +842,7 @@ class WorkingRecord(Record):
             )
             raise KeyError(msg)
         keys = {c for m in self.schema.multi_dims for c in self.schema.over(m)}
-        unknown = sorted(set(dims) - set(self.schema.dims) - keys)
+        unknown = sorted(set(dims) - set(self.schema.flat_dims) - keys)
         if unknown:
             msg = f"the schema declares no dims {unknown}"
             raise KeyError(msg)
@@ -859,7 +859,7 @@ class WorkingRecord(Record):
         if spec is None:
             msg = f"the schema declares no attribute {attribute!r}"
             raise KeyError(msg)
-        coordinates = _flat_coordinates(self.schema, attribute)
+        coordinates = _keyword_dims(self.schema, attribute)
         outside = sorted(set(coords) - spec.dims - set(coordinates))
         if outside:
             msg = (
@@ -975,8 +975,8 @@ class WorkingRecord(Record):
             self._validate_input(attribute, coords)
             table = self._ensure(_ATTRIBUTES, attribute)
             known = [
-                *self._staged_coordinates(attribute),
-                *_flat_coordinates(self.schema, attribute),
+                *self._staged_dims_of(attribute),
+                *_keyword_dims(self.schema, attribute),
                 "value",
             ]
             extra = sorted(set(rel.columns) - set(known))
@@ -994,9 +994,9 @@ class WorkingRecord(Record):
 
         if keyed:
             selected = [c for m in tuples for c in self.schema.over(m)]
-            key = self._key_coordinate(attribute, value, [*coords, *selected])
+            key = self._index_keyword(attribute, value, [*coords, *selected])
             keys, values = normalise_value(value)
-            dim = _flat_coordinates(self.schema, attribute)[key]
+            dim = _keyword_dims(self.schema, attribute)[key]
             self._require_typed(
                 dim, cast("list[Any]", keys), f"`set({attribute!r}, ...)`"
             )
@@ -1018,14 +1018,14 @@ class WorkingRecord(Record):
         rel = self._columns_relation(
             {**column, "value": values},
             {
-                **{c: self._coordinate_type(attribute, c) for c in column},
+                **{c: self._keyword_type(attribute, c) for c in column},
                 "value": None,
             },
         )
         for c, labels in listed.items():
             rel = rel.cross(
                 self._columns_relation(
-                    {c: labels}, {c: self._coordinate_type(attribute, c)}
+                    {c: labels}, {c: self._keyword_type(attribute, c)}
                 )
             )
         for chosen in tuples.values():
@@ -1238,7 +1238,7 @@ class WorkingRecord(Record):
             flat = self.schema.over(subject) or {subject: subject}
             over: tuple[str, ...] = (subject,)
         else:
-            flat = _flat_coordinates(self.schema, name)
+            flat = _keyword_dims(self.schema, name)
             over = self.schema.multi_dims_of(name)
         reached = {*flat.values(), *over}
         by_dim: dict[str, dict[str, list[Any]]] = {}
@@ -1441,28 +1441,24 @@ class WorkingRecord(Record):
         - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
         """
 
-        def coordinate(d: str) -> Expression:
+        def column(d: str) -> Expression:
             if d in present:
                 return col(d)
             if d in self.schema.multi_dims_of(attribute):
                 return packed(self.schema, d, present, dims).alias(d)
             return lit(dims.get(d)).cast(self._column_type(d)).alias(d)
 
-        coordinates = self._staged_coordinates(attribute)
+        key_dims = self._staged_dims_of(attribute)
         shaped = rel.project(
-            *(coordinate(d) for d in coordinates),
+            *(column(d) for d in key_dims),
             lit(attribute).alias("attribute"),
             lit(None).cast(sqltypes.DOUBLE).alias("breakpoint"),
             col("value"),
         )
         call = f"`set({attribute!r}, ...)`"
-        refuse_unheld(shaped, self.schema, coordinates, self._held, call, staged=True)
+        refuse_unheld(shaped, self.schema, key_dims, self._held, call, staged=True)
         self._insert(
-            shaped,
-            table,
-            {},
-            key=self._long_key(attribute),
-            broadcast=self._staged_coordinates(attribute),
+            shaped, table, {}, key=self._long_key(attribute), broadcast=key_dims
         )
         self._complete_owned_whole(attribute, table)
         self._overwrite_crossing(attribute, shaped, table)
@@ -1485,33 +1481,30 @@ class WorkingRecord(Record):
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
         - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
         """
-        coordinates = self.schema.coordinates_of(attribute)
-        if not coordinates:
+        dims = self.schema.dims_of(attribute)
+        if not dims:
             return
         staged = self._collapsed_attribute(attribute)
         earlier = (
             staged.set_alias("s")
-            .join(rows.set_alias("r"), null_safe("s", "r", coordinates), how="anti")
-            .project(*map(col, coordinates))
+            .join(rows.set_alias("r"), null_safe("s", "r", dims), how="anti")
+            .project(*map(col, dims))
             .distinct()
         )
         parts = []
-        for a in named_sets(rows, coordinates):
-            for b in named_sets(earlier, coordinates):
+        for a in named_sets(rows, dims):
+            for b in named_sets(earlier, dims):
                 if a <= b or b <= a:
                     continue
-                on = [col("r", c) == col("e", c) for c in coordinates if c in a & b]
+                on = [col("r", c) == col("e", c) for c in dims if c in a & b]
                 met = join_on(
-                    rows.filter(names_exactly(coordinates, a)).set_alias("r"),
-                    earlier.filter(names_exactly(coordinates, b)).set_alias("e"),
+                    rows.filter(names_exactly(dims, a)).set_alias("r"),
+                    earlier.filter(names_exactly(dims, b)).set_alias("e"),
                     on,
                 )
                 parts.append(
                     met.project(
-                        *(
-                            coalesce(col("r", c), col("e", c)).alias(c)
-                            for c in coordinates
-                        ),
+                        *(coalesce(col("r", c), col("e", c)).alias(c) for c in dims),
                         *(col("r", c) for c in ("attribute", "breakpoint", "value")),
                     )
                 )
@@ -1523,7 +1516,7 @@ class WorkingRecord(Record):
             .set_alias("m")
             .join(
                 self.con.table(table).set_alias("t"),
-                null_safe("m", "t", coordinates),
+                null_safe("m", "t", dims),
                 how="anti",
             )
         )
@@ -1547,14 +1540,12 @@ class WorkingRecord(Record):
         - [crossing rows](https://energy-models.github.io/datarecord/reference/resolution/#crossing-rows)
         """
         rel = self._collapsed_attribute(attribute)
-        coordinates = self.schema.coordinates_of(attribute)
-        for a, b, meets in unsettled(rel, coordinates):
+        dims = self.schema.dims_of(attribute)
+        for a, b, meets in unsettled(rel, dims):
             row = meets.limit(1).fetchall()
             if not row:
                 continue
-            at = {
-                c: v for c, v in zip(coordinates, row[0], strict=True) if v is not None
-            }
+            at = {c: v for c, v in zip(dims, row[0], strict=True) if v is not None}
             msg = (
                 f"`set({attribute!r}, ...)` would stage a row naming {sorted(a)} and "
                 f"one naming {sorted(b)} that both cover {at}, where no staged row "
@@ -2223,21 +2214,21 @@ def _column_type(
     return dtype
 
 
-def _flat_coordinates(schema: Schema, attribute: str) -> dict[str, str]:
-    """`coordinates_of`, each multi-dim column spelled as its coordinates, each to its dim.
+def _keyword_dims(schema: Schema, attribute: str) -> dict[str, str]:
+    """`dims_of` as keywords, each multi-dim spelled as its fields, each to its dim.
 
     The names a caller addresses a row by - `bus=` for a connection attribute -
-    where the row itself carries `connection`; a multi-dim's coordinate maps to
-    the dim it draws on, a plain coordinate to itself.
+    where the row itself carries `connection`; a multi-dim's field maps to the
+    dim it draws on, a flat dim to itself.
 
     Notes
     -----
     - [set](https://energy-models.github.io/datarecord/reference/editing/#set)
     """
-    flat: dict[str, str] = {}
-    for coordinate in schema.coordinates_of(attribute):
-        flat.update(schema.over(coordinate) or {coordinate: coordinate})
-    return flat
+    keywords: dict[str, str] = {}
+    for dim in schema.dims_of(attribute):
+        keywords.update(schema.over(dim) or {dim: dim})
+    return keywords
 
 
 def _unpacked(
