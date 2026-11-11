@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Selecting labels of a categorized dim, and the defaults its properties read.
+"""Selecting labels of a categorized dimension, and the defaults its properties read.
 
 Every default is the schema's (`Schema.default_for`), asked once per category
 combination a relation holds.
@@ -36,12 +36,12 @@ _ROW = "_defaults_row"
 
 
 def categorized_dim(schema: Schema, categories: Categories) -> str:
-    """The one dim every key of `categories` categorizes.
+    """The one dimension every key of `categories` categorizes.
 
     Raises
     ------
     ValueError
-        If a key categorizes no dim, or the keys categorize different dims.
+        If a key categorizes no dimension, or the keys categorize different dimensions.
     """
     dims = {
         d for d in schema.dimensions for k in categories if k in schema.categorizing(d)
@@ -50,10 +50,10 @@ def categorized_dim(schema: Schema, categories: Categories) -> str:
         k for k in categories if not any(k in schema.categorizing(d) for d in dims)
     )
     if unknown:
-        msg = f"{unknown} categorize no dim; a categorizing property is a property of a `partial` dim that refers to a dim with `one_of`"
+        msg = f"{unknown} categorize no dimension; a categorizing property is a property of a `partial` dimension that refers to a dimension with `one_of`"
         raise ValueError(msg)
     if len(dims) != 1:
-        msg = f"{sorted(categories)} categorize several dims {sorted(dims)}; name one dim's"
+        msg = f"{sorted(categories)} categorize several dimensions {sorted(dims)}; name one dimension's"
         raise ValueError(msg)
     return dims.pop()
 
@@ -100,7 +100,7 @@ def with_defaults(
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     if not names:
         return rel.project(col(subject))

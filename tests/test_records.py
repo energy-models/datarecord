@@ -289,7 +289,7 @@ def test_a_directory_has_no_connections_when_none_were_written(store, tmp_path):
 
     Notes
     -----
-    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    - [attributes over a multi-dim](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dimensions-column)
     """
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "wind"}])

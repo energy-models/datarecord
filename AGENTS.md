@@ -166,14 +166,14 @@ name is the _caller_, not the implementer.
 
 ```python
 def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) -> Dims:
-    """Fold every dim `schema` declares to its axis relation.
+    """Fold every dimension `schema` declares to its axis relation.
 
-    A dim's axis file is `{dim}s.parquet`.
+    A dimension's axis file is `{dim}s.parquet`.
 
     Parameters
     ----------
     schema
-        The record's schema, which declares the dims and their keys.
+        The record's schema, which declares the dimensions and their keys.
     ancestry : list of UUID
         Root first, ending in the record being resolved, truncated at the
         deepest materialised ancestor (`ancestry_to_read`).

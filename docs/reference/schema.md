@@ -7,7 +7,7 @@ SPDX-License-Identifier: CC-BY-4.0
 # The schema
 
 This page describes every key a schema accepts, in the order a schema declares them, and what datarecord refuses at load.
-A **schema** is the `Schema` of a record: the dims, properties, attributes and `partial` that may exist, with their dtypes.
+A **schema** is the `Schema` of a record: the dimensions, properties, attributes and `partial` that may exist, with their dtypes.
 The [data model](data-model.md) defines each of those words.
 
 The running example declares this schema:
@@ -57,29 +57,29 @@ datarecord stores it and compares nothing against it.
 
 ## `dimensions`
 
-`dimensions` maps each dim's name to a `Dimension`, multi-dims among them.
+`dimensions` maps each dimension's name to a `Dimension`, multi-dimensions among them.
 
-| Key           | Value                                                    | Default |
-| ------------- | -------------------------------------------------------- | ------- |
-| `over`        | a multi-dim's fields, each mapped to the dim it draws on | `None`  |
-| `dtype`       | `"float"`, `"int"`, `"str"` or `"datetime"`              | `"str"` |
-| `one_of`      | the dim's labels, in order                               | `None`  |
-| `unit`        | what the labels measure                                  | `None`  |
-| `description` | what the dim is, in prose                                | `None`  |
+| Key           | Value                                                                | Default |
+| ------------- | -------------------------------------------------------------------- | ------- |
+| `over`        | a multi-dimension's fields, each mapped to the dimension it draws on | `None`  |
+| `dtype`       | `"float"`, `"int"`, `"str"` or `"datetime"`                          | `"str"` |
+| `one_of`      | the dimension's labels, in order                                     | `None`  |
+| `unit`        | what the labels measure                                              | `None`  |
+| `description` | what the dimension is, in prose                                      | `None`  |
 
-A schema that declares attributes declares at least one dim, because attribute data over no dim is no record.
+A schema that declares attributes declares at least one dimension, because attribute data over no dimension is no record.
 
 ### `over`
 
-`over` declares a [multi-dim](data-model.md#multi-dims).
+`over` declares a [multi-dimension](data-model.md#multi-dimensions).
 A list is short for the dict whose keys equal its values, so `over=["entity", "bus"]` is `over={"entity": "entity", "bus": "bus"}`.
 The keys are the field names, in field order, and `Schema.over("connection")` returns them.
-datarecord refuses a multi-dim that also declares `dtype` or `one_of`, and a field that draws on an undeclared dim or on a multi-dim.
+datarecord refuses a multi-dimension that also declares `dtype` or `one_of`, and a field that draws on an undeclared dimension or on a multi-dimension.
 
 ### `one_of`
 
-`one_of` declares a [dim with `one_of`](data-model.md#a-dim-with-one_of), whose axis is the list.
-Only a `"str"` dim takes it.
+`one_of` declares a [dimension with `one_of`](data-model.md#a-dimension-with-one_of), whose axis is the list.
+Only a `"str"` dimension takes it.
 datarecord refuses an empty list, a label listed twice, and `one_of` on any other dtype.
 
 ## `attributes`
@@ -87,18 +87,18 @@ datarecord refuses an empty list, a label listed twice, and `one_of` on any othe
 `attributes` maps each attribute's name to an `AttributeSpec`.
 One name is one spec, one file and one `value` dtype, record-wide.
 
-| Key           | Value                                             | Default       |
-| ------------- | ------------------------------------------------- | ------------- |
-| `dtype`       | `"float"`, `"int"`, `"bool"` or `"str"`           | required      |
-| `dims`        | the dims and multi-dims that address a value      | `frozenset()` |
-| `default`     | the value at a coordinate no row covers           | `None`        |
-| `default_by`  | a default per category, which overrides `default` | `{}`          |
-| `breakpoints` | whether a row may have a piecewise-linear curve   | `False`       |
-| `unit`        | what the values measure                           | `None`        |
-| `description` | what the attribute is, in prose                   | `None`        |
+| Key           | Value                                                    | Default       |
+| ------------- | -------------------------------------------------------- | ------------- |
+| `dtype`       | `"float"`, `"int"`, `"bool"` or `"str"`                  | required      |
+| `dims`        | the dimensions and multi-dimensions that address a value | `frozenset()` |
+| `default`     | the value at a coordinate no row covers                  | `None`        |
+| `default_by`  | a default per category, which overrides `default`        | `{}`          |
+| `breakpoints` | whether a row may have a piecewise-linear curve          | `False`       |
+| `unit`        | what the values measure                                  | `None`        |
+| `description` | what the attribute is, in prose                          | `None`        |
 
-datarecord refuses a `dims` entry that is not a declared dim.
-It also refuses a multi-dim in `dims` beside a dim named like one of its fields, such as `{"connection", "bus"}`.
+datarecord refuses a `dims` entry that is not a declared dimension.
+It also refuses a multi-dimension in `dims` beside a dimension named like one of its fields, such as `{"connection", "bus"}`.
 
 ### `default_by`
 
@@ -110,44 +110,44 @@ Elsewhere `default` applies.
 datarecord refuses a key that is not a [categorising property](data-model.md#categories), naming the reason:
 
 ```text
-attribute 'p_nom''s `default_by` is keyed by 'entity.carrier', which refers to 'carrier', but 'carrier' is not a one_of dim
+attribute 'p_nom''s `default_by` is keyed by 'entity.carrier', which refers to 'carrier', but 'carrier' is not a one_of dimension
 ```
 
-It also refuses a category that the referred dim's `one_of` does not list.
-It refuses a key on a dim that the attribute or property is not [indexed over](data-model.md#attributes).
-A property is indexed over its subject and the dims that the subject's fields draw on.
+It also refuses a category that the referred dimension's `one_of` does not list.
+It refuses a key on a dimension that the attribute or property is not [indexed over](data-model.md#attributes).
+A property is indexed over its subject and the dimensions that the subject's fields draw on.
 
 ## `properties`
 
-`properties` maps each subject dim to a map from property name to `PropertySpec`.
+`properties` maps each subject dimension to a map from property name to `PropertySpec`.
 
 | Key           | Value                                        | Default |
 | ------------- | -------------------------------------------- | ------- |
 | `dtype`       | `"float"`, `"int"`, `"bool"` or `"str"`      | `None`  |
-| `refers`      | the dim the property refers to               | `None`  |
+| `refers`      | the dimension the property refers to         | `None`  |
 | `default`     | the value for a label no layer wrote one for | `None`  |
 | `default_by`  | a default per category, as on an attribute   | `{}`    |
 | `unit`        | what the values measure                      | `None`  |
 | `description` | what the property is, in prose               | `None`  |
 
 A property declares exactly one of `dtype` and `refers`.
-With `refers`, the property [refers to that dim](data-model.md#properties) and takes its type.
+With `refers`, the property [refers to that dimension](data-model.md#properties) and takes its type.
 `Schema.resolve("entity.carrier")` returns the subject and the spec, and `Schema.categorizing(dim)` lists the categorising properties of `dim`.
 
 datarecord refuses a property:
 
 - that declares both `dtype` and `refers`, or neither
-- of an undeclared subject, or of a dim with `one_of`
-- that refers to an undeclared dim or to a multi-dim
-- named like its subject's column, or like a field of its multi-dim
+- of an undeclared subject, or of a dimension with `one_of`
+- that refers to an undeclared dimension or to a multi-dimension
+- named like its subject's column, or like a field of its multi-dimension
 - that categorises its subject and declares `default_by`
 
 ## `partial`
 
-`partial` is the set of dims along which the data one revision adds (a [layer](layers.md)) overrides one value per label, a multi-dim among them.
-[Layers](layers.md#partial) states what a layer restates along any other dim.
+`partial` is the set of dimensions along which the data one revision adds (a [layer](layers.md)) overrides one value per label, a multi-dimension among them.
+[Layers](layers.md#partial) states what a layer restates along any other dimension.
 `None`, the default, declares a record with no layers.
-datarecord refuses a name in `partial` that the schema does not declare as a dim.
+datarecord refuses a name in `partial` that the schema does not declare as a dimension.
 
 ## `meta`
 
@@ -165,31 +165,31 @@ datarecord stores both and reads neither, so it converts no unit.
 A dtype is mathspec's `DimensionDtype` or `ParameterDtype`, written as its string.
 Each declaration maps to one DuckDB type:
 
-| Declares                 | Declaration        | DuckDB type                                   |
-| ------------------------ | ------------------ | --------------------------------------------- |
-| dim, attribute, property | `dtype: float`     | `DOUBLE`                                      |
-| dim, attribute, property | `dtype: int`       | `BIGINT`                                      |
-| attribute, property      | `dtype: bool`      | `BOOLEAN`                                     |
-| dim, attribute, property | `dtype: str`       | `VARCHAR`                                     |
-| dim                      | `dtype: datetime`  | `TIMESTAMP` (no time zone)                    |
-| dim                      | `one_of: [labels]` | `ENUM` of the labels                          |
-| multi-dim                | `over: {...}`      | `STRUCT` of its fields, each typed as its dim |
-| property                 | `refers: <dim>`    | that dim's type                               |
+| Declares                       | Declaration        | DuckDB type                                         |
+| ------------------------------ | ------------------ | --------------------------------------------------- |
+| dimension, attribute, property | `dtype: float`     | `DOUBLE`                                            |
+| dimension, attribute, property | `dtype: int`       | `BIGINT`                                            |
+| attribute, property            | `dtype: bool`      | `BOOLEAN`                                           |
+| dimension, attribute, property | `dtype: str`       | `VARCHAR`                                           |
+| dimension                      | `dtype: datetime`  | `TIMESTAMP` (no time zone)                          |
+| dimension                      | `one_of: [labels]` | `ENUM` of the labels                                |
+| multi-dimension                | `over: {...}`      | `STRUCT` of its fields, each typed as its dimension |
+| property                       | `refers: <dim>`    | that dimension's type                               |
 
 An attribute takes neither `one_of` nor `refers`, and no attribute or property is `datetime`.
-A property whose values are times refers to a `datetime` dim.
+A property whose values are times refers to a `datetime` dimension.
 The format fixes three more columns: `attribute VARCHAR`, `breakpoint DOUBLE` and `value`, typed as the attribute's `dtype`.
 
 ## Names
 
-A declared dim, field, attribute or property name becomes a column, and datarecord refuses a name that cannot be one:
+A declared dimension, field, attribute or property name becomes a column, and datarecord refuses a name that cannot be one:
 
 - a name that is not ASCII letters, digits and `_`, starting with a letter, which is mathspec's rule for a name
 - a column datarecord writes, compared ignoring case: `attribute`, `breakpoint`, `breakpoints`, `broadcast`, `layer_uuid`, `order_key`, `value` and `varies`
 - a name that starts with `_`
 - two names that differ only in case, which DuckDB reads as one column
 
-One spelling declared twice is one column and passes, as when a field shares its dim's name.
+One spelling declared twice is one column and passes, as when a field shares its dimension's name.
 Labels are data, and these rules do not apply to them.
 
 ## Compatibility
@@ -199,14 +199,14 @@ Labels are data, and these rules do not apply to them.
 
 | Change                                                    | Compatible |
 | --------------------------------------------------------- | ---------- |
-| add a dim, an attribute or a property                     | yes        |
-| add a dim to an attribute's `dims`                        | yes        |
-| add a dim to `partial`                                    | yes        |
+| add a dimension, an attribute or a property               | yes        |
+| add a dimension to an attribute's `dims`                  | yes        |
+| add a dimension to `partial`                              | yes        |
 | change a `default`, `default_by`, `unit` or `description` | yes        |
-| remove a dim, an attribute or a property                  | no         |
+| remove a dimension, an attribute or a property            | no         |
 | change a `dtype`, `one_of`, `refers` or `over`            | no         |
-| remove a dim from an attribute's `dims`                   | no         |
-| remove a dim from `partial`                               | no         |
+| remove a dimension from an attribute's `dims`             | no         |
+| remove a dimension from `partial`                         | no         |
 
 Moving a name between `attributes` and `properties`, or between subjects, removes it, so `compatible_with` reports it.
 An incompatible change needs the record rewritten under the new schema, such as a standalone directory written with `ws.write`.

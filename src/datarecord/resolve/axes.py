@@ -37,7 +37,7 @@ def _fold_name(workspace: Workspace, revision_id: UUID, table: str) -> str:
     """Table `table` of revision `revision_id`'s fold in the workspace's database, qualified for SQL.
 
     The tables are `owner_map`, `dimension_owners`, and `dimensions_<dim>` and
-    `dead_<dim>`, the dim spelled as declared, which `Schema` holds to a plain
+    `dead_<dim>`, the dimension spelled as declared, which `Schema` holds to a plain
     identifier.
 
     Notes
@@ -63,7 +63,7 @@ def _fold_axis(
     Notes
     -----
     - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     if not files:
         return seed
@@ -74,7 +74,7 @@ def _fold_axis(
 
 
 def one_of_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
-    """Return the axis of `dim`, a dim with `one_of`: its labels, in list order.
+    """Return the axis of `dim`, a dimension with `one_of`: its labels, in list order.
 
     Raises
     ------
@@ -83,7 +83,7 @@ def one_of_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRe
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dimension with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     """
     spec = schema.dimensions[dim]
     if spec.one_of is None:
@@ -96,23 +96,23 @@ def one_of_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRe
 
 
 def refuse_one_of_file(schema: Schema, dims: Iterable[str], where: str) -> None:
-    """Refuse an axis file of a dim with `one_of` among `dims`, which `where` holds.
+    """Refuse an axis file of a dimension with `one_of` among `dims`, which `where` holds.
 
     Raises
     ------
     ValueError
-        Naming `where` and the dims.
+        Naming `where` and the dimensions.
 
     Notes
     -----
-    - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+    - [a dimension with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
     """
     held = sorted(set(dims) & set(schema.one_of_dimensions))
     if held:
         msg = (
             f"{where} holds an axis file of {held}, which list their labels "
-            f"with `one_of`; such a dim's axis is the schema's list, so no "
-            f"layer writes one (https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)"
+            f"with `one_of`; such a dimension's axis is the schema's list, so no "
+            f"layer writes one (https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)"
         )
         raise ValueError(msg)
 
@@ -187,11 +187,11 @@ def refuse_unheld(
 ) -> None:
     """Refuse a label or tuple in `rows` that the axis holding it lacks.
 
-    A dim's column of `columns` names labels of that dim, a multi-dim's column
-    tuples of that multi-dim and, through each field, labels of the dim it
-    draws on, and the column of a property of `subject` that refers to a dim
-    names labels of that dim. Any other column is not checked. `subject`'s own
-    column holds the labels or tuples being added, so of it only a multi-dim's
+    A dimension's column of `columns` names labels of that dimension, a multi-dimension's column
+    tuples of that multi-dimension and, through each field, labels of the dimension it
+    draws on, and the column of a property of `subject` that refers to a dimension
+    names labels of that dimension. Any other column is not checked. `subject`'s own
+    column holds the labels or tuples being added, so of it only a multi-dimension's
     fields are checked.
     Labels are checked before tuples, so a tuple naming an unheld label is
     refused for that label. NULL is no label and passes.
@@ -207,7 +207,7 @@ def refuse_unheld(
     Raises
     ------
     KeyError
-        Where `staged`, naming the dim and up to three such labels
+        Where `staged`, naming the dimension and up to three such labels
         or tuples.
     ValueError
         Where not `staged`, naming the same.
@@ -246,7 +246,7 @@ def refuse_unheld(
     if name in schema.one_of_dimensions:
         holder = f"its `one_of`, {list(schema.dimensions[name].one_of or ())},"
         remedy = "use one of its labels"
-        link = "data-model/#a-dim-with-one_of"
+        link = "data-model/#a-dimension-with-one_of"
     elif staged:
         holder = "the staged axis"
         remedy = "`add` them first"
@@ -326,7 +326,7 @@ def _dead_labels(
 ) -> DuckDBPyRelation | None:
     """Return the labels of `held` that `final` lacks, `None` where there is none.
 
-    `held` is every set of labels the dim had: the base's dead labels
+    `held` is every set of labels the dimension had: the base's dead labels
     and resolved axis, and each restatement above the base. A label one of
     them holds and the final axis lacks is one some layer removed. `None`
     rather than an empty relation, so `_living` adds no join for it, unless
@@ -384,13 +384,13 @@ def _axes_at_hand(source: LayerSource) -> Axes | None:
 
 
 def mortal(schema: Schema) -> tuple[str, ...]:
-    """The dims a fold keeps the dead labels of.
+    """The dimensions a fold keeps the dead labels of.
 
     One outside the owner map's index, whose values naming a dead label only the
-    read can drop (`_living`), and a dim a multi-dim's tuples range over or a
+    read can drop (`_living`), and a dimension a multi-dimension's tuples range over or a
     property refers to, which the writer checks them against
-    (`write._require_living_references`). An index dim's values the fold
-    drops itself (`fold_layer`). A dim with `one_of` has no dead labels,
+    (`write._require_living_references`). An index dimension's values the fold
+    drops itself (`fold_layer`). A dimension with `one_of` has no dead labels,
     its axis being the schema's list.
 
     Notes
@@ -408,26 +408,26 @@ def mortal(schema: Schema) -> tuple[str, ...]:
 
 @dataclass(frozen=True)
 class Axes(Mapping[str, DuckDBPyRelation]):
-    """A record's folded axes, by dim, with the schema, owners and dead labels they fold under.
+    """A record's folded axes, by dimension, with the schema, owners and dead labels they fold under.
 
     They travel together because the fold needs both wherever it broadcasts a
-    NULL against "all values of that dim". `axes[dim]` is the dim's axis
-    relation, and a dim with no axis raises `KeyError`.
+    NULL against "all values of that dimension". `axes[dim]` is the dimension's axis
+    relation, and a dimension with no axis raises `KeyError`.
 
     Parameters
     ----------
     schema : Schema
         The record's schema.
     relations : dict of str to DuckDBPyRelation
-        Each declared dim's folded axis relation, full row rather than the dim's
-        column alone - its properties ride along; a multi-dim's column is
-        its struct column. A dim with no rows anywhere is absent rather than
+        Each declared dimension's folded axis relation, full row rather than the dimension's
+        column alone - its properties ride along; a multi-dimension's column is
+        its struct column. A dimension with no rows anywhere is absent rather than
         present-and-empty.
     dimension_owners : dict of str to UUID
         Each folded axis's owner: the layer whose `dimensions/<dim>.parquet` it
-        resolved to. A dim with `one_of` has none, its axis being the schema's.
+        resolved to. A dimension with `one_of` has none, its axis being the schema's.
     dead : dict of str to DuckDBPyRelation
-        Each `mortal` dim's dead labels, keyed as its axis.
+        Each `mortal` dimension's dead labels, keyed as its axis.
 
     Notes
     -----
@@ -463,9 +463,9 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         Parameters
         ----------
         axis
-            Opens a dim's folded axis, given the dim and its owner.
+            Opens a dimension's folded axis, given the dimension and its owner.
         dead
-            Opens a dim's dead labels, called only where its row has any.
+            Opens a dimension's dead labels, called only where its row has any.
         """
         return cls(
             schema=schema,
@@ -484,7 +484,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
     ) -> Axes:
         """The axes `revision_id`'s shared tables hold, given its `dimension_owners` rows.
 
-        A `one_of` dim's axis is the schema's, so it is not among them.
+        A `one_of` dimension's axis is the schema's, so it is not among them.
 
         Notes
         -----
@@ -521,13 +521,13 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         Each axis and dead label set is a table (`_fold_name`), built by
         whichever cursor misses it first; `dimension_owners` is created after
         them, so a reader finding it finds every table it names. A `one_of`
-        dim's axis is the schema's, carried so a fold onto these axes binds
+        dimension's axis is the schema's, carried so a fold onto these axes binds
         no `VALUES` list per read.
 
         Notes
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
-        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+        - [a dimension with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
         """
         schema, ws = sources[-1].schema, sources[-1].workspace
         con = ws.con
@@ -569,7 +569,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
         sources: Sequence[LayerSource],
         split: tuple[Axes | None, list[LayerSource]] | None = None,
     ) -> Axes:
-        """Resolve every dim the last source's schema declares and the dead labels.
+        """Resolve every dimension the last source's schema declares and the dead labels.
 
         Parameters
         ----------
@@ -643,7 +643,7 @@ class Axes(Mapping[str, DuckDBPyRelation]):
     def owners(self, con: DuckDBPyConnection) -> DuckDBPyRelation:
         """Return `(dimension, layer_uuid, has_dead)`, one row per `dimension_owners` entry.
 
-        `has_dead` says whether the dim has dead labels; every dim with dead
+        `has_dead` says whether the dimension has dead labels; every dimension with dead
         labels has an axis, so none is left out.
 
         Notes

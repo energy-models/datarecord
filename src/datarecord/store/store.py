@@ -595,7 +595,7 @@ class Store:
         return f"{self.resolved_dir(id)}owner_map.parquet"
 
     def dimension_owners_uri(self, id: UUID | str) -> str:
-        """Where revision `id`'s dim owners are materialised.
+        """Where revision `id`'s dimension owners are materialised.
 
         Notes
         -----
@@ -1346,7 +1346,7 @@ class Revision(_OfStore):
     # -- tree ---------------------------------------------------------------
 
     def materialise(self) -> None:
-        """Write this node's resolved files - owner map, dim owners and dead labels.
+        """Write this node's resolved files - owner map, dimension owners and dead labels.
 
         A policy rather than a lifecycle step, and purely additive: it changes
         no answer, only how many layers a descendant's read touches. Once these

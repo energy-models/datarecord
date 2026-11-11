@@ -73,9 +73,9 @@ def fold_layer(
 
     `schema` is the layer's own, which `parent` must already be extended to
     (`_widened`). The parent rows naming a label `removed` holds are dropped
-    first, per `partial` dim; a label inside a struct is reached through its
+    first, per `partial` dimension; a label inside a struct is reached through its
     tuple, which the layer removed with it. A parent row a row of `own`
-    covers, naming no `partial` dim the parent row leaves NULL, is dropped;
+    covers, naming no `partial` dimension the parent row leaves NULL, is dropped;
     one an own row crosses stays as written, and the layer owns an overlap
     row naming every label either names. `None` where neither side holds a
     row.
@@ -85,7 +85,7 @@ def fold_layer(
     attribute
         The one attribute `parent` and `own` hold rows of, where they hold one.
     refuse
-        The layer `own` is, where it is checked for leaving a dim outside
+        The layer `own` is, where it is checked for leaving a dimension outside
         `partial` unfilled: a frozen layer, as a workspace first folds it.
     keep
         Applied to `own`, the parent rows it leaves and the pairs the check
@@ -94,7 +94,7 @@ def fold_layer(
     Raises
     ------
     ValueError
-        Where `refuse` is given and a row of `own` leaves a dim outside
+        Where `refuse` is given and a row of `own` leaves a dimension outside
         `partial` NULL over a parent row naming it, and the layer holds no row
         naming it there.
 
@@ -128,7 +128,7 @@ def fold_layer(
 def _prune(
     parent: DuckDBPyRelation, removed: Mapping[str, DuckDBPyRelation]
 ) -> DuckDBPyRelation:
-    """`parent` without the rows naming a label `removed` holds, per `partial` dim."""
+    """`parent` without the rows naming a label `removed` holds, per `partial` dimension."""
     for name, gone in removed.items():
         gone = gone.project(col(name).alias("_gone"))
         parent = parent.join(gone, col(name) == col("_gone"), how="anti")
@@ -136,7 +136,7 @@ def _prune(
 
 
 def _domain(schema: Schema, attribute: str) -> int:
-    """The `partial` dims `attribute` is over, as a `null_pattern`; every one for an undeclared attribute."""
+    """The `partial` dimensions `attribute` is over, as a `null_pattern`; every one for an undeclared attribute."""
     if attribute not in schema.attributes:
         return (1 << len(schema.partial_dimensions)) - 1
     over = schema.dimensions_of(attribute)
@@ -170,7 +170,7 @@ def _incomparable(p: str, o: str) -> str:
 
 
 def _not_within(p: str, o: str) -> str:
-    """Whether an own row naming `o` names a dim a parent row naming `p` leaves NULL."""
+    """Whether an own row naming `o` names a dimension a parent row naming `p` leaves NULL."""
     return f"({o} & {p}) <> {o}"
 
 
@@ -180,7 +180,7 @@ def _choices(
     """Per row, the patterns `x` within its attribute's domain that `allowed(_p, x)` admits.
 
     Computed per row rather than bound as a constant list, whose size grows
-    as 4 to the number of `partial` dims.
+    as 4 to the number of `partial` dimensions.
     """
     dom = _domain_of(schema) if attribute is None else lit(_domain(schema, attribute))
     n = 1 << len(schema.partial_dimensions)
@@ -195,7 +195,7 @@ def _expanded(
     """`rel` with `_p` its row's pattern, and one copy per pattern in `choices`.
 
     Each copy holds its pattern in `_x` and, in `_k_<dim>`, the row's label on
-    each `partial` dim the pattern names, NULL elsewhere: the index values the
+    each `partial` dimension the pattern names, NULL elsewhere: the index values the
     row agrees with any row with exactly that pattern on. Every column is
     prefixed `prefix`.
     """
@@ -213,10 +213,10 @@ def _expanded(
 def _uncovered_by(
     kept: DuckDBPyRelation, own: DuckDBPyRelation, schema: Schema
 ) -> DuckDBPyRelation:
-    """`kept` without each row a row of `own` covers naming no `partial` dim it leaves NULL.
+    """`kept` without each row a row of `own` covers naming no `partial` dimension it leaves NULL.
 
     Each row of `kept` is expanded into one copy per subset of the set of
-    dims it sets, keyed by its labels there, which an own row naming exactly that
+    dimensions it sets, keyed by its labels there, which an own row naming exactly that
     subset equals: one semi-join finds the covered rows, one anti-join drops
     them.
     """
@@ -259,9 +259,9 @@ def _meeting(
 ) -> DuckDBPyRelation:
     """Each row of `kept` beside each row of `own` it shares index values with, where `allowed(named(parent), named(own))`.
 
-    Two rows share index values where they agree on the dims both name. Each side
+    Two rows share index values where they agree on the dimensions both name. Each side
     is expanded into a copy per pattern the other side's row may hold
-    under `allowed`, keyed by its labels on the dims the two patterns share; one
+    under `allowed`, keyed by its labels on the dimensions the two patterns share; one
     equi-join on (attribute, the two patterns, those labels) then matches
     each pair exactly once. The own row's columns are prefixed `_o_`.
     """
@@ -304,7 +304,7 @@ def _overlaps(pairs: DuckDBPyRelation, schema: Schema) -> DuckDBPyRelation:
 
 
 def _met(schema: Schema) -> list[Expression]:
-    """A pair's common index values: the own row's label on each dim it names, the parent row's elsewhere."""
+    """A pair's common index values: the own row's label on each dimension it names, the parent row's elsewhere."""
     return [
         coalesce(col(f"_o_{d}"), col(d)).alias(d) for d in schema.partial_dimensions
     ]
@@ -313,20 +313,20 @@ def _met(schema: Schema) -> list[Expression]:
 def _refuse_unfilled(
     pairs: DuckDBPyRelation, own: DuckDBPyRelation, schema: Schema, layer_id: UUID
 ) -> None:
-    """Refuse a layer leaving a dim outside its `partial` NULL over a parent row naming it, unfilled.
+    """Refuse a layer leaving a dimension outside its `partial` NULL over a parent row naming it, unfilled.
 
-    The layer must hold a row naming the dim at the index values the two share.
+    The layer must hold a row naming the dimension at the index values the two share.
     `pairs` is `_meeting` of the parent rows and `own` where the own row
-    names a dim the parent row leaves NULL.
+    names a dimension the parent row leaves NULL.
 
     Raises
     ------
     ValueError
-        Naming the layer, the attribute, the dim and the labels the two share.
+        Naming the layer, the attribute, the dimension and the labels the two share.
 
     Notes
     -----
-    - [a dim outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dim-outside-partial)
+    - [a dimension outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dimension-outside-partial)
     """
     dims = schema.partial_dimensions
     others = [d for d in schema.dimensions if d not in dims]
@@ -424,16 +424,16 @@ def _widened(
 ) -> DuckDBPyRelation:
     """The map `rel`, indexed and flagged under `was`, extended to `now`, which is `compatible_with` it.
 
-    A dim new to the schema gains its entry in both flag structs, false. A
-    dim new to an attribute's `dims` sets `broadcast` on that attribute's
-    rows, which hold NULL along it. A dim joining `partial` gains an index
+    A dimension new to the schema gains its entry in both flag structs, false. A
+    dimension new to an attribute's `dims` sets `broadcast` on that attribute's
+    rows, which hold NULL along it. A dimension joining `partial` gains an index
     column, NULL on each row not varying along it, and each row varying along
     it is split (`_split`). `rel` itself where `now` changes none of these.
 
     Parameters
     ----------
     dead
-        A dim joining `partial` to the labels removed along it as of `rel`'s
+        A dimension joining `partial` to the labels removed along it as of `rel`'s
         node and not held again, `None` where there are none.
     owner
         The source a map row's `layer_uuid` names.
@@ -486,14 +486,14 @@ def _split(
     dead: Callable[[str], DuckDBPyRelation | None],
     owner: Callable[[UUID], LayerSource],
 ) -> DuckDBPyRelation:
-    """`rows`, each varying along a dim of `joining`, one per label its owning layer wrote there at its index values.
+    """`rows`, each varying along a dimension of `joining`, one per label its owning layer wrote there at its index values.
 
     One NULL-safe join of each row's index values, as its layer stored them, to that
     layer's file rows of its attribute. Each new map row's flags are aggregated
     afresh from the file rows it names, as `owner_map_rows` does: inherited, a row
-    holding a dim both ways would also join the layer's row NULL there and
+    holding a dimension both ways would also join the layer's row NULL there and
     answer its label twice. A new map row naming a label `dead` holds is dropped,
-    since the read hid that row while the dim was outside `partial` and none
+    since the read hid that row while the dimension was outside `partial` and none
     will once it is an index column.
 
     Notes
@@ -608,7 +608,7 @@ def _drop_but_last(made: list[str], con: DuckDBPyConnection) -> None:
 
 
 def _pruned(schema: Schema) -> tuple[str, ...]:
-    """The memberships whose removed labels prune the owner map: the `partial` dims.
+    """The memberships whose removed labels prune the owner map: the `partial` dimensions.
 
     Notes
     -----

@@ -3,7 +3,7 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 260" width="780" height="260" style="max-width: 100%; height: auto" role="img" aria-labelledby="rx-t rx-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="rx-t">A read drops a row with a removed label on a dim outside partial</title>
+  <title id="rx-t">A read drops a row with a removed label on a dimension outside partial</title>
   <desc id="rx-d">With partial entity alone, the root writes p_max_pu for wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and the snapshot axis 0, 1, 2. The child restates the snapshot axis as 0 and 1, which removes snapshot 2, and writes no p_max_pu file. snapshot is not in the index, so the owner map assigns wind to the root. The read returns the root's rows at snapshots 0 and 1 and drops the row at snapshot 2.</desc>
   <defs>
     <marker id="rx-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">

@@ -14,7 +14,7 @@ datarecord reads a directory and a tree of layers through one interface, so code
 
 The rejected alternative is a record class per form: one class for a directory, one for a revision and one for pending edits. Each would answer the same members by its own code, and every rule about rows would be written, tested and kept in step three times. With one fold, datarecord applies one set of rules to all three forms. A reader of a hundred-layer tree calls the same members as a reader of one directory. A tool builds a model without handling layers.
 
-Even a plain directory is read through the fold, as a tree of one layer. That fold scans each attribute's rows once to build the owner map. A directory needs the scan in any case. [`flags`](../reference/record.md) reports which dims each attribute's rows set or leave NULL. No parquet footer states that for a file that mixes a series and a constant.
+Even a plain directory is read through the fold, as a tree of one layer. That fold scans each attribute's rows once to build the owner map. A directory needs the scan in any case. [`flags`](../reference/record.md) reports which dimensions each attribute's rows set or leave NULL. No parquet footer states that for a file that mixes a series and a constant.
 
 The protocol is structural, so a framework's own object may satisfy it too. A PyPSA network presented as a record depends on nothing in datarecord. The code that reads it cannot tell it from a `Record` ([present a framework object as a record](../howto/present-a-framework-object.md)).
 
@@ -38,11 +38,11 @@ The cost is DuckDB as a hard dependency. A reader written in polars or pandas ex
 
 ## Rows as written
 
-A record exposes an attribute's rows as its layers wrote them, with each NULL left NULL. A NULL in a dim's column means every label of its dim, which is [the broadcast rule](../reference/data-model.md). You, or a tool, apply the rule with `settle` when you need one value per coordinate ([read a record](../howto/read-a-record.md)).
+A record exposes an attribute's rows as its layers wrote them, with each NULL left NULL. A NULL in a dimension's column means every label of its dimension, which is [the broadcast rule](../reference/data-model.md). You, or a tool, apply the rule with `settle` when you need one value per coordinate ([read a record](../howto/read-a-record.md)).
 
 The rejected alternative is a read that applies the rule first. It would expand a constant `p_max_pu` to one row per snapshot, and DuckDB would run the expansion for every reader, needed or not. With rows as written, a value stored once is returned once. A framework that stores a constant apart from a series then tells the two apart without comparing values.
 
-The cost is a step that the reader must run. A reader that ignores the rule takes a NULL in a dim's column for a missing label. Where two rows cover one coordinate, datarecord guarantees that one sets every dim the other sets. So `settle` always keeps one row at each coordinate ([resolution](../reference/resolution.md)).
+The cost is a step that the reader must run. A reader that ignores the rule takes a NULL in a dimension's column for a missing label. Where two rows cover one coordinate, datarecord guarantees that one sets every dimension the other sets. So `settle` always keeps one row at each coordinate ([resolution](../reference/resolution.md)).
 
 ## What is out of scope
 

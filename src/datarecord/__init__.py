@@ -4,7 +4,7 @@
 
 """Labeled data with a declared schema, stored as parquet, read as DuckDB relations.
 
-A record holds dims, properties and attributes. It is one directory or
+A record holds dimensions, properties and attributes. It is one directory or
 a tree of layers, and `RecordLike` is the interface a reader codes against.
 
 Notes

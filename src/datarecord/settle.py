@@ -40,18 +40,18 @@ def settle(
 ) -> DuckDBPyRelation:
     """Settle the long rows of `rel` by the broadcast rule, one row per coordinate.
 
-    A row NULL on a dim in `labels` takes each label there, and a row
+    A row NULL on a dimension in `labels` takes each label there, and a row
     naming a label outside `labels`, or covering none, is dropped. At each
-    coordinate the row naming every dim in `labels` that the other rows
-    there name is kept. A dim outside `labels` is kept as written, a
-    NULL there being one more label, and `breakpoint` is no dim, so a
+    coordinate the row naming every dimension in `labels` that the other rows
+    there name is kept. A dimension outside `labels` is kept as written, a
+    NULL there being one more label, and `breakpoint` is no dimension, so a
     curve is kept or dropped whole.
 
     Parameters
     ----------
     labels
-        Per dim, a relation holding its labels, or its tuples for a
-        multi-dim, in a column of the dim's name.
+        Per dimension, a relation holding its labels, or its tuples for a
+        multi-dimension, in a column of the dimension's name.
     flags
         The attribute's `Flags`, or flags overstating them; they only spare
         work, so overstating changes no value.
@@ -62,7 +62,7 @@ def settle(
     Raises
     ------
     duckdb.Error
-        On fetch, where no row names every dim the rows covering a coordinate name.
+        On fetch, where no row names every dimension the rows covering a coordinate name.
 
     Notes
     -----
@@ -113,20 +113,20 @@ def most_specific(
     crossed: Expression,
     twins: Expression | None = None,
 ) -> DuckDBPyRelation:
-    """Keep, at each coordinate, the row of `rel` naming every dim the other rows there name.
+    """Keep, at each coordinate, the row of `rel` naming every dimension the other rows there name.
 
     `rel` carries each row's pattern as a `null_pattern` in `_named`, which the
-    result drops. `breakpoint` is no dim, so a curve is kept or
+    result drops. `breakpoint` is no dimension, so a curve is kept or
     dropped whole.
 
     Parameters
     ----------
     crossed
-        The value at a coordinate where no row names every dim the rows there
+        The value at a coordinate where no row names every dimension the rows there
         name; an `error` there fails the query on fetch.
     twins
         The value where two rows at one coordinate and breakpoint both name
-        every such dim; None keeps both.
+        every such dimension; None keeps both.
 
     Notes
     -----
@@ -242,7 +242,7 @@ def unsettled(
     Two rows meet where they agree on every one of `dims` both name; a
     coordinate where they meet takes the labels either names. There the
     broadcast rule finds no row more specific than both. The relation is lazy
-    and yields one column per dim.
+    and yields one column per dimension.
 
     Notes
     -----

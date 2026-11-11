@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Materialised revisions: a node's dim owners, dead labels and owner map, on disk.
+"""Materialised revisions: a node's dimension owners, dead labels and owner map, on disk.
 
 Notes
 -----
@@ -35,7 +35,7 @@ def materialised(revision_id: UUID, store: Store) -> bool:
     """Whether `revision_id` is materialised.
 
     A node's resolved files are written together (`materialise`), the map
-    last, so one map answers for the dim owners and dead labels beside it.
+    last, so one map answers for the dimension owners and dead labels beside it.
 
     This is a filesystem question rather than recorded state: layers are
     write-once, so a node's resolved files are valid forever and their
@@ -89,7 +89,7 @@ def sources_to_read(lineage: list[Manifest], store: Store) -> list[LayerSource]:
 def materialise(
     revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
-    """Write `revision_id`'s resolved files: owner map, dim owners and dead labels.
+    """Write `revision_id`'s resolved files: owner map, dimension owners and dead labels.
 
     Purely additive. It changes no answer a read would give, only how many
     layers a read touches to reach it: once these files exist, a descendant's
@@ -138,7 +138,7 @@ def _to_parquet(rel: DuckDBPyRelation, uri: str, con: DuckDBPyConnection) -> Non
 def _materialise_dims(
     revision_id: UUID, sources: Sequence[LayerSource], store: Store
 ) -> None:
-    """Write this node's dim owners and dead labels under its `resolved/`, not its layer.
+    """Write this node's dimension owners and dead labels under its `resolved/`, not its layer.
 
     Notes
     -----

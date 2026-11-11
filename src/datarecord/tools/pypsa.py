@@ -76,8 +76,8 @@ if TYPE_CHECKING:
 SNAPSHOT, PERIOD, SCENARIO = "snapshot", "period", "scenario"
 #: The values in one batch of a melted series, about a parquet row group.
 _MELT_BATCH = 122_880
-#: PyPSA's name for a multi-period snapshot's inner level: the dim of those
-#: timesteps, a field of the multi-dim `snapshot` beside `period`.
+#: PyPSA's name for a multi-period snapshot's inner level: the dimension of those
+#: timesteps, a field of the multi-dimension `snapshot` beside `period`.
 TIMESTEP = "timestep"
 #: A scenario's weight, not PyPSA's `weight`: that name is a Generator attribute,
 #: and a name holds one spec record-wide.
@@ -90,27 +90,27 @@ LINE_TYPE, TRANSFORMER_TYPE = "line_type", "transformer_type"
 CTYPE = "ctype"
 #: `ctype` as a `default_by` names it, by its subject.
 BY_CTYPE = f"{ENTITY}.{CTYPE}"
-#: The PyPSA types of catalog metadata, each a dim whose every column is a property.
+#: The PyPSA types of catalog metadata, each a dimension whose every column is a property.
 _CATALOG_TYPES = {"LineType": LINE_TYPE, "TransformerType": TRANSFORMER_TYPE}
-#: The PyPSA types whose members are labels of a dim of their own, not entities.
+#: The PyPSA types whose members are labels of a dimension of their own, not entities.
 _AXIS_TYPES = {
     "Bus": BUS,
     "Carrier": CARRIER,
     "SubNetwork": SUB_NETWORK,
     **_CATALOG_TYPES,
 }
-#: The PyPSA type of each `_AXIS_TYPES` dim, the `component` a shape on it names.
+#: The PyPSA type of each `_AXIS_TYPES` dimension, the `component` a shape on it names.
 _TYPE_OF = {dim: ctype for ctype, dim in _AXIS_TYPES.items()}
 #: PyPSA's type whose members are no labels: each is a property of the label it outlines.
 _SHAPE = "Shape"
 #: What names a property as a shape's geometry, the shape's `type` after it.
 _SHAPE_PREFIX = "shape_"
-#: The dims of a record's rows, which no custom column may be named like.
+#: The dimensions of a record's rows, which no custom column may be named like.
 _ROW_DIMS = frozenset({SNAPSHOT, TIMESTEP, PERIOD, SCENARIO, ENTITY, CONNECTION})
 #: The registry inputs declared as properties, by subject: what describes a
 #: label rather than data a model optimises against. `entity` also has
-#: `ctype`, a `carrier` property is one of the `carrier` dim, and a
-#: `_CATALOG_TYPES` dim takes every registry input as a property.
+#: `ctype`, a `carrier` property is one of the `carrier` dimension, and a
+#: `_CATALOG_TYPES` dimension takes every registry input as a property.
 _PROPERTIES = {
     ENTITY: ("carrier", "sign", "type"),
     BUS: ("carrier", "type", "x", "y", "unit", "location"),
@@ -119,7 +119,7 @@ _PROPERTIES = {
 }
 #: How a SubNetwork's `carrier` is described, PyPSA registering it as an output.
 _SUB_NETWORK_CARRIER = "The carrier of a sub-network's buses."
-#: How a shape's geometry and a dim shapes make are described.
+#: How a shape's geometry and a dimension shapes make are described.
 _GEOMETRY = "A shape outlining the label, as WKT in the CRS `meta` names."
 _SHAPE_DIM = "A label that shapes outline."
 REQUIRED_DIMS = frozenset({SNAPSHOT, PERIOD, SCENARIO})
@@ -240,7 +240,7 @@ class NetworkShape:
 
     @cached_property
     def snapshots(self) -> pd.DataFrame:
-        """The `snapshot` axis in axis order, a multi-dim's tuples as a column per field."""
+        """The `snapshot` axis in axis order, a multi-dimension's tuples as a column per field."""
         rel = self.dimensions.get(SNAPSHOT)
         if rel is None:
             return pd.DataFrame(columns=[SNAPSHOT])
@@ -285,9 +285,9 @@ def _shape_properties(schema: RecordSchema, dim: str) -> list[str]:
 
 
 def _own_dims(schema: RecordSchema) -> list[str]:
-    """The dims `schema` declares that PyPSA's does not and no shape made: a collection's, in declared order.
+    """The dimensions `schema` declares that PyPSA's does not and no shape made: a collection's, in declared order.
 
-    A dim outside PyPSA's schema that holds a shape's geometry
+    A dimension outside PyPSA's schema that holds a shape's geometry
     (`_shape_properties`) is one shapes made, not a collection's.
 
     Notes
@@ -312,11 +312,11 @@ def _rebuilt(schema: RecordSchema, **fields: Any) -> RecordSchema:
 _ACTIVE_FALLBACK = {"build_year": 0, "lifetime": math.inf}
 #: The period a `GlobalConstraint` applies in, NULL applying in every period.
 _INVESTMENT_PERIOD = "investment_period"
-#: The dims a network is built from a selection squeezing, beside a record's own.
+#: The dimensions a network is built from a selection squeezing, beside a record's own.
 _SQUEEZABLE = frozenset({PERIOD, SCENARIO})
 #: The keywords selecting snapshots, at all of which a results layer restates a series.
 _TIME = frozenset({SNAPSHOT, TIMESTEP, PERIOD})
-#: The dims PyPSA holds a value over, which an attribute its registry declares no spec of may be over.
+#: The dimensions PyPSA holds a value over, which an attribute its registry declares no spec of may be over.
 _HELD = frozenset({ENTITY, CONNECTION, SCENARIO, SNAPSHOT, *_AXIS_TYPES.values()})
 
 
@@ -326,7 +326,7 @@ def _root(record: RecordLike) -> RecordLike:
 
 
 def _squeezed(record: RecordLike) -> frozenset[str]:
-    """The dims a selection squeezes out of its base, none for any other record."""
+    """The dimensions a selection squeezes out of its base, none for any other record."""
     dims = record.schema.dimensions
     return frozenset(d for d in _root(record).schema.dimensions if d not in dims)
 
@@ -338,13 +338,13 @@ def _narrowed(record: RecordLike) -> RecordLike:
     the selection drops. Where the selection holds fewer periods than its
     base, an entity active in none of them goes, and one whose
     `investment_period` names another (`_active`). A selection keeping a
-    dim of the record's own is left as it is: `verify` reports the dim, and
+    dimension of the record's own is left as it is: `verify` reports the dimension, and
     `PyPSACollection` narrows each member.
 
     Raises
     ------
     ValueError
-        If the selection squeezes a dim but `period`, `scenario` or a dim of
+        If the selection squeezes a dimension but `period`, `scenario` or a dimension of
         the record's own, holds no snapshot, or as `_active` does.
 
     Notes
@@ -358,8 +358,8 @@ def _narrowed(record: RecordLike) -> RecordLike:
     if refused:
         msg = (
             f"A network is built from a selection squeezing `period`, `scenario` "
-            f"or a dim of the record's own, not {refused}: select one label as a "
-            "list of one to keep the dim"
+            f"or a dimension of the record's own, not {refused}: select one label as a "
+            "list of one to keep the dimension"
         )
         raise ValueError(msg)
     snapshots = _axis_labels(record, SNAPSHOT)
@@ -447,7 +447,7 @@ def _resolved(record: RecordLike, fallbacks: Mapping[str, float]) -> pd.DataFram
     Raises
     ------
     ValueError
-        If an entity holds several values of one: the selection keeps a dim it varies over.
+        If an entity holds several values of one: the selection keeps a dimension it varies over.
     """
     schema = record.schema
     frame = record.properties[ENTITY].project(col(ENTITY), col(CTYPE)).df()
@@ -467,7 +467,7 @@ def _resolved(record: RecordLike, fallbacks: Mapping[str, float]) -> pd.DataFram
             held = settle(rows, entities, over).df()
         kept = [c for c in held.columns if c in schema.dimensions and c != ENTITY]
         if held[kept].notna().any(axis=None):
-            msg = f"`{attr}` varies over a dim the selection keeps, of {kept}: select one label of it"
+            msg = f"`{attr}` varies over a dimension the selection keeps, of {kept}: select one label of it"
             raise ValueError(msg)
         by_entity = held.set_index(ENTITY)["value"]
         columns[attr] = frame[ENTITY].map(by_entity).astype(float).fillna(default)
@@ -491,7 +491,7 @@ def _active(record: RecordLike, periods: list[Any]) -> set[Any]:
     Raises
     ------
     ValueError
-        If an entity holds several values of one: the selection keeps a dim it varies over.
+        If an entity holds several values of one: the selection keeps a dimension it varies over.
     """
     resolved = _resolved(record, {**_ACTIVE_FALLBACK, _INVESTMENT_PERIOD: math.nan})
     invested = resolved[_INVESTMENT_PERIOD]
@@ -511,17 +511,17 @@ def _live(c: pypsa.Components, periods: Iterable[Any]) -> pd.Index:
 
 
 def _multiperiod(record: RecordLike) -> bool:
-    """Whether `record` is multi-period: its `snapshot` is a multi-dim over `period`."""
+    """Whether `record` is multi-period: its `snapshot` is a multi-dimension over `period`."""
     spec = record.schema.dimensions.get(SNAPSHOT)
     return spec is not None and PERIOD in (spec.over or {})
 
 
 def _unheld(record: RecordLike, flags: Mapping[str, Flags]) -> dict[str, list[str]]:
-    """Each attribute of `flags`, with the dims its registry spec lacks along which its rows differ (`_apart`).
+    """Each attribute of `flags`, with the dimensions its registry spec lacks along which its rows differ (`_apart`).
 
-    A network holds one value of the attribute across such a dim, so it
+    A network holds one value of the attribute across such a dimension, so it
     would keep one row's and drop the others. An attribute the registry
-    declares no spec of is held over `_HELD`. A dim of the record's own is
+    declares no spec of is held over `_HELD`. A dimension of the record's own is
     left to `_unsupported_dims`.
 
     Notes
@@ -554,11 +554,11 @@ def _apart(record: RecordLike, attr: str, dim: str) -> bool:
 
 
 def _one_labelled(record: RecordLike) -> dict[str, DuckDBPyRelation]:
-    """Each dim but `snapshot` that `record` holds exactly one label of, with its axis, for `settle`.
+    """Each dimension but `snapshot` that `record` holds exactly one label of, with its axis, for `settle`.
 
     Over one label, the row naming it is kept over one leaving it NULL. Over
     several, a row naming one is refused before (`_unheld`) unless PyPSA holds
-    the dim, so settling would only copy a NULL row to every label. A NULL
+    the dimension, so settling would only copy a NULL row to every label. A NULL
     `snapshot` marks a static row (`_assign_static`), which settling would
     give the one snapshot's label.
     """
@@ -712,7 +712,7 @@ def _series_frame(
     every column given as a series, so completing them would move a static
     component into `dynamic`. A row is placed by the positions of its
     snapshot and entity, so a name never becomes an SQL identifier. A
-    multi-dim snapshot is matched by its fields (`NetworkShape.snapshots`).
+    multi-dimension snapshot is matched by its fields (`NetworkShape.snapshots`).
     """
     group_by = list(shape.snapshots.columns)
     keys = shape.index_names
@@ -764,7 +764,7 @@ def _exported(c) -> bool:
 
 
 def _as_entities(c) -> bool:
-    """Whether `c`'s members are written as entities, not as labels of their own dim or as shapes."""
+    """Whether `c`'s members are written as entities, not as labels of their own dimension or as shapes."""
     return _exported(c) and c.name not in {*_AXIS_TYPES, _SHAPE}
 
 
@@ -831,7 +831,7 @@ class _BaseRows:
     def static(self, dim: str) -> pd.DataFrame | None:
         """`rel` keyed by `dim`, one `(entity, scenario, value, static)` per entity and scenario; `None` where it has no `dim`.
 
-        A row is static where no dim but `dim` and `scenario` is set, and an
+        A row is static where no dimension but `dim` and `scenario` is set, and an
         entity at a scenario where each of its rows is; only then is `value`
         its one row's. Aggregated in DuckDB once per `dim`: a series' rows
         never reach pandas.
@@ -865,12 +865,12 @@ class _BaseRows:
 
 
 def _dim_of(ctype: str) -> str:
-    """The dim `ctype`'s members are labels of: `entity`, or their own (`_AXIS_TYPES`)."""
+    """The dimension `ctype`'s members are labels of: `entity`, or their own (`_AXIS_TYPES`)."""
     return _AXIS_TYPES.get(ctype, ENTITY)
 
 
 def _static_dims(name: str, over: str) -> frozenset[str]:
-    """The dims of attribute `name` over `over`, less `snapshot`.
+    """The dimensions of attribute `name` over `over`, less `snapshot`.
 
     `scenario` is among them unless PyPSA keeps `name` the same in every
     scenario (`_SCENARIO_INVARIANT`).
@@ -911,7 +911,7 @@ def _colliding_names(n: pypsa.Network) -> frozenset[str]:
 
     Notes
     -----
-    - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+    - [a label is unique within its dimension](https://energy-models.github.io/datarecord/reference/format/#labels)
     """
     seen: dict[str, str] = {}
     clashing: set[str] = set()
@@ -940,8 +940,8 @@ class _Custom:
     """A network's custom static columns, as the schema declares them.
 
     A text column, one that as an attribute would hold one name over two
-    dims, or any column of a `_CATALOG_TYPES` type, is a property of its
-    type's dim; any other an attribute over it.
+    dimensions, or any column of a `_CATALOG_TYPES` type, is a property of its
+    type's dimension; any other an attribute over it.
 
     Notes
     -----
@@ -950,9 +950,9 @@ class _Custom:
 
     #: Exported type -> its custom columns and their dtypes.
     columns: dict[str, dict[str, str]]
-    #: Dim -> its custom properties and their dtypes.
+    #: Dimension -> its custom properties and their dtypes.
     properties: dict[str, dict[str, str]]
-    #: The custom attributes, each over its type's dim.
+    #: The custom attributes, each over its type's dimension.
     attributes: dict[str, AttributeSpec]
 
     @classmethod
@@ -962,9 +962,9 @@ class _Custom:
         Raises
         ------
         ValueError
-            If types of one dim carry a custom property with different dtypes,
+            If types of one dimension carry a custom property with different dtypes,
             a custom column is named like a shape's geometry (`shape_`) or a
-            dim of the record's rows (`_ROW_DIMS`), or a Shape carries one.
+            dimension of the record's rows (`_ROW_DIMS`), or a Shape carries one.
         """
         columns: dict[str, dict[str, str]] = {}
         for c in n.components:
@@ -983,7 +983,7 @@ class _Custom:
             if clashing:
                 msg = (
                     f"The custom columns {clashing} of {c.name} have no place: "
-                    f"{sorted(_ROW_DIMS)} are dims of a record's rows, so no property or "
+                    f"{sorted(_ROW_DIMS)} are dimensions of a record's rows, so no property or "
                     "attribute is named like one"
                 )
                 raise ValueError(msg)
@@ -1030,17 +1030,17 @@ class _Custom:
 
 
 def _outlined(n: pypsa.Network, con: DuckDBPyConnection) -> dict[str, pd.DataFrame]:
-    """`n`'s shapes as the properties of the labels they outline, by dim: each label and its `shape_{type}` geometries as WKT, in network order.
+    """`n`'s shapes as the properties of the labels they outline, by dimension: each label and its `shape_{type}` geometries as WKT, in network order.
 
-    A shape's `component` names its dim: a PyPSA type its dim (`_dim_of`),
-    any other a dim of its own, its labels the shapes' `idx`.
+    A shape's `component` names its dimension: a PyPSA type its dimension (`_dim_of`),
+    any other a dimension of its own, its labels the shapes' `idx`.
 
     Raises
     ------
     ValueError
         If a shape lacks `component`, `idx` or `type`, two share `(component,
         idx, type)`, one on a PyPSA type names no member the network writes, or
-        one names a dim PyPSA's schema declares as a dim of its own.
+        one names a dimension PyPSA's schema declares as a dimension of its own.
 
     Notes
     -----
@@ -1056,7 +1056,7 @@ def _outlined(n: pypsa.Network, con: DuckDBPyConnection) -> dict[str, pd.DataFra
         msg = (
             f"Shapes {lacking['name'].tolist()} lack a `component`, `idx` or "
             "`type`: a "
-            "shape is the property `shape_{type}` of label `idx` of the dim its "
+            "shape is the property `shape_{type}` of label `idx` of the dimension its "
             "`component` names"
         )
         raise ValueError(msg)
@@ -1084,8 +1084,8 @@ def _outlined(n: pypsa.Network, con: DuckDBPyConnection) -> dict[str, pd.DataFra
                 raise ValueError(msg)
         elif component in declared:
             msg = (
-                f"Shapes name `component` {component!r}, a dim PyPSA's schema "
-                "declares: a `component` that is no PyPSA type names a dim of its own"
+                f"Shapes name `component` {component!r}, a dimension PyPSA's schema "
+                "declares: a `component` that is no PyPSA type names a dimension of its own"
             )
             raise ValueError(msg)
         dims[component] = _dim_of(component) if component in pypsa_types else component
@@ -1256,7 +1256,7 @@ def _new_network(record: RecordLike, shape: NetworkShape) -> pypsa.Network:
 def _weightings(record: RecordLike, dim: str, table: pd.DataFrame) -> pd.DataFrame:
     """`table`, PyPSA's weightings of `dim` by label, with each one `record` stores in place.
 
-    A multi-dim's label is matched by its fields, as PyPSA's index levels.
+    A multi-dimension's label is matched by its fields, as PyPSA's index levels.
 
     Notes
     -----
@@ -1319,8 +1319,8 @@ def _as_series(c: pypsa.Components, attr: str, wide: pd.DataFrame) -> pd.DataFra
 def _add_shapes(n: pypsa.Network, record: RecordLike) -> None:
     """Add a shape per value of each `shape_{type}` property (`_shape_properties`), named `"{component} {idx} {type}"`, its geometry in the network's CRS, in every scenario.
 
-    Its `component` is its dim's PyPSA type, an entity's `ctype`, or the
-    name of a dim shapes made.
+    Its `component` is its dimension's PyPSA type, an entity's `ctype`, or the
+    name of a dimension shapes made.
 
     Notes
     -----
@@ -1422,14 +1422,14 @@ def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str,
 def _collection_members(
     model: pypsa.NetworkCollection, base: RecordLike | None
 ) -> dict[Any, pypsa.Network]:
-    """`model`'s members by their label of the dim its index names, each checked against what the dim asks of it.
+    """`model`'s members by their label of the dimension its index names, each checked against what the dimension asks of it.
 
     Raises
     ------
     ValueError
-        If `model` is indexed by more than one level, its index names a dim
+        If `model` is indexed by more than one level, its index names a dimension
         of the PyPSA schema other than `period`, the collection is written
-        over a `base` with a dim of its own other than its index's, or a
+        over a `base` with a dimension of its own other than its index's, or a
         member of a `period` collection is stochastic or holds another
         investment period than its label.
 
@@ -1440,21 +1440,21 @@ def _collection_members(
     if model.index.nlevels != 1:
         msg = (
             "A `NetworkCollection` is written with one index level, named for "
-            f"the dim its labels are of, not with {list(model.index.names)}"
+            f"the dimension its labels are of, not with {list(model.index.names)}"
         )
         raise ValueError(msg)
     dim = model.index.name
     if dim in _registry().schema.dimensions.keys() - {PERIOD}:
         msg = (
-            f"A collection's index names {dim!r}, a dim the PyPSA schema "
-            "declares: it is `period` or a dim of its own, and a stochastic "
+            f"A collection's index names {dim!r}, a dimension the PyPSA schema "
+            "declares: it is `period` or a dimension of its own, and a stochastic "
             "network holds its scenarios itself"
         )
         raise ValueError(msg)
     own = [] if base is None else _own_dims(_root(base).schema)
     if set(own) - {dim}:
         msg = (
-            f"A collection over `{dim}` is written over a `base` with a dim of "
+            f"A collection over `{dim}` is written over a `base` with a dimension of "
             f"its own, {own}: a record has one, since collections do not nest"
         )
         raise ValueError(msg)
@@ -1491,7 +1491,7 @@ def _require_base(results_only: bool, base: RecordLike | None) -> None:
 
 
 def _member_base(base: RecordLike | None, dim: str, label: Any) -> RecordLike | None:
-    """`base` at `label` of `dim`, where that is a dim of its own, so each member restates its label's results alone; else `base` as it is."""
+    """`base` at `label` of `dim`, where that is a dimension of its own, so each member restates its label's results alone; else `base` as it is."""
     if base is None or dim not in _own_dims(base.schema):
         return base
     return select(base, **{dim: label})
@@ -1596,7 +1596,7 @@ def _ordered_union(what: str, indexes: Mapping[Any, pd.Index], by: str) -> pd.In
 
     Notes
     -----
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     union = next(iter(indexes.values()))[:0]
     for label, index in indexes.items():
@@ -1960,7 +1960,7 @@ class PyPSATool(Tool):
     def verify(self, record: RecordLike) -> Requirements:
         """What this record, a selection narrowed as `build` narrows it, fails to supply for a PyPSA build; falsy if it is usable.
 
-        Reports PyPSA's axes the schema lacks, `partial` dims and dims of its own this
+        Reports PyPSA's axes the schema lacks, `partial` dimensions and dimensions of its own this
         tool cannot honour (and nothing else where it finds any), component
         types PyPSA does not know, required attributes (by source) with no
         row, property or declared default, a port's bus where a member has no
@@ -1985,7 +1985,7 @@ class PyPSATool(Tool):
     def _verify(
         self, record: RecordLike
     ) -> tuple[Requirements, dict[str, _TypeMembers]]:
-        """`verify`, with the members it read for each known type, for `build` to reuse; empty where a `partial` or dim check failed."""
+        """`verify`, with the members it read for each known type, for `build` to reuse; empty where a `partial` or dimension check failed."""
         dims = REQUIRED_DIMS - set(record.schema.dimensions) - _squeezed(record)
         unsupported_partial = self._unsupported_partial(record)
         unsupported_dims = self._unsupported_dims(record)
@@ -2053,7 +2053,7 @@ class PyPSATool(Tool):
         ), read
 
     def _unsupported_partial(self, record: RecordLike) -> set[str]:
-        """The `partial` dims this tool cannot honour: `snapshot`.
+        """The `partial` dimensions this tool cannot honour: `snapshot`.
 
         A component's whole series must come from one layer for PyPSA's static/series split.
 
@@ -2065,7 +2065,7 @@ class PyPSATool(Tool):
         return {SNAPSHOT} if SNAPSHOT in defs.partial_dimensions else set()
 
     def _unsupported_dims(self, record: RecordLike) -> set[str]:
-        """The record's dims of its own (`_own_dims`): one network has none, a collection (`PyPSACollection`) is over one.
+        """The record's dimensions of its own (`_own_dims`): one network has none, a collection (`PyPSACollection`) is over one.
 
         Notes
         -----
@@ -2080,19 +2080,19 @@ class PyPSATool(Tool):
         selected once more as PyPSA holds it (`_narrowed`): a squeezed
         `period` is a single-period network without `investment_period`, a
         squeezed `scenario` a deterministic one, and kept scenarios' weights
-        are renormalised. A record with a dim of its own is refused, as
-        `PyPSACollection` builds it, and a selection at one label of that dim
+        are renormalised. A record with a dimension of its own is refused, as
+        `PyPSACollection` builds it, and a selection at one label of that dimension
         builds the member there.
 
         Raises
         ------
         ValueError
-            If `record` is a selection squeezing a dim but `period`,
-            `scenario` or a dim of its own, holding no snapshot, or keeping
+            If `record` is a selection squeezing a dimension but `period`,
+            `scenario` or a dimension of its own, holding no snapshot, or keeping
             scenarios weighing nothing in all, or if an attribute's rows name
-            several labels of a dim PyPSA holds it without (`_unheld`).
+            several labels of a dimension PyPSA holds it without (`_unheld`).
         UnsupportedRecordError
-            If `verify` reports anything missing, a dim of the record's own included.
+            If `verify` reports anything missing, a dimension of the record's own included.
 
         Notes
         -----
@@ -2180,7 +2180,7 @@ class PyPSATool(Tool):
         settled: Mapping[str, DuckDBPyRelation],
         con: DuckDBPyConnection,
     ) -> None:
-        """Add an `_AXIS_TYPES` type's members: its dim's labels with their properties, defaults applied, and the attributes over it, settled over its labels and `settled`."""
+        """Add an `_AXIS_TYPES` type's members: its dimension's labels with their properties, defaults applied, and the attributes over it, settled over its labels and `settled`."""
         dim = _AXIS_TYPES[ctype]
         frame = record.properties.get(dim)
         if frame is None or not frame.limit(1).fetchall():
@@ -2236,7 +2236,7 @@ class PyPSATool(Tool):
         selection the network was built from (`Record.select`): the layer is
         then over its record, each row at the labels it squeezes, one period
         squeezed writing at that period. Over the selection at one label of
-        the record's dim of its own, the network is that member, written as
+        the record's dimension of its own, the network is that member, written as
         `PyPSACollection` writes a collection of it alone.
 
         Raises
@@ -2246,26 +2246,26 @@ class PyPSATool(Tool):
             multi-period `base` whose investment periods it does not carry is
             written without `results_only`, or as results carries none and
             `base` squeezes none. If a full export is written over a
-            selection or over a record with a dim of its own, or results over
+            selection or over a record with a dimension of its own, or results over
             a record keeping one. If a deterministic network's results are
             written over a `base` holding scenarios, results over no
             `scenario` of fewer scenarios than the record holds, or a
             network's results holding a snapshot, bus or entity `base` lacks.
-            On a full export: if types of one dim carry a custom property
+            On a full export: if types of one dimension carry a custom property
             with different dtypes, a custom column is named `shape_...` or
             like `snapshot`, `timestep`, `period`, `scenario`, `entity` or
             `connection`, or a Shape carries one; if a shape lacks
             `component`, `idx` or `type`, two share all three, one on a PyPSA
             type names no member the network writes, or one's `component`
-            names a dim PyPSA's schema declares; or if a custom text column
-            named like a dim holds a value naming no label of it.
+            names a dimension PyPSA's schema declares; or if a custom text column
+            named like a dimension holds a value naming no label of it.
         UnsupportedRecordError
             If two component types share a name.
 
         Notes
         -----
         - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
-        - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+        - [a label is unique within its dimension](https://energy-models.github.io/datarecord/reference/format/#labels)
         - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
         - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
@@ -2283,7 +2283,7 @@ class PyPSATool(Tool):
             squeezed = {d: base.labels[d] for d in _squeezed(base)}
         if own and (not results_only or len(own) > 1 or own[0] not in squeezed):
             msg = (
-                f"A network is not written over a record with a dim of its own, "
+                f"A network is not written over a record with a dimension of its own, "
                 f"{own}, where its rows would reach every label: write its "
                 f"results over the selection it was built from, "
                 f"`record.select({own[0]}=label)`, or the collection with "
@@ -2444,7 +2444,7 @@ def _registry() -> _Registry:
     record-wide: the first type declaring it gives the spec, a default
     differing per type is `default_by`, and a per-port column collapses to
     its stem over `connection`. `Bus`, `Carrier`, `SubNetwork`, `LineType`
-    and `TransformerType` members are labels of their own dim
+    and `TransformerType` members are labels of their own dimension
     (`_AXIS_TYPES`); a `Shape` declares nothing here, being a property
     of the label it outlines (`_outlined`).
 
@@ -2640,7 +2640,7 @@ class _NetworkSource:
 
     @cached_property
     def _members(self) -> dict[str, pd.DataFrame]:
-        """Each `_AXIS_TYPES` and component type's members beyond PyPSA's library (`_own_static`) as labels of its dim, with the properties of that dim it has columns for and its bus columns, by type, component types in PyPSA's order.
+        """Each `_AXIS_TYPES` and component type's members beyond PyPSA's library (`_own_static`) as labels of its dimension, with the properties of that dimension it has columns for and its bus columns, by type, component types in PyPSA's order.
 
         Raises
         ------
@@ -2670,12 +2670,12 @@ class _NetworkSource:
 
     @cached_property
     def _shape_dims(self) -> list[str]:
-        """The dims the network's shapes make, those PyPSA's schema lacks."""
+        """The dimensions the network's shapes make, those PyPSA's schema lacks."""
         declared = _registry().schema.dimensions
         return [dim for dim in self._shapes if dim not in declared]
 
     def check(self) -> None:
-        """Refuse a network a full export cannot write: a property of a label or entity differing by scenario (`_unscoped`), its shapes as `_outlined` refuses them, or a custom property referring to a dim with a value naming no label of it.
+        """Refuse a network a full export cannot write: a property of a label or entity differing by scenario (`_unscoped`), its shapes as `_outlined` refuses them, or a custom property referring to a dimension with a value naming no label of it.
 
         Raises
         ------
@@ -2704,7 +2704,7 @@ class _NetworkSource:
                 if unknown:
                     msg = (
                         f"`{subject}.{name}` names {unknown}, no label of `{dim}`: "
-                        "a custom text column named like a dim refers to it"
+                        "a custom text column named like a dimension refers to it"
                     )
                     raise ValueError(msg)
 
@@ -2712,7 +2712,7 @@ class _NetworkSource:
     def schema(self) -> RecordSchema:
         """The registry's schema, widened by this network's shapes, custom columns, multi-period `snapshot` and `meta`.
 
-        A custom text property named like a dim refers to it.
+        A custom text property named like a dimension refers to it.
 
         Notes
         -----
@@ -2803,7 +2803,7 @@ class _NetworkSource:
 
     @cached_property
     def _axes(self) -> dict[str, pd.DataFrame]:
-        """Every labelled axis with its properties, by dim, in PyPSA's order; empty where the network has none.
+        """Every labelled axis with its properties, by dimension, in PyPSA's order; empty where the network has none.
 
         A carrier named but not in `n.carriers` is added after those listed,
         its properties NULL. The ports run from `0` to the highest a connection
@@ -2845,7 +2845,7 @@ class _NetworkSource:
 
     @property
     def dimensions(self) -> LazyRelations:
-        """Every axis this network holds as keys, `entity` and the multi-dim `connection` among them."""
+        """Every axis this network holds as keys, `entity` and the multi-dimension `connection` among them."""
         present = tuple(d for d, frame in self._axes.items() if len(frame) > 0)
 
         def axis(dim: str) -> DuckDBPyRelation:
@@ -2873,7 +2873,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+        - [a label is unique within its dimension](https://energy-models.github.io/datarecord/reference/format/#labels)
         """
         frames = [
             self._members[c.name]
@@ -3030,7 +3030,7 @@ class _NetworkSource:
         )
 
     def _series_coordinates(self, columns: pd.Index, dim: str) -> DuckDBPyRelation:
-        """The coordinate of each column of a dynamic frame of `dim`'s type on every dim but `snapshot`, with its 1-based position as `_col`: its label of `dim`, and its scenario where stochastic."""
+        """The coordinate of each column of a dynamic frame of `dim`'s type on every dimension but `snapshot`, with its 1-based position as `_col`: its label of `dim`, and its scenario where stochastic."""
         labels = _series_labels(columns)
         frame = pd.DataFrame({**labels, "_col": np.arange(1, len(columns) + 1)})
         column = col(ENTITY).cast(sqltypes.VARCHAR).alias(dim)
@@ -3347,7 +3347,7 @@ class _NetworkSource:
         *,
         drop_defaults: bool,
     ) -> DuckDBPyRelation | None:
-        """PyPSA's `column` as long rows of `attribute`, keyed by `c`'s dim, or at a `port` by the connection there of each entity with a bus; `None` where it has none.
+        """PyPSA's `column` as long rows of `attribute`, keyed by `c`'s dimension, or at a `port` by the connection there of each entity with a bus; `None` where it has none.
 
         A static value repeating what `base` resolves is left out (`_as_long_rel`).
 
@@ -3474,7 +3474,7 @@ class _ResultsSource(_NetworkSource):
     the network lacks (`_elsewhere`); over a multi-period `base` a value over
     no snapshot is written for the entities active in the network's periods
     alone (`_live_entities`). Over a selection, every row is at the labels
-    it squeezes of PyPSA's dims (`_lifted`).
+    it squeezes of PyPSA's dimensions (`_lifted`).
 
     Notes
     -----
@@ -3585,7 +3585,7 @@ class _ResultsSource(_NetworkSource):
                 f"The network holds {held} of the record's scenarios {scenarios}, "
                 f"so its first-stage results {first}, over no `scenario`, would "
                 "stand for every scenario: solve every scenario together, or "
-                "write a subset solved apart as a collection over a dim of its own"
+                "write a subset solved apart as a collection over a dimension of its own"
             )
             raise ValueError(msg)
 
@@ -3611,7 +3611,7 @@ class _ResultsSource(_NetworkSource):
 
     @cached_property
     def _holds(self) -> dict[str, DuckDBPyRelation]:
-        """The labels the network holds of each dim a result is over, to which it restates `base`'s results."""
+        """The labels the network holds of each dimension a result is over, to which it restates `base`'s results."""
         frames = {ENTITY: self._entity_frame[[ENTITY]], BUS: self._labels("Bus")[[BUS]]}
         if self.n.has_scenarios:
             frames[SCENARIO] = self.n.scenarios.to_frame(index=False)
@@ -3726,9 +3726,9 @@ class _ResultsSource(_NetworkSource):
         return restated
 
     def _lifted(self, attr: str, rows: DuckDBPyRelation) -> DuckDBPyRelation:
-        """The network's `rows` of `attr` at the labels `base` squeezes of PyPSA's dims, such as `scenario`, rather than NULL there.
+        """The network's `rows` of `attr` at the labels `base` squeezes of PyPSA's dimensions, such as `scenario`, rather than NULL there.
 
-        A dim of the record's own stays NULL (`_as_declared`), as a member's
+        A dimension of the record's own stays NULL (`_as_declared`), as a member's
         rows are, which `_StackedSource.of` labels where they differ.
         """
         if not isinstance(self.base, Selection):
@@ -3927,7 +3927,7 @@ def _labelled(
 
 @dataclass(frozen=True)
 class _StackedSource:
-    """A `NetworkCollection`'s members, each presented on its own, as one record along a dim (`of`).
+    """A `NetworkCollection`'s members, each presented on its own, as one record along a dimension (`of`).
 
     Notes
     -----
@@ -3962,7 +3962,7 @@ class _StackedSource:
         Raises
         ------
         ValueError
-            If two members declare different dims, properties or attributes,
+            If two members declare different dimensions, properties or attributes,
             or carry custom columns on different types, `dim` is one their
             shapes make, a member's label is one `base`'s axis of `dim`
             lacks, they order the labels they share otherwise
@@ -3977,15 +3977,15 @@ class _StackedSource:
         for label, other in rest:
             if declared(other) != declared(schema):
                 msg = (
-                    f"The network of {dim} {label!r} declares other dims, "
+                    f"The network of {dim} {label!r} declares other dimensions, "
                     f"properties, attributes or custom columns per type than "
                     f"that of {dim} {first!r}"
                 )
                 raise ValueError(msg)
         if _shape_properties(schema, dim):
             msg = (
-                f"A collection's index names {dim!r}, a dim the members' shapes "
-                "make: it is `period` or a dim of its own"
+                f"A collection's index names {dim!r}, a dimension the members' shapes "
+                "make: it is `period` or a dimension of its own"
             )
             raise ValueError(msg)
         labels = list(members)
@@ -4219,7 +4219,7 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     Notes
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
-    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+    - [axis order](https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
     """
     schema = record.schema
     if CTYPE not in schema.categorizing(ENTITY):
@@ -4236,7 +4236,7 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
 class PyPSACollectionTool(Tool):
     """Build a `pypsa.NetworkCollection` from a record and read its results back, each member through `network`.
 
-    The collection is over the record's dim of its own, one network per
+    The collection is over the record's dimension of its own, one network per
     label, or, of a multi-period record without one, over `period`: a myopic
     run, one network per investment period.
 
@@ -4258,13 +4258,13 @@ class PyPSACollectionTool(Tool):
     def verify(self, record: RecordLike) -> Requirements:
         """What the record fails to supply for any member's build (`PyPSATool.verify`), each member narrowed on its own; falsy if it is usable.
 
-        Reports each dim of its own of a record declaring more than one in
+        Reports each dimension of its own of a record declaring more than one in
         `unsupported_dimensions`, and nothing else then.
 
         Raises
         ------
         ValueError
-            If the record has no dim of its own and is not multi-period, or
+            If the record has no dimension of its own and is not multi-period, or
             as `PyPSATool.verify` raises for a member.
 
         Notes
@@ -4278,7 +4278,7 @@ class PyPSACollectionTool(Tool):
         return reduce(operator.or_, reports, Requirements())
 
     def build(self, record: RecordLike) -> pypsa.NetworkCollection:
-        """The collection of the networks of each label of the record's dim of its own, else of each period, indexed by it in axis order.
+        """The collection of the networks of each label of the record's dimension of its own, else of each period, indexed by it in axis order.
 
         A member is `network`'s build of `record.select(dim=label)`, or of
         `record.select(period=[p])`: the multi-period network of one period,
@@ -4289,7 +4289,7 @@ class PyPSACollectionTool(Tool):
         ValueError
             As `verify` and `PyPSATool.build` raise.
         UnsupportedRecordError
-            If the record has more than one dim of its own, or a member's
+            If the record has more than one dimension of its own, or a member's
             build reports anything missing.
 
         Notes
@@ -4316,29 +4316,29 @@ class PyPSACollectionTool(Tool):
     ) -> RecordLike:
         """Present a `NetworkCollection` as the one `Record` `write_layer` persists, checked whole before this returns.
 
-        The collection is over the dim its one index level names. Over
+        The collection is over the dimension its one index level names. Over
         `period` it is a myopic run, written as the one multi-period network
-        holding every member's period. Over any other name, a dim of the
+        holding every member's period. Over any other name, a dimension of the
         record's own, each member is written as `network` writes it, over
-        `base` at its label where `base` holds the dim: an attribute whose
-        values differ across the members is over the dim, one they agree on
-        written once. Over a `base` holding labels of the dim the collection
-        lacks, every result is at each member's label, and the dim's axis and
+        `base` at its label where `base` holds the dimension: an attribute whose
+        values differ across the members is over the dimension, one they agree on
+        written once. Over a `base` holding labels of the dimension the collection
+        lacks, every result is at each member's label, and the dimension's axis and
         the SubNetworks are left to `base`.
 
         Raises
         ------
         ValueError
             If `base` is missing with `results_only`, or given without it. If
-            the collection has more than one index level, its dim is one the
+            the collection has more than one index level, its dimension is one the
             PyPSA schema declares but `period` (`scenario` included) or one
-            its shapes make, or `base` has a dim of its own other than it.
+            its shapes make, or `base` has a dimension of its own other than it.
             If a `period` member is stochastic or holds another investment
             period than its label, or two hold different static values for
             one entity active in both. If members differ where they must
             agree: snapshots, components, schemas, custom columns per type,
             axis order or properties. If a label is one `base`'s axis of the
-            dim lacks, or as `PyPSATool.to_datarecord` refuses a member.
+            dimension lacks, or as `PyPSATool.to_datarecord` refuses a member.
         UnsupportedRecordError
             If two component types share a name.
 
@@ -4372,27 +4372,27 @@ class PyPSACollectionTool(Tool):
 
 
 def _nested(record: RecordLike) -> Requirements:
-    """The record's dims of its own where it declares more than one, which no collection is over; empty otherwise."""
+    """The record's dimensions of its own where it declares more than one, which no collection is over; empty otherwise."""
     own = _own_dims(record.schema)
     return Requirements(unsupported_dimensions=frozenset(own if len(own) > 1 else ()))
 
 
 def _collected(record: RecordLike) -> tuple[str, dict[Any, Selection]]:
-    """The dim a collection of `record` is over, and each member's selection by its label.
+    """The dimension a collection of `record` is over, and each member's selection by its label.
 
-    The record's one dim of its own, each member at one label of it, else
+    The record's one dimension of its own, each member at one label of it, else
     `period`, each member at a list of one period, so it builds a
     multi-period network of that period as a myopic run holds it.
 
     Raises
     ------
     ValueError
-        If the record has no dim of its own and is not multi-period.
+        If the record has no dimension of its own and is not multi-period.
     """
     own = _own_dims(record.schema)
     if not own and not _multiperiod(record):
         msg = (
-            "A collection is built from a record with a dim of its own, one "
+            "A collection is built from a record with a dimension of its own, one "
             "network per label, or a multi-period one, one network per period"
         )
         raise ValueError(msg)

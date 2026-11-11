@@ -36,7 +36,7 @@ class Requirements:
     Parameters
     ----------
     dimensions : frozenset of str
-        Dims the tool cannot build a model without.
+        Dimensions the tool cannot build a model without.
     categories : frozenset of str
         Categories the tool requires the record to define labels of, or, in a
         `verify` result, ones it has no counterpart for.
@@ -47,17 +47,17 @@ class Requirements:
         the tool renames or computes (`Schema`) is reported by the source
         attribute it is missing.
     unsupported_partial
-        Dims the schema declares in `partial` that this tool cannot honour.
+        Dimensions the schema declares in `partial` that this tool cannot honour.
         The record layer trusts every `partial`, so this is a tool's verdict
         on the record it was handed, not a schema rejection.
     unsupported_dimensions : frozenset of str
-        Dims the record declares that this tool has no place for in the model
+        Dimensions the record declares that this tool has no place for in the model
         it builds.
     unsupported_values : frozenset of tuple of (str, str)
         `(category, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
         piecewise-linear attribute where the tool takes a scalar, or one
-        whose rows differ along a dim the tool holds it without.
+        whose rows differ along a dimension the tool holds it without.
     names : frozenset of str
         Labels the framework scopes per category and two of its categories
         claim, where a record has one axis row per label.
@@ -69,7 +69,7 @@ class Requirements:
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
-    - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+    - [a label is unique within its dimension](https://energy-models.github.io/datarecord/reference/format/#labels)
     - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
 

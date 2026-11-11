@@ -72,9 +72,9 @@ def _living(
     """`rel` without the rows naming, in one of `outside_index`, a dead label.
 
     The fold drops a removed label's rows by anti-joining the owner map on its
-    index. A dim outside `partial` is no index column, so the fold cannot
+    index. A dimension outside `partial` is no index column, so the fold cannot
     reach the rows naming a label there: they are dropped here instead, against
-    that dim's `dead` labels (`Axes.dead`).
+    that dimension's `dead` labels (`Axes.dead`).
 
     Notes
     -----
@@ -100,7 +100,7 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
 
     A raw row then finds its owned map rows by NULL-safe equality, which hashes where
     `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A map row NULL on a
-    dim stays NULL, the read returning it as written. The flags then say how
+    dimension stays NULL, the read returning it as written. The flags then say how
     the layer stored it, and a map row its layer wrote both ways appears once per
     way.
 
@@ -134,7 +134,7 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
     """Return per attribute in `om`: its owning layers, and whether one holds map rows both ways.
 
     A layer holds map rows both ways where its rows of the attribute name
-    different sets of `partial` dims, read off `varies`.
+    different sets of `partial` dimensions, read off `varies`.
     """
     dims = schema.partial_dimensions
     contested = "false"
@@ -195,9 +195,9 @@ def _most_specific(
 ) -> DuckDBPyRelation:
     """`most_specific` over one layer's rows of `attribute`, refusing twins too.
 
-    One layer may hold a row naming a label of a `partial` dim beside a row
-    leaving that dim NULL, and both join the map row that label names. Two rows
-    crossing, or two at one breakpoint naming the same dims, are a layer
+    One layer may hold a row naming a label of a `partial` dimension beside a row
+    leaving that dimension NULL, and both join the map row that label names. Two rows
+    crossing, or two at one breakpoint naming the same dimensions, are a layer
     `write_layer` refuses, so it was written another way, and the read fails
     at that coordinate.
 
@@ -209,11 +209,11 @@ def _most_specific(
         rel,
         dims,
         _refusal(attribute, dims, _INCOMPARABLE),
-        _refusal(attribute, dims, "both name the same dims"),
+        _refusal(attribute, dims, "both name the same dimensions"),
     )
 
 
-_INCOMPARABLE = "each names a dim the other leaves NULL"
+_INCOMPARABLE = "each names a dimension the other leaves NULL"
 
 
 def _refusal(attribute: str, dims: Sequence[str], why: str) -> Expression:
@@ -434,7 +434,7 @@ class Record:
 
     @_stable_cache
     def dimensions(self) -> LazyRelations:
-        """Every dim the schema declares, an empty axis where no layer holds one."""
+        """Every dimension the schema declares, an empty axis where no layer holds one."""
         return LazyRelations(
             tuple(self.schema.dimensions), partial(self._handed, self._axis_frame)
         )
@@ -491,7 +491,7 @@ class Record:
         return select(self, **labels)
 
     def register(self, name: str) -> None:
-        """Create the schema `name` with a view per dim, property subject and attribute.
+        """Create the schema `name` with a view per dimension, property subject and attribute.
 
         The views sit in `name.dimensions`, `name.properties` and `name.attributes` of
         the workspace's database, as in `datarecord.name.dimensions.bus`, each reading as
@@ -577,7 +577,7 @@ class Record:
 
     @property
     def _axes(self) -> Axes:
-        """Return every declared dim's folded relation, and the dead labels.
+        """Return every declared dimension's folded relation, and the dead labels.
 
         The frozen layers' fold is a set of shared tables (`Axes.shared`),
         read on the calling thread's cursor. The sources above them are folded
@@ -609,7 +609,7 @@ class Record:
         Notes
         -----
         - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
-        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+        - [a dimension with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
         """
         self._require_open()
         cache = self._per_cursor
@@ -648,7 +648,7 @@ class Record:
     def _relation(self, attribute: str) -> DuckDBPyRelation:
         """Return the resolved long relation of one attribute, folded over every layer.
 
-        Joins the owning layers' rows to the owner map; a dim stored
+        Joins the owning layers' rows to the owner map; a dimension stored
         NULL takes each value it is owned for. Unmaterialised, in the long
         schema (`schema.long_columns_for`), and empty where no layer owns a
         row of `attribute`. Above the frozen layers the plan is fixed: the
@@ -745,7 +745,7 @@ class Record:
 
         Where every source is frozen, one scan of the map answers every
         attribute and is kept, and rows are ranked only where a layer holds
-        map rows both ways, its rows naming different sets of `partial` dims.
+        map rows both ways, its rows naming different sets of `partial` dimensions.
         Otherwise the layers above the frozen ones may change under the
         reader, so each is a possible owner and every attribute is planned for
         ranking, which `_contested` restricts to such layers' rows as data.
