@@ -541,6 +541,9 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- `PyPSA.build` fills a series attribute at every snapshot from the component's row with no snapshot by the broadcast rule, where no row names that snapshot.
+  Previously, a load stored as `p_set = 50` with one snapshot at `100` built `NaN` at every other snapshot.
+  A component with only the row with no snapshot stays static.
 - `PyPSA.build` refuses a record whose rows of an attribute name several
   labels of a dim PyPSA's registry declares it without, such as a generator's
   `marginal_cost` over `period` in a multi-period record, rather than keeping

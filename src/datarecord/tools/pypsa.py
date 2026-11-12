@@ -1244,12 +1244,37 @@ def _add_component_type(
     for attr, (long, flags) in attributes.items():
         if SNAPSHOT not in flags.varies:
             continue
-        ts_rows = long.filter(col(SNAPSHOT).isnotnull() & col("value").isnotnull())
+        ts_rows = _series_rows(long, flags, shape)
         wide = _series_frame(ts_rows, shape, snapshots, c.static.index, con)
         if wide.columns.empty:
             n._import_series_from_df(wide, ctype, attr)
         else:
             c.dynamic[attr] = _as_series(c, attr, wide)
+
+
+def _series_rows(
+    long: DuckDBPyRelation, flags: Flags, shape: NetworkShape
+) -> DuckDBPyRelation:
+    """Return the rows of `long` that build each component's series.
+
+    A component with a row at any snapshot gets a row at every snapshot. Where
+    the component has no row at a snapshot, its row with no snapshot fills
+    the gap, by the broadcast rule. A component with only a row with no
+    snapshot gets no series rows, so it stays static and takes no column in
+    `dynamic`.
+
+    Notes
+    -----
+    - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+    """
+    rows = long.filter(col("value").isnotnull())
+    timed = rows.filter(col(SNAPSHOT).isnotnull())
+    if SNAPSHOT not in flags.broadcast:
+        return timed
+    keys = shape.index_names
+    held = timed.project(*(col(k) for k in keys)).set_alias("t")
+    rows = rows.set_alias("r").join(held, null_safe("r", "t", keys), how="semi")
+    return settle(rows, {SNAPSHOT: shape.dims[SNAPSHOT]}, flags, filter=False)
 
 
 def _as_series(c: pypsa.Components, attr: str, wide: pd.DataFrame) -> pd.DataFrame:

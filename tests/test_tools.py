@@ -1163,6 +1163,41 @@ class TestPyPSA:
 
         assert built.c.Generator.static["marginal_cost"].tolist() == [30.0]
 
+    @pytest.mark.parametrize("periods", [None, [2030, 2040]], ids=["single", "multi"])
+    def test_a_scalar_row_fills_each_snapshot_an_override_leaves(self, store, periods):
+        """A load's scalar `p_set` and one snapshot's override build its whole series; a load with only the scalar stays static.
+
+        Notes
+        -----
+        - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
+        """
+        n = _north()
+        if periods is not None:
+            n.set_investment_periods(periods)
+        n.add("Load", ["varied", "flat"], bus="north", p_set=50.0)
+        revision = export_network(n, store)
+        scalar = revision.record.attributes["p_set"].filter("entity = 'varied'")
+        second = revision.record.dims["snapshot"].limit(1, offset=1).set_alias("s")
+        override = (
+            scalar.set_alias("p")
+            .cross(second)
+            .project("p.* REPLACE (s.snapshot AS snapshot, 100.0 AS value)")
+        )
+        layer = empty_child(revision)
+        path = layer.dir / "attributes" / "p_set.parquet"
+        path.parent.mkdir(parents=True)
+        scalar.union(override).to_parquet(str(path))
+
+        built = PyPSA.build(layer.commit().record)
+
+        expected = pd.Series(50.0, index=n.snapshots, name="varied")
+        expected.iloc[1] = 100.0
+        pd.testing.assert_series_equal(
+            built.loads_t.p_set["varied"], expected, check_names=False, check_freq=False
+        )
+        assert "flat" not in built.loads_t.p_set, "a scalar alone stays static"
+        assert built.loads.at["flat", "p_set"] == 50.0
+
     @pytest.mark.parametrize(
         ("ctype", "dim", "branch", "standard", "changed", "extra"),
         [
