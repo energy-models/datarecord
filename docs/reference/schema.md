@@ -216,7 +216,8 @@ An incompatible change needs the record rewritten under the new schema, such as 
 A record is read under the schema of its last layer.
 Each layer's file of its id, parent and files (its [manifest](format.md)) has the full schema the layer was written under.
 A root's schema is free, and a child's passes `compatible_with` against its parent's, so two sibling branches may declare one new name differently.
-A `WorkingRecord` reads and commits under its base's schema.
+A `WorkingRecord` starts under its base's schema.
+[`declare`](editing.md#declare) widens it by a dim, a property or an attribute, within what `compatible_with` accepts, and `partial` stays the base's.
 
 !!! info "See also"
 

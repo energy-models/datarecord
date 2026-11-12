@@ -113,6 +113,7 @@ def test_a_working_record_overrides_no_read_member():
     they would just be two paths again.
     """
     edits = {
+        "declare",
         "set",
         "add",
         "remove",
@@ -1936,6 +1937,9 @@ READS = [
     [
         *READS,
         pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
+        pytest.param(
+            lambda w: w.declare("note", AttributeSpec(dtype="str")), id="declare"
+        ),
         pytest.param(lambda w: w.add("bus", ["Oslo"]), id="add"),
         pytest.param(lambda w: w.remove("bus", ["Norway"]), id="remove"),
         pytest.param(lambda w: w.rollback(), id="rollback"),
@@ -1953,6 +1957,9 @@ def test_a_closed_working_record_refuses_reads_and_edits(small, use):
     "use",
     [
         pytest.param(lambda w: w.set("p_nom", 1.0, entity="Norway Wind"), id="set"),
+        pytest.param(
+            lambda w: w.declare("note", AttributeSpec(dtype="str")), id="declare"
+        ),
         pytest.param(lambda w: w.edits, id="edits"),
     ],
 )
