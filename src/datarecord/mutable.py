@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import operator
 import sys
+import weakref
 from collections.abc import (
     Callable,
     Collection,
@@ -58,12 +59,13 @@ from datarecord.duck import (
 from datarecord.protocols import RecordLike
 from datarecord.resolve.coords import refuse_unheld
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_keys import owner_keys
+from datarecord.resolve.owner_keys import owner_keys, with_columns
 from datarecord.resolve.owner_map import named_sets, names_exactly, uncovered, unsettled
-from datarecord.resolve.record import Record, _empty_long, _PerCursor
+from datarecord.resolve.record import Record, _empty_axis, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
 from datarecord.schema.schema import LONG_TAIL, Schema, packed, unpacked
+from datarecord.schema.specs import AttributeSpec, Dimension, PropertySpec
 
 if TYPE_CHECKING:
     from datarecord.store.store import Workspace
@@ -205,9 +207,9 @@ class StagedSource:
 
         A staging area is not a `LayerSource` a fold folds under a schema
         someone else supplies; it is also what `store.commit(w)` writes
-        directly, where it needs its own.
+        directly, where it needs its own: the base's, as `declare` widened it.
         """
-        return self.record._base.schema
+        return self.record._schema
 
     @property
     def base(self) -> UUID:
@@ -301,8 +303,9 @@ def _atomic[**P](
 ) -> Callable[Concatenate[WorkingRecord, P], None]:
     """Run an edit in one transaction on the record's cursor, rolled back where it raises.
 
-    So a refused edit leaves the staging tables as they were, and a reader on
-    another cursor sees each edit whole or not at all.
+    So a refused edit leaves the staging tables, the schema and the table
+    names as they were, and a reader on another cursor sees each edit whole
+    or not at all.
 
     Raises
     ------
@@ -323,9 +326,12 @@ def _atomic[**P](
             edit.__name__,
             "https://energy-models.github.io/datarecord/reference/editing/#edits",
         ) as on_rollback:
-            on_rollback(
-                partial(object.__setattr__, self, "_touched", set(self._touched))
-            )
+            for name, value in (
+                ("_touched", set(self._touched)),
+                ("_staged", dict(self._staged)),
+                ("_schema", self._schema),
+            ):
+                on_rollback(partial(object.__setattr__, self, name, value))
             self._dirty.clear()
             edit(self, *args, **kwargs)
             self._refresh_owners()
@@ -380,6 +386,9 @@ class WorkingRecord(Record):
     #: but the staged one, and its `revision_id` is what the edits are a delta
     #: against. A `WorkingRecord` base is the caller's, any other a `_Base`.
     _base: Record
+    #: The schema this record reads and commits under: the base's, widened by
+    #: each `declare` until `rollback()`.
+    _schema: Schema
     #: Keyed by `(kind, attribute)`, the attribute being None for an axis.
     #: Attributes stage one table per attribute because that is the
     #: file it stands for: one `value` column at the attribute's own type, and
@@ -389,6 +398,8 @@ class WorkingRecord(Record):
     _touched: set[tuple[str, str | None]]
     #: The `_staged` keys the running edit wrote to.
     _dirty: set[tuple[str, str | None]]
+    #: The `WorkingRecord`s staged over this one, which read its schema.
+    _stacked: list[weakref.ref[WorkingRecord]]
     _closed_message: ClassVar[str] = (
         "this `WorkingRecord` is closed and its staging tables released; "
         "stage edits on a new one over the same base"
@@ -429,9 +440,11 @@ class WorkingRecord(Record):
         object.__setattr__(self, "_staged", {})
         object.__setattr__(self, "_touched", set())
         object.__setattr__(self, "_dirty", set())
+        object.__setattr__(self, "_stacked", [])
         if not isinstance(base, WorkingRecord):
             base = _Base(base.revision_id, base.sources, base.workspace)
         object.__setattr__(self, "_base", base)
+        object.__setattr__(self, "_schema", base.schema)
         object.__setattr__(
             self,
             "_staging_schema",
@@ -446,22 +459,10 @@ class WorkingRecord(Record):
         if isinstance(base, _Base):
             object.__setattr__(base, "_release", self._release)
             object.__setattr__(base, "_holder", self._holder)
-        for kind, attribute in self._kinds():
-            name = self._table(kind, attribute)
-            create_table(self.con, name, self._shape(kind, attribute))
-            self._staged[kind, attribute] = name
-            self._fill(kind, attribute)
-        shape = self._table(_OWNERS)
-        empty = empty_relation(self.con, attribute=sqltypes.VARCHAR)
-        create_table(
-            self.con, shape, owner_keys(empty, self.schema, self._layer_id, ())
-        )
-        for attribute in self.schema.attributes:
-            name = self._table(_OWNERS, attribute)
-            self.con.execute(f"CREATE TABLE {name} AS FROM {shape}")
-            self._staged[_OWNERS, attribute] = name
-        self.con.execute(f"DROP TABLE {shape}")
+        self._reshape()
         self._frozen_owners  # noqa: B018 - built outside any edit's transaction
+        if isinstance(base, WorkingRecord):
+            base._stacked.append(weakref.ref(self))
 
     def _require_editable(self) -> None:
         """Refuse an edit or a write where this record or its base is closed: both read the base.
@@ -479,6 +480,22 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
 
+    def _require_unstacked(self, call: str) -> None:
+        """Refuse `call` while an open `WorkingRecord` is staged over this one, as it reads this schema.
+
+        Raises
+        ------
+        ValueError
+            Naming the rule.
+        """
+        over = (r() for r in self._stacked)
+        if any(w is not None and not w.closed for w in over):
+            msg = (
+                f"{call} is refused: another `WorkingRecord` is staged over this "
+                f"one and reads its schema; close the one over it first"
+            )
+            raise ValueError(msg)
+
     @property
     def _kept_schemas(self) -> frozenset[str]:
         return self._base._kept_schemas | {nested(STAGED, self._layer_id)}
@@ -493,6 +510,47 @@ class WorkingRecord(Record):
             ),
             *((_ATTRIBUTES, a) for a in self.schema.attributes),
         ]
+
+    def _shapes(self) -> dict[tuple[str, str | None], DuckDBPyRelation]:
+        """Every staging table's key and the row-less relation shaped as `self.schema` shapes it, the owner tables last."""
+        empty = empty_relation(self.con, attribute=sqltypes.VARCHAR)
+        owners = owner_keys(empty, self.schema, self._layer_id, ())
+        return {
+            **{key: self._shape(*key) for key in self._kinds()},
+            **{(_OWNERS, a): owners for a in self.schema.attributes},
+        }
+
+    def _reshape(self) -> None:
+        """Make the staging tables the ones `self.schema` shapes.
+
+        A table the schema no longer shapes is dropped, one it newly shapes
+        created and filled, and one whose columns differ re-created with its
+        rows carried, NULL in a column they lack. An owner table whose shape
+        differs is re-created empty, for `_refresh_owners` to fill, so a
+        caller marks every touched attribute dirty.
+        """
+        wanted = self._shapes()
+        for key in [k for k in self._staged if k not in wanted]:
+            self.con.execute(f"DROP TABLE {self._staged.pop(key)}")
+            self._touched.discard(key)
+        for key, shape in wanted.items():
+            name = self._staged.get(key)
+            if name is None:
+                self._staged[key] = name = self._table(*key)
+                create_table(self.con, name, shape)
+                self._fill(*key)
+                continue
+            table = self.con.table(name)
+            if _columns_of(table) == _columns_of(shape):
+                continue
+            if key[0] == _OWNERS:
+                self.con.execute(f"DROP TABLE {name}")
+                create_table(self.con, name, shape)
+                continue
+            with scratch_table(self.con, table) as rows:
+                self.con.execute(f"DROP TABLE {name}")
+                create_table(self.con, name, shape)
+                self._insert(rows, name, {})
 
     def _fill(self, kind: str, attribute: str | None) -> None:
         """Fill a staging table as it starts: an axis with the base's, in base order; an attribute empty."""
@@ -534,12 +592,35 @@ class WorkingRecord(Record):
         return self._staged[kind, attribute]
 
     def _base_rows(self, kind: str) -> DuckDBPyRelation:
-        """The base's resolved axis `kind` stands for, with its properties."""
+        """The base's resolved axis `kind` stands for, with its properties as this record declares them.
+
+        A property declared here and not in the base is NULL on every row,
+        and a dim the base does not declare has no row.
+        """
         dim = kind[len(_AXIS_PREFIX) :]
-        rows = (
-            self._base.properties if dim in self.schema.properties else self._base.dims
+        declared = self._base.schema
+        if dim not in declared.dimensions:
+            return _empty_axis(self.schema, dim, self.con)
+        held = self._base.properties if dim in declared.properties else self._base.dims
+        rows = held[dim]
+        columns = _axis_columns(self.schema, dim)
+        missing = [c for c in columns if c not in rows.columns]
+        if not missing:
+            return rows
+        return rows.project(
+            star(), *(lit(None).cast(columns[c]).alias(c) for c in missing)
         )
-        return rows[dim]
+
+    def _base_attribute(self, attribute: str) -> DuckDBPyRelation:
+        """The base's resolved rows of `attribute`, in the long columns this record declares for it.
+
+        Row-less where the base declares no such attribute, and NULL along a
+        dim declared here that the base's rows lack.
+        """
+        columns = self.schema.long_columns_for(attribute)
+        if attribute not in self._base.schema.attributes:
+            return _empty_long(self.schema, attribute, self.con)
+        return with_columns(self.schema, self._base.attributes[attribute], *columns)
 
     def _restatement(self, kind: str) -> DuckDBPyRelation | None:
         """The staged axis `kind` stands for, in position order; `None` for a dim with `one_of`."""
@@ -879,6 +960,94 @@ class WorkingRecord(Record):
         return self.dims.get(name)
 
     @_atomic
+    def declare(
+        self, name: str, spec: Dimension | PropertySpec | AttributeSpec
+    ) -> None:
+        """Widen this record's schema by `spec` under `name`, for an edit of the name to follow.
+
+        The type of `spec` gives the kind: a `Dimension` is a dim, or a
+        multi-dim where it has `over`; an `AttributeSpec` an attribute; a
+        `PropertySpec` a property, named `subject.name` as `set` takes it. A
+        name declared already is redeclared where `compatible_with` accepts
+        the change, so an attribute's `dims` may gain a dim and a `default`,
+        `default_by`, `unit` or `description` may change. `partial` stays as
+        the base's.
+
+        Nothing is staged: a new dim has no labels, a new attribute no rows,
+        and a new property reads NULL on every label. Every
+        read, `set`, `add`, `remove` and `edits` then use the widened schema,
+        and `store.commit` writes the layer under it. `rollback()` restores
+        the base's.
+
+        Raises
+        ------
+        ValueError
+            On a dotted name with a `Dimension` or an `AttributeSpec`, a plain
+            name with a `PropertySpec`, a name declared as another kind, a
+            widened schema `Schema` refuses, a redeclaration `compatible_with`
+            refuses, a `spec` equal to the declaration, while an open
+            `WorkingRecord` is staged over this one, and once the record is
+            registered, as its views were created under the schema at
+            `register`.
+
+        Notes
+        -----
+        - [declare](https://energy-models.github.io/datarecord/reference/editing/#declare)
+        - [compatibility](https://energy-models.github.io/datarecord/reference/schema/#compatibility)
+        - [registered views](https://energy-models.github.io/datarecord/reference/format/#registered-views)
+        """
+        self._require_unregistered(f"`declare({name!r}, ...)`")
+        self._require_unstacked(f"`declare({name!r}, ...)`")
+        wider = _declaring(self.schema, name, spec)
+        problems = wider.compatible_with(self.schema)
+        if problems:
+            msg = (
+                f"`declare({name!r}, ...)` redeclares it incompatibly: "
+                f"{'; '.join(problems)} "
+                f"(https://energy-models.github.io/datarecord/reference/schema/#compatibility)"
+            )
+            raise ValueError(msg)
+        self._take_schema(wider)
+
+    def _take_schema(self, schema: Schema) -> None:
+        """Read and stage under `schema` from here on, the staging tables reshaped to it.
+
+        The staged tail is planned under the record's schema, so each cursor's
+        plan of it is dropped; the frozen fold's shared tables stay, being
+        keyed by the base's revision.
+        """
+        object.__setattr__(self, "_schema", schema)
+        self._reshape()
+        self._dirty.update(k for k in self._touched if k[0] == _ATTRIBUTES)
+        self.__dict__.pop("_per_cursor", None)
+
+    def _require_unregistered(self, call: str) -> None:
+        """Refuse `call` while a registration holds this record's staging tables.
+
+        Raises
+        ------
+        ValueError
+            Naming the registration.
+
+        Notes
+        -----
+        - [registered views](https://energy-models.github.io/datarecord/reference/format/#registered-views)
+        """
+        names = self.con.execute(
+            f"SELECT name FROM {self.workspace.qualified('registered')} "
+            f"WHERE list_contains(held, ?)",
+            [nested(STAGED, self._layer_id)],
+        ).fetchall()
+        if names:
+            msg = (
+                f"{call} is refused: this record is registered as "
+                f"{sorted(n for (n,) in names)}, whose views were created under its "
+                f"schema; `unregister` it first, and `register` it again after "
+                f"(https://energy-models.github.io/datarecord/reference/format/#registered-views)"
+            )
+            raise ValueError(msg)
+
+    @_atomic
     def set(
         self,
         attribute: str,
@@ -910,7 +1079,9 @@ class WorkingRecord(Record):
         mapping or series from label to value, a `dim=` keyword naming the
         labels, or a scalar for every label the axis has. A multi-dim's
         property takes a scalar, its coordinates as keywords selecting the
-        tuples, none selecting every tuple. A coordinate is part of the key,
+        tuples, none selecting every tuple, or a frame with the coordinates
+        or the struct column and the property's column, a value per tuple it
+        lists, beside no keyword. A coordinate is part of the key,
         which `add` and `remove` change, and is refused here.
 
         A property is named `subject.name` - `set("entity.carrier", ...)` -
@@ -1055,6 +1226,16 @@ class WorkingRecord(Record):
                 f"the tuples and `add` them with the new label instead"
             )
             raise ValueError(msg)
+        if subject in self.schema.multi_dims and is_frame(value):
+            if coords:
+                msg = (
+                    f"`set({dotted!r}, <frame>)` supplies its own tuples, so it "
+                    f"takes no keyword, and was given {sorted(coords)}; list "
+                    f"the tuples in the frame instead"
+                )
+                raise ValueError(msg)
+            self._set_multi_dim_frame(subject, name, value)
+            return
         rest, tuples = self._select(dotted, coords)
         if subject in self.schema.multi_dims:
             self._set_multi_dim_property(
@@ -1062,6 +1243,45 @@ class WorkingRecord(Record):
             )
             return
         self._set_property(subject, name, value, rest)
+
+    def _set_multi_dim_frame(self, multi: str, name: str, frame: Any) -> None:
+        """Stage property `name` of `multi` from `frame`, a value per tuple it lists.
+
+        `frame` has the coordinates of `multi` as columns, or its struct
+        column, and the column `name`. A column of another property of
+        `multi` is ignored, so a frame read off the axis sets back. Each
+        tuple's row keeps its other properties.
+
+        Raises
+        ------
+        KeyError
+            On a tuple the staged axis of `multi` lacks, or a value of a
+            property that refers to a dim and is no label of it.
+        ValueError
+            As `_unpacked` and `_tuples` do, on a column the axis file has no
+            place for, a missing column `name`, a tuple listed twice, or a
+            value whose type does not fit its dtype.
+        """
+        call = f"`set({f'{multi}.{name}'!r}, <frame>)`"
+        rel = _unpacked(self.schema, multi, as_relation(frame, self.con), call)
+        over = self.schema.over(multi)
+        self._reject_undeclared(
+            call, {*over, *self.schema.properties.get(multi, {})}, rel.columns
+        )
+        if name not in rel.columns:
+            msg = f"{call} carries no column {name!r}, the property it sets"
+            raise ValueError(msg)
+        rel = rel.project(*(col(c) for c in [*over, name]))
+        rel = self.schema.require_takes(self._tuples(multi, rel, call), call, multi)
+        values = [v for (v,) in rel.project(col(name)).fetchall()]
+        tuples = rel.project(col(multi)).distinct().aggregate([count_all()])
+        if tuples.fetchall()[0][0] != len(values):
+            msg = f"{call} lists a tuple of {multi!r} twice; give one row per tuple"
+            raise ValueError(msg)
+        self.schema.require_one_of(multi, {name: values}, call)
+        self._require_live(multi, {name: values}, call)
+        refuse_unheld(rel, self.schema, [multi], self._held, call, staged=True)
+        self._patch(f"{_AXIS_PREFIX}{multi}", multi, name, rel)
 
     def _set_property(
         self, dim: str, name: str, value: Any, coords: Mapping[str, Any]
@@ -1124,10 +1344,11 @@ class WorkingRecord(Record):
             )
             raise ValueError(msg)
         # Not left to the cast: DuckDB would store a dict or list as its text.
-        if isinstance(value, Mapping) or _is_labels(value) or is_frame(value):
+        if isinstance(value, Mapping) or _is_labels(value):
             msg = (
                 f"`{call}` takes one value for the tuples its keywords select, "
-                f"{name!r} being a property of the multi-dim {multi!r}"
+                f"{name!r} being a property of the multi-dim {multi!r}, or a "
+                f"frame with a value per tuple"
             )
             raise ValueError(msg)
         self.schema.require_one_of(multi, {name: [value]}, f"`{call}`")
@@ -1670,12 +1891,13 @@ class WorkingRecord(Record):
         labelled = [
             c
             for c in scope
-            if c in self.schema.dimensions and self._base.dims[c].limit(1).fetchall()
+            if c in self._base.schema.dimensions
+            and self._base.dims[c].limit(1).fetchall()
         ]
         keys = staged.filter(
             ex_all(col(c).isnotnull() for c in ("attribute", *labelled))
         )
-        base = self._base.attributes[attribute]
+        base = self._base_attribute(attribute)
         carried = uncovered(_reaching(base, keys, scope, axes), staged, coordinate)
         self._insert(carried, table, {})
         spread = _spread(self.con.table(table), base, scope, present, coordinate)
@@ -2082,12 +2304,22 @@ class WorkingRecord(Record):
 
     @_atomic
     def rollback(self) -> None:
-        """Clear every staged row without writing.
+        """Clear every staged row and every declaration without writing.
+
+        Raises
+        ------
+        ValueError
+            Where a declaration is cleared while the record is registered, or
+            while an open `WorkingRecord` is staged over it, as `declare` does.
 
         Notes
         -----
         - [WorkingRecord](https://energy-models.github.io/datarecord/reference/editing/)
         """
+        if self.schema != self._base.schema:
+            self._require_unregistered("`rollback()`")
+            self._require_unstacked("`rollback()`")
+            self._take_schema(self._base.schema)
         for kind, attribute in self._touched:
             self.con.execute(f"DELETE FROM {self._staged[kind, attribute]}")
             self._fill(kind, attribute)
@@ -2271,6 +2503,72 @@ def _unpacked(
         )
         raise ValueError(msg)
     return unpacked(schema, multi, rel)
+
+
+def _columns_of(rel: DuckDBPyRelation) -> list[tuple[str, str]]:
+    """`rel`'s columns with their types, as one table's shape compares to another's."""
+    return list(zip(rel.columns, map(str, rel.types), strict=True))
+
+
+def _declaring(
+    schema: Schema, name: str, spec: Dimension | PropertySpec | AttributeSpec
+) -> Schema:
+    """`schema` with `spec` declared under `name`, validated as `Schema` validates a manifest.
+
+    Raises
+    ------
+    ValueError
+        As `declare` does, but for an incompatible redeclaration.
+
+    Notes
+    -----
+    - [declare](https://energy-models.github.io/datarecord/reference/editing/#declare)
+    """
+    subject, dot, prop = name.partition(".")
+    call = f"`declare({name!r}, ...)`"
+    if isinstance(spec, PropertySpec) != bool(dot):
+        msg = (
+            f"{call} gives a {type(spec).__name__}; a property is named "
+            f"`subject.name` and takes a `PropertySpec`, a dim or an attribute "
+            f"is a plain name with a `Dimension` or an `AttributeSpec`"
+        )
+        raise ValueError(msg)
+    kinds: dict[str, Mapping[str, Any]] = {
+        "dim": schema.dimensions,
+        "attribute": schema.attributes,
+        "property": schema.properties.get(subject, {}),
+    }
+    kind = {Dimension: "dim", AttributeSpec: "attribute", PropertySpec: "property"}[
+        type(spec)
+    ]
+    key = prop if dot else name
+    other = (
+        []
+        if dot
+        else [k for k in ("dim", "attribute") if k != kind and name in kinds[k]]
+    )
+    if other:
+        msg = f"{call} redeclares the {other[0]} {name!r} as a {kind}; a name keeps its kind"
+        raise ValueError(msg)
+    if kinds[kind].get(key) == spec:
+        msg = (
+            f"{call} declares the {kind} as it is declared already; a repeated "
+            f"declaration is refused rather than ignored"
+        )
+        raise ValueError(msg)
+    update: dict[str, Any]
+    if dot:
+        update = {
+            "properties": {
+                **schema.properties,
+                subject: {**kinds["property"], prop: spec},
+            }
+        }
+    elif kind == "dim":
+        update = {"dimensions": {**schema.dimensions, name: spec}}
+    else:
+        update = {"attributes": {**schema.attributes, name: spec}}
+    return Schema(**{**schema.model_dump(), **update})
 
 
 def _axis_columns(schema: Schema, dim: str) -> dict[str, DuckDBPyType]:

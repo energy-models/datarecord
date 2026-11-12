@@ -120,7 +120,7 @@ An edit runs in its own transaction, and DuckDB nests none. datarecord therefore
 
 ### What does a schema change on a `WorkingRecord` do to its registered views?
 
-A `WorkingRecord` has no method that changes its schema, which changes only at commit. Such a method would refuse a change that alters a column or the fold of a registered view, or replace the views it affects. A client would then see them change ([the format](../reference/format.md)). Widening an attribute's `dims`, adding a property and adding a dim to `partial` are such changes. Adding an attribute or a dim would add its view ([DEP 34](../development/proposals/dep-0034-a-record-registers-as-views.md)).
+`declare` refuses a registered record, so a client never sees a view's columns change under it: call `unregister`, `declare`, then `register` again ([editing](../reference/editing.md#declare)). Whether `declare` should replace or add the views of a registered record stays open ([DEP 37](../development/proposals/dep-0037-a-working-record-widens-its-schema.md)). A server that keeps one registered working record per client would need it. Adding a dim to `partial` on a working record, and whether `declare` should bump `version`, also stay open.
 
 ### How does a SQL client settle rows?
 

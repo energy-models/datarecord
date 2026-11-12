@@ -34,18 +34,18 @@ So a caller declares a name today by committing a layer with the wider schema an
 WorkingRecord.declare(name: str, spec: Dimension | PropertySpec | AttributeSpec) -> None
 ```
 
-- The type of `spec` says what `name` declares. A `Dimension` declares a dim, or a multi-dim where it has `over`. An `AttributeSpec` declares an attribute. A `PropertySpec` declares a property, named `subject.name` as `set` takes it. `declare` refuses a dotted name with any other spec, and a plain name with a `PropertySpec`.
-- The widened schema is `w.schema` with `spec` under `name`, built through `Schema` validation. So `declare` refuses what a schema on disk is refused for: an undeclared subject or dim, a property of a dim with `one_of`, a name that cannot be a column, a malformed `default_by`.
-- A name `w.schema` declares already is redeclared. `declare` refuses it where `wider.compatible_with(w.schema)` returns a reason, and where `spec` equals the declaration. So an attribute's `dims` may gain a dim, and a `default`, `default_by`, `unit` or `description` may change. A `dtype`, a `one_of`, an `over` and a dim of `dims` stay as declared.
+- `declare` reads the kind from the type of `spec`. A `Dimension` is a dim, or a multi-dim where it has `over`. An `AttributeSpec` is an attribute. A `PropertySpec` is a property, named `subject.name` as `set` takes it. `declare` refuses a dotted name with any other spec, and a plain name with a `PropertySpec`.
+- `declare` builds the widened schema, `w.schema` with `spec` under `name`, through `Schema` validation. So it refuses what `Schema` refuses in a manifest: an undeclared subject or dim, a property of a dim with `one_of`, a name that cannot be a column, a malformed `default_by`.
+- A name `w.schema` declares already is redeclared. `declare` refuses it where `wider.compatible_with(w.schema)` returns a reason, where `spec` equals the declaration, and where the name is declared as another kind. So an attribute's `dims` may gain a dim, and a `default`, `default_by`, `unit` or `description` may change. A `dtype`, a `one_of`, an `over` and a dim of `dims` stay as declared.
 - `partial` stays as the base's. A declared dim is outside it, so a `set` along it stages the key's other values as the record reads them.
 - After a `declare`, `w.schema` is the widened schema, and every read and `w.edits.schema` use it. Nothing is staged by it. A new dim has no labels, a new attribute has no rows, and a new property reads NULL on every label, or its default. An attribute widened over a dim reads its rows as before, broadcast along the dim.
 - `set`, `add` and `remove` then treat the name as any other, with the same checks.
-- `rollback()` clears the declarations with the staged rows, so `w.schema` is `base.schema` again.
+- `rollback()` clears the declarations with the staged rows, so `w.schema` is `base.schema` again. A rollback that clears a declaration is refused where `declare` is.
 - `declare` refuses once the record is registered ([registered views](../../reference/format.md#registered-views)), because the views were created under the schema at `register`. Call `unregister`, `declare`, then `register` again. It also refuses a closed record, and one another `WorkingRecord` is staged over, as every edit does.
 
 ### A frame for a multi-dim's property
 
-`set("snapshot.seg", frame)` patches the column `seg` on the tuples `frame` lists, one row per tuple, and keeps their other properties. The frame has the multi-dim's coordinates as columns, or its struct column as `dims["snapshot"]` returns it, and the property's column. `set` refuses a tuple the axis as staged lacks, a column the axis has no place for, and the frame beside a coordinate keyword. Today a multi-dim's property takes one scalar for the tuples its keywords select. A value per tuple goes through `add`, which restates each tuple's row whole and so sets NULL on every property the frame omits.
+`set("snapshot.seg", frame)` patches the column `seg` on the tuples `frame` lists, one row per tuple, and keeps their other properties. The frame has the multi-dim's coordinates as columns, or its struct column as `dims["snapshot"]` returns it, and the property's column. `set` refuses a tuple the axis as staged lacks, a tuple listed twice, a column the axis has no place for, and the frame beside a keyword. Today a multi-dim's property takes one scalar for the tuples its keywords select. A value per tuple goes through `add`, which restates each tuple's row whole and so sets NULL on every property the frame omits.
 
 ### Writing
 
