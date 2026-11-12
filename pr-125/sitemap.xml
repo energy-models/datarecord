@@ -2,250 +2,306 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-125/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-125/changelog/</loc>
-         <lastmod>2026-11-02</lastmod>
-    </url>
-    <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/contributing/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-125/installation/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/api/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/about/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/api/mutable/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/about/data-model/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/api/record/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/about/layers/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/api/schema/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/about/one-record/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/api/store/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/about/open-questions/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/api/tools/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/about/storage/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/open-questions/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/contributing/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/package/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/package/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/layers/removal/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/layers/resolution/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0001-dims-groups-traits/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/layers/tree/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0002-groups/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/model/attributes/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0003-trait-switches/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/model/dims/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0004-staging-as-a-layer/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/model/multi-dims/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0005-one-record-over-a-node-cache/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/model/properties/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0006-a-member-file-holds-values/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/model/schema/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0007-staging-without-seq/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0001-dims-groups-traits/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0008-one-interface-source-and-fold/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0002-groups/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0009-store/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0003-trait-switches/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0010-a-group-is-a-struct-column/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0004-staging-as-a-layer/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0011-deletion-cascades-through-tombstones/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0005-one-record-over-a-node-cache/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0012-properties/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0006-a-member-file-holds-values/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0013-buses-and-carriers-are-dims/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0007-staging-without-seq/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0014-combining-records/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0008-one-interface-source-and-fold/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0015-a-dim-is-flat/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0009-store/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0016-remove-traits/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0010-a-group-is-a-struct-column/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0017-results-are-attributes/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0011-deletion-cascades-through-tombstones/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0018-drop-narwhals/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0012-properties/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0019-one-record-and-a-package-layout/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0013-buses-and-carriers-are-dims/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0020-a-layer-restates-an-axis-whole/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0014-combining-records/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0021-the-owner-map-holds-keys-as-written/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0015-a-dim-is-flat/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0022-a-layer-restates-membership-whole/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0016-remove-traits/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0023-multi-dims/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0017-results-are-attributes/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0024-categories-are-enum-dimensions/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0018-drop-narwhals/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0025-a-layer-carries-its-manifest/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0019-one-record-and-a-package-layout/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0026-the-fold-reads-each-layer-under-its-own-schema/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0020-a-layer-restates-an-axis-whole/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0031-a-record-selects-a-view/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0021-the-owner-map-holds-keys-as-written/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0033-the-fold-is-a-fixed-plan/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0022-a-layer-restates-membership-whole/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0034-a-record-registers-as-views/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0023-multi-dims/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0035-a-record-holds-the-tables-it-reads/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0024-categories-are-enum-dimensions/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-0037-a-working-record-widens-its-schema/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-0028-a-working-record-declares-a-property/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/development/proposals/dep-NNNN-template/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/proposals/dep-NNNN-template/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/storage/concurrency/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/branch-and-materialise/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/storage/format/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/declare-a-schema/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/storage/store/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/edit-a-record/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/tools/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/present-a-framework-object/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/tools/pypsa/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/read-a-record/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/use/editing/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/select-a-view/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/use/reading/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/store-a-record/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/design/use/writing/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/howto/use-the-pypsa-tool/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/usage/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/usage/editing/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/data-model/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/usage/layers/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/editing/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/usage/reading/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/format/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/usage/schema/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/glossary/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/usage/storage/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/layers/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-125/usage/tools/</loc>
-         <lastmod>2026-11-02</lastmod>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/record/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/resolution/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/schema/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/selecting/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/store/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/tools/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/api/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/api/mutable/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/api/record/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/api/schema/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/api/store/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/reference/api/tools/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/tutorials/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/tutorials/first-record/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/tutorials/pypsa/</loc>
+         <lastmod>2026-11-12</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-125/tutorials/scenario/</loc>
+         <lastmod>2026-11-12</lastmod>
     </url>
 </urlset>
