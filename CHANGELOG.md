@@ -13,6 +13,13 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Added
 
+- The mathspec adapter, `datarecord.tools.mathspec`. `schema_of(spec)`
+  derives the schema of a record for the data a mathspec spec reads: a
+  relation is a multi-dim, a map is a property that refers to a dim, and a
+  parameter is an attribute over the relations it lists under `in:`. Its
+  `default_by` argument adds a default per category, which the spec does not
+  state. `tables(record, spec)` returns the tables the spec reads, with a
+  row for each label whose default differs from the spec's `missing:` value.
 - `select(record, **labels)`, exported beside `settle`, and `Record.select`
   return a `Selection`: a `RecordLike` holding any record at the labels named,
   as xarray's `sel` takes them. One label squeezes its dim out of the schema,
@@ -260,6 +267,8 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- mathspec is pinned to the commit that adds `maps:` and `in:`, which the
+  mathspec adapter reads.
 - Breaking: the workspace's database is never a cursor's default, so SQL
   names its tables and registered views in full, `datarecord.main.registered`
   or `datarecord.edit.dims.bus`, or runs `USE datarecord` once on its own

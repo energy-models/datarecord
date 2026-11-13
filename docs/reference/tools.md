@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Tools
 
-This page describes the `Tool` protocol, then the rules of the PyPSA tool in the order the tool reads a record and then writes one.
+This page describes the `Tool` protocol, then the rules of the PyPSA tool in the order the tool reads a record and then writes one, then the mathspec adapter.
 A tool is a module under `datarecord.tools` that translates between a [record](record.md) and one modelling framework.
 
 ## The `Tool` protocol
@@ -354,7 +354,117 @@ Results of a collection of fewer labels than `base` has are at each member's lab
 They leave the other labels, the dim's axis and the SubNetworks to `base`.
 `to_datarecord` raises `ValueError` for a member's label that `base`'s axis of the dim lacks.
 
+## The mathspec adapter
+
+```python
+from datarecord.tools.mathspec import schema_of, tables
+```
+
+The mathspec adapter is two functions that take a [mathspec](https://mathspec.readthedocs.io) spec.
+Both accept the spec as mathspec's `to_spec` does: a YAML path, the YAML text, a mapping or a loaded `Spec`.
+`schema_of` returns the schema of a record for the spec's data.
+`tables` returns the tables that the spec reads its data from.
+The adapter is no `Tool`, because its names are the spec's own and not one framework's.
+
+### `schema_of`
+
+`schema_of(spec, *, partial=(), default_by=None)` declares one entry of the schema per entry of the spec that has data:
+
+| In the spec | In the schema                                               |
+| ----------- | ----------------------------------------------------------- |
+| a dimension | a dim with the same `dtype` and `one_of`                    |
+| a relation  | a [multi-dim](data-model.md#multi-dims) over its columns    |
+| a map       | a [property](data-model.md#properties) that refers to a dim |
+| a parameter | an attribute with the parameter's `dtype`                   |
+
+`schema_of` declares no attribute for a variable or a named expression, because the schema is for the data that the spec reads.
+An attribute's `dims` are the relations that its parameter lists under `in:`, and each dim of the parameter that no such relation is over.
+A parameter's `missing:` value is the attribute's `default`.
+Under `missing: refused` or `missing: absent`, the attribute has no `default`.
+
+The spec states neither `partial` nor `default_by`, because both describe how a record stores the data.
+`partial` is the schema's [`partial`](layers.md#partial).
+`default_by` maps a parameter to its [`default_by`](schema.md#default_by), so a label takes the default of its category.
+
+```python
+spec = """
+dimensions:
+  entity: {}
+  bus: {}
+  ctype: { one_of: [Generator, Load] }
+relations:
+  connection: { dims: [entity, bus], missing: absent }
+maps:
+  entity:
+    ctype: { refers_to: ctype }
+parameters:
+  sign: { dims: [entity], missing: 1 }
+  efficiency: { dims: [entity, bus], in: [connection], missing: 1 }
+"""
+
+schema = schema_of(
+    spec,
+    partial={"entity", "connection"},
+    default_by={"sign": {"entity.ctype": {"Load": -1}}},
+)
+schema.over("connection")  # {'bus': 'bus', 'entity': 'entity'}
+schema.attributes["efficiency"].dims  # frozenset({'connection'})
+schema.attributes["sign"].default  # 1.0
+schema.default_for("sign", ctype="Load")  # -1
+```
+
+`efficiency` is over `connection` alone, because the relation is over both of its dims.
+The spec declares one `sign` for every entity, and the schema adds the `sign` of a `Load`.
+
+`schema_of` and `tables` raise mathspec's `LanguageError` for a spec that does not load.
+`schema_of` raises `ValueError` in three cases:
+
+- `default_by` has a key that is no parameter of the spec.
+- `default_by` has a parameter under `missing: absent`, where a missing row means no value.
+- A parameter lists two relations over one dim under `in:`. The spec means the combinations that both relations list, and an attribute over two multi-dims has a value for every pair of their tuples.
+
+### `tables`
+
+`tables(record, spec)` returns one DuckDB relation per name that the spec reads data under:
+
+| Table of    | Columns                                    | Rows                         |
+| ----------- | ------------------------------------------ | ---------------------------- |
+| a dim       | the dim, then one per map of the dim       | one per label                |
+| a relation  | one per column of the relation             | one per tuple                |
+| a parameter | one per dim of the parameter, then `value` | one per point that has a row |
+
+`tables` returns no table for a dim with `one_of`, because the spec lists its labels.
+
+A parameter's rows are the stored rows, [settled](record.md#settle) by the [broadcast rule](data-model.md#the-broadcast-rule), so a row with a NULL coordinate arrives as one row per label.
+At a point where no stored row applies, `tables` adds a row with the default of the label's category.
+It adds no row where the default is the parameter's `missing:` value, because the model fills that value itself.
+It adds no row for a parameter under `missing: absent`.
+
+This example stages a wind generator, a gas generator and a load in `w`, a `WorkingRecord` over an empty root with `schema`:
+
+```python
+w.add("bus", ["north"])
+w.add("entity", ["wind", "gas", "city"], ctype=["Generator", "Generator", "Load"])
+w.add(
+    "connection",
+    [{"entity": "wind", "bus": "north"}, {"entity": "city", "bus": "north"}],
+)
+w.set("efficiency", 0.9, entity="wind", bus="north")
+
+handed = tables(w, spec)
+sorted(handed)  # ['bus', 'connection', 'efficiency', 'entity', 'sign']
+handed["connection"].fetchall()  # [('north', 'wind'), ('north', 'city')]
+handed["efficiency"].fetchall()  # [('north', 'wind', 0.9)]
+handed["sign"].fetchall()  # [('city', -1.0)]
+```
+
+The record stores no `sign`, and the table has one row, for the load.
+The two generators have no row, because the spec's `missing: 1` is their default.
+
+`tables` raises `ValueError` for a parameter whose `default_by` has categories of two dims.
+
 !!! info "See also"
 
     [Use the PyPSA tool](../howto/use-the-pypsa-tool.md) shows a build, a solve, a selection, a change-only export and a collection.
+    [Your first record](../tutorials/first-record.md) builds an empty root and a `WorkingRecord` over it.
     [The API reference](api/tools.md) lists every signature.
