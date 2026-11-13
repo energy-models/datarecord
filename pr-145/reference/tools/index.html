@@ -2529,6 +2529,7 @@ They leave the other labels, the dim's axis and the SubNetworks to <code>base</c
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord.tools.mathspec</span><span class="w"> </span><span class="kn">import</span> <span class="n">schema_of</span><span class="p">,</span> <span class="n">tables</span>
 </code></pre></div>
 <p>The mathspec adapter is two functions that take a <a href="https://mathspec.readthedocs.io">mathspec</a> spec.
+Both accept the spec as mathspec's <code>to_spec</code> does: a YAML path, the YAML text, a mapping or a loaded <code>Spec</code>.
 <code>schema_of</code> returns the schema of a record for the spec's data.
 <code>tables</code> returns the tables that the spec reads its data from.
 The adapter is no <code>Tool</code>, because its names are the spec's own and not one framework's.</p>
@@ -2567,36 +2568,35 @@ Under <code>missing: refused</code> or <code>missing: absent</code>, the attribu
 <p>The spec states neither <code>partial</code> nor <code>default_by</code>, because both describe how a record stores the data.
 <code>partial</code> is the schema's <a href="../layers/#partial"><code>partial</code></a>.
 <code>default_by</code> maps a parameter to its <a href="../schema/#default_by"><code>default_by</code></a>, so a label takes the default of its category.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">mathspec</span><span class="w"> </span><span class="kn">import</span> <span class="n">to_spec</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">to_spec</span><span class="p">(</span><span class="s2">"""</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="s2">dimensions:</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="s2">  entity: </span><span class="si">{}</span>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="s2">  bus: </span><span class="si">{}</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="s2">  ctype: { one_of: [Generator, Load] }</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="s2">relations:</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="s2">  connection: { dims: [entity, bus], missing: absent }</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="s2">maps:</span>
-<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="s2">  entity:</span>
-<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="s2">    ctype: { refers_to: ctype }</span>
-<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="s2">parameters:</span>
-<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="s2">  sign: { dims: [entity], missing: 1 }</span>
-<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a><span class="s2">  efficiency: { dims: [entity, bus], in: [connection], missing: 1 }</span>
-<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="s2">"""</span><span class="p">)</span>
-<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>
-<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">schema_of</span><span class="p">(</span>
-<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>    <span class="n">spec</span><span class="p">,</span>
-<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a>    <span class="n">partial</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"connection"</span><span class="p">},</span>
-<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a>    <span class="n">default_by</span><span class="o">=</span><span class="p">{</span><span class="s2">"sign"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"entity.ctype"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Load"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">}}},</span>
-<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="p">)</span>
-<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="n">schema</span><span class="o">.</span><span class="n">over</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">)</span>  <span class="c1"># {'bus': 'bus', 'entity': 'entity'}</span>
-<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="n">schema</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"efficiency"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span>  <span class="c1"># frozenset({'connection'})</span>
-<a id="__codelineno-4-25" name="__codelineno-4-25" href="#__codelineno-4-25"></a><span class="n">schema</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"sign"</span><span class="p">]</span><span class="o">.</span><span class="n">default</span>  <span class="c1"># 1.0</span>
-<a id="__codelineno-4-26" name="__codelineno-4-26" href="#__codelineno-4-26"></a><span class="n">schema</span><span class="o">.</span><span class="n">default_for</span><span class="p">(</span><span class="s2">"sign"</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Load"</span><span class="p">)</span>  <span class="c1"># -1</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">spec</span> <span class="o">=</span> <span class="s2">"""</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="s2">dimensions:</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="s2">  entity: </span><span class="si">{}</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="s2">  bus: </span><span class="si">{}</span>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="s2">  ctype: { one_of: [Generator, Load] }</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="s2">relations:</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="s2">  connection: { dims: [entity, bus], missing: absent }</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="s2">maps:</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="s2">  entity:</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="s2">    ctype: { refers_to: ctype }</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a><span class="s2">parameters:</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="s2">  sign: { dims: [entity], missing: 1 }</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="s2">  efficiency: { dims: [entity, bus], in: [connection], missing: 1 }</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="s2">"""</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="n">schema</span> <span class="o">=</span> <span class="n">schema_of</span><span class="p">(</span>
+<a id="__codelineno-4-17" name="__codelineno-4-17" href="#__codelineno-4-17"></a>    <span class="n">spec</span><span class="p">,</span>
+<a id="__codelineno-4-18" name="__codelineno-4-18" href="#__codelineno-4-18"></a>    <span class="n">partial</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"connection"</span><span class="p">},</span>
+<a id="__codelineno-4-19" name="__codelineno-4-19" href="#__codelineno-4-19"></a>    <span class="n">default_by</span><span class="o">=</span><span class="p">{</span><span class="s2">"sign"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"entity.ctype"</span><span class="p">:</span> <span class="p">{</span><span class="s2">"Load"</span><span class="p">:</span> <span class="o">-</span><span class="mi">1</span><span class="p">}}},</span>
+<a id="__codelineno-4-20" name="__codelineno-4-20" href="#__codelineno-4-20"></a><span class="p">)</span>
+<a id="__codelineno-4-21" name="__codelineno-4-21" href="#__codelineno-4-21"></a><span class="n">schema</span><span class="o">.</span><span class="n">over</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">)</span>  <span class="c1"># {'bus': 'bus', 'entity': 'entity'}</span>
+<a id="__codelineno-4-22" name="__codelineno-4-22" href="#__codelineno-4-22"></a><span class="n">schema</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"efficiency"</span><span class="p">]</span><span class="o">.</span><span class="n">dims</span>  <span class="c1"># frozenset({'connection'})</span>
+<a id="__codelineno-4-23" name="__codelineno-4-23" href="#__codelineno-4-23"></a><span class="n">schema</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"sign"</span><span class="p">]</span><span class="o">.</span><span class="n">default</span>  <span class="c1"># 1.0</span>
+<a id="__codelineno-4-24" name="__codelineno-4-24" href="#__codelineno-4-24"></a><span class="n">schema</span><span class="o">.</span><span class="n">default_for</span><span class="p">(</span><span class="s2">"sign"</span><span class="p">,</span> <span class="n">ctype</span><span class="o">=</span><span class="s2">"Load"</span><span class="p">)</span>  <span class="c1"># -1</span>
 </code></pre></div>
 <p><code>efficiency</code> is over <code>connection</code> alone, because the relation is over both of its dims.
 The spec declares one <code>sign</code> for every entity, and the schema adds the <code>sign</code> of a <code>Load</code>.</p>
-<p><code>schema_of</code> raises <code>ValueError</code> in three cases:</p>
+<p><code>schema_of</code> and <code>tables</code> raise mathspec's <code>LanguageError</code> for a spec that does not load.
+<code>schema_of</code> raises <code>ValueError</code> in three cases:</p>
 <ul>
 <li><code>default_by</code> has a key that is no parameter of the spec.</li>
 <li><code>default_by</code> has a parameter under <code>missing: absent</code>, where a missing row means no value.</li>
