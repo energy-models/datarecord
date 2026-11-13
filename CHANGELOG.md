@@ -13,12 +13,12 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Added
 
-- The mathspec adapter, `datarecord.tools.mathspec`. `schema_of(program)`
-  derives a record's schema from the program of a mathspec spec: a relation is
-  a multi-dim, a map is a property that refers to a dim, and a parameter or a
-  variable is an attribute over the relations it lists under `in:`. Its
+- The mathspec adapter, `datarecord.tools.mathspec`. `schema_of(spec)`
+  derives the schema of a record for the data a mathspec spec reads: a
+  relation is a multi-dim, a map is a property that refers to a dim, and a
+  parameter is an attribute over the relations it lists under `in:`. Its
   `default_by` argument adds a default per category, which the spec does not
-  state. `tables(record, program)` returns the tables the spec reads, with a
+  state. `tables(record, spec)` returns the tables the spec reads, with a
   row for each label whose default differs from the spec's `missing:` value.
 - `select(record, **labels)`, exported beside `settle`, and `Record.select`
   return a `Selection`: a `RecordLike` holding any record at the labels named,

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""A record's schema is derived from a mathspec program, and its tables are what the program reads.
+"""A record's schema is derived from a mathspec spec, and its tables are what the spec reads.
 
 Notes
 -----
@@ -35,6 +35,7 @@ parameters:
   capacity: { dims: [entity] }
   limit: { dims: [entity], missing: absent }
   efficiency: { dims: [bus, entity], in: [connection], missing: 1 }
+  tariff: { dims: [entity, bus, snapshot], in: [connection], missing: 0 }
 variables:
   p: { dims: [entity, snapshot], bounds: { lower: 0, upper: capacity } }
   flow: { dims: [entity, bus, snapshot], in: [connection] }
@@ -55,14 +56,14 @@ DEFAULT_BY: dict[str, dict[str, dict[str, float]]] = {
 
 
 @pytest.fixture(scope="module")
-def program():
+def spec():
     """Every default the spec states is one plain value: `sign` is `1`, whatever the component."""
-    return to_spec(SPEC).program
+    return to_spec(SPEC)
 
 
 @pytest.fixture(scope="module")
-def schema(program):
-    return schema_of(program, partial={"entity", "connection"}, default_by=DEFAULT_BY)
+def schema(spec):
+    return schema_of(spec, partial={"entity", "connection"}, default_by=DEFAULT_BY)
 
 
 @pytest.fixture(scope="module")
@@ -95,8 +96,8 @@ def revision(module_store, schema):
 
 
 @pytest.fixture(scope="module")
-def handed(revision, program):
-    return tables(revision.record, program)
+def handed(revision, spec):
+    return tables(revision.record, spec)
 
 
 def _rows(rel) -> set[tuple]:
@@ -118,14 +119,28 @@ def test_a_map_is_a_property_that_refers_to_its_dim(schema):
     ("attribute", "dims"),
     [
         pytest.param("cost", {"entity", "snapshot"}, id="no-in"),
-        pytest.param("efficiency", {"connection"}, id="parameter-in-a-relation"),
-        pytest.param("flow", {"connection", "snapshot"}, id="variable-in-a-relation"),
+        pytest.param("efficiency", {"connection"}, id="in-a-relation"),
+        pytest.param(
+            "tariff", {"connection", "snapshot"}, id="in-a-relation-and-over-a-dim"
+        ),
     ],
 )
-def test_an_entry_is_over_its_relations_and_the_dims_they_leave_out(
+def test_a_parameter_is_over_its_relations_and_the_dims_they_leave_out(
     schema, attribute, dims
 ):
     assert schema.attributes[attribute].dims == dims
+
+
+def test_a_variable_has_no_attribute(schema, spec):
+    assert sorted(spec.program.variables) == ["flow", "p"]
+    assert sorted(schema.attributes) == [
+        "capacity",
+        "cost",
+        "efficiency",
+        "limit",
+        "sign",
+        "tariff",
+    ], "the schema declares the spec's parameters, and no result of a solve"
 
 
 @pytest.mark.parametrize(
@@ -140,8 +155,8 @@ def test_a_missing_value_is_the_default(schema, attribute, default):
     assert schema.attributes[attribute].default == default
 
 
-def test_a_default_by_category_is_the_schema_s_and_not_the_spec_s(schema, program):
-    assert program.parameters["sign"].missing == 1
+def test_a_default_by_category_is_the_schema_s_and_not_the_spec_s(schema, spec):
+    assert spec.program.parameters["sign"].missing == 1
     assert schema.default_for("sign", component="Load") == -1
     assert schema.default_for("sign", component="Generator") == 1
 
@@ -227,12 +242,12 @@ def test_a_default_in_a_relation_fills_only_the_rows_the_relation_lists(handed):
         ),
     ],
 )
-def test_a_default_the_spec_has_no_place_for_is_refused(program, default_by, message):
+def test_a_default_the_spec_has_no_place_for_is_refused(spec, default_by, message):
     with pytest.raises(ValueError, match=message):
-        schema_of(program, partial={"entity"}, default_by=default_by)
+        schema_of(spec, partial={"entity"}, default_by=default_by)
 
 
-def test_an_entry_in_two_relations_over_one_dim_is_refused():
+def test_a_parameter_in_two_relations_over_one_dim_is_refused():
     """A record would hold a value for every pair of tuples, and the spec means the tuples that agree on `bus`."""
     spec = SPEC.replace(
         "efficiency: { dims: [bus, entity], in: [connection], missing: 1 }",
@@ -240,10 +255,10 @@ def test_an_entry_in_two_relations_over_one_dim_is_refused():
         "  loss: { dims: [entity, bus, region], in: [connection, located] }",
     )
     with pytest.raises(ValueError, match="both over 'bus'"):
-        schema_of(to_spec(spec).program)
+        schema_of(to_spec(spec))
 
 
-def test_a_parameter_under_absent_is_never_filled(module_store, program, schema):
+def test_a_parameter_under_absent_is_never_filled(module_store, spec, schema):
     """A record's own schema may declare a default that `schema_of` refuses to derive."""
     limit = schema.attributes["limit"].model_copy(
         update={"default_by": {"entity.component": {"Load": 0.0}}}
@@ -253,7 +268,7 @@ def test_a_parameter_under_absent_is_never_filled(module_store, program, schema)
     )
     staged = WorkingRecord(empty_root(module_store, declared).commit().record)
     staged.add("entity", ["l1"], component=["Load"])
-    assert tables(staged, program)["limit"].fetchall() == [], (
+    assert tables(staged, spec)["limit"].fetchall() == [], (
         "under missing: absent a missing row is no value, whatever the schema's default"
     )
 
@@ -262,13 +277,13 @@ def test_defaults_by_the_categories_of_two_dims_are_refused(module_store):
     spec = SPEC.replace(
         "  region: {}\n", "  region: {}\n  kind: { one_of: [ac, dc] }\n"
     ).replace("maps:\n", "maps:\n  bus:\n    kind: { refers_to: kind }\n")
-    program = to_spec(spec).program
+    widened = to_spec(spec)
     by_two = {"entity.component": {"Load": 0.5}, "bus.kind": {"dc": 0.9}}
     declared = schema_of(
-        program,
+        widened,
         partial={"entity", "bus", "connection"},
         default_by={"efficiency": by_two},
     )
     record = empty_root(module_store, declared).commit().record
     with pytest.raises(ValueError, match=r"categories of \['bus', 'entity'\]"):
-        tables(record, program)
+        tables(record, widened)

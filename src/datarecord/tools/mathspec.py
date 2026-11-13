@@ -2,10 +2,10 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""A mathspec model's view of a record: the schema it needs, and the tables it reads.
+"""A mathspec spec's view of a record: the schema its data needs, and the tables it reads.
 
 Not a `Tool`: a `Tool` is one framework's fixed vocabulary, and here the
-vocabulary is the spec's, so both functions take its program.
+vocabulary is the spec's, so both functions take the spec.
 
 Notes
 -----
@@ -30,6 +30,7 @@ if TYPE_CHECKING:
 
     from duckdb import DuckDBPyRelation, Expression
     from mathspec.program import Program
+    from mathspec.spec import Spec
 
     from datarecord.protocols import RecordLike
 
@@ -40,18 +41,18 @@ _ADAPTER = (
 
 
 def schema_of(
-    program: Program,
+    spec: Spec,
     *,
     partial: Collection[str] = (),
     default_by: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
 ) -> Schema:
-    """The schema of a record holding the data and the results of `program`.
+    """The schema of a record holding the data `spec` reads.
 
     A relation is a multi-dim, a map is a property that refers to its dim, and
-    a parameter or a variable is an attribute. An attribute is over each
-    relation its entry lists under `in:`, and over each dim of the entry that
-    no such relation is over. A parameter's `missing:` value is its
-    attribute's `default`.
+    a parameter is an attribute. An attribute is over each relation its
+    parameter lists under `in:`, and over each dim of the parameter that no
+    such relation is over. A parameter's `missing:` value is its attribute's
+    `default`. A variable and a named expression have no attribute.
 
     Parameters
     ----------
@@ -67,8 +68,8 @@ def schema_of(
     Raises
     ------
     ValueError
-        If a key of `default_by` is no parameter of `program`, or is one
-        under `missing: absent`. Also if an entry lists two relations over one
+        If a key of `default_by` is no parameter of `spec`, or is one under
+        `missing: absent`. Also if a parameter lists two relations over one
         dim under `in:`, or `Schema` refuses a declaration.
 
     Notes
@@ -79,6 +80,7 @@ def schema_of(
     - [default_by](https://energy-models.github.io/datarecord/reference/schema/#default_by)
     - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
     """
+    program = spec.program
     default_by = default_by or {}
     _refuse_defaults(program, default_by)
     dimensions = {
@@ -109,11 +111,6 @@ def schema_of(
             description=p.description,
         )
         for name, p in program.parameters.items()
-    } | {
-        name: AttributeSpec(
-            dtype="float", dims=_attribute_dims(program, name, v.dims, v.in_)
-        )
-        for name, v in program.variables.items()
     }
     return Schema(
         dimensions=dimensions,
@@ -123,8 +120,8 @@ def schema_of(
     )
 
 
-def tables(record: RecordLike, program: Program) -> dict[str, DuckDBPyRelation]:
-    """The tables `program` reads its data from, by the name it reads each under.
+def tables(record: RecordLike, spec: Spec) -> dict[str, DuckDBPyRelation]:
+    """The tables `spec` reads its data from, by the name it reads each under.
 
     The table of a dim has its labels and a column per map, and the table of
     a relation has a column per column of the relation. The table of a
@@ -137,14 +134,14 @@ def tables(record: RecordLike, program: Program) -> dict[str, DuckDBPyRelation]:
     Parameters
     ----------
     record
-        A record whose schema is `schema_of(program, ...)`, or declares at
+        A record whose schema is `schema_of(spec, ...)`, or declares at
         least what that does.
 
     Raises
     ------
     KeyError
         If the record's schema declares no dim or attribute of a name
-        `program` reads.
+        `spec` reads.
     ValueError
         If a parameter has defaults by the categories of two dims.
 
@@ -154,7 +151,8 @@ def tables(record: RecordLike, program: Program) -> dict[str, DuckDBPyRelation]:
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     - [default_by](https://energy-models.github.io/datarecord/reference/schema/#default_by)
     """
-    supplied = [d for d, spec in program.dimensions.items() if not spec.one_of]
+    program = spec.program
+    supplied = [d for d, dim in program.dimensions.items() if not dim.one_of]
     relations = [r for r in program.relations if r not in program.dimensions]
     out = {
         name: _subject_table(record, program, name) for name in (*supplied, *relations)
@@ -193,7 +191,7 @@ def _refuse_defaults(
 def _attribute_dims(
     program: Program, name: str, dims: Sequence[str], in_: Sequence[str]
 ) -> frozenset[str]:
-    """The dims of the attribute for entry `name`: each relation of its `in:`, and each of its dims they leave out.
+    """The dims of the attribute for parameter `name`: each relation of its `in:`, and each of its dims they leave out.
 
     Two multi-dims of one attribute are independent coordinates, so their
     tuples pair freely. The spec means the combinations both relations list,

@@ -360,14 +360,14 @@ They leave the other labels, the dim's axis and the SubNetworks to `base`.
 from datarecord.tools.mathspec import schema_of, tables
 ```
 
-The mathspec adapter is two functions that take the program of a [mathspec](https://mathspec.readthedocs.io) spec.
-`schema_of` returns the schema of a record for the spec's data and results.
+The mathspec adapter is two functions that take a [mathspec](https://mathspec.readthedocs.io) spec.
+`schema_of` returns the schema of a record for the spec's data.
 `tables` returns the tables that the spec reads its data from.
 The adapter is no `Tool`, because its names are the spec's own and not one framework's.
 
 ### `schema_of`
 
-`schema_of(program, *, partial=(), default_by=None)` declares one entry of the schema per entry of the spec:
+`schema_of(spec, *, partial=(), default_by=None)` declares one entry of the schema per entry of the spec that has data:
 
 | In the spec | In the schema                                               |
 | ----------- | ----------------------------------------------------------- |
@@ -375,9 +375,9 @@ The adapter is no `Tool`, because its names are the spec's own and not one frame
 | a relation  | a [multi-dim](data-model.md#multi-dims) over its columns    |
 | a map       | a [property](data-model.md#properties) that refers to a dim |
 | a parameter | an attribute with the parameter's `dtype`                   |
-| a variable  | a `float` attribute, which a result is written to           |
 
-An attribute's `dims` are the relations that its entry lists under `in:`, and each dim of the entry that no such relation is over.
+`schema_of` declares no attribute for a variable or a named expression, because the schema is for the data that the spec reads.
+An attribute's `dims` are the relations that its parameter lists under `in:`, and each dim of the parameter that no such relation is over.
 A parameter's `missing:` value is the attribute's `default`.
 Under `missing: refused` or `missing: absent`, the attribute has no `default`.
 
@@ -388,7 +388,7 @@ The spec states neither `partial` nor `default_by`, because both describe how a 
 ```python
 from mathspec import to_spec
 
-program = to_spec("""
+spec = to_spec("""
 dimensions:
   entity: {}
   bus: {}
@@ -401,10 +401,10 @@ maps:
 parameters:
   sign: { dims: [entity], missing: 1 }
   efficiency: { dims: [entity, bus], in: [connection], missing: 1 }
-""").program
+""")
 
 schema = schema_of(
-    program,
+    spec,
     partial={"entity", "connection"},
     default_by={"sign": {"entity.ctype": {"Load": -1}}},
 )
@@ -421,11 +421,11 @@ The spec declares one `sign` for every entity, and the schema adds the `sign` of
 
 - `default_by` has a key that is no parameter of the spec.
 - `default_by` has a parameter under `missing: absent`, where a missing row means no value.
-- An entry lists two relations over one dim under `in:`. The spec means the combinations that both relations list, and an attribute over two multi-dims has a value for every pair of their tuples.
+- A parameter lists two relations over one dim under `in:`. The spec means the combinations that both relations list, and an attribute over two multi-dims has a value for every pair of their tuples.
 
 ### `tables`
 
-`tables(record, program)` returns one DuckDB relation per name that the spec reads data under:
+`tables(record, spec)` returns one DuckDB relation per name that the spec reads data under:
 
 | Table of    | Columns                                    | Rows                         |
 | ----------- | ------------------------------------------ | ---------------------------- |
@@ -451,7 +451,7 @@ w.add(
 )
 w.set("efficiency", 0.9, entity="wind", bus="north")
 
-handed = tables(w, program)
+handed = tables(w, spec)
 sorted(handed)  # ['bus', 'connection', 'efficiency', 'entity', 'sign']
 handed["connection"].fetchall()  # [('north', 'wind'), ('north', 'city')]
 handed["efficiency"].fetchall()  # [('north', 'wind', 0.9)]
