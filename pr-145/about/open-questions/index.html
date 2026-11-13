@@ -1,0 +1,2382 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Dimensioned attribute data with a declared schema">
+      
+      
+      
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-145/about/open-questions/">
+      
+      
+        <link rel="prev" href="../storage/">
+      
+      
+        <link rel="next" href="../../development/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Open questions - datarecord</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
+    
+      <link rel="stylesheet" href="../../static/extras.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#open-questions" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="datarecord" class="md-header__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            datarecord
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Open questions
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="indigo" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+    
+      
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../.." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../installation/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Installation
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../tutorials/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Tutorials
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../howto/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  How-to guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  About
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../development/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Development
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../../changelog/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Changelog
+
+      </a>
+    </li>
+  
+
+      
+    </ul>
+  </div>
+</nav>
+    
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="datarecord" class="md-nav__button md-logo" aria-label="datarecord" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    datarecord
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/energy-models/datarecord" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    energy-models/datarecord
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Installation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../tutorials/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tutorials
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../howto/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How-to guides
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../reference/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+        
+        
+      
+      
+    
+    
+      
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    About
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_6" id="__nav_6_label" tabindex="">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    About
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../one-record/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    One record
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../data-model/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Data model
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../layers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Layers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../storage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Storage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Open questions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Open">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#should-partial-ever-be-per-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should partial ever be per attribute?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-a-later-input-edit-invalidate-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should a later input edit invalidate results?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-can-datarecord-detect-intermediate-results-that-no-longer-fit-their-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How can datarecord detect intermediate results that no longer fit their inputs?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-propertys-value-name-a-label-as-the-dims-own-keyword" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a property's value name a label as the dim's own keyword?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-a-multi-dim-left-with-one-coordinate-read-as-that-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does a multi-dim left with one coordinate read as that dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-workingrecord-edit-through-a-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a WorkingRecord edit through a selection?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-selection-follow-a-workingrecords-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a selection follow a WorkingRecord's edits?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-a-workingrecord-stage-against-a-snapshot-of-its-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should a WorkingRecord stage against a snapshot of its base?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-else-should-a-record-answer-about-its-labels-without-handing-over-a-frame" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What else should a Record answer about its labels without handing over a frame?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-property-referring-to-a-dim-without-one_of-categorise-a-partial-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a property referring to a dim without one_of categorise a partial dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-dim-with-one_of-grow-in-a-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a dim with one_of grow in a layer?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-multi-dim-be-over-another-multi-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a multi-dim be over another multi-dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-a-functional-mapping-over-two-coordinates-justify-a-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does a functional mapping over two coordinates justify a dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-the-published-package-depend-on-mathspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does the published package depend on mathspec?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-a-property-that-refers-to-a-dim-map-onto-mathspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does a property that refers to a dim map onto mathspec?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#must-a-default-name-a-live-label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Must a default name a live label?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-bus-earn-its-place-in-the-fold-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does bus earn its place in the fold key?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-partial-name-a-coordinate-of-a-multi-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May partial name a coordinate of a multi-dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-selector-keywords-need-a-qualified-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do selector keywords need a qualified form?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-schema-declare-a-dim-with-its-mapping-property-in-one-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should Schema declare a dim with its mapping property in one call?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-workingrecord-delete-one-value-along-a-dim-outside-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a WorkingRecord delete one value along a dim outside partial?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-layer-remove-a-dim-from-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a layer remove a dim from partial?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-pypsa1474-land-as" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does PyPSA#1474 land as?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-the-checks-at-set-and-at-write-take-the-folds-fixed-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can the checks at set and at write take the fold's fixed plan?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-set-stage-a-scoped-or-crossing-broadcast-without-spreading-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can set stage a scoped or crossing broadcast without spreading it?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-does-a-deep-ancestry-materialise-its-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When does a deep ancestry materialise its map?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-an-edit-join-a-callers-open-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May an edit join a caller's open transaction?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-a-schema-change-on-a-workingrecord-do-to-its-registered-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does a schema change on a WorkingRecord do to its registered views?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-a-sql-client-settle-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does a SQL client settle rows?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-drops-a-forgotten-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who drops a forgotten registration?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#will-duckdbs-create_view-take-a-qualified-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Will DuckDB's create_view take a qualified name?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-will-duckdb-stop-a-read-seeing-part-of-a-committed-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When will DuckDB stop a read seeing part of a committed transaction?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-pays-the-cold-fold-of-a-registered-revision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who pays the cold fold of a registered revision?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settled
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settled">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#can-a-record-be-filtered-before-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a record be filtered before build?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-a-pointwise-set-cover-when-it-leaves-one-of-two-dims-outside-partial-null" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does a pointwise set cover when it leaves one of two dims outside partial NULL?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-a-broadcast-survive-materialisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does a broadcast survive materialisation?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-flags-need-a-record-level-counterpart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does flags need a record-level counterpart?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-a-null-multi-dim-struct-cover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does a NULL multi-dim struct cover?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-build-do-with-a-value-its-type-does-not-take" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does build do with a value its type does not take?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-multi-dim-in-partial-have-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a multi-dim in partial have categories?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-should-a-connection-value-staged-without-its-bus-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What should a connection value staged without its bus mean?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-records-relations-be-named-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a record's relations be named views?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-does-a-server-drop-the-folds-it-opened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When does a server drop the folds it opened?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-are-a-workingrecords-staging-tables-dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When are a WorkingRecord's staging tables dropped?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../development/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Development
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#open" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Open
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Open">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#should-partial-ever-be-per-attribute" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should partial ever be per attribute?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-a-later-input-edit-invalidate-results" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should a later input edit invalidate results?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-can-datarecord-detect-intermediate-results-that-no-longer-fit-their-inputs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How can datarecord detect intermediate results that no longer fit their inputs?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-propertys-value-name-a-label-as-the-dims-own-keyword" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a property's value name a label as the dim's own keyword?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-a-multi-dim-left-with-one-coordinate-read-as-that-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does a multi-dim left with one coordinate read as that dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-workingrecord-edit-through-a-selection" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a WorkingRecord edit through a selection?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-selection-follow-a-workingrecords-edits" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a selection follow a WorkingRecord's edits?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-a-workingrecord-stage-against-a-snapshot-of-its-base" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should a WorkingRecord stage against a snapshot of its base?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-else-should-a-record-answer-about-its-labels-without-handing-over-a-frame" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What else should a Record answer about its labels without handing over a frame?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-property-referring-to-a-dim-without-one_of-categorise-a-partial-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a property referring to a dim without one_of categorise a partial dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-dim-with-one_of-grow-in-a-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a dim with one_of grow in a layer?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-multi-dim-be-over-another-multi-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a multi-dim be over another multi-dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-a-functional-mapping-over-two-coordinates-justify-a-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does a functional mapping over two coordinates justify a dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-the-published-package-depend-on-mathspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does the published package depend on mathspec?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-a-property-that-refers-to-a-dim-map-onto-mathspec" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does a property that refers to a dim map onto mathspec?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#must-a-default-name-a-live-label" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Must a default name a live label?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-bus-earn-its-place-in-the-fold-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does bus earn its place in the fold key?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-partial-name-a-coordinate-of-a-multi-dim" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May partial name a coordinate of a multi-dim?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#do-selector-keywords-need-a-qualified-form" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Do selector keywords need a qualified form?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#should-schema-declare-a-dim-with-its-mapping-property-in-one-call" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should Schema declare a dim with its mapping property in one call?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-workingrecord-delete-one-value-along-a-dim-outside-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a WorkingRecord delete one value along a dim outside partial?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-layer-remove-a-dim-from-partial" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a layer remove a dim from partial?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-pypsa1474-land-as" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does PyPSA#1474 land as?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-the-checks-at-set-and-at-write-take-the-folds-fixed-plan" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can the checks at set and at write take the fold's fixed plan?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-set-stage-a-scoped-or-crossing-broadcast-without-spreading-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can set stage a scoped or crossing broadcast without spreading it?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-does-a-deep-ancestry-materialise-its-map" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When does a deep ancestry materialise its map?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-an-edit-join-a-callers-open-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May an edit join a caller's open transaction?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-a-schema-change-on-a-workingrecord-do-to-its-registered-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does a schema change on a WorkingRecord do to its registered views?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#how-does-a-sql-client-settle-rows" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        How does a SQL client settle rows?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-drops-a-forgotten-registration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who drops a forgotten registration?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#will-duckdbs-create_view-take-a-qualified-name" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Will DuckDB's create_view take a qualified name?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-will-duckdb-stop-a-read-seeing-part-of-a-committed-transaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When will DuckDB stop a read seeing part of a committed transaction?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#who-pays-the-cold-fold-of-a-registered-revision" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Who pays the cold fold of a registered revision?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#settled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Settled
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Settled">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#can-a-record-be-filtered-before-build" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a record be filtered before build?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-a-pointwise-set-cover-when-it-leaves-one-of-two-dims-outside-partial-null" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does a pointwise set cover when it leaves one of two dims outside partial NULL?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-a-broadcast-survive-materialisation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does a broadcast survive materialisation?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#does-flags-need-a-record-level-counterpart" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Does flags need a record-level counterpart?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-a-null-multi-dim-struct-cover" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does a NULL multi-dim struct cover?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-does-build-do-with-a-value-its-type-does-not-take" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What does build do with a value its type does not take?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#may-a-multi-dim-in-partial-have-categories" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        May a multi-dim in partial have categories?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-should-a-connection-value-staged-without-its-bus-mean" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What should a connection value staged without its bus mean?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#can-a-records-relations-be-named-views" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Can a record's relations be named views?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-does-a-server-drop-the-folds-it-opened" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When does a server drop the folds it opened?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#when-are-a-workingrecords-staging-tables-dropped" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        When are a WorkingRecord's staging tables dropped?
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+
+SPDX-License-Identifier: CC-BY-4.0
+-->
+
+<h1 id="open-questions">Open questions<a class="headerlink" href="#open-questions" title="Permanent link">&para;</a></h1>
+<p>This page lists what the design of datarecord leaves open, and below it the questions it has settled.</p>
+<h2 id="open">Open<a class="headerlink" href="#open" title="Permanent link">&para;</a></h2>
+<h3 id="should-partial-ever-be-per-attribute">Should <code>partial</code> ever be per attribute?<a class="headerlink" href="#should-partial-ever-be-per-attribute" title="Permanent link">&para;</a></h3>
+<p><code>partial</code> sits on the dim because it applies to every attribute over that dim (<a href="../layers/">layers</a>). A counter-example would be an attribute whose series a reader can take in pieces while others cannot, and none is known. Allowing it would make the fold's key vary per attribute, where the owner map has one fixed key.</p>
+<h3 id="should-a-later-input-edit-invalidate-results">Should a later input edit invalidate results?<a class="headerlink" href="#should-a-later-input-edit-invalidate-results" title="Permanent link">&para;</a></h3>
+<p>A result is an attribute and is inherited, so a child that edits an input keeps results computed from its parent's inputs (<a href="../data-model/">the data model</a>). Dropping them on the next input edit was rejected, because it discards work the caller may want. datarecord does not guess which results to keep, so it keeps both. You decide whether a record's results still fit its inputs. If this causes trouble in practice, the next step is a warning, which costs little to add.</p>
+<h3 id="how-can-datarecord-detect-intermediate-results-that-no-longer-fit-their-inputs">How can datarecord detect intermediate results that no longer fit their inputs?<a class="headerlink" href="#how-can-datarecord-detect-intermediate-results-that-no-longer-fit-their-inputs" title="Permanent link">&para;</a></h3>
+<p>A results layer of the PyPSA tool replaces the SubNetworks of its base. A child that edits the topology keeps its parent's until the next solve (<a href="../../reference/tools/">tools</a>). Marking them stale needs a list of the inputs that each came from.</p>
+<h3 id="can-a-propertys-value-name-a-label-as-the-dims-own-keyword">Can a property's value name a label as the dim's own keyword?<a class="headerlink" href="#can-a-propertys-value-name-a-label-as-the-dims-own-keyword" title="Permanent link">&para;</a></h3>
+<p>A record may label a dim by position and keep what each label means as a property, such as a snapshot's timestamp as <code>snapshot.timestep</code>. <code>select</code> matches <code>snapshot=</code> against the positions (<a href="../../reference/selecting/">selecting</a>). Taking a timestamp there needs a rule for when <code>select</code> matches a keyword against a property rather than the label. PyPSA's multi-period snapshots need no such rule, because they are a <a href="../../reference/data-model/#multi-dims">multi-dim</a> whose <code>timestep</code> is a coordinate keyword.</p>
+<h3 id="does-a-multi-dim-left-with-one-coordinate-read-as-that-dim">Does a multi-dim left with one coordinate read as that dim?<a class="headerlink" href="#does-a-multi-dim-left-with-one-coordinate-read-as-that-dim" title="Permanent link">&para;</a></h3>
+<p>Squeezing a coordinate's dim projects a multi-dim's tuples on the others (<a href="../../reference/selecting/">selecting</a>). A multi-dim left with one coordinate stays a struct of one field, rather than reading as the dim it draws on.</p>
+<h3 id="can-a-workingrecord-edit-through-a-selection">Can a <code>WorkingRecord</code> edit through a selection?<a class="headerlink" href="#can-a-workingrecord-edit-through-a-selection" title="Permanent link">&para;</a></h3>
+<p>A <code>WorkingRecord</code> over a <code>Selection</code> would stage at the base's coordinates through <code>lift</code> (<a href="../../reference/selecting/">selecting</a>). Today an edit goes to the base.</p>
+<h3 id="can-a-selection-follow-a-workingrecords-edits">Can a selection follow a <code>WorkingRecord</code>'s edits?<a class="headerlink" href="#can-a-selection-follow-a-workingrecords-edits" title="Permanent link">&para;</a></h3>
+<p><code>select</code> resolves the axes it narrows when you call it, so a label a <code>WorkingRecord</code> adds later is outside them (<a href="../../reference/selecting/">selecting</a>). Following the edits, and registering a selection as views, needs the narrowing as a plan rather than as labels.</p>
+<h3 id="should-a-workingrecord-stage-against-a-snapshot-of-its-base">Should a <code>WorkingRecord</code> stage against a snapshot of its base?<a class="headerlink" href="#should-a-workingrecord-stage-against-a-snapshot-of-its-base" title="Permanent link">&para;</a></h3>
+<p>A <code>WorkingRecord</code> may sit over another <code>WorkingRecord</code>, and its reads include that base's later edits. Staging against a snapshot taken at construction is simpler and arguably more correct. A sequence of edits should not pick up another writer's changes mid-way. The cost is a record that can go stale.</p>
+<h3 id="what-else-should-a-record-answer-about-its-labels-without-handing-over-a-frame">What else should a <code>Record</code> answer about its labels without handing over a frame?<a class="headerlink" href="#what-else-should-a-record-answer-about-its-labels-without-handing-over-a-frame" title="Permanent link">&para;</a></h3>
+<p><code>flags</code> is the model for this: cheap derived metadata a reader plans with before opening a file, per attribute (<a href="../../reference/record/">the record</a>). <code>entity -&gt; ctype</code> is a column of the resolved axis, one frame across all categories (<a href="../../reference/format/">the format</a>). "Which categories have live labels" and "how many labels a category has" are still frames to collect. The open part is how much one method should answer. <code>flags</code> answers every attribute in one call, and one method per question would add more to <code>RecordLike</code> than collecting the frames costs a reader. Any answer has to come from the fold, where a record's labels are settled.</p>
+<h3 id="may-a-property-referring-to-a-dim-without-one_of-categorise-a-partial-dim">May a property referring to a dim without <code>one_of</code> categorise a <code>partial</code> dim?<a class="headerlink" href="#may-a-property-referring-to-a-dim-without-one_of-categorise-a-partial-dim" title="Permanent link">&para;</a></h3>
+<p><code>entity.carrier</code> refers to <code>carrier</code>, and a <code>default_by</code> keyed on it would make a vocabulary of data: a category that a layer adds and removes. Today a category is a label of a dim with <code>one_of</code> (<a href="../../reference/schema/">the schema</a>).</p>
+<h3 id="may-a-dim-with-one_of-grow-in-a-layer">May a dim with <code>one_of</code> grow in a layer?<a class="headerlink" href="#may-a-dim-with-one_of-grow-in-a-layer" title="Permanent link">&para;</a></h3>
+<p>Its axis is the schema's list, so a custom PyPSA component type is a schema change and not a data edit (<a href="../../reference/schema/">the schema</a>). That is the cost of checking a category at load. The alternative is an axis that a layer writes and the list bounds. A tool or a layer could then set which labels exist, and the dim could have properties. It costs a file that restates the schema and a category that may match no live label (<a href="../../development/proposals/dep-0024-categories-are-enum-dimensions/">DEP 24</a>).</p>
+<h3 id="may-a-multi-dim-be-over-another-multi-dim">May a multi-dim be <code>over</code> another multi-dim?<a class="headerlink" href="#may-a-multi-dim-be-over-another-multi-dim" title="Permanent link">&para;</a></h3>
+<p>Each coordinate of a multi-dim draws on a dim that is not a multi-dim, and datarecord refuses one that does (<a href="../../reference/schema/">the schema</a>). Nothing needs a tuple of tuples yet, and the refusal stands until something does.</p>
+<h3 id="does-a-functional-mapping-over-two-coordinates-justify-a-dim">Does a functional mapping over two coordinates justify a dim?<a class="headerlink" href="#does-a-functional-mapping-over-two-coordinates-justify-a-dim" title="Permanent link">&para;</a></h3>
+<p>A zone per plant and period is a multi-dim <code>plant_period</code> with the property <code>zone</code> (<a href="../../reference/data-model/">the data model</a>). The multi-dim exists only for <code>zone</code>, and you add its tuples before you can set the property.</p>
+<h3 id="how-does-the-published-package-depend-on-mathspec">How does the published package depend on mathspec?<a class="headerlink" href="#how-does-the-published-package-depend-on-mathspec" title="Permanent link">&para;</a></h3>
+<p>Core reads its dtypes from <code>mathspec.program</code>. The environment pins mathspec at a commit of a pull request branch, which lasts only while the commit exists on GitHub. Before a release the pin moves to the merged commit. <code>pyproject.toml</code> declares that pin as a direct git dependency, which PyPI refuses in an upload, so a PyPI release waits until mathspec is published.</p>
+<h3 id="how-does-a-property-that-refers-to-a-dim-map-onto-mathspec">How does a property that refers to a dim map onto mathspec?<a class="headerlink" href="#how-does-a-property-that-refers-to-a-dim-map-onto-mathspec" title="Permanent link">&para;</a></h3>
+<p>mathspec spells it as a relation, <code>carrier_of: { key: generator, values: carrier }</code>, declared beside the dims. datarecord declares <code>one_of: carrier</code> on a property of <code>generator</code>. Unifying the two is left for later.</p>
+<h3 id="must-a-default-name-a-live-label">Must a default name a live label?<a class="headerlink" href="#must-a-default-name-a-live-label" title="Permanent link">&para;</a></h3>
+<p><code>bus.carrier</code> defaults to <code>AC</code> in PyPSA's schema. datarecord never stores a default, so it does not check that <code>AC</code> is a label of <code>carrier</code> (<a href="../../reference/schema/">the schema</a>). A selection applies the default when it drops labels. <code>select</code> drops a bus whose default carrier it drops, and keeps one whose default is on no axis (<a href="../../reference/selecting/">selecting</a>).</p>
+<h3 id="does-bus-earn-its-place-in-the-fold-key">Does <code>bus</code> earn its place in the fold key?<a class="headerlink" href="#does-bus-earn-its-place-in-the-fold-key" title="Permanent link">&para;</a></h3>
+<p>PyPSA's <code>partial</code> includes <code>bus</code> so that a layer can patch one bus's <code>v_nom</code>, and every read scans every <code>partial</code> dim in the fold key (<a href="../layers/">layers</a>). Measuring it on a record the size of PyPSA-Eur would settle it.</p>
+<h3 id="may-partial-name-a-coordinate-of-a-multi-dim">May <code>partial</code> name a coordinate of a multi-dim?<a class="headerlink" href="#may-partial-name-a-coordinate-of-a-multi-dim" title="Permanent link">&para;</a></h3>
+<p><code>partial</code> may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its <code>dims</code> and <code>partial</code> (<a href="../../reference/layers/#partial">layers</a>). So <code>period</code> in <code>partial</code> does not apply to a series over <code>snapshot</code>, the multi-dim over <code>(period, timestep)</code>. A per-period, myopic re-solve then restates the whole series, every other period's values included (<a href="../../reference/tools/#writing-results">tools</a>). With a coordinate in <code>partial</code>, <code>p</code> would be keyed by <code>(attribute, connection, period)</code>, and the re-solve would restate its own period's series alone. The cost is a wider fold key on every read of every attribute over <code>snapshot</code>.</p>
+<h3 id="do-selector-keywords-need-a-qualified-form">Do selector keywords need a qualified form?<a class="headerlink" href="#do-selector-keywords-need-a-qualified-form" title="Permanent link">&para;</a></h3>
+<p><code>set</code> refuses a bare selector keyword that is the name of a property of two dims that one attribute is indexed over (<a href="../../reference/editing/">editing</a>). The only way to say which is meant is to set per dim.</p>
+<h3 id="should-schema-declare-a-dim-with-its-mapping-property-in-one-call">Should <code>Schema</code> declare a dim with its mapping property in one call?<a class="headerlink" href="#should-schema-declare-a-dim-with-its-mapping-property-in-one-call" title="Permanent link">&para;</a></h3>
+<p>A snapshot mapped to its period is a dim plus a property that refers to the period. A helper could make the two declarations one (<a href="../../reference/schema/">the schema</a>).</p>
+<h3 id="may-a-workingrecord-delete-one-value-along-a-dim-outside-partial">May a <code>WorkingRecord</code> delete one value along a dim outside <code>partial</code>?<a class="headerlink" href="#may-a-workingrecord-delete-one-value-along-a-dim-outside-partial" title="Permanent link">&para;</a></h3>
+<p>A layer that restates a key along such a dim and leaves out a label its parent had there deletes that value (<a href="../../reference/layers/">layers</a>). A <code>WorkingRecord</code> stages the label's whole extent, so today only a hand-written layer can.</p>
+<h3 id="may-a-layer-remove-a-dim-from-partial">May a layer remove a dim from <code>partial</code>?<a class="headerlink" href="#may-a-layer-remove-a-dim-from-partial" title="Permanent link">&para;</a></h3>
+<p>Schema versioning refuses it (<a href="../../reference/schema/">the schema</a>). To allow it, the layer would restate as resolved each key of its <code>partial</code> where a parent's map row sets a label of the dim. The fold would then project the dim out of the parent's map, dropping every row that set it. It would refuse a layer that leaves one uncovered (<a href="../../reference/resolution/">resolution</a>). <code>compatible_with</code> would accept the smaller <code>partial</code>, and a helper would build such a layer from a revision.</p>
+<h3 id="what-does-pypsa1474-land-as">What does PyPSA#1474 land as?<a class="headerlink" href="#what-does-pypsa1474-land-as" title="Permanent link">&para;</a></h3>
+<p>Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop <code>""</code> meaning none. The PyPSA tool adds the first and stores the second as NULL today (<a href="../../reference/tools/">tools</a>).</p>
+<h3 id="can-the-checks-at-set-and-at-write-take-the-folds-fixed-plan">Can the checks at <code>set</code> and at write take the fold's fixed plan?<a class="headerlink" href="#can-the-checks-at-set-and-at-write-take-the-folds-fixed-plan" title="Permanent link">&para;</a></h3>
+<p>The fold carries the set of dims a row sets as data, so its joins do not depend on the rows (<a href="../../reference/resolution/">resolution</a>). <code>set</code> and the writer refuse two crossing rows by looping over the pairs of such sets, fetching once per pair (<a href="../../reference/editing/">editing</a>).</p>
+<h3 id="can-set-stage-a-scoped-or-crossing-broadcast-without-spreading-it">Can <code>set</code> stage a scoped or crossing broadcast without spreading it?<a class="headerlink" href="#can-set-stage-a-scoped-or-crossing-broadcast-without-spreading-it" title="Permanent link">&para;</a></h3>
+<p><code>set</code> stages a broadcast scoped to a scenario, or one that crosses another row, as one row per entity and snapshot it applies to (<a href="../../reference/editing/">editing</a>). A large edit then stages rows in proportion to the labels it applies to, not to the rows it sets.</p>
+<h3 id="when-does-a-deep-ancestry-materialise-its-map">When does a deep ancestry materialise its map?<a class="headerlink" href="#when-does-a-deep-ancestry-materialise-its-map" title="Permanent link">&para;</a></h3>
+<p>A cold fold in a fresh workspace grows linearly with depth, about 0.1 s per layer (<a href="../../reference/resolution/">resolution</a>). Materialising every N layers, or at a branch point, would bound it, and no policy is chosen.</p>
+<h3 id="may-an-edit-join-a-callers-open-transaction">May an edit join a caller's open transaction?<a class="headerlink" href="#may-an-edit-join-a-callers-open-transaction" title="Permanent link">&para;</a></h3>
+<p>An edit runs in its own transaction, and DuckDB nests none. datarecord therefore refuses an edit while the caller has a transaction open on the same cursor (<a href="../../reference/editing/">editing</a>). Joining the caller's would lose the edit's own rollback on refusal.</p>
+<h3 id="what-does-a-schema-change-on-a-workingrecord-do-to-its-registered-views">What does a schema change on a <code>WorkingRecord</code> do to its registered views?<a class="headerlink" href="#what-does-a-schema-change-on-a-workingrecord-do-to-its-registered-views" title="Permanent link">&para;</a></h3>
+<p>A <code>WorkingRecord</code> has no method that changes its schema, which changes only at commit. Such a method would refuse a change that alters a column or the fold of a registered view, or replace the views it affects. A client would then see them change (<a href="../../reference/format/">the format</a>). Widening an attribute's <code>dims</code>, adding a property and adding a dim to <code>partial</code> are such changes. Adding an attribute or a dim would add its view (<a href="../../development/proposals/dep-0034-a-record-registers-as-views/">DEP 34</a>).</p>
+<h3 id="how-does-a-sql-client-settle-rows">How does a SQL client settle rows?<a class="headerlink" href="#how-does-a-sql-client-settle-rows" title="Permanent link">&para;</a></h3>
+<p>Registered views are raw, so a client applies the broadcast rule itself (<a href="../../reference/format/">the format</a>). <code>settle</code> ported to the frontend, and a page on the raw format for SQL clients, are still to write (<a href="../../development/proposals/dep-0034-a-record-registers-as-views/">DEP 34</a>).</p>
+<h3 id="who-drops-a-forgotten-registration">Who drops a forgotten registration?<a class="headerlink" href="#who-drops-a-forgotten-registration" title="Permanent link">&para;</a></h3>
+<p>A server that crashes or forgets leaves its views and the folds they read. The <code>registered</code> table lists every registration with its <code>created</code> time, but datarecord does not yet unregister one by any rule (<a href="../../development/proposals/dep-0034-a-record-registers-as-views/">DEP 34</a>). Unregistering frees the staging tables that the registration uses, so the rule also sets how long they stay (<a href="../../reference/store/">the store</a>). A workspace reopened on a file keeps an earlier run's <code>_staged</code> and <code>_fold</code> schemas, which no record uses. Those that no registration's <code>held</code> column lists could be swept, but datarecord does not sweep them yet (<a href="../../development/proposals/dep-0035-a-record-holds-the-tables-it-reads/">DEP 35</a>).</p>
+<h3 id="will-duckdbs-create_view-take-a-qualified-name">Will DuckDB's <code>create_view</code> take a qualified name?<a class="headerlink" href="#will-duckdbs-create_view-take-a-qualified-name" title="Permanent link">&para;</a></h3>
+<p><code>register</code> calls DuckDB's private <code>_render</code> and <code>_create_view</code>, because <code>DuckDBPyRelation.create_view</code> takes one identifier and no nested path (<a href="../storage/">storage</a>). That caps DuckDB at the newest release the tests passed on until a public method takes a qualified name, which is to be requested upstream.</p>
+<h3 id="when-will-duckdb-stop-a-read-seeing-part-of-a-committed-transaction">When will DuckDB stop a read seeing part of a committed transaction?<a class="headerlink" href="#when-will-duckdb-stop-a-read-seeing-part-of-a-committed-transaction" title="Permanent link">&para;</a></h3>
+<p>DuckDB 2.0 can show a reader on another cursor part of a committed transaction of about 300,000 rows or more. A reader sees such a part in 0.1 to 1% of reads. No edit can rule it out until DuckDB does, so a reader sees each edit whole only where the edit is smaller (<a href="../../reference/format/">the format</a>). It is to be reported upstream (<a href="../../development/proposals/dep-0034-a-record-registers-as-views/">DEP 34</a>).</p>
+<h3 id="who-pays-the-cold-fold-of-a-registered-revision">Who pays the cold fold of a registered revision?<a class="headerlink" href="#who-pays-the-cold-fold-of-a-registered-revision" title="Permanent link">&para;</a></h3>
+<p><code>register</code>, or the first read of a view, runs the cold fold of a deep revision, once per lineage in a workspace (<a href="../../reference/resolution/">resolution</a>). It grows linearly with depth until the revision's map is <a href="#when-does-a-deep-ancestry-materialise-its-map">materialised</a>.</p>
+<h2 id="settled">Settled<a class="headerlink" href="#settled" title="Permanent link">&para;</a></h2>
+<h3 id="can-a-record-be-filtered-before-build">Can a record be filtered before <code>build</code>?<a class="headerlink" href="#can-a-record-be-filtered-before-build" title="Permanent link">&para;</a></h3>
+<p><code>select(record, period=2030)</code> returns a selection of the record at those labels, which any reader reads as a <code>RecordLike</code> (<a href="../../reference/selecting/">selecting</a>). One label squeezes its dim, and what refers to a dropped label goes with it.</p>
+<h3 id="what-does-a-pointwise-set-cover-when-it-leaves-one-of-two-dims-outside-partial-null">What does a pointwise <code>set</code> cover when it leaves one of two dims outside <code>partial</code> NULL?<a class="headerlink" href="#what-does-a-pointwise-set-cover-when-it-leaves-one-of-two-dims-outside-partial-null" title="Permanent link">&para;</a></h3>
+<p>Every label of the dim it leaves NULL, at the label it names. The rest of the series keeps the parent's values, whether staged, committed or over a materialised parent (<a href="../../reference/resolution/">resolution</a>).</p>
+<h3 id="does-a-broadcast-survive-materialisation">Does a broadcast survive materialisation?<a class="headerlink" href="#does-a-broadcast-survive-materialisation" title="Permanent link">&para;</a></h3>
+<p>It does. The owner map contains keys as written and the fold reads no axis. A NULL therefore means every label the axis has at the revision you read. That includes a label added below a materialised revision or staged in a <code>WorkingRecord</code> (<a href="../layers/">layers</a>). A map materialised before <code>partial</code> widened is extended to the wider key, as a map folded live is (<a href="../../reference/resolution/">resolution</a>).</p>
+<h3 id="does-flags-need-a-record-level-counterpart">Does <code>flags</code> need a record-level counterpart?<a class="headerlink" href="#does-flags-need-a-record-level-counterpart" title="Permanent link">&para;</a></h3>
+<p>It is one. <code>flags()</code> returns flags per record, every attribute included, and <code>flags(**categories)</code> per category, restricted to the rows that apply to its labels (<a href="../../reference/record/">the record</a>). An attribute over an axis alone, or over a multi-dim outside <code>partial</code>, appears only in the first.</p>
+<h3 id="what-does-a-null-multi-dim-struct-cover">What does a NULL multi-dim struct cover?<a class="headerlink" href="#what-does-a-null-multi-dim-struct-cover" title="Permanent link">&para;</a></h3>
+<p>Every tuple, as a NULL on a dim means every label (<a href="../../reference/data-model/">the data model</a>). A constant <code>efficiency</code> applies to generators' connections too, and one for links alone is <code>set("efficiency", 0.7, ctype="Link")</code>.</p>
+<h3 id="what-does-build-do-with-a-value-its-type-does-not-take">What does <code>build</code> do with a value its type does not take?<a class="headerlink" href="#what-does-build-do-with-a-value-its-type-does-not-take" title="Permanent link">&para;</a></h3>
+<p>It leaves the value out and reports it in <code>Requirements.ignored</code>, as it reports an unknown type, and does not raise (<a href="../../reference/tools/">tools</a>).</p>
+<h3 id="may-a-multi-dim-in-partial-have-categories">May a multi-dim in <code>partial</code> have categories?<a class="headerlink" href="#may-a-multi-dim-in-partial-have-categories" title="Permanent link">&para;</a></h3>
+<p>It may, by the rule a dim follows. <code>connection.role: {one_of: role}</code> categorises <code>connection</code> in <code>partial</code>, so a <code>default_by</code> keyed <code>connection.role</code>, <code>flags(role=...)</code> and the keyword <code>role=</code> work as they do for <code>entity.ctype</code> (<a href="../data-model/">the data model</a>).</p>
+<h3 id="what-should-a-connection-value-staged-without-its-bus-mean">What should a connection value staged without its <code>bus</code> mean?<a class="headerlink" href="#what-should-a-connection-value-staged-without-its-bus-mean" title="Permanent link">&para;</a></h3>
+<p>Nothing: <code>set</code> refuses the call (<a href="../../reference/editing/">editing</a>). A multi-dim value is a whole tuple or NULL, so <code>{entity: dc, bus: NULL}</code> is no value, and datarecord refuses it wherever a row comes in. The alternative, "every connection of this entity", would broadcast over part of a tuple, where a multi-dim's column broadcasts only whole.</p>
+<h3 id="can-a-records-relations-be-named-views">Can a record's relations be named views?<a class="headerlink" href="#can-a-records-relations-be-named-views" title="Permanent link">&para;</a></h3>
+<p>They can, in the workspace's own database, one schema per registration with a nested schema per kind (<a href="../storage/">storage</a>). Over a <code>WorkingRecord</code> the views are created once and follow every edit, since a relation's plan never reads a staged row.</p>
+<h3 id="when-does-a-server-drop-the-folds-it-opened">When does a server drop the folds it opened?<a class="headerlink" href="#when-does-a-server-drop-the-folds-it-opened" title="Permanent link">&para;</a></h3>
+<p>When the last record that reads a fold is closed, or collected with every relation taken from it, unless a registration still reads it. A server closes each record it opens, so it frees the folds when it chooses rather than when the collector runs (<a href="../../reference/store/">the store</a>).</p>
+<h3 id="when-are-a-workingrecords-staging-tables-dropped">When are a <code>WorkingRecord</code>'s staging tables dropped?<a class="headerlink" href="#when-are-a-workingrecords-staging-tables-dropped" title="Permanent link">&para;</a></h3>
+<p>When it is closed or collected, unless a registration of it still reads them, and then on that registration's <code>unregister</code>. Its tables sit in a schema of their own, which the workspace drops whole (<a href="../../reference/store/">the store</a>).</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+      
+      <nav class="md-footer__inner md-grid" aria-label="Footer" >
+        
+          
+          <a href="../storage/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Storage">
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+            </div>
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Previous
+              </span>
+              <div class="md-ellipsis">
+                Storage
+              </div>
+            </div>
+          </a>
+        
+        
+          
+          <a href="../../development/" class="md-footer__link md-footer__link--next" aria-label="Next: Index">
+            <div class="md-footer__title">
+              <span class="md-footer__direction">
+                Next
+              </span>
+              <div class="md-ellipsis">
+                Index
+              </div>
+            </div>
+            <div class="md-footer__button md-icon">
+              
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M4 11v2h12l-5.5 5.5 1.42 1.42L19.84 12l-7.92-7.92L10.5 5.5 16 11z"/></svg>
+            </div>
+          </a>
+        
+      </nav>
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/energy-models/datarecord" target="_blank" rel="noopener" title="datarecord on GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://pypi.org/project/datarecord/" target="_blank" rel="noopener" title="datarecord on PyPI" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M23.922 13.58v3.912L20.55 18.72l-.078.055.052.037 3.45-1.256.026-.036v-3.997l-.053-.036-.025.092zm-.301-7.962-3.04 1.107v3.912l3.339-1.215V5.509zm.299 7.839V9.544l-3.336 1.215v3.913zm-3.45 1.253V10.8l-3.3 1.2v3.913zm-3.436 5.286v-3.912l-3.313 1.206v3.912zm.136-3.939v3.868l3.314-1.206V14.85zm2.093 1.882c-.367.134-.663-.074-.663-.463s.296-.814.663-.947c.365-.133.662.075.662.464s-.297.814-.662.946m-6.038-8.624.365-.132-3.285-1.197-3.323 1.21.102.037 3.184 1.16zm7.282 1.349V6.751L17.17 7.965v3.913zm-3.449 1.254V8.005l-3.302 1.202v3.912zm-3.415-2.672-3.336 1.215v3.913l3.336-1.215zm-6.736 3.919 3.322 1.209v-3.913L6.907 9.252zm3.433-5.292 3.281 1.193V5.198l-3.28-1.193zm10.167-5.158L17.19 3.922v3.913l3.317-1.207zM16.95 3.903 13.724 2.73l-3.269 1.19 3.225 1.174zm-1.585.703-1.624.592v3.868l3.317-1.207V3.991zm-.391 2.778c-.367.134-.662-.074-.662-.464s.295-.813.662-.946c.366-.133.663.074.663.464s-.297.813-.663.946M10.229 18.41v-3.914l-3.322-1.209V17.2zm3.449-1.228v-3.913l-3.371 1.227v3.913zm.078-.028 3.3-1.2V12.04l-3.3 1.2zm-.078 4.063-3.371 1.227v-3.912h-.078v3.912l-3.322-1.209v-3.913l-.053-.058-.025-.06-3.336-1.21v-3.948l.034.013 3.287 1.196.015-.078-3.261-1.187 3.26-1.187v-.109L3.876 9.62l-.307-.112 3.26-1.188v.877l.079-.055V6.769l3.257 1.185.058-.061L7.084 6.75l-.102-.037 3.24-1.179v-.083L6.854 6.677v.018l-.025.018v1.523L3.44 9.47v.02l-.025.017v4.007l-3.39 1.233v.019L0 14.784v3.995l.025.037 3.4 1.237.008-.006.007.01 3.4 1.238.008-.006.006.01 3.4 1.237.014-.009.012.01 3.45-1.256.026-.037zM3.493 9.563l3.257 1.185-3.257 1.187V9.562zM3.4 19.96.078 18.752v-3.913l2.361.86.96.349zm.015-3.99-3.08-1.12-.182-.066 3.262-1.187zm3.399 5.231-3.321-1.209V16.08l3.321 1.209zM23.791 5.434l-3.21-1.17v2.338zm-3.404-2.791-3.24-1.18-3.27 1.19 3.247 1.182z"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tracking", "navigation.tabs", "navigation.tabs.sticky", "navigation.prune", "navigation.indexes", "navigation.top", "navigation.footer", "toc.follow", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
