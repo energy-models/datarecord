@@ -361,6 +361,7 @@ from datarecord.tools.mathspec import schema_of, tables
 ```
 
 The mathspec adapter is two functions that take a [mathspec](https://mathspec.readthedocs.io) spec.
+Both accept the spec as mathspec's `to_spec` does: a YAML path, the YAML text, a mapping or a loaded `Spec`.
 `schema_of` returns the schema of a record for the spec's data.
 `tables` returns the tables that the spec reads its data from.
 The adapter is no `Tool`, because its names are the spec's own and not one framework's.
@@ -386,9 +387,7 @@ The spec states neither `partial` nor `default_by`, because both describe how a 
 `default_by` maps a parameter to its [`default_by`](schema.md#default_by), so a label takes the default of its category.
 
 ```python
-from mathspec import to_spec
-
-spec = to_spec("""
+spec = """
 dimensions:
   entity: {}
   bus: {}
@@ -401,7 +400,7 @@ maps:
 parameters:
   sign: { dims: [entity], missing: 1 }
   efficiency: { dims: [entity, bus], in: [connection], missing: 1 }
-""")
+"""
 
 schema = schema_of(
     spec,
@@ -417,6 +416,7 @@ schema.default_for("sign", ctype="Load")  # -1
 `efficiency` is over `connection` alone, because the relation is over both of its dims.
 The spec declares one `sign` for every entity, and the schema adds the `sign` of a `Load`.
 
+`schema_of` and `tables` raise mathspec's `LanguageError` for a spec that does not load.
 `schema_of` raises `ValueError` in three cases:
 
 - `default_by` has a key that is no parameter of the spec.

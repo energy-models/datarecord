@@ -104,6 +104,26 @@ def _rows(rel) -> set[tuple]:
     return set(rel.fetchall())
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        pytest.param(lambda _: SPEC, id="yaml-text"),
+        pytest.param(lambda _: to_spec(SPEC).to_dict(), id="a-mapping"),
+        pytest.param(lambda path: path, id="a-path"),
+        pytest.param(lambda path: str(path), id="a-path-as-str"),
+    ],
+)
+def test_a_spec_is_taken_as_mathspec_takes_it(source, spec, schema, revision, tmp_path):
+    path = tmp_path / "model.yaml"
+    path.write_text(SPEC)
+    given = source(path)
+    declared = schema_of(given, partial={"entity", "connection"}, default_by=DEFAULT_BY)
+    assert declared == schema
+    assert sorted(tables(revision.record, given)) == sorted(
+        tables(revision.record, spec)
+    ), "the same tables, whatever form the spec arrives in"
+
+
 def test_a_relation_is_a_multi_dim(schema):
     assert schema.over("connection") == {"entity": "entity", "bus": "bus"}
 

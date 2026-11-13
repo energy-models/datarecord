@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
+from mathspec import to_spec
 
 from datarecord.duck import ex_all, join_on, null_safe, values_relation
 from datarecord.protocols import Flags
@@ -27,12 +28,15 @@ from datarecord.settle import settle
 
 if TYPE_CHECKING:
     from collections.abc import Collection, Mapping, Sequence
+    from pathlib import Path
 
     from duckdb import DuckDBPyRelation, Expression
     from mathspec.program import Program
     from mathspec.spec import Spec
 
     from datarecord.protocols import RecordLike
+
+    Source = str | Path | Mapping[str, object] | Spec
 
 _DATA_MODEL = "https://energy-models.github.io/datarecord/reference/data-model"
 _ADAPTER = (
@@ -41,7 +45,7 @@ _ADAPTER = (
 
 
 def schema_of(
-    spec: Spec,
+    spec: Source,
     *,
     partial: Collection[str] = (),
     default_by: Mapping[str, Mapping[str, Mapping[str, Any]]] | None = None,
@@ -56,6 +60,9 @@ def schema_of(
 
     Parameters
     ----------
+    spec
+        A YAML path, the YAML text, a mapping or a loaded `Spec`, as
+        mathspec's `to_spec` takes it.
     partial
         The dims a layer may patch value by value, as `Schema.partial` takes
         them. The spec does not state them, because they describe storage.
@@ -67,6 +74,10 @@ def schema_of(
 
     Raises
     ------
+    mathspec.errors.LanguageError
+        If `spec` does not load.
+    FileNotFoundError
+        If `spec` is a path to no file.
     ValueError
         If a key of `default_by` is no parameter of `spec`, or is one under
         `missing: absent`. Also if a parameter lists two relations over one
@@ -80,7 +91,7 @@ def schema_of(
     - [default_by](https://energy-models.github.io/datarecord/reference/schema/#default_by)
     - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
     """
-    program = spec.program
+    program = to_spec(spec).program
     default_by = default_by or {}
     _refuse_defaults(program, default_by)
     dimensions = {
@@ -120,7 +131,7 @@ def schema_of(
     )
 
 
-def tables(record: RecordLike, spec: Spec) -> dict[str, DuckDBPyRelation]:
+def tables(record: RecordLike, spec: Source) -> dict[str, DuckDBPyRelation]:
     """The tables `spec` reads its data from, by the name it reads each under.
 
     The table of a dim has its labels and a column per map, and the table of
@@ -136,9 +147,15 @@ def tables(record: RecordLike, spec: Spec) -> dict[str, DuckDBPyRelation]:
     record
         A record whose schema is `schema_of(spec, ...)`, or declares at
         least what that does.
+    spec
+        As `schema_of` takes it.
 
     Raises
     ------
+    mathspec.errors.LanguageError
+        If `spec` does not load.
+    FileNotFoundError
+        If `spec` is a path to no file.
     KeyError
         If the record's schema declares no dim or attribute of a name
         `spec` reads.
@@ -151,7 +168,7 @@ def tables(record: RecordLike, spec: Spec) -> dict[str, DuckDBPyRelation]:
     - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
     - [default_by](https://energy-models.github.io/datarecord/reference/schema/#default_by)
     """
-    program = spec.program
+    program = to_spec(spec).program
     supplied = [d for d, dim in program.dimensions.items() if not dim.one_of]
     relations = [r for r in program.relations if r not in program.dimensions]
     out = {
