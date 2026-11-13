@@ -1098,12 +1098,12 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
-<li>The mathspec adapter, <code>datarecord.tools.mathspec</code>. <code>schema_of(program)</code>
-  derives a record's schema from the program of a mathspec spec: a relation is
-  a multi-dim, a map is a property that refers to a dim, and a parameter or a
-  variable is an attribute over the relations it lists under <code>in:</code>. Its
+<li>The mathspec adapter, <code>datarecord.tools.mathspec</code>. <code>schema_of(spec)</code>
+  derives the schema of a record for the data a mathspec spec reads: a
+  relation is a multi-dim, a map is a property that refers to a dim, and a
+  parameter is an attribute over the relations it lists under <code>in:</code>. Its
   <code>default_by</code> argument adds a default per category, which the spec does not
-  state. <code>tables(record, program)</code> returns the tables the spec reads, with a
+  state. <code>tables(record, spec)</code> returns the tables the spec reads, with a
   row for each label whose default differs from the spec's <code>missing:</code> value.</li>
 <li><code>select(record, **labels)</code>, exported beside <code>settle</code>, and <code>Record.select</code>
   return a <code>Selection</code>: a <code>RecordLike</code> holding any record at the labels named,
