@@ -33,7 +33,7 @@ dependencies = [
   # private `_create_view` and `_render`. Renovate raises the cap.
   "duckdb>=2.0.0,<=2.0.0",
   "pydantic>=2.12",
-  "mathspec @ git+https://github.com/energy-models/mathspec.git@8982c556114992d149a83b3c6f3604c72e569829",
+  "mathspec @ git+https://github.com/energy-models/mathspec.git@823b7c995f59bd7b1f44bcda174bf5ba79c87a0d",
 ]
 
 [project.optional-dependencies]
