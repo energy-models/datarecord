@@ -18,7 +18,7 @@ SPDX-FileCopyrightText = "datarecord contributors"
 SPDX-License-Identifier = "CC-BY-4.0"
 
 [[annotations]]
-path = ["pixi.lock"]
+path = ["pixi.lock", "src/datarecord/settle_cases.json"]
 SPDX-FileCopyrightText = "datarecord contributors"
 SPDX-License-Identifier = "MIT"
 

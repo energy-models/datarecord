@@ -129,6 +129,7 @@ A `WorkingRecord` has no method that changes its schema, which changes only at c
 ### How does a SQL client settle rows?
 
 Registered views are raw, so a client applies the broadcast rule itself ([the format](../reference/format.md)). `settle` ported to the frontend, and a page on the raw format for SQL clients, are still to write ([DEP 34](../development/proposals/dep-0034-a-record-registers-as-views.md)).
+A port checks itself against [the cases of `settle`](../reference/record.md#cases-for-a-port).
 
 ### Who drops a forgotten registration?
 
