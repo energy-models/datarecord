@@ -19,10 +19,10 @@ from __future__ import annotations
 
 import threading
 import weakref
-from collections.abc import Callable, Hashable, Sequence
+from collections.abc import Callable, Hashable, Mapping, Sequence
 from dataclasses import dataclass, field
-from functools import cached_property, partial, wraps
-from typing import TYPE_CHECKING, Any, ClassVar, Self, cast
+from functools import cached_property, partial, reduce, wraps
+from typing import TYPE_CHECKING, Any, ClassVar, NamedTuple, Self, cast
 from uuid import UUID, uuid4
 
 import duckdb
@@ -37,6 +37,7 @@ from datarecord.duck import (
     FOLD,
     anchored,
     empty_relation,
+    ex_all,
     fn,
     nested,
     null_pattern,
@@ -98,11 +99,12 @@ def _owned(dim: str) -> str:
 def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     """`om` with each of `dims` as its owning layer stored it, the owned label in `__owned_<dim>`.
 
-    A raw row then finds its owned map rows by NULL-safe equality, which hashes where
-    `raw IS NULL OR raw IS NOT DISTINCT FROM owned` does not. A map row NULL on a
-    dimension stays NULL, the read returning it as written. The flags then say how
-    the layer stored it, and a map row its layer wrote both ways appears once per
-    way.
+    A raw row then finds its owned map rows by equality, NULL-safe where it
+    may leave a dimension NULL (`_joined`), which hashes where `raw IS NULL
+    OR raw IS NOT DISTINCT FROM owned` does not. A map row NULL on a
+    dimension stays NULL, the read returning it as written. The flags then
+    say how the layer stored it, and a map row its layer wrote both ways
+    appears once per way.
 
     Notes
     -----
@@ -130,11 +132,107 @@ def _as_stored(om: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
     return om
 
 
-def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID], bool]]:
-    """Return per attribute in `om`: its owning layers, and whether one holds map rows both ways.
+def _label_of(schema: Schema, dim: str, alias: str) -> Expression:
+    """What a row's NULL on `dim` under `alias` is tested on: its column, or a multi-dimension's first field.
+
+    Parquet keeps no null count for a whole struct, so `IS NULL` on one prunes
+    no row group, where it does on a field. The writer refuses a tuple with a
+    NULL field, so the field is NULL exactly where the tuple is.
+
+    Notes
+    -----
+    - [multi-dimensions](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
+    """
+    over = schema.over(dim)
+    return col(alias, dim)[next(iter(over))] if over else col(alias, dim)
+
+
+def _joined(
+    values: DuckDBPyRelation,
+    stored: DuckDBPyRelation,
+    *named: Expression,
+    schema: Schema,
+    columns: Sequence[str],
+    over: tuple[str, ...],
+    ways: Mapping[str, tuple[bool, ...]],
+) -> DuckDBPyRelation:
+    """The layers' rows `values` joined to their owned map rows `stored`, one branch per dimension of `over` a row leaves NULL first.
+
+    `stored` is as `_as_stored` gives it, and `ways` maps each dimension to
+    how map rows store it (`_Owners`). A dimension stored one way only is
+    tested in every branch. Of the others, taken in the order of `ways`,
+    branch `k` joins the rows that set the first `k` and leave the next one
+    NULL, tested as `_label_of` gives, and one more branch joins the rows
+    that set them all. A dimension a branch's rows set is projected from
+    their own column, so DuckDB applies a filter on it in its scan of the
+    layer files, which a `coalesce` with the owned label would prevent. The
+    one they leave NULL takes the label of each map row they join, NULL
+    included, and those after it match NULL-safe and take the `coalesce`.
+
+    The order decides which row groups a branch reads, never the rows it
+    returns: a branch reads only the row groups holding a NULL in the
+    dimension its rows leave NULL, so `_owners` puts first the dimensions
+    more map rows set.
+    `n` free dimensions plan `n + 1` branches rather than one per subset, as
+    DuckDB plans each and reads the statistics of every layer file per
+    branch. The tests sit in the join condition, which DuckDB pushes to
+    either side, rather than in filters: each relation operation binds its
+    whole input again.
+
+    Notes
+    -----
+    - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
+    - [registered views](https://energy-models.github.io/datarecord/reference/format/#registered-views)
+    """
+    always = [d for d in over if ways[d] == (True,)]
+    never = [d for d in over if ways[d] == (False,)]
+    free = [d for d in ways if d in over and ways[d] == (True, False)]
+    branches = []
+    for k in range(len(free) + 1):
+        setting = [*always, *free[:k]]
+        leaving = [*never, *free[k : k + 1]]
+        rest = free[k + 1 :]
+        on = [col("l", c) == col("o", c) for c in (LAYER_COLUMN, *setting)]
+        on += [_label_of(schema, d, "l").isnotnull() for d in setting]
+        on += [_label_of(schema, d, a).isnull() for d in leaving for a in ("l", "o")]
+        if rest:
+            on.append(null_safe("l", "o", rest))
+        taken = {d: col("o", _owned(d)).alias(d) for d in leaving}
+        taken |= {d: coalesce(col("l", d), col("o", _owned(d))).alias(d) for d in rest}
+        joined = values.set_alias("l").join(stored.set_alias("o"), ex_all(on))
+        branches.append(
+            joined.project(*(taken.get(c, col("l", c)) for c in columns), *named)
+        )
+    return reduce(DuckDBPyRelation.union, branches)
+
+
+class _Owners(NamedTuple):
+    """What `_relation` plans the read of one attribute by, read off the owner map.
+
+    Attributes
+    ----------
+    layers
+        The layers that may own a map row of the attribute.
+    contested
+        Whether one of them holds map rows both ways, so `_relation` ranks rows.
+    ways
+        Per dimension in `partial`, whether map rows set it (True), leave it
+        NULL (False) or both: the branches `_joined` plans, which takes the
+        dimensions in this order.
+    """
+
+    layers: list[UUID]
+    contested: bool
+    ways: Mapping[str, tuple[bool, ...]]
+
+
+def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, _Owners]:
+    """Return the `_Owners` of each attribute in `om`.
 
     A layer holds map rows both ways where its rows of the attribute name
-    different sets of `partial` dimensions, read off `varies`.
+    different sets of `partial` dimensions, read off `varies`. `ways` puts
+    first the dimension the most map rows set rather than leave NULL, a tie
+    in declaration order.
     """
     dims = schema.partial_dimensions
     contested = "false"
@@ -142,10 +240,24 @@ def _owners(om: DuckDBPyRelation, schema: Schema) -> dict[str, tuple[list[UUID],
         named = fn.struct_pack(**{d: col("varies")[d] for d in dims})
         ways = fn.struct_pack(**{"l": col(LAYER_COLUMN), "n": named})
         contested = f"count(DISTINCT {ways}) > count(DISTINCT {LAYER_COLUMN})"
-    rows = om.aggregate(
-        f"attribute, list(DISTINCT {LAYER_COLUMN}), {contested}", "attribute"
-    ).fetchall()
-    return {a: (layers, bool(c)) for a, layers, c in rows}
+    columns = [
+        "attribute",
+        f"list(DISTINCT {LAYER_COLUMN})",
+        contested,
+        *(str(fn.count_if(col(f)[d])) for d in dims for f in ("varies", "broadcast")),
+    ]
+    rows = om.aggregate(", ".join(columns), "attribute").fetchall()
+    return {
+        a: _Owners(layers, bool(c), _ways(dims, counts))
+        for a, layers, c, *counts in rows
+    }
+
+
+def _ways(dims: Sequence[str], counts: Sequence[int]) -> dict[str, tuple[bool, ...]]:
+    """`_Owners.ways` from the map rows that set and leave NULL each of `dims`, in pairs in `counts`."""
+    pairs = dict(zip(dims, zip(counts[::2], counts[1::2], strict=True), strict=True))
+    order = sorted(dims, key=lambda d: pairs[d][1] - pairs[d][0])
+    return {d: tuple(w for w, n in zip((True, False), pairs[d]) if n) for d in order}
 
 
 def _contested(stored: DuckDBPyRelation, dims: tuple[str, ...]) -> DuckDBPyRelation:
@@ -421,7 +533,7 @@ class Record:
 
     @property
     def _fixed(self) -> bool:
-        """Whether this record's relations are planned without reading a row above its frozen layers.
+        """Whether this record's relations are planned to hold for any rows above its frozen layers.
 
         True where a source above them can still change, so a relation
         built before an edit reads it.
@@ -692,11 +804,11 @@ class Record:
         # carries. A dim outside `partial` is in neither: it is not in the map
         # at all, so it constrains nothing and passes straight through.
         #
-        # Of those that are, each matches NULL-aware
-        # (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule).
+        # Of those that are, a row matches on the ones it sets, and covers the
+        # rest (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule).
         dims = schema.dimensions_of(attribute)
         broadcast_over = tuple(d for d in partial_dimensions if d in dims)
-        owners, contested = self._owners(attribute)
+        owners, contested, ways = self._owners(attribute)
         layers: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
             rel = owned_rows(self._source_for(layer_uuid), attribute)
@@ -707,23 +819,16 @@ class Record:
         if not layers:
             return _empty_long(schema, attribute, con)
         outside_index = [c for c in columns if c not in partial_dimensions]
-        values = union_all_by_name(layers).set_alias("l")
+        values = union_all_by_name(layers)
         stored = _as_stored(om, broadcast_over)
-
-        def joined(owned: DuckDBPyRelation, *named: Expression) -> DuckDBPyRelation:
-            return values.join(
-                owned.set_alias("o"),
-                null_safe("l", "o", (LAYER_COLUMN, *broadcast_over)),
-            ).project(
-                *(
-                    coalesce(col("l", dim), col("o", _owned(dim))).alias(dim)
-                    if dim in broadcast_over
-                    else col("l", dim)
-                    for dim in columns
-                ),
-                *named,
-            )
-
+        joined = partial(
+            _joined,
+            values,
+            schema=schema,
+            columns=columns,
+            over=broadcast_over,
+            ways=ways,
+        )
         if not broadcast_over or not contested:
             return _living(joined(stored), dead, outside_index)
         stored = _contested(stored, broadcast_over)
@@ -738,25 +843,31 @@ class Record:
         )
         return _living(alone.union(ranked), dead, outside_index)
 
-    def _owners(self, attribute: str) -> tuple[list[UUID], bool]:
-        """Return the layers that may own a map row of `attribute`, and whether `_relation` ranks rows.
+    def _owners(self, attribute: str) -> _Owners:
+        """Return the layers that may own a map row of `attribute`, whether `_relation` ranks rows, and the ways it joins.
 
         Where every source is frozen, one scan of the map answers every
         attribute and is kept, and rows are ranked only where a layer holds
         map rows both ways, its rows naming different sets of `partial` dimensions.
         Otherwise the layers above the frozen ones may change under the
         reader, so each is a possible owner and every attribute is planned for
-        ranking, which `_contested` restricts to such layers' rows as data.
+        ranking, which `_contested` restricts to such layers' rows as data,
+        and for every way of storing a dimension. The dimensions are in the
+        order of the frozen layers' map, else as declared: an order only
+        speeds a read up.
         """
+        none = _Owners([], False, {})
         if not self._fixed:
-            return self._cached_owners.get(attribute, ([], False))
-        layers, _ = self._frozen_owners.get(attribute, ([], False))
+            return self._cached_owners.get(attribute, none)
+        frozen = self._frozen_owners.get(attribute, none)
         _, above = split_frozen(self.sources)
         tail = [s.layer_id for s in above]
-        return [*layers, *tail], True
+        order = [*frozen.ways, *self.schema.partial_dimensions]
+        every = dict.fromkeys(order, (True, False))
+        return _Owners([*frozen.layers, *tail], True, every)
 
     @cached_property
-    def _frozen_owners(self) -> dict[str, tuple[list[UUID], bool]]:
+    def _frozen_owners(self) -> dict[str, _Owners]:
         """Return `_owners` for every attribute of the frozen layers' map.
 
         What the layers above them fold onto. They may drop a frozen
@@ -768,11 +879,12 @@ class Record:
         return {} if rel is None else _owners(rel, frozen[-1].schema)
 
     @cached_property
-    def _cached_owners(self) -> dict[str, tuple[list[UUID], bool]]:
-        """Return `_owners` for every attribute, where every source is frozen.
+    def _cached_owners(self) -> dict[str, _Owners]:
+        """Return `_owners` for every attribute of the whole map.
 
         Plain data any thread computes the same, so it is kept on the record
         rather than as a shared table beside the owner map it is read from.
+        Only a record whose every source is frozen reads it.
 
         Notes
         -----

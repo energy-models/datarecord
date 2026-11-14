@@ -10,19 +10,31 @@ Notes
 """
 
 import gc
+import json
 import threading
 from uuid import uuid4
 
 import duckdb
+import pandas as pd
 import pytest
 
 from datarecord import Workspace
 from datarecord.duck import transaction
 from datarecord.mutable import WorkingRecord
-from tests.fixtures import in_threads, nested_tables, scratch_tables
+from tests.fixtures import (
+    empty_root,
+    in_threads,
+    nested_tables,
+    scratch_tables,
+    write_attribute,
+)
+from tests.fixtures import schema as pypsa_schema
 from tests.test_mutable import _rows, _small, _staging
 
 KINDS = ("dimensions", "properties", "attributes")
+
+ROW_GROUP = 2048
+"""The fewest rows DuckDB writes to a parquet row group."""
 
 EDITS = [
     lambda w: w.set("p_nom", 123.0, entity="Manchester Wind"),
@@ -592,3 +604,64 @@ def test_a_reopened_workspace_holds_and_unregisters_an_earlier_registration(
         assert small.id.hex not in _folds(reopened.con), "the fold goes on unregister"
     finally:
         reopened.close()
+
+
+def _parquet_scans(con, query):
+    """Per parquet scan of `query` run: its filters, the row groups it read, and those of its files."""
+    plan = json.loads(
+        con.sql(f"EXPLAIN (ANALYZE, FORMAT json) {query}").fetchall()[0][1]
+    )
+    ops = list(plan["operator"])
+    scans = []
+    while ops:
+        op = ops.pop()
+        ops += op.get("children", [])
+        if op["extra_info"].get("Function") == "PARQUET_SCAN":
+            scans.append(
+                (
+                    str(op["extra_info"].get("Filters", "")),
+                    op["row_groups_scanned"],
+                    op["total_row_groups_to_scan"],
+                )
+            )
+    return scans
+
+
+@pytest.mark.parametrize("working", [False, True], ids=["record", "working"])
+@pytest.mark.parametrize(
+    ("attribute", "where", "named"),
+    [
+        ("p_max_pu", "entity = 'e1'", {}),
+        ("efficiency", "connection.entity = 'e1'", {"bus": "b"}),
+    ],
+    ids=["entity", "connection"],
+)
+def test_a_filter_on_a_dimension_in_partial_reaches_the_layer_scan(
+    store, attribute, where, named, working
+):
+    """Each scan of the layer's file reads at most one of its five row groups.
+
+    Four row groups of one entity each, DuckDB's smallest, then one holding a
+    row NULL on the dimension, which the view reads in a branch of its own.
+    """
+    layer = empty_root(store, pypsa_schema())
+    snapshots = pd.date_range("2030-01-01", periods=ROW_GROUP, freq="h")
+    rows = [
+        {"entity": f"e{i}", "snapshot": s, "value": i, **named}
+        for i in range(4)
+        for s in snapshots
+    ]
+    write_attribute(layer, attribute, [*rows, {"value": 9.0}], row_group_size=ROW_GROUP)
+    record = layer.commit().record
+    (WorkingRecord(record) if working else record).register("r")
+    con = store.workspace.con
+    query = f"FROM datarecord.r.attributes.{attribute} WHERE {where}"
+    scans = _parquet_scans(con, query)
+
+    assert len(con.sql(query).fetchall()) == ROW_GROUP
+    assert any("'e1'" in filters for filters, _, _ in scans), (
+        f"a scan of the layer's file carries the filter: {scans}"
+    )
+    assert all(n <= 1 and total == 5 for _, n, total in scans), (
+        f"each scan reads at most one row group of five: {scans}"
+    )

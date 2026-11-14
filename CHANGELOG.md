@@ -562,6 +562,16 @@ All notable changes to datarecord are documented here. The format follows
   the same for one relation, dropping rows at a label outside `labels`.
 - A failed write, local or remote, leaves its files in the pending layer
   rather than staging them locally and renaming the directory into place.
+- DuckDB applies a filter on a dimension in `partial` of
+  `record.attributes[name]`, and so of its registered view, as in
+  `WHERE entity = 'gas'`, in its scan of the layer files, and reads only the
+  row groups whose statistics admit the label. On a multi-dimension, a filter
+  on a field such as `connection.entity` prunes row groups, and one on the
+  whole struct column does not. An attribute view plans more branches, one
+  per dimension in `partial` a row may leave NULL first and one more, and a
+  ranked view plans them twice. Registering a `WorkingRecord`, whose staged
+  rows may store any dimension either way, and planning a query on its
+  views cost more.
 
 ### Removed
 
