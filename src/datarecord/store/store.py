@@ -761,7 +761,7 @@ class Store:
         ValueError
             If `parent` is of another store, naming both locations.
         pydantic.ValidationError
-            If `meta` is not flat, each value a string, finite number or boolean.
+            If `meta` holds a null or a non-finite float, or is no JSON object.
 
         Notes
         -----
@@ -1038,29 +1038,31 @@ class Store:
         return {id for id in unmanifested if self.files.exists(self.layer_dir(id))}
 
     def revisions(self, *, meta: Meta | None = None) -> list[Revision]:
-        """Every revision in this store whose `meta` holds each pair of `meta`, unordered.
+        """Every revision in this store whose `meta` contains the given meta, unordered.
 
         A pending layer is none. One listing of `layers/`, reading only the
-        manifests the workspace does not already hold; a value matches only
-        one of its own type, so `1` matches neither `1.0` nor `True`.
+        manifests the workspace does not already hold.
 
         Raises
         ------
         pydantic.ValidationError
-            If `meta` is not flat, each value a string, finite number or boolean.
+            If `meta` holds a null or a non-finite float, or is no JSON object.
 
         Notes
         -----
-        - [the layers](https://energy-models.github.io/datarecord/reference/store/)
+        - [containment](https://energy-models.github.io/datarecord/reference/store/#store)
         """
-        wanted = json.dumps(validate_meta(meta))
+        # json_contains matches at any depth; a fresh key anchors it at the top.
+        key = uuid4().hex
+        wanted = json.dumps({key: validate_meta(meta)})
         self._scan()
         rows = self.workspace.con.execute(
             _in(
                 self.workspace,
-                "SELECT id FROM {revisions} WHERE location = ? AND json_contains(meta, ?)",
+                "SELECT id FROM {revisions} WHERE location = ? "
+                "AND json_contains(json_object(?, meta), ?)",
             ),
-            [self.uri, wanted],
+            [self.uri, key, wanted],
         ).fetchall()
         return [Revision(id=id, store=self) for (id,) in rows]
 
@@ -1316,7 +1318,7 @@ class Claim(_OfStore):
         duckdb.HTTPException
             If the server denies the layer's key a write of the layer's data.
         pydantic.ValidationError
-            If `meta` is not flat, each value a string, finite number or boolean.
+            If `meta` holds a null or a non-finite float, or is no JSON object.
 
         Notes
         -----

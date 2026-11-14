@@ -5,7 +5,7 @@
 """A layer's `manifest.json`, which makes it a revision, and its `claim.json`.
 
 A layer carries its own manifest: its id, its parent, the full schema it was
-written under, the files it wrote and a flat `meta`. A claim reserves the id
+written under, the files it wrote and its `meta`. A claim reserves the id
 before any data is written, and is kept.
 
 Notes
@@ -30,11 +30,22 @@ from datarecord.schema.schema import Schema, schema_digest
 if TYPE_CHECKING:
     from datarecord.store.files import Files
 
-Meta = dict[str, str | int | Annotated[float, Field(allow_inf_nan=False)] | bool]
-"""A revision's own `meta`: flat, set at its write, and not inherited.
+type MetaValue = (
+    str
+    | int
+    | Annotated[float, Field(allow_inf_nan=False)]
+    | bool
+    | list[MetaValue]
+    | dict[str, MetaValue]
+)
+"""A JSON value of `meta`: a string, integer, finite float, boolean, array or object.
 
-A float is finite, since JSON has no NaN or infinity to store it as.
+A float is finite, since JSON has no NaN or infinity to store it as, and
+there is no null.
 """
+
+Meta = dict[str, MetaValue]
+"""A revision's own `meta`, set at its write and not inherited."""
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -197,7 +208,7 @@ def _read[T](files: Files, uri: str, adapter: TypeAdapter[T]) -> T | None:
 
 
 def validate_meta(meta: Meta | None) -> Meta:
-    """`meta` checked flat, each value a string, finite number or boolean.
+    """`meta` checked as a JSON object with string keys, no null and no non-finite float.
 
     Raises
     ------
@@ -210,12 +221,21 @@ def validate_meta(meta: Meta | None) -> Meta:
 def merge_meta(claimed: Meta, given: Meta) -> Meta:
     """`given` added to `claimed`, which a commit may extend and never change.
 
+    A claimed key may be restated with an equal value, compared as JSON, so
+    `1`, `1.0` and `True` differ, inside an array or object too.
+
     Raises
     ------
     ValueError
         Naming each claimed key `given` sets otherwise.
+
+    Notes
+    -----
+    - [the steps of a commit](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
     """
-    changed = sorted(k for k, v in given.items() if k in claimed and claimed[k] != v)
+    changed = sorted(
+        k for k, v in given.items() if k in claimed and _json(claimed[k]) != _json(v)
+    )
     if changed:
         msg = (
             f"the commit changes the claimed meta {changed}; a commit keeps every "
@@ -223,3 +243,8 @@ def merge_meta(claimed: Meta, given: Meta) -> Meta:
         )
         raise ValueError(msg)
     return {**claimed, **given}
+
+
+def _json(value: MetaValue) -> str:
+    """`value` as canonical JSON, which tells `1`, `1.0` and `True` apart at any depth."""
+    return json.dumps(value, sort_keys=True)
