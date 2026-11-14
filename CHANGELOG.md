@@ -286,6 +286,16 @@ All notable changes to datarecord are documented here. The format follows
   `bus` at a port its type lacks, such as a one-port type's at a port but 0,
   in `unsupported_values`. Export a network again to rewrite a record that the
   PyPSA tool wrote before.
+- Breaking: on S3, a `403` no longer counts as a missing key. Every call of
+  `RemoteFiles` the server answers with `403` raises `PermissionError` naming
+  the key or prefix, as does a `delete` whose every failed key is
+  `AccessDenied`. So `Store.revision`, `revisions`, `claims` and `cleanup`
+  under a token scoped elsewhere raise rather than see no data, and `cleanup`
+  deletes nothing after a denied read. A caller needs `s3:ListBucket` on the
+  store's prefix. Without it S3 refuses the listing of `layers/`, so
+  `revisions`, `claims` and `cleanup` always raise, and answers `403` for
+  every absent key, such as a never-materialised revision's owner map, so
+  folding such a revision raises too.
 - `WorkingRecord.set(name, value, **labels)` takes labels as `select` does.
   It accepts the same names as before.
 - Breaking: `Schema.broadcast_dims` and `Schema.dims` are gone.
