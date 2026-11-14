@@ -12,14 +12,21 @@ A mock would pass exactly the tests the headers exist for. To run them::
         -e AWS_SECRET_ACCESS_KEY=datarecord chrislusf/seaweedfs:4.52 server -s3 \
         -master.volumeSizeLimitMB=64 -volume.max=1000
     echo "s3.configure -user=denied -access_key=denied -secret_key=denied \
-        -actions=Read,List -buckets=elsewhere -apply" | docker exec -i seaweedfs weed shell
+        -actions=Read,List -buckets=elsewhere -apply
+    s3.configure -user=reader -access_key=reader -secret_key=reader \
+        -actions=Read,List -apply
+    s3.configure -user=layer -access_key=layer -secret_key=layer -apply
+    s3.configure -user=sibling -access_key=sibling -secret_key=sibling -apply" \
+        | docker exec -i seaweedfs weed shell
     DATARECORD_TEST_S3_ENDPOINT=http://localhost:8333 pixi run pytest tests/test_remote.py
 
 Each test creates its own bucket, for which SeaweedFS grows volumes of its
 own: the volume flags keep them small and plentiful. The credentials are
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` where set, and `datarecord`
 otherwise, which the server above is started with: SeaweedFS 4.52 refuses an
-unknown key. The key `denied` may read and list the bucket `elsewhere` only.
+unknown key. The key `denied` may read and list the bucket `elsewhere` only,
+the key `reader` may read and list every bucket, and the keys `layer` and
+`sibling` may do nothing but what a test's bucket policy grants them.
 
 Notes
 -----
@@ -27,12 +34,13 @@ Notes
 - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
 """
 
+import json
 import os
 import re
 import threading
-from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import replace
+from collections.abc import Callable, Iterator
+from concurrent.futures import ThreadPoolExecutor, wait
+from dataclasses import dataclass, replace
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -40,7 +48,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from datarecord import S3Credentials, Store, Workspace
+from datarecord import Claim, Revision, S3Credentials, Store, Workspace
 from datarecord.store.files import PreconditionFailedError, RemoteFiles
 from tests.fixtures import relation, widened
 from tests.test_write import _SCHEMA, _long, _Source
@@ -170,6 +178,206 @@ def test_replaced_credentials_take_effect_on_a_live_workspace(
         )
     finally:
         ws.close()
+
+
+@dataclass
+class _Scoped:
+    store: Store
+    root: Revision
+    claim: Claim
+    other: Claim
+    key: S3Credentials
+    other_key: S3Credentials
+
+
+def _allow_only_their_layers(
+    store: Store,
+    admin: S3Credentials,
+    layers: dict[str, UUID],
+    denied: tuple[str, ...] = (),
+) -> None:
+    """Grant each key in `layers`, by bucket policy, the S3 actions a commit takes under its layer except `denied`, and none elsewhere.
+
+    Notes
+    -----
+    - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
+    """
+    bucket, _, key = store.uri.removeprefix("s3://").partition("/")
+    statements = []
+    for user, id in layers.items():
+        prefix = f"{key}/layers/{id}/"
+        principal = {"AWS": f"arn:aws:iam::000000000000:user/{user}"}
+        statements += [
+            {
+                "Effect": "Allow",
+                "Principal": principal,
+                "Action": ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
+                "Resource": f"arn:aws:s3:::{bucket}/{prefix}*",
+            },
+            {
+                "Effect": "Allow",
+                "Principal": principal,
+                "Action": "s3:ListBucket",
+                "Resource": f"arn:aws:s3:::{bucket}",
+                "Condition": {"StringLike": {"s3:prefix": f"{prefix}*"}},
+            },
+        ]
+        if denied:
+            statements.append(
+                {
+                    "Effect": "Deny",
+                    "Principal": principal,
+                    "Action": list(denied),
+                    "Resource": f"arn:aws:s3:::{bucket}/{prefix}*",
+                }
+            )
+    policy = json.dumps({"Version": "2012-10-17", "Statement": statements})
+    RemoteFiles(admin)._s3.put_bucket_policy(Bucket=bucket, Policy=policy)
+
+
+@pytest.fixture
+def scoped(bucket, credentials) -> Iterator[_Scoped]:
+    """A root, two claims under it, and the keys `layer` and `sibling`, each for one claim's layer alone.
+
+    Claimed with the server's key, then the workspace reads with the key
+    `reader`, which may not write.
+    """
+    ws = Workspace(credentials=credentials)
+    try:
+        store = ws.store(f"{bucket}/record")
+        root = store.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+        )
+        claim, other = store.claim(parent=root), store.claim(parent=root)
+        layers = {"layer": claim.id, "sibling": other.id}
+        _allow_only_their_layers(store, credentials, layers)
+        ws.set_credentials(replace(credentials, key_id="reader", secret="reader"))
+        key, other_key = (replace(credentials, key_id=u, secret=u) for u in layers)
+        yield _Scoped(store, root, claim, other, key, other_key)
+    finally:
+        ws.close()
+
+
+class _Overlapping(_Source):
+    """A `_Source` whose every read of its attributes waits at `barrier`, so two commits write their layers in step."""
+
+    def __init__(self, barrier: threading.Barrier, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._barrier = barrier
+
+    @property
+    def attributes(self):
+        self._barrier.wait(timeout=30)
+        return super().attributes
+
+
+def _secrets(store: Store) -> set[str]:
+    return {
+        n
+        for (n,) in store.workspace.con.sql(
+            "SELECT name FROM duckdb_secrets()"
+        ).fetchall()
+    }
+
+
+def test_a_commit_with_a_key_for_its_layer_writes_that_layer(scoped: _Scoped):
+    """The layer's key writes the layer, and the workspace's reads the root, which the layer's may not."""
+    child = scoped.claim.commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long(value=2.0)}), credentials=scoped.key
+    )
+    assert child in scoped.store.revisions()
+    assert child.ancestry() == [scoped.root.id, child.id]
+    assert list(relation(child, "p_nom").df()["value"]) == [2.0]
+    assert _secrets(scoped.store) == {"datarecord_s3"}, "the layer's secret is gone"
+
+    with pytest.raises(PermissionError, match="AccessDenied"):
+        RemoteFiles(scoped.key).create(
+            f"{scoped.store.layer_dir(scoped.other.id)}stray.txt", "x"
+        )
+
+
+@pytest.mark.parametrize(
+    ("commit", "denied"),
+    [
+        (lambda s, source: s.other.commit(source, credentials=s.key), PermissionError),
+        (lambda s, source: s.claim.commit(source), duckdb.HTTPException),
+    ],
+    ids=["another-layer", "workspace-key"],
+)
+def test_a_commit_without_a_key_for_its_layer_is_denied(
+    scoped: _Scoped,
+    commit: Callable[[_Scoped, _Source], Revision],
+    denied: type[Exception],
+):
+    """Neither the key for another layer nor the workspace's read-only key writes a layer."""
+    with pytest.raises(denied):
+        commit(scoped, _Source(_SCHEMA, attributes={"p_nom": _long(value=2.0)}))
+    assert scoped.store.revisions() == [scoped.root], "no layer committed"
+    assert _secrets(scoped.store) == {"datarecord_s3"}, "the layer's secret is gone"
+
+
+def _commit_at_once(
+    scoped: _Scoped, commits: list[tuple[Claim, S3Credentials, float]]
+) -> tuple[list[Revision | BaseException], list[set[str]]]:
+    """Run `commits` in step, returning each one's revision or exception, and the workspace's secrets each time all of them wait together."""
+    held: list[set[str]] = []
+    barrier = threading.Barrier(
+        len(commits), action=lambda: held.append(_secrets(scoped.store))
+    )
+    with ThreadPoolExecutor(len(commits)) as pool:
+        futures = [
+            pool.submit(
+                claim.commit,
+                _Overlapping(barrier, _SCHEMA, attributes={"p_nom": _long(value=v)}),
+                credentials=key,
+            )
+            for claim, key, v in commits
+        ]
+        wait(futures)
+    outcomes = [f.exception() or f.result() for f in futures]
+    return outcomes, held
+
+
+def test_two_commits_at_once_each_write_with_their_own_key(scoped: _Scoped):
+    """Both layers' secrets coexist while both commits write, and each key reaches only its own layer."""
+    children, held = _commit_at_once(
+        scoped,
+        [(scoped.claim, scoped.key, 2.0), (scoped.other, scoped.other_key, 3.0)],
+    )
+    assert held and all(len(names) == 3 for names in held), "both secrets coexist"
+    values = [list(relation(child, "p_nom").df()["value"]) for child in children]
+    assert values == [[2.0], [3.0]]
+    assert _secrets(scoped.store) == {"datarecord_s3"}, "both layers' secrets are gone"
+
+
+def test_two_commits_of_one_claim_at_once_race_to_its_manifest(scoped: _Scoped):
+    """Each commit holds its own secret for the layer, so the second to write the manifest fails on it."""
+    outcomes, held = _commit_at_once(
+        scoped, [(scoped.claim, scoped.key, 2.0), (scoped.claim, scoped.key, 3.0)]
+    )
+    assert sorted(type(o).__name__ for o in outcomes) == [
+        "PreconditionFailedError",
+        "Revision",
+    ], f"one commit wins the manifest: {outcomes}"
+    assert len(scoped.store.revisions()) == 2, "the root and the winner"
+    assert held and all(len(names) == 3 for names in held), "both secrets coexist"
+    assert _secrets(scoped.store) == {"datarecord_s3"}, "both secrets are gone"
+
+
+def test_a_layers_key_denied_a_write_leaves_no_secret(
+    scoped: _Scoped, credentials: S3Credentials
+):
+    """DuckDB's write fails while the layer's secret exists, and the commit drops it."""
+    _allow_only_their_layers(
+        scoped.store, credentials, {"layer": scoped.claim.id}, denied=("s3:PutObject",)
+    )
+    with pytest.raises(duckdb.HTTPException):
+        scoped.claim.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long(value=2.0)}),
+            credentials=scoped.key,
+        )
+    assert scoped.store.revisions() == [scoped.root], "no layer committed"
+    assert _secrets(scoped.store) == {"datarecord_s3"}, "the layer's secret is gone"
 
 
 def test_a_workspace_on_a_callers_connection_keeps_its_unnamed_secret(bucket):

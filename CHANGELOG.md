@@ -286,6 +286,12 @@ All notable changes to datarecord are documented here. The format follows
   Only one workspace per DuckDB connection may reach S3, since DuckDB's
   secrets belong to the whole connection: the first `s3://` URI of a
   second one raises `duckdb.InvalidInputException`.
+- `Claim.commit(source, credentials=S3Credentials(...))` writes the layer
+  with a key for `layers/<id>/` alone. During the commit, datarecord reaches
+  every key under the layer with it, through boto3 and through a DuckDB
+  secret scoped to the layer, and reads the ancestors with the workspace's
+  key. The [store reference](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
+  lists the S3 actions each key needs.
 
 ### Changed
 
