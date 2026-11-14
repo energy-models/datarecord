@@ -5,18 +5,18 @@
 """A store and a standalone directory on S3, against a real server.
 
 Skipped unless `DATARECORD_TEST_S3_ENDPOINT` names an S3 endpoint honouring
-conditional writes atomically - SeaweedFS 4.18 or later, which Manta deploys.
+conditional writes atomically - SeaweedFS 4.52 or later, which Manta deploys.
 A mock would pass exactly the tests the headers exist for. To run them::
 
     docker run --rm --name seaweedfs -p 8333:8333 -e AWS_ACCESS_KEY_ID=datarecord \
-        -e AWS_SECRET_ACCESS_KEY=datarecord chrislusf/seaweedfs:4.18 server -s3
+        -e AWS_SECRET_ACCESS_KEY=datarecord chrislusf/seaweedfs:4.52 server -s3
     echo "s3.configure -user=denied -access_key=denied -secret_key=denied \
         -actions=Read,List -buckets=elsewhere -apply" | docker exec -i seaweedfs weed shell
     DATARECORD_TEST_S3_ENDPOINT=http://localhost:8333 pixi run pytest tests/test_remote.py
 
 Each test creates its own bucket. The credentials are `AWS_ACCESS_KEY_ID` and
 `AWS_SECRET_ACCESS_KEY` where set, and `datarecord` otherwise, which the server
-above is started with: SeaweedFS 4.18 refuses an unknown key. The key `denied`
+above is started with: SeaweedFS 4.52 refuses an unknown key. The key `denied`
 may read and list the bucket `elsewhere` only. `AWS_PROFILE` must be unset, or
 botocore reads that profile instead.
 
@@ -31,6 +31,7 @@ import re
 import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 from datetime import timedelta
 from uuid import UUID, uuid4
 
@@ -38,7 +39,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from datarecord import Store, Workspace
+from datarecord import S3Credentials, Store, Workspace
 from datarecord.store.files import PreconditionFailedError, RemoteFiles
 from tests.fixtures import relation, widened
 from tests.test_write import _SCHEMA, _long, _Source
@@ -60,6 +61,28 @@ def bucket(monkeypatch):
     name = f"datarecord-{uuid4().hex[:16]}"
     RemoteFiles()._s3.create_bucket(Bucket=name)
     return f"s3://{name}"
+
+
+@pytest.fixture
+def credentials(bucket, monkeypatch) -> S3Credentials:
+    """The test server's key, injected, while the AWS environment holds the key `denied`."""
+    injected = S3Credentials(
+        os.environ["AWS_ACCESS_KEY_ID"],
+        os.environ["AWS_SECRET_ACCESS_KEY"],
+        endpoint=ENDPOINT,
+        region=os.environ["AWS_REGION"],
+        url_style="path",
+    )
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "denied")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "denied")
+    return injected
+
+
+def _parquet(store: Store, id: UUID) -> duckdb.DuckDBPyRelation:
+    """Every parquet file of layer `id`, read by DuckDB with the workspace's secret."""
+    return store.workspace.con.read_parquet(
+        f"{store.layer_dir(id)}**/*.parquet", union_by_name=True
+    )
 
 
 def test_a_store_writes_and_reads_its_files(workspace, bucket):
@@ -93,6 +116,59 @@ def test_a_standalone_directory_writes_and_reads_its_manifest(workspace, bucket)
         assert rows["value"].tolist() == [1.0]
     finally:
         elsewhere.close()
+
+
+def test_a_workspace_with_injected_credentials_writes_and_reads(bucket, credentials):
+    """Neither boto3 nor DuckDB falls back to the environment's key, which is denied here."""
+    ws = Workspace(credentials=credentials)
+    try:
+        store = ws.store(f"{bucket}/record")
+        root = store.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+        )
+        assert store.revisions() == [root]
+        assert list(relation(root, "p_nom").df()["value"]) == [1.0]
+    finally:
+        ws.close()
+
+
+@pytest.mark.parametrize(
+    "denied",
+    [lambda injected: replace(injected, key_id="denied", secret="denied"), None],
+    ids=["injected", "environment"],
+)
+def test_replaced_credentials_take_effect_on_a_live_workspace(
+    bucket,
+    credentials,
+    denied: Callable[[S3Credentials], S3Credentials] | None,
+):
+    """Both boto3 and DuckDB's secret switch to the `denied` key, and back.
+
+    `None` falls back to the AWS environment, which holds the key `denied`.
+    """
+    ws = Workspace(credentials=credentials)
+    try:
+        store = ws.store(f"{bucket}/record")
+        root = store.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+        )
+        record = root.record
+        rows = len(_parquet(store, root.id).df())
+
+        ws.set_credentials(None if denied is None else denied(credentials))
+        with pytest.raises(PermissionError, match="AccessDenied"):
+            store.revisions()
+        with pytest.raises(duckdb.HTTPException, match="403"):
+            _parquet(store, root.id).df()
+
+        ws.set_credentials(credentials)
+        assert store.revisions() == [root]
+        assert len(_parquet(store, root.id).df()) == rows
+        assert record.attributes["p_nom"].df()["value"].tolist() == [1.0], (
+            "a record opened before the swaps reads on"
+        )
+    finally:
+        ws.close()
 
 
 def test_a_workspace_on_a_callers_connection_keeps_its_unnamed_secret(bucket):

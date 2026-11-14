@@ -18,7 +18,8 @@ Notes
 - [the package](https://energy-models.github.io/datarecord/development/package/)
 """
 
+from datarecord.store.files import S3Credentials
 from datarecord.store.manifest import Manifest
 from datarecord.store.store import Claim, Revision, Store, Workspace
 
-__all__ = ["Claim", "Manifest", "Revision", "Store", "Workspace"]
+__all__ = ["Claim", "Manifest", "Revision", "S3Credentials", "Store", "Workspace"]
