@@ -165,6 +165,16 @@ The views are the record's relations unsettled: a NULL in a dimension's column m
 Over a `WorkingRecord`, a view returns each edit once `set`, `add` or `remove` returns.
 A view reads the tables of its own database under any name a client attaches it as: a client that attaches the workspace's file as `r` reads `r.name.dimensions.<dim>`, and never a table of its own with the same name.
 
+DuckDB applies a filter on a dimension in [`partial`](layers.md#partial) of an attribute view, such as `WHERE entity = 'gas'`, in its scan of the layer files.
+It then reads only the row groups whose statistics admit the label, and those that hold a NULL in that dimension or in one the view takes ahead of it.
+The view takes the dimensions in order of how many more of the attribute's map rows set them than leave them NULL, a tie in declaration order.
+Over a `WorkingRecord` it counts the frozen layers' map rows, and takes the declaration order where they do not hold the attribute.
+The order changes how many row groups a filter reads, never the rows a view returns.
+Parquet has no statistics for a whole struct column, so a filter on a multi-dimension skips row groups only where it tests a field.
+`connection.entity = 'gas'` skips them, and `connection = {'entity': 'gas', 'bus': 'north'}` reads every row group that holds a tuple.
+Where `snapshot` is a multi-dimension over `period` and `timestep`, filter on `snapshot.period IS NULL` rather than `snapshot IS NULL` for the rows that leave it NULL.
+Both return the same rows, since datarecord refuses a tuple with a NULL field, and only the first skips row groups.
+
 Run `USE datarecord` once to write short names, `name.dimensions.bus` and `registered`.
 `USE` holds only for the connection or cursor that runs it, and a client that attached the file under another name runs `USE` with that name.
 datarecord never runs `USE` on its own cursors.
