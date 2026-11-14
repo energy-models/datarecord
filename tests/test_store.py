@@ -12,6 +12,7 @@ Notes
 
 import json
 import math
+import os
 import pickle
 import re
 from collections import Counter
@@ -19,15 +20,17 @@ from collections.abc import Callable, Iterator
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
+from typing import Any
 from uuid import uuid4
 
 import duckdb
 import pandas as pd
 import pytest
+from botocore.exceptions import ProfileNotFound
 from botocore.stub import Stubber
 from pydantic import ValidationError
 
-from datarecord import Claim, Revision, Workspace
+from datarecord import Claim, Revision, S3Credentials, Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.specs import Dimension
 from datarecord.store import write
@@ -282,6 +285,159 @@ def test_an_s3_delete_refused_key_by_key_raises(
     with pytest.raises(raised, match=re.escape("s3://bucket/record/layers/x/")) as e:
         files.delete("s3://bucket/record/layers/x/")
     assert type(e.value) is raised, "a mixed refusal is no PermissionError"
+
+
+_KEY_ID = "AKIAEXAMPLE"
+_SECRETS = ("wJalr-secret", "FwoGZ-token")
+
+
+def test_s3_credentials_keep_the_secret_and_token_out_of_their_repr():
+    credentials = S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1])
+    shown = f"{credentials!r} {credentials}"
+    assert _KEY_ID in shown
+    assert not any(s in shown for s in _SECRETS), "a log line shows no secret"
+
+
+@pytest.mark.parametrize(
+    ("given", "match"),
+    [
+        ({"key_id": ""}, "non-empty"),
+        ({"secret": ""}, "non-empty"),
+        ({"endpoint": "localhost:8333"}, "its scheme"),
+        ({"endpoint": "http://localhost:8333/bucket"}, "no user, path"),
+        ({"endpoint": "http://localhost:8333?x=1"}, "no user, path"),
+        ({"endpoint": "http://localhost:8333#x"}, "no user, path"),
+        ({"endpoint": "http://key:secret@localhost:8333"}, "no user, path"),
+        ({"url_style": "virtual"}, "`url_style` is 'virtual'"),
+    ],
+    ids=[
+        "key_id",
+        "secret",
+        "endpoint-scheme",
+        "endpoint-path",
+        "endpoint-query",
+        "endpoint-fragment",
+        "endpoint-userinfo",
+        "url_style",
+    ],
+)
+def test_s3_credentials_refuse_what_no_server_takes(given: dict[str, Any], match: str):
+    with pytest.raises(ValueError, match=match):
+        S3Credentials(**{"key_id": _KEY_ID, "secret": _SECRETS[0], **given})
+
+
+def _secret(workspace: Workspace) -> dict[str, str]:
+    """The workspace's DuckDB S3 secret, as DuckDB lists it with secrets redacted."""
+    ((listed,),) = workspace.con.execute(
+        "SELECT secret_string FROM duckdb_secrets() WHERE name = 'datarecord_s3'"
+    ).fetchall()
+    return dict(kv.split("=", 1) for kv in listed.split(";"))
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["http://localhost:8333", "http://localhost:8333/"]
+)
+def test_s3_credentials_take_an_endpoint_with_a_trailing_slash(
+    workspace, endpoint: str
+):
+    workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0], endpoint=endpoint))
+    workspace.files("s3://bucket/record")
+    assert _secret(workspace)["endpoint"] == "localhost:8333"
+
+
+def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypatch):
+    """The environment's endpoint reaches neither, before or after the swap."""
+    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://elsewhere:9000")
+    workspace.set_credentials(
+        S3Credentials(
+            _KEY_ID,
+            _SECRETS[0],
+            session_token=_SECRETS[1],
+            endpoint="https://s3.example.org",
+            region="eu-west-1",
+            url_style="path",
+        )
+    )
+    files = workspace.files("s3://bucket/record")
+    assert isinstance(files, RemoteFiles)
+    assert files._s3.meta.endpoint_url == "https://s3.example.org"
+    assert files._s3.meta.region_name == "eu-west-1"
+    secret = _secret(workspace)
+    assert {k: secret[k] for k in ("provider", "key_id", "endpoint", "use_ssl")} == {
+        "provider": "config",
+        "key_id": _KEY_ID,
+        "endpoint": "s3.example.org",
+        "use_ssl": "true",
+    }
+    assert secret["secret"] == secret["session_token"] == "redacted"
+
+    workspace.set_credentials(S3Credentials("other", "other"))
+    files = workspace.files("s3://bucket/record")
+    assert isinstance(files, RemoteFiles)
+    assert files._s3.meta.endpoint_url == "https://s3.amazonaws.com"
+    secret = _secret(workspace)
+    assert (secret["key_id"], secret["url_style"]) == ("other", "vhost")
+    assert "endpoint" not in secret and "session_token" not in secret
+
+
+def _stale_profile(monkeypatch: pytest.MonkeyPatch) -> None:
+    """boto3 refuses to build: `AWS_PROFILE` names a profile no config file has."""
+    monkeypatch.setenv("AWS_PROFILE", "nonexistent")
+
+
+def _empty_chain(monkeypatch: pytest.MonkeyPatch) -> None:
+    """boto3 builds, keyless, and DuckDB's credential chain finds no key."""
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
+    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:1")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+
+
+@pytest.mark.parametrize(
+    ("environment", "replacement", "raised"),
+    [
+        (_stale_profile, S3Credentials("other", "other"), ProfileNotFound),
+        (_empty_chain, None, duckdb.Error),
+    ],
+    ids=["boto3-refuses", "duckdb-refuses"],
+)
+def test_failed_replacement_keeps_the_old_credentials(
+    workspace,
+    monkeypatch,
+    environment: Callable[[pytest.MonkeyPatch], None],
+    replacement: S3Credentials | None,
+    raised: type[Exception],
+):
+    workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0]))
+    files = workspace.files("s3://bucket/record")
+    environment(monkeypatch)
+    with pytest.raises(raised):
+        workspace.set_credentials(replacement)
+    assert workspace.files("s3://bucket/record") is files
+    assert _secret(workspace)["key_id"] == _KEY_ID, "boto3 and DuckDB stay alike"
+
+
+def test_closing_a_workspace_drops_its_secret_from_a_callers_connection():
+    caller = duckdb.connect()
+    ws = Workspace(con=caller, credentials=S3Credentials(_KEY_ID, _SECRETS[0]))
+    ws.files("s3://bucket/record")
+    ws.close()
+    names = caller.execute("SELECT name FROM duckdb_secrets()").fetchall()
+    assert names == [], "the caller's connection outlives the workspace's secret"
+    caller.close()
+
+
+def test_credentials_on_a_local_workspace_set_up_no_secret(workspace, tmp_path):
+    """No `httpfs` and no secret until the first `s3://` URI."""
+    workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0]))
+    workspace.store(str(tmp_path)).commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+    )
+    names = workspace.con.execute("SELECT name FROM duckdb_secrets()").fetchall()
+    assert ("datarecord_s3",) not in names
 
 
 def test_a_pending_layer_is_invisible_to_every_read(workspace, store):

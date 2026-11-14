@@ -67,9 +67,11 @@ All notable changes to datarecord are documented here. The format follows
   `datarecord` by default, on a connection of its own or on a caller's `con`,
   such as a server's, whose default database it leaves alone. It creates its
   tables there, so a user's file opened as a workspace gets datarecord's
-  tables beside its own. `ws.close()` closes its cursors and detaches the
-  database, and closes the connection only where it opened it. Its S3 secret
-  is named `datarecord_s3`, so it replaces no secret of the caller's.
+  tables beside its own. `ws.close()` closes its cursors, detaches the
+  database, drops its S3 secret `datarecord_s3` from a caller's connection,
+  and closes the connection only where it opened it. The secret replaces no
+  secret of the caller's, but a caller's secret for all of `s3://` named
+  before `datarecord_s3` wins the tie.
 - The prefix `_dr_` is reserved: a table or view whose name starts with it, in
   the default database or temp schema of a workspace's connection, may stand
   in for the data datarecord's SQL reads.
@@ -272,6 +274,14 @@ All notable changes to datarecord are documented here. The format follows
   holding no snapshot, is refused. A network's results are written over the
   selection it was built from, `base=view`, and lifted back to the labels it
   squeezes.
+- `Workspace(credentials=S3Credentials(...))` reaches S3 with a key passed in
+  rather than the AWS environment's: an access key id, a secret, a session
+  token, an endpoint, a region and a URL style. The workspace builds its
+  boto3 client and DuckDB's secret, with `PROVIDER config`, from the same
+  `S3Credentials`, whose `repr` leaves out the secret and the token.
+  `Workspace.set_credentials` replaces both on a live workspace, so open
+  records and registered views read with the new key, and `None` returns to
+  the AWS environment.
 
 ### Changed
 

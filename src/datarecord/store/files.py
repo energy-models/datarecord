@@ -20,8 +20,10 @@ import shutil
 import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
+from urllib.parse import urlsplit
 
 
 class PreconditionFailedError(Exception):
@@ -109,6 +111,71 @@ class LocalFiles:
         shutil.rmtree(prefix)
 
 
+@dataclass(frozen=True)
+class S3Credentials:
+    """The S3 key, and the server it is for, that a `Workspace` reaches `s3://` URIs with.
+
+    The `repr` leaves out `secret` and `session_token`.
+
+    Parameters
+    ----------
+    key_id
+        The access key id.
+    secret
+        The secret access key.
+    session_token
+        The session token of a temporary key, such as one from STS.
+    endpoint
+        The server's URL, such as `http://localhost:8333`, or `None` for AWS.
+    region
+        The region the bucket is in.
+    url_style
+        `"path"` puts the bucket in the path, as a self-hosted server needs,
+        and `"vhost"` in the host name.
+
+    Raises
+    ------
+    ValueError
+        If `key_id` or `secret` is empty, `endpoint` is no `http` or `https`
+        URL without a user, path, query or fragment, or `url_style` is
+        neither `"path"` nor `"vhost"`.
+
+    Notes
+    -----
+    - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
+    """
+
+    key_id: str
+    secret: str = field(repr=False)
+    session_token: str | None = field(default=None, repr=False)
+    endpoint: str | None = None
+    region: str = "us-east-1"
+    url_style: Literal["path", "vhost"] = "vhost"
+
+    def __post_init__(self) -> None:
+        if not (self.key_id and self.secret):
+            msg = "S3Credentials needs a non-empty `key_id` and `secret`"
+            raise ValueError(msg)
+        if self.endpoint is not None:
+            url = urlsplit(self.endpoint)
+            if (
+                url.scheme not in ("http", "https")
+                or not url.hostname
+                or "@" in url.netloc
+                or url.path not in ("", "/")
+                or url.query
+                or url.fragment
+            ):
+                msg = (
+                    "`endpoint` takes the server's URL with its scheme and no "
+                    "user, path, query or fragment, such as 'http://localhost:8333'"
+                )
+                raise ValueError(msg)
+        if self.url_style not in ("path", "vhost"):
+            msg = f"`url_style` is {self.url_style!r}; pass 'path' or 'vhost'"
+            raise ValueError(msg)
+
+
 def _split(uri: str) -> tuple[str, str]:
     """`s3://bucket/key` as `(bucket, key)`."""
     bucket, _, key = uri.removeprefix("s3://").partition("/")
@@ -116,7 +183,11 @@ def _split(uri: str) -> tuple[str, str]:
 
 
 class RemoteFiles:
-    """`Files` on S3, through boto3, configured by the AWS environment alone.
+    """`Files` on S3, through boto3, with `credentials` or else the AWS environment.
+
+    The client has a boto3 session of its own, so it reads the AWS environment
+    as it stands when built. With `credentials`, the key and the endpoint come
+    from them, not from the environment.
 
     `create` is `put_object` with the conditional header `IfNoneMatch="*"`,
     which holds only as far as the server honours it.
@@ -135,7 +206,7 @@ class RemoteFiles:
     - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
     """
 
-    def __init__(self) -> None:
+    def __init__(self, credentials: S3Credentials | None = None) -> None:
         try:
             import boto3
             from botocore.config import Config
@@ -145,9 +216,25 @@ class RemoteFiles:
                 "`pip install datarecord[remote]`"
             )
             raise ImportError(msg) from e
-        # A self-hosted endpoint (SeaweedFS, MinIO) has no bucket-subdomain DNS.
-        style = "path" if os.environ.get("AWS_ENDPOINT_URL") else "auto"
-        self._s3 = boto3.client("s3", config=Config(s3={"addressing_style": style}))
+        if credentials is None:
+            # A self-hosted endpoint (SeaweedFS, MinIO) has no bucket-subdomain DNS.
+            style = "path" if os.environ.get("AWS_ENDPOINT_URL") else "auto"
+            session = boto3.Session()
+            endpoint = None
+            config = Config(s3={"addressing_style": style})
+        else:
+            session = boto3.Session(
+                aws_access_key_id=credentials.key_id,
+                aws_secret_access_key=credentials.secret,
+                aws_session_token=credentials.session_token,
+                region_name=credentials.region,
+            )
+            endpoint = credentials.endpoint
+            style = {"path": "path", "vhost": "virtual"}[credentials.url_style]
+            config = Config(
+                s3={"addressing_style": style}, ignore_configured_endpoint_urls=True
+            )
+        self._s3 = session.client("s3", endpoint_url=endpoint, config=config)
         self._error = self._s3.exceptions.ClientError
 
     @staticmethod
