@@ -197,6 +197,17 @@ All notable changes to datarecord are documented here. The format follows
   every edit.
   `Workspace.unregister(name)` drops them, and `Workspace.registered()` lists
   them.
+- `Record.register(name)` also creates the view `name.owner_map` of the record's
+  owner map, with its columns as stored: the dimensions in `partial`,
+  `attribute`, `layer_uuid`, and the `varies` and `broadcast` structs and
+  `breakpoints` that `flags` aggregates. A SQL client finds which attributes
+  have rows for a label without reading a value. Over a `WorkingRecord` the view
+  follows every edit, and a staged map row has the `WorkingRecord`'s own layer
+  id, which `store.commit` does not keep. DuckDB applies a filter on
+  `attribute` or on a dimension in its scan of the map, though over a
+  `WorkingRecord` a filter on a dimension reaches only some of the map's scans.
+  The view registers at DuckDB's default `max_expression_depth` however many
+  attributes the schema declares.
 - `WorkingRecord.close()` drops the record's staging tables, as does
   garbage collection once no relation taken from it lives, and
   `with WorkingRecord(base) as w:` closes it on exit.

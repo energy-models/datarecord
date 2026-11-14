@@ -92,6 +92,11 @@ def _living(
     return rel
 
 
+def _text(rel: DuckDBPyRelation) -> str:
+    """Return the statement `rel` runs, its values written in, as `register` creates a view of."""
+    return _render(rel, literals=True, wrap_text=True)[0]
+
+
 def _owned(dim: str) -> str:
     return f"__owned_{dim}"
 
@@ -604,11 +609,12 @@ class Record:
         return select(self, **labels)
 
     def register(self, name: str) -> None:
-        """Create the schema `name` with a view per dimension, property subject and attribute.
+        """Create the schema `name` with a view per dimension, property subject and attribute, and one of the owner map.
 
         The views sit in `name.dimensions`, `name.properties` and `name.attributes` of
         the workspace's database, as in `datarecord.name.dimensions.bus`, each reading as
-        its relation here; over a `WorkingRecord` they follow every edit. They hold
+        its relation here, and the owner map in `name.owner_map`; over a
+        `WorkingRecord` they follow every edit. They hold
         the tables the record reads, its folds and a `WorkingRecord`'s staging
         tables, until `unregister(name)`, whether the record is closed or not.
         `name` is listed in `Workspace.registered()`.
@@ -625,6 +631,7 @@ class Record:
         Notes
         -----
         - [registered views](https://energy-models.github.io/datarecord/reference/format/#registered-views)
+        - [the owner_map view](https://energy-models.github.io/datarecord/reference/format/#the-owner_map-view)
         """
         ws = self.workspace
         kinds = {
@@ -632,11 +639,13 @@ class Record:
             "properties": self.properties,
             "attributes": self.attributes,
         }
-        rendered = {
-            (ws.name, name, kind, view): _render(rel, literals=True, wrap_text=True)[0]
+        views: dict[tuple[str, ...], DuckDBPyRelation] = {
+            (ws.name, name, kind, view): rel
             for kind, relations in kinds.items()
             for view, rel in relations.items()
         }
+        views[ws.name, name, "owner_map"] = self._owner_map
+        rendered = {path: _text(rel) for path, rel in views.items()}
         con = self.con
         holds = ws._holds
         with transaction(
@@ -786,12 +795,7 @@ class Record:
         con = self.con
         schema = self.schema
         if self._fixed:
-            om = _table(
-                self.revision_id,
-                self.sources,
-                self._frozen_axes,
-                {attribute: attribute in self._frozen_owners},
-            )
+            om = self._owners_of(attribute)
             dead = self._axes.dead
         else:
             fold = self._fold
@@ -845,6 +849,41 @@ class Record:
             attribute,
         )
         return _living(alone.union(ranked), dead, outside_index)
+
+    def _owners_of(self, attribute: str) -> DuckDBPyRelation:
+        """Return the owner map's rows of `attribute`, folded above the frozen layers on their own.
+
+        A plan that reads every later edit, which the whole map's does not:
+        that folds only the attributes the staged layer holds when planned.
+        """
+        return _table(
+            self.revision_id,
+            self.sources,
+            self._frozen_axes,
+            {attribute: attribute in self._frozen_owners},
+        )
+
+    @property
+    def _owner_map(self) -> DuckDBPyRelation:
+        """Return the owner map `register` creates a view of, a table scan where every source is frozen.
+
+        Above the frozen layers, a `UNION ALL BY NAME` of `_owners_of` per
+        declared attribute, so its plan reads every later edit and DuckDB
+        prunes the branches a filter on `attribute` excludes. Each branch is
+        rendered as a statement of its own, its CTEs in a `WITH` list of their
+        own: DuckDB's binder needs a depth of about the number of CTEs in one
+        list, which one rendering of the whole union takes past the default
+        `max_expression_depth` of 1000 at some 70 attributes.
+
+        Notes
+        -----
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+        - [the owner_map view](https://energy-models.github.io/datarecord/reference/format/#the-owner_map-view)
+        """
+        if self.frozen or not self.schema.attributes:
+            return self._fold.owner_map
+        arms = (_text(self._owners_of(a)) for a in self.schema.attributes)
+        return self.con.sql("\nUNION ALL BY NAME\n".join(f"({arm})" for arm in arms))
 
     def _owners(self, attribute: str) -> _Owners:
         """Return the layers that may own a map row of `attribute`, whether `_relation` ranks rows, and the ways it joins.

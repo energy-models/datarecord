@@ -113,7 +113,7 @@ The next record over the same revision folds its ancestry again, so a process th
 
 ### `register`
 
-`record.register(name)` creates a DuckDB view per dimension, property subject and attribute, for a SQL client ([format](format.md)).
+`record.register(name)` creates a DuckDB view per dimension, property subject and attribute, and one of the owner map, for a SQL client ([format](format.md#registered-views)).
 
 ## `settle`
 
