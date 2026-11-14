@@ -262,6 +262,7 @@ When two threads fold one revision at once, both fold and datarecord keeps one o
 | `revision(id)`                          | returns one revision, and raises `KeyError` for an id with no manifest        |
 | `revisions(*, meta=None)`               | returns every revision, unordered, or those whose `meta` has every pair given |
 | `claims()`                              | returns the pending layers, oldest first                                      |
+| `claim_from(payload)`                   | rebuilds a serialised `Claim` on this store                                   |
 | `cleanup(*, ids=None, older_than=None)` | deletes pending layers and returns their ids                                  |
 | `layer(id)`                             | reads one layer alone as a `Record`                                           |
 
@@ -285,7 +286,9 @@ Before it writes data, a commit checks three things and refuses the layer otherw
 
 - The layer's schema passes [`compatible_with`](schema.md) against the parent's manifest's schema.
 - Its `meta` has every key of the claim's `meta` with the same value, and may add keys.
-- Its parent is a revision of this store.
+- Its parent, the claim's `parent`, is a revision of this store.
+
+The commit takes `parent` and `meta` from the `Claim` object, and reads `claim.json` only to check that the claim is still there.
 
 `store.commit(w)` takes `w`'s base as the parent and raises `TypeError` for a `parent` passed beside it.
 Over a base that is no revision of this store, such as a standalone directory, it refuses `w` and names `ws.write(w, uri)`, which writes `w` whole.
@@ -296,8 +299,30 @@ A `Claim` is a revision id that a store reserves before the layer is written.
 It has `id`, `store`, `parent`, `meta` and `created`, and `claim.commit(source, *, meta=None, credentials=None)` writes the layer and returns the `Revision`.
 `credentials` are a [key for the layer alone](#a-commit-with-a-key-for-its-layer).
 
-A claim serialises as its store's location and its id, and pickles the same way.
+A claim serialises as all five fields, with its store's location for `store`, and pickles the same way:
+
+```python
+payload = claim.model_dump_json()
+claim = ws.store("/data/my-record").claim_from(payload)  # in another process
+```
+
+```json
+{ "id": "4731e41b-…", "store": "/data/my-record", "parent": "9716e2ef-…", "meta": { "run": "a" }, "created": "2026-11-05T17:37:14.912772Z" }
+```
+
 A job in another process can then commit it, days later if need be.
+`store.claim_from(payload)` rebuilds the claim on `store`, so on its workspace and its key, and raises `ValueError` for a payload of another store.
+`Claim.model_validate_json(payload)` and an unpickled claim land on `Workspace.process()` instead.
+Each takes the five fields as they stand, without reading `claim.json`.
+A payload whose keys are exactly `id` and `store` is the short form, and the fields it lacks are read from `claim.json`.
+
+A commit checks the `meta` it is passed against the claim's `meta`, and writes the claim's `parent` to the manifest.
+Those are the object's values, so they match `claim.json` where the object came from `Store.claim`, `store.claims()` or the short form.
+A claim rebuilt from the five fields commits what they say, whatever `claim.json` holds.
+
+A claim's parent may be another pending claim, so a chain of layers is claimed before any of them is written.
+The child commits only once its parent has, and raises `KeyError` before then.
+A child whose parent's claim was cleaned up raises `KeyError` on every commit and stays in `store.claims()` until a cleanup deletes it too.
 A claim has one committer at a time.
 A commit raises `ValueError` once a cleanup deleted its claim.
 
