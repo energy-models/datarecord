@@ -38,9 +38,9 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
-    Field,
     PlainSerializer,
     PrivateAttr,
     model_validator,
@@ -746,17 +746,20 @@ class Store:
 
     # -- writing -------------------------------------------------------------
 
-    def claim(self, *, parent: Revision | None, meta: Meta | None = None) -> Claim:
+    def claim(
+        self, *, parent: Revision | Claim | None, meta: Meta | None = None
+    ) -> Claim:
         """Hand out a new layer id under `parent`, by its create-only `claim.json`.
 
         The layer is pending, reached by no read, until `Claim.commit` writes
         its manifest; `meta` is the revision's, which the commit may extend
-        but not change.
+        but not change. A pending `parent` must be committed before this
+        claim is.
 
         Raises
         ------
         ValueError
-            If `parent` is a revision of another store, naming both locations.
+            If `parent` is of another store, naming both locations.
         pydantic.ValidationError
             If `meta` is not flat, each value a string, finite number or boolean.
 
@@ -766,7 +769,7 @@ class Store:
         """
         if parent is not None and parent.store.uri != self.uri:
             msg = (
-                f"revision {parent.id} is of the store at {parent.store.uri}, so "
+                f"layer {parent.id} is of the store at {parent.store.uri}, so "
                 f"it is no parent in the store at {self.uri}"
             )
             raise ValueError(msg)
@@ -778,6 +781,35 @@ class Store:
         )
         claimed.write(self.files, self.claim_uri(claimed.id))
         return Claim(store=self, **asdict(claimed))
+
+    def claim_from(self, payload: str) -> Claim:
+        """Rebuild a claim serialised by `model_dump_json` on this store, so on its workspace.
+
+        A payload whose keys are exactly `id` and `store` is completed from
+        `claim.json`; any other is validated as it stands, without a read.
+
+        Raises
+        ------
+        ValueError
+            If `payload` is no JSON object, or names no store location or
+            another store's.
+        KeyError
+            If a payload of only the id and the location names a layer with
+            no claim, as after a cleanup.
+        pydantic.ValidationError
+            If a field of `payload` is missing or malformed, such as a
+            `created` without a time zone.
+
+        Notes
+        -----
+        - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
+        """
+        data = json.loads(payload)
+        location = data.get("store") if isinstance(data, dict) else None
+        if not isinstance(location, str) or _absolute(location) != self.uri:
+            msg = f"{payload} is no claim of the store at {self.uri}"
+            raise ValueError(msg)
+        return Claim.model_validate(Claim._complete(self, data))
 
     @overload
     def commit(
@@ -1144,7 +1176,7 @@ class Store:
 class _OfStore(BaseModel):
     """A layer of a store, one location and one id whatever it has read.
 
-    Serialises as them, and validates back through `Workspace.process()`.
+    Serialises with them, and validates back through `Workspace.process()`.
 
     Notes
     -----
@@ -1159,15 +1191,14 @@ class _OfStore(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _attach(cls, data: Any) -> Any:
-        """A location and id from the serialised form, completed by `_complete`."""
+        """The serialised form on the process's workspace, completed by `_complete`."""
         if isinstance(data, dict) and isinstance(data.get("store"), str):
-            store = Workspace.process().store(data["store"])
-            data = cls._complete(store, UUID(str(data["id"])))
+            data = cls._complete(Workspace.process().store(data["store"]), data)
         return data
 
     @classmethod
-    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
-        """The fields of layer `id` of `store`, read from its files."""
+    def _complete(cls, store: Store, data: dict[str, Any]) -> dict[str, Any]:
+        """The fields of the serialised `data` on `store`, read from its files where `data` lacks them."""
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -1182,9 +1213,11 @@ class _OfStore(BaseModel):
 class Claim(_OfStore):
     """A layer id handed out by `Store.claim`, whose layer is pending until `commit`.
 
-    Serialises as its store's location and its id, and validates or unpickles
-    back through `Workspace.process()` by reading its claim file, so a job in
-    another process commits it.
+    Serialises as its id, its store's location, `parent`, `meta` and
+    `created`, so a job in another process commits it. `Store.claim_from`
+    rebuilds it on a store the caller names; validating or unpickling rebuilds
+    it on `Workspace.process()`. Either takes the five fields as they stand,
+    and completes a form of only the id and location from the claim file.
 
     Attributes
     ----------
@@ -1198,23 +1231,25 @@ class Claim(_OfStore):
     Notes
     -----
     - [a revision exists only by its file](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
     """
 
-    parent: UUID | None = Field(exclude=True)
-    meta: Meta = Field(exclude=True)
-    created: datetime = Field(exclude=True)
+    parent: UUID | None
+    meta: Meta
+    created: AwareDatetime
 
     @classmethod
-    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
-        """Completed from the claim file.
+    def _complete(cls, store: Store, data: dict[str, Any]) -> dict[str, Any]:
+        """Completed from the claim file only where `data` is the id and location alone.
 
         Raises
         ------
         KeyError
             If the layer has no claim, as after a cleanup.
         """
-        return {"store": store, **asdict(store._read_claim(id))}
+        if data.keys() != {"id", "store"}:
+            return {**data, "store": store}
+        return {"store": store, **asdict(store._read_claim(UUID(str(data["id"]))))}
 
     def __reduce__(self) -> tuple[Any, ...]:
         return Claim.model_validate_json, (self.model_dump_json(),)
@@ -1271,7 +1306,8 @@ class Claim(_OfStore):
         PreconditionFailedError
             If another commit of this claim wrote the manifest first.
         KeyError
-            If the claim's parent is gone from the store.
+            If the claim's parent is a pending claim not yet committed, or is
+            gone from the store.
         ValueError
             If `credentials` come with a local store.
         PermissionError
@@ -1463,7 +1499,7 @@ class Revision(_OfStore):
     _manifest: Manifest | None = PrivateAttr(default=None)
 
     @classmethod
-    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
+    def _complete(cls, store: Store, data: dict[str, Any]) -> dict[str, Any]:
         """Read with every parent's manifest the process does not yet hold.
 
         Raises
@@ -1471,6 +1507,7 @@ class Revision(_OfStore):
         KeyError
             If the store has no revision `id`.
         """
+        id = UUID(str(data["id"]))
         store.revision(id)
         return {"id": id, "store": store}
 

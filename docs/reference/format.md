@@ -34,6 +34,7 @@ A read opens the files that the manifest lists, and no other.
 
 `claim.json` lists the id, the parent, the claimed `meta` and when the [store](store.md) handed out the id.
 The store writes it create-only and keeps it after the commit, so an id is claimed once.
+The manifest, not `claim.json`, is authoritative for `parent` and `meta`: a claim rebuilt from its serialised form commits what that form says ([the claim](store.md#claim)).
 
 ```json
 { "id": "4731e41b-…", "parent": "9716e2ef-…", "meta": { "run": "a" }, "created": "2026-11-05T17:37:14.912772Z" }
