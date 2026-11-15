@@ -18,11 +18,12 @@ from pathlib import Path
 
 import pandas as pd
 import pytest
+from pydantic import ValidationError
 
 from datarecord import Flags, WorkingRecord, Workspace
 from datarecord.duck import union_all_by_name
-from datarecord.resolve.fold import read_dimension_owners
-from datarecord.resolve.owner_map import _fold_map
+from datarecord.resolve.fold import read_dimension_owners, read_owner_map
+from datarecord.resolve.owner_map import _fold_map, _frozen_table
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension
 from datarecord.store.manifest import LayerFiles
@@ -35,6 +36,7 @@ from tests.fixtures import (
     nested_tables,
     restate,
     schema,
+    widened,
     write_attribute,
     write_axis,
     write_component,
@@ -310,6 +312,48 @@ def test_a_read_refuses_an_owner_map_naming_a_file_the_layer_lacks(store, tmp_pa
         reread.record.attributes["p_nom"]
 
 
+def test_a_read_refuses_a_manifest_listing_an_undeclared_attribute_file(
+    store, tmp_path
+):
+    """A hand-made manifest lists `extra`, which its schema does not declare, so no shape folds it."""
+    layer = empty_root(store, schema())
+    write_component(layer, "Generator", [{"entity": "gas"}])
+    write_attribute(layer, "p_nom", [{"entity": "gas", "value": 1.0}])
+    root = layer.commit()
+    uri = Path(store.manifest_uri(root.id))
+    raw = json.loads(uri.read_text())
+    raw["files"]["attributes"].append("extra")
+    uri.write_text(json.dumps(raw))
+
+    with pytest.raises(ValidationError, match=r"files \['extra'\] its schema"):
+        Workspace().store(str(tmp_path)).revision(root.id)
+
+
+def test_a_staged_read_folds_an_attribute_a_lower_schema_lacks(parent):
+    """A child declares and writes `extra`, which the root's schema lacks; staged edits read it one attribute at a time.
+
+    Notes
+    -----
+    - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
+    - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
+    """
+    layer = empty_child(parent, widened(parent.manifest.schema, "extra"))
+    write_attribute(layer, "extra", [{"entity": "Norway Gas", "value": 1.0}])
+    staged = WorkingRecord(layer.commit().record)
+    staged.set("extra", 2.0, entity="Norway Wind")
+    staged.set("p_max_pu", 0.9, entity="Norway Wind")
+
+    assert broadcast(staged, "extra", "entity") == {
+        ("Norway Gas",): 1.0,
+        ("Norway Wind",): 2.0,
+    }, "the child's row and the staged one"
+    assert broadcast(staged, "p_max_pu", "entity") == {
+        ("Manchester Wind",): 0.5,
+        ("Norway Wind",): 0.9,
+        ("Norway Gas",): 0.5,
+    }, "the root's rows, one restated"
+
+
 def _largest_intermediate(store, rel):
     """The most rows any operator produced while DuckDB executed `rel`."""
     profile = json.loads(
@@ -414,7 +458,7 @@ def test_the_fold_crosses_and_the_read_broadcasts_by_hash_join(store):
     record = root.store.commit(staged).record
 
     for plan in (
-        _fold_map(record.sources).explain().upper(),
+        *(rel.explain().upper() for rel in _fold_map(record.sources).values()),
         record.attributes["weight"].explain().upper(),
     ):
         assert "HASH JOIN" in plan, "it joins at all"
@@ -760,6 +804,24 @@ def test_a_node_reads_the_same_whichever_descendant_widens(store):
     assert read(store.revision(middle.id)) == before
 
 
+def _q_over(partial, *dims):
+    """`q` over `dims` and `r` over `entity`."""
+    q = AttributeSpec(dtype="float", dims=set(dims))
+    r = AttributeSpec(dtype="float", dims={"entity"})
+    return schema(partial=partial, attributes={"Generator": {"q": q, "r": r}})
+
+
+def _q_gaining_scenario(store, partial=frozenset(), *, materialised=True):
+    """A child whose schema has `q` over `(entity, scenario)`, over a root with `q` over `entity`."""
+    layer = empty_root(store, _q_over(partial, "entity"))
+    write_component(layer, "Generator", [{"entity": "gas"}])
+    write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
+    write_attribute(layer, "q", [{"entity": "gas", "value": 1.0}])
+    write_attribute(layer, "r", [{"entity": "gas", "value": 2.0}])
+    root = _committed(layer, materialised=materialised)
+    return empty_child(root, _q_over(partial, "entity", "scenario")).commit()
+
+
 @pytest.mark.parametrize(
     ("partial", "materialised"), [(set(), False), ({"scenario"}, True)]
 )
@@ -776,21 +838,7 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
     - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
     - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
-
-    def q_over(*dims):
-        q = AttributeSpec(dtype="float", dims=set(dims))
-        r = AttributeSpec(dtype="float", dims={"entity"})
-        return schema(partial=partial, attributes={"Generator": {"q": q, "r": r}})
-
-    layer = empty_root(store, q_over("entity"))
-    write_component(layer, "Generator", [{"entity": "gas"}])
-    write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
-    write_attribute(layer, "q", [{"entity": "gas", "value": 1.0}])
-    write_attribute(layer, "r", [{"entity": "gas", "value": 2.0}])
-    root = layer.commit()
-    if materialised:
-        root.materialise()
-    child = empty_child(root, q_over("entity", "scenario")).commit()
+    child = _q_gaining_scenario(store, partial, materialised=materialised)
 
     rows = child.record.attributes["q"].project("entity, scenario, value").fetchall()
     assert rows == [("gas", None, 1.0)], "the row from before, NULL along scenario"
@@ -802,7 +850,8 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
     )
     rows = child.record.attributes["r"].project("entity, value").fetchall()
     assert rows == [("gas", 2.0)]
-    assert store.revision(root.id).record.flags()["q"].broadcast == set(), (
+    root = store.revision(child.manifest.parent)
+    assert root.record.flags()["q"].broadcast == set(), (
         "the root, under its own schema, has q over entity alone"
     )
 
@@ -963,6 +1012,19 @@ def _ordered(order: tuple[str, ...]) -> Schema:
     )
 
 
+def _ordered_root(store, order: tuple[str, ...]):
+    """A root under `_ordered(order)`: `l`'s efficiency along `snapshot`, `g`'s broadcast along it, `g`'s `p_nom`."""
+    staged = WorkingRecord(empty_root(store, _ordered(order)).commit().record)
+    staged.add("entity", ["l", "g"])
+    staged.add("bus", ["a", "b"])
+    staged.add("snapshot", [0, 1])
+    staged.add("connection", [{"entity": "l", "bus": "a"}, {"entity": "g", "bus": "b"}])
+    staged.set("efficiency", [0.1, 0.2], entity="l", bus="a", snapshot=[0, 1])
+    staged.set("efficiency", 0.7, entity="g", bus="b")
+    staged.set("p_nom", 3.0, entity="g")
+    return store.commit(staged)
+
+
 @pytest.mark.parametrize(
     ("first", "then"),
     [
@@ -979,15 +1041,7 @@ def test_a_child_reordering_the_dimensions_reads_as_its_parent(store, first, the
     - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
     - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
-    staged = WorkingRecord(empty_root(store, _ordered(first)).commit().record)
-    staged.add("entity", ["l", "g"])
-    staged.add("bus", ["a", "b"])
-    staged.add("snapshot", [0, 1])
-    staged.add("connection", [{"entity": "l", "bus": "a"}, {"entity": "g", "bus": "b"}])
-    staged.set("efficiency", [0.1, 0.2], entity="l", bus="a", snapshot=[0, 1])
-    staged.set("efficiency", 0.7, entity="g", bus="b")
-    staged.set("p_nom", 3.0, entity="g")
-    root = store.commit(staged)
+    root = _ordered_root(store, first)
 
     def read(revision):
         return broadcast(revision.record, "efficiency", "connection", "snapshot")
@@ -1018,6 +1072,54 @@ def test_a_child_reordering_the_dimensions_reads_as_its_parent(store, first, the
     assert grandchild.record.flags()["efficiency"].broadcast == frozenset(), (
         "`snapshot` is outside `partial`, so the edit writes `g`'s row out along it"
     )
+
+
+def _split_by_a_widening(store):
+    """`scenario` joins `partial` in a child over a materialised root writing `p_max_pu` along it."""
+    layer = empty_child(_scenario_root(store, materialised=True), _WIDE)
+    write_attribute(
+        layer, "p_max_pu", [{"entity": "gas", "scenario": "high", "value": 3.0}]
+    )
+    return layer.commit()
+
+
+def _edited_after_a_reordering(store):
+    """A grandchild edit under the dimensions in another order than its materialised root's."""
+    root = _ordered_root(store, _CONNECTION_FIRST)
+    root.materialise()
+    staged = WorkingRecord(empty_child(root, _ordered(_DECLARED)).commit().record)
+    staged.set("efficiency", 0.9, entity="g", bus="b", snapshot=1)
+    return store.commit(staged)
+
+
+def _misstamped(rel, schema: Schema) -> list[tuple]:
+    """The rows of the stamped map `rel` whose `_shape` is not the dimensions their `varies` or `broadcast` sets."""
+    flagged = [
+        f"(CAST(varies['{d}'] OR broadcast['{d}'] AS INTEGER) << {i})"
+        for i, d in enumerate(schema.dimensions)
+    ]
+    return rel.filter(f"_shape <> {' + '.join(flagged)}").fetchall()
+
+
+@pytest.mark.parametrize(
+    "build", [_split_by_a_widening, _q_gaining_scenario, _edited_after_a_reordering]
+)
+def test_each_map_row_is_stamped_with_the_dimensions_its_flags_set(store, build):
+    """Folded cold and read back materialised, each row's `_shape` is the dimensions where `varies` or `broadcast` is set.
+
+    Notes
+    -----
+    - [`resolved/`](https://energy-models.github.io/datarecord/reference/format/#resolved)
+    - [flags](https://energy-models.github.io/datarecord/reference/resolution/#flags)
+    """
+    revision = build(store)
+    schema = revision.record.schema
+    cold = _frozen_table(revision.id, revision.record.sources)
+    assert cold is not None and cold.limit(1).fetchall(), "the map holds rows"
+    assert _misstamped(cold, schema) == [], "the cold fold stamps each row's shape"
+    revision.materialise()
+    persisted = read_owner_map(revision.id, store.workspace.con, store)
+    assert _misstamped(persisted, schema) == [], "so does the materialised map"
 
 
 def test_a_layer_leaving_a_dim_outside_partial_unfilled_is_refused(store):

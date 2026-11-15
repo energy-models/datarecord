@@ -32,7 +32,7 @@ from datarecord.schema.schema import (
 type Shape = frozenset[str]
 
 SHAPE_COLUMN = "_shape"
-"""The column of a map kept as one table or file: each row's `shape_mask` under the schema of the node it belongs to.
+"""The column of a map kept as one table or file: the `pattern` of each row's shape over the dimensions of the node's schema.
 
 What splits a map arriving as one relation by shape. A caller of the map
 never sees it.
@@ -44,23 +44,21 @@ Notes
 
 
 def shape_of(schema: Schema, attribute: str) -> Shape:
-    """The dimensions `attribute` is over under `schema`, every one where it does not declare it.
+    """The dimensions `attribute` is over under `schema`.
 
     The unit of the fold: attributes of one shape fold together, their flags
     constant per dimension.
+
+    Raises
+    ------
+    KeyError
+        If `schema` does not declare `attribute`.
 
     Notes
     -----
     - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
-    if attribute not in schema.attributes:
-        return frozenset(schema.dimensions)
     return frozenset(schema.dimensions_of(attribute))
-
-
-def shape_mask(schema: Schema, shape: Shape) -> int:
-    """`shape` as an integer, bit `i` set where it holds `schema.dimensions[i]`."""
-    return sum(1 << i for i, d in enumerate(schema.dimensions) if d in shape)
 
 
 def shapes(schema: Schema, attributes: Iterable[str]) -> dict[Shape, list[str]]:
