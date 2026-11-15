@@ -18,10 +18,10 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Self
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter
+from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter, model_validator
 from pydantic.dataclasses import dataclass
 
 from datarecord.schema.schema import Schema, schema_digest
@@ -74,6 +74,18 @@ class Manifest:
     schema: InstanceOf[Schema]
     files: LayerFiles
     meta: Meta = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _declared_files(self) -> Self:
+        """Refuse an attribute file whose name `schema` does not declare."""
+        undeclared = sorted(set(self.files.attributes) - set(self.schema.attributes))
+        if undeclared:
+            msg = (
+                f"layer {self.id} lists attribute files {undeclared} its schema "
+                f"does not declare"
+            )
+            raise ValueError(msg)
+        return self
 
     def write(self, files: Files, uri: str) -> None:
         """Write this manifest at `uri`, create-only.

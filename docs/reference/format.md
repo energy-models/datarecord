@@ -131,7 +131,7 @@ No manifest lists these files, a read opens each by name, and a layer's data sta
 
 A revision is materialised once `owner_map.parquet` exists.
 Beside the owner map's columns, `owner_map.parquet` has the integer column `_shape`.
-Bit `i` of `_shape` is set where the row's attribute is over the `i`-th dimension of the revision's schema, and every bit is set for an attribute the schema does not declare.
+Bit `i` of `_shape` is set where the row's attribute is over the `i`-th dimension of the revision's schema.
 The rows are sorted by `_shape` and `attribute`, so a fold that reads one shape skips the row groups of the others.
 `dimension_owners.parquet` points into ancestor layers by UUID rather than copying their files.
 

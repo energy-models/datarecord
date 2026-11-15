@@ -533,6 +533,9 @@ All notable changes to datarecord are documented here. The format follows
   sorted by it, so a fold starting from a materialised revision reads the map
   one shape at a time by that column. A revision materialised before fails
   the read: delete its `resolved/` and materialise it again.
+- Breaking: a `manifest.json` listing an attribute file its schema does not
+  declare is refused when read, naming the layer and the files, where the
+  fold read the attribute as over every dimension.
 - A write builds each attribute and axis carrying a multi-dimension once. It checks
   for a tuple with some fields NULL on the file it wrote, not on the source.
 - An edit inside a transaction the caller holds open on the same cursor is
