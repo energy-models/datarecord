@@ -26,6 +26,8 @@ from uuid import UUID
 from datarecord.resolve.fold import Fold
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from duckdb import DuckDBPyRelation
 
     from datarecord.schema.schema import Schema
@@ -146,6 +148,13 @@ class LayerSource(Protocol):
         """
         ...
 
+    def rows(self, names: Sequence[str]) -> DuckDBPyRelation | None:
+        """The rows of those of `names` this layer has, as one relation by column name; `None` where it has none.
+
+        An attribute without a column of another reads NULL there.
+        """
+        ...
+
     def owners(self, name: str) -> DuckDBPyRelation | None:
         """One attribute's owner-map rows, where this layer keeps them; `None` where the fold aggregates `attribute(name)`.
 
@@ -221,6 +230,10 @@ class _FileLayer:
         if name not in self.files.attributes:
             return None
         return self._read("attributes", [name])
+
+    def rows(self, names: Sequence[str]) -> DuckDBPyRelation | None:
+        listed = [name for name in names if name in self.files.attributes]
+        return self._read("attributes", listed) if listed else None
 
     def owners(self, name: str) -> DuckDBPyRelation | None:
         return None

@@ -528,9 +528,11 @@ All notable changes to datarecord are documented here. The format follows
   revision with 1.2 billion attribute rows takes 13 seconds rather than about
   five and a half minutes. A layer whose schema changes an attribute's shape
   moves its map rows to the new shape. `LayerSource.all_attributes` is gone.
+  `LayerSource.rows(names)` hands over several attributes' rows as one
+  relation, which a file layer reads in one scan per shape.
 - Breaking: `resolved/owner_map.parquet` has a column `_shape`, each row's
   attribute's dimensions under the revision's schema as a bitmask, and is
-  sorted by it, so a fold starting from a materialised revision reads the map
+  grouped by it, so a fold starting from a materialised revision reads the map
   one shape at a time by that column. A revision materialised before fails
   the read: delete its `resolved/` and materialise it again.
 - Breaking: a `manifest.json` listing an attribute file its schema does not
