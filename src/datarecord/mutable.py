@@ -53,6 +53,7 @@ from datarecord.duck import (
     refuse_open_transaction,
     scratch_table,
     transaction,
+    union_all_by_name,
 )
 from datarecord.protocols import RecordLike
 from datarecord.resolve.axes import refuse_unheld
@@ -246,6 +247,10 @@ class StagedSource:
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         return self.record._collapsed_attribute(name)
+
+    def rows(self, names: Sequence[str]) -> DuckDBPyRelation | None:
+        rels = [self.record._collapsed_attribute(name) for name in names]
+        return union_all_by_name(rels) if rels else None
 
     def owners(self, name: str) -> DuckDBPyRelation:
         """One attribute's owner-map rows, kept in a table each edit refreshes (`_refresh_owners`)."""

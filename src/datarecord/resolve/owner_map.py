@@ -103,7 +103,8 @@ def fold_layer(
         `partial` unfilled: a frozen layer, as a workspace first folds it.
     keep
         Applied to `own`, the parent rows it leaves and the pairs the check
-        reads, each read more than once: `_checkpoint` keeps them in tables.
+        reads, where each is read more than once: `_checkpoint` keeps them in
+        tables.
 
     Raises
     ------
@@ -119,18 +120,20 @@ def fold_layer(
     - [one plan for every layer](https://energy-models.github.io/datarecord/reference/resolution/#folding-a-layer-onto-its-parent)
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
-    if own is not None:
-        own = keep(own)
     if parent is None:
         return own
     kept = _prune(parent, removed)
     if own is None:
         return kept
+    own = keep(own)
     kept = keep(_uncovered_by(kept, own, schema))
+    crossing = pattern(schema.partial_dimensions, shape).bit_count() >= 2
     if refuse is not None:
-        within = keep(_meeting(kept, own, schema, shape, _not_within))
+        within = _meeting(kept, own, schema, shape, _not_within)
+        if crossing and _outside(schema, shape):
+            within = keep(within)
         _refuse_unfilled(within, own, schema, shape, refuse)
-    if pattern(schema.partial_dimensions, shape).bit_count() < 2:
+    if not crossing:
         return union_all_by_name([kept, own])
     if refuse is None:
         pairs = _meeting(kept, own, schema, shape, _incomparable)
@@ -318,7 +321,7 @@ def _refuse_unfilled(
     - [a dimension outside `partial`](https://energy-models.github.io/datarecord/reference/resolution/#a-dimension-outside-partial)
     """
     dims = schema.partial_dimensions
-    others = [d for d in schema.dimensions if d in shape and d not in dims]
+    others = _outside(schema, shape)
     if not others:
         return
     unset = lit(False)  # noqa: FBT003
@@ -365,6 +368,15 @@ def _refuse_unfilled(
         f"labels there, as `WorkingRecord.set` does"
     )
     raise ValueError(msg)
+
+
+def _outside(schema: Schema, shape: Shape) -> list[str]:
+    """The dimensions of `shape` outside `partial`."""
+    return [
+        d
+        for d in schema.dimensions
+        if d in shape and d not in schema.partial_dimensions
+    ]
 
 
 def owned_rows(source: LayerSource, attribute: str) -> DuckDBPyRelation | None:
@@ -482,12 +494,17 @@ def _as_one(
 def _stamped(
     maps: Mapping[Shape, DuckDBPyRelation], keyed: Schema, con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """`_as_one`, each row's shape in `SHAPE_COLUMN`, where the map is kept as one table or file."""
+    """`_as_one`, each row's shape in `SHAPE_COLUMN`, where the map is kept as one table or file.
+
+    One arm per shape, in ascending `SHAPE_COLUMN`, which DuckDB writes to
+    row groups of their own, so a fold reading one shape skips the others
+    (`_by_shape`).
+    """
     if not maps:
         maps = {frozenset(): empty_declared(keyed, con, *keyed.owner_map_columns)}
     arms = [
-        rel.project(star(), _mask(keyed, shape).alias(SHAPE_COLUMN))
-        for shape, rel in maps.items()
+        maps[shape].project(star(), _mask(keyed, shape).alias(SHAPE_COLUMN))
+        for shape in sorted(maps, key=lambda shape: pattern(keyed.dimensions, shape))
     ]
     return union_all_by_name(arms)
 
@@ -649,17 +666,15 @@ def _fold_at_hand(source: LayerSource) -> Fold | None:
 
 @contextmanager
 def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
-    """`_fold_map` with each source's fold kept in a temporary table per shape, every one dropped on exit, `_stamped`.
+    """`_fold_map` with each source's fold but the last kept in a temporary table per shape, every one dropped on exit, `_stamped`.
 
-    The relation entered reads the last source's tables, so it is read before
-    exit. It is sorted by `SHAPE_COLUMN` and `attribute`, so that the table or
-    file it is written to skips the row groups of other shapes (`_by_shape`).
+    The relation entered reads those tables, so it is read once, before exit.
     """
     made: list[str] = []
     schema, con = sources[-1].schema, sources[-1].workspace.con
     try:
         maps = _fold_map(sources, made=made)
-        yield _stamped(maps, schema, con).order(f"{SHAPE_COLUMN}, attribute")
+        yield _stamped(maps, schema, con)
     finally:
         for name in made:
             con.execute(f"DROP TABLE IF EXISTS {name}")
@@ -677,12 +692,17 @@ def _checkpoint(
     return con.table(name)
 
 
-def _drop_but_last(made: list[str], count: int, con: DuckDBPyConnection) -> None:
-    """Drop every table `made` names but the last `count`, which stay named there."""
-    cut = len(made) - count
-    for name in made[:cut]:
+def _drop_unread(
+    made: list[str], read: Iterable[DuckDBPyRelation], con: DuckDBPyConnection
+) -> None:
+    """Drop each table `made` names that none of the tables `read` is, the rest staying named there.
+
+    `_checkpoint` names a table `temp.main.<alias>`, its relation's alias.
+    """
+    aliases = {rel.alias for rel in read}
+    for name in [n for n in made if n.rpartition(".")[2] not in aliases]:
         con.execute(f"DROP TABLE {name}")
-    del made[:cut]
+        made.remove(name)
 
 
 def _pruned(schema: Schema) -> tuple[str, ...]:
@@ -720,10 +740,11 @@ def _fold_onto(
     instead, beside `dead`, its labels removed as of the first source, until
     it joins `partial`.
 
-    Where `made` is a list, each source's fold is kept in a table per shape
-    before the next folds onto it, and so are the pieces of its fold read more
-    than once (`fold_layer`). The tables the map is read from are left named in
-    `made`, for the caller to drop once it has read the map (`_checkpointed`).
+    Where `made` is a list, each source's fold but the last is kept in a table
+    per shape before the next folds onto it, and so are the pieces of its fold
+    read more than once (`fold_layer`); a relation already a table is not
+    copied. The tables the map is read from are left named in `made`, for the
+    caller to drop once it has read the map (`_checkpointed`).
 
     Where `attributes` is given, `maps` holds their rows alone and each source
     folds its rows of them alone, a plan that reads no staged row
@@ -752,7 +773,9 @@ def _fold_onto(
         return source_for(sources, layer)
 
     def keep(rel: DuckDBPyRelation) -> DuckDBPyRelation:
-        return rel if made is None else _checkpoint(rel, made, con)
+        if made is None or rel.type == "TABLE_RELATION":
+            return rel
+        return _checkpoint(rel, made, con)
 
     for source in sources:
         maps = _widened(maps, keyed, source.schema, dead_at, owner)
@@ -784,9 +807,9 @@ def _fold_onto(
             )
             if rel is not None:
                 folded[shape] = rel
-        if made is not None:
+        if made is not None and source is not sources[-1]:
             folded = {shape: keep(rel) for shape, rel in folded.items()}
-            _drop_but_last(made, len(folded), con)
+            _drop_unread(made, folded.values(), con)
         maps = folded
     return maps
 
@@ -798,19 +821,15 @@ def _layer_owners(
 
     The rows a layer keeps (`LayerSource.owners`) where it keeps them, so the
     fold does not aggregate a staging area's rows once per use; a file
-    layer's are aggregated from its rows, once per shape.
+    layer's are aggregated from its rows, read at once per shape.
     """
     schema, owned = source.schema, {}
     for shape, names in shapes(schema, attributes).items():
         kept = [k for a in names if (k := source.owners(a)) is not None]
         if kept:
             owned[shape] = union_all_by_name(kept)
-            continue
-        rows = [r for a in names if (r := source.attribute(a)) is not None]
-        if rows:
-            owned[shape] = owner_map_rows(
-                union_all_by_name(rows), schema, source.layer_id, shape
-            )
+        elif (rows := source.rows(names)) is not None:
+            owned[shape] = owner_map_rows(rows, schema, source.layer_id, shape)
     return owned
 
 
