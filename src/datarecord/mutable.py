@@ -252,7 +252,7 @@ class StagedSource:
         rels = [self.record._collapsed_attribute(name) for name in names]
         return union_all_by_name(rels) if rels else None
 
-    def owners(self, shape: Shape, names: Sequence[str]) -> DuckDBPyRelation:
+    def owner_map_rows(self, shape: Shape, names: Sequence[str]) -> DuckDBPyRelation:
         """The owner-map rows of `names`, kept in a table per attribute each edit refreshes (`_refresh_owners`)."""
         staged = self.record._staged
         return union_all_by_name(

@@ -35,10 +35,10 @@ from datarecord.resolve.axes import (
     refuse_unheld,
     removed_labels,
 )
-from datarecord.resolve.owner_map import stored_owners
+from datarecord.resolve.owner_map import stored_owner_map_rows
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import (
-    OWNERS_FILE,
+    OWNER_MAP_ROWS_FILE,
     DirectorySource,
     refuse_foreign_columns,
 )
@@ -84,8 +84,8 @@ def write_layer(
     at a time and each file written before the next is built, so a
     lazily-building source does one read per file rather than one per key up
     front. A failed write leaves the files it wrote, which no manifest lists.
-    Last, `owners.parquet` holds the owner-map rows of the shapes
-    `stored_owners` keeps.
+    Last, `owner_map_rows.parquet` holds the owner-map rows of the shapes
+    `stored_owner_map_rows` keeps.
 
     Parameters
     ----------
@@ -130,7 +130,7 @@ def write_layer(
     - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
-    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
     schema = data.schema
     con = workspace.con
@@ -203,11 +203,11 @@ def write_layer(
     if data.axes():
         _require_living_references(parent, layer, axes)
     whole = _as_layer(base, schema, files, workspace)
-    owners = stored_owners(data, whole)
-    if owners is None:
+    rows = stored_owner_map_rows(data, whole)
+    if rows is None:
         return files
-    write_parquet(owners, whole.uri(OWNERS_FILE), con, ordered=True)
-    return replace(files, owners=True)
+    write_parquet(rows, whole.uri(OWNER_MAP_ROWS_FILE), con, ordered=True)
+    return replace(files, owner_map_rows=True)
 
 
 def _as_layer(

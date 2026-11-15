@@ -25,7 +25,7 @@ from datarecord import Flags, WorkingRecord, Workspace
 from datarecord.duck import pattern, union_all_by_name
 from datarecord.resolve.fold import read_dimension_owners, read_owner_map
 from datarecord.resolve.owner_map import _checkpointed, _fold_map, _frozen_table
-from datarecord.resolve.sources import OWNERS_FILE, ParquetLayer
+from datarecord.resolve.sources import OWNER_MAP_ROWS_FILE, ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension
 from datarecord.store.manifest import LayerFiles
@@ -319,11 +319,14 @@ def test_a_read_refuses_an_owner_map_naming_a_file_the_layer_lacks(store, tmp_pa
     ("files", "match"),
     [
         ({"attributes": ["p_nom", "extra"]}, r"files \['extra'\] its schema"),
-        ({"attributes": [], "owners": True}, "owners.parquet but no attribute file"),
+        (
+            {"attributes": [], "owner_map_rows": True},
+            "owner_map_rows.parquet but no attribute file",
+        ),
     ],
 )
 def test_a_read_refuses_an_inconsistent_manifest(store, tmp_path, files, match):
-    """A hand-made manifest lists `extra`, which its schema does not declare, so no shape folds it, or `owners.parquet` owning no file."""
+    """A hand-made manifest lists `extra`, which its schema does not declare, so no shape folds it, or `owner_map_rows.parquet` owning no file."""
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "gas"}])
     write_attribute(layer, "p_nom", [{"entity": "gas", "value": 1.0}])
@@ -1208,21 +1211,23 @@ def other_workspace():
 def test_a_fold_reads_the_same_whether_its_layers_keep_their_owner_rows(
     store, other_workspace, build
 ):
-    """The cold fold over layers written with `owners.parquet` matches the one aggregating every layer's files.
+    """The cold fold over layers written with `owner_map_rows.parquet` matches the one aggregating every layer's files.
 
     Notes
     -----
-    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     revision = build(store)
     opened = other_workspace.store(store.uri)
     kept = [ParquetLayer(m, opened) for m in lineage(opened, revision.id)]
-    assert any(layer.files.owners for layer in kept), "a layer keeps owner rows"
+    assert any(layer.files.owner_map_rows for layer in kept), "a layer keeps owner rows"
     aggregated = [
         replace(
             layer,
-            manifest=replace(layer.manifest, files=replace(layer.files, owners=False)),
+            manifest=replace(
+                layer.manifest, files=replace(layer.files, owner_map_rows=False)
+            ),
         )
         for layer in kept
     ]
@@ -1239,12 +1244,12 @@ def test_a_layer_keeps_the_owner_rows_of_a_shape_varying_outside_partial_alone(s
 
     Notes
     -----
-    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
     revision = _series_root(store)
-    assert revision.manifest.files.owners
+    assert revision.manifest.files.owner_map_rows
     rel = store.workspace.con.read_parquet(
-        f"{store.layer_dir(revision.id)}{OWNERS_FILE}"
+        f"{store.layer_dir(revision.id)}{OWNER_MAP_ROWS_FILE}"
     )
     shapes = {s for (s,) in rel.project("_shape").distinct().fetchall()}
     assert shapes == {pattern(_SERIES.dimensions, {"entity", "snapshot"})}
