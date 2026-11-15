@@ -124,7 +124,16 @@ def _mask(schema: Schema, shape: Shape) -> Expression:
 
 
 def _isin(attributes: Iterable[str]) -> Expression:
-    return col("attribute").isin(*map(lit, attributes))
+    """Match `attribute` against `attributes`.
+
+    A single name becomes `=`, since DuckDB prunes a UNION ALL arm whose
+    `attribute = 'a'` contradicts a filter on another name, but not one
+    holding `IN ('a')`.
+    """
+    names = list(attributes)
+    if len(names) == 1:
+        return col("attribute") == lit(names[0])
+    return col("attribute").isin(*map(lit, names))
 
 
 @per_schema
