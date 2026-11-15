@@ -120,7 +120,7 @@ def _layer(layer: UUID) -> Expression:
 
 def _mask(schema: Schema, shape: Shape) -> Expression:
     """`shape`'s `SHAPE_COLUMN` value under `schema`."""
-    return lit(pattern(schema.dimensions, shape)).cast(sqltypes.INTEGER)
+    return lit(pattern(schema.dimensions, shape)).cast(sqltypes.BIGINT)
 
 
 def _isin(attributes: Iterable[str]) -> Expression:
