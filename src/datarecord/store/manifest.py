@@ -41,10 +41,21 @@ class LayerFiles:
     """What a layer wrote, by declared name: `dimensions/<dim>.parquet`, `attributes/<attr>.parquet`.
 
     A read opens exactly these and ignores any other file in the layer.
+
+    Attributes
+    ----------
+    owners
+        Whether the layer wrote `owners.parquet`, which holds owner-map rows
+        of some of its attribute files.
+
+    Notes
+    -----
+    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
     """
 
     dimensions: tuple[str, ...] = ()
     attributes: tuple[str, ...] = ()
+    owners: bool = False
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -77,12 +88,18 @@ class Manifest:
 
     @model_validator(mode="after")
     def _declared_files(self) -> Self:
-        """Refuse an attribute file whose name `schema` does not declare."""
+        """Refuse an attribute file whose name `schema` does not declare, and `owners.parquet` beside no attribute file."""
         undeclared = sorted(set(self.files.attributes) - set(self.schema.attributes))
         if undeclared:
             msg = (
                 f"layer {self.id} lists attribute files {undeclared} its schema "
                 f"does not declare"
+            )
+            raise ValueError(msg)
+        if self.files.owners and not self.files.attributes:
+            msg = (
+                f"layer {self.id} lists owners.parquet but no attribute file, "
+                f"whose owner-map rows it holds"
             )
             raise ValueError(msg)
         return self

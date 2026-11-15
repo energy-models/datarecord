@@ -17,10 +17,11 @@ from uuid import UUID
 
 from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
-from duckdb import DuckDBPyRelation, Expression
+from duckdb import DuckDBPyRelation, Expression, sqltypes
 
-from datarecord.duck import fn
+from datarecord.duck import fn, pattern
 from datarecord.schema.schema import (
+    FLAG_COLUMNS,
     LAYER_COLUMN,
     LAYER_UUID_TYPE,
     Schema,
@@ -35,11 +36,13 @@ SHAPE_COLUMN = "_shape"
 """The column of a map kept as one table or file: the `pattern` of each row's shape over the dimensions of the node's schema.
 
 What splits a map arriving as one relation by shape. A caller of the map
-never sees it.
+never sees it. A layer's `owners.parquet` carries it under the layer's
+schema.
 
 Notes
 -----
 - [`resolved/`](https://energy-models.github.io/datarecord/reference/format/#resolved)
+- [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
 """
 
 
@@ -97,9 +100,31 @@ def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelat
     return rel.project(
         *(col(d) for d in schema.dimensions),
         col("attribute"),
-        lit(str(layer)).cast(LAYER_UUID_TYPE).alias(LAYER_COLUMN),
+        _layer(layer),
         col("breakpoint"),
     )
+
+
+def _owned_by(rel: DuckDBPyRelation, schema: Schema, layer: UUID) -> DuckDBPyRelation:
+    """Owner-map rows `rel` under `schema`, `layer_uuid` aside, as layer `layer`'s."""
+    return rel.project(
+        *(col(c) for c in schema.owner_map_index),
+        _layer(layer),
+        *(col(c) for c in FLAG_COLUMNS),
+    )
+
+
+def _layer(layer: UUID) -> Expression:
+    return lit(str(layer)).cast(LAYER_UUID_TYPE).alias(LAYER_COLUMN)
+
+
+def _mask(schema: Schema, shape: Shape) -> Expression:
+    """`shape`'s `SHAPE_COLUMN` value under `schema`."""
+    return lit(pattern(schema.dimensions, shape)).cast(sqltypes.INTEGER)
+
+
+def _isin(attributes: Iterable[str]) -> Expression:
+    return col("attribute").isin(*map(lit, attributes))
 
 
 @per_schema

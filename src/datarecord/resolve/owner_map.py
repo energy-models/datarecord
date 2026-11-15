@@ -48,6 +48,7 @@ from datarecord.duck import (
     temp_table,
     union_all_by_name,
 )
+from datarecord.protocols import LayerData
 from datarecord.resolve.axes import (
     Axes,
     _base_and_above,
@@ -59,6 +60,8 @@ from datarecord.resolve.owner_map_rows import (
     SHAPE_COLUMN,
     Shape,
     _flags,
+    _isin,
+    _mask,
     _tagged,
     owner_map_rows,
     shape_of,
@@ -458,10 +461,6 @@ def _moves(
     return {to: rel.filter(_isin(names)) for to, names in targets.items()}
 
 
-def _isin(attributes: Sequence[str]) -> Expression:
-    return col("attribute").isin(*map(lit, attributes))
-
-
 def _by_shape(
     rel: DuckDBPyRelation, schema: Schema, attributes: Iterable[str] | None = None
 ) -> dict[Shape, DuckDBPyRelation]:
@@ -476,10 +475,6 @@ def _by_shape(
 def _of_shape(rel: DuckDBPyRelation, schema: Schema, shape: Shape) -> DuckDBPyRelation:
     """The rows of `shape` of the map `rel`, `_stamped` under `schema`, unstamped."""
     return _unstamped(rel.filter(col(SHAPE_COLUMN) == _mask(schema, shape)))
-
-
-def _mask(schema: Schema, shape: Shape) -> Expression:
-    return lit(pattern(schema.dimensions, shape)).cast(sqltypes.INTEGER)
 
 
 def _as_one(
@@ -819,18 +814,59 @@ def _layer_owners(
 ) -> dict[Shape, DuckDBPyRelation]:
     """`source`'s owner-map rows of `attributes`, one relation per shape under its schema, none for a shape it holds no row of.
 
-    The rows a layer keeps (`LayerSource.owners`) where it keeps them, so the
-    fold does not aggregate a staging area's rows once per use; a file
-    layer's are aggregated from its rows, read at once per shape.
+    The rows a layer keeps (`LayerSource.owners`) where it keeps them, else
+    aggregated from its rows, read at once per shape.
     """
     schema, owned = source.schema, {}
     for shape, names in shapes(schema, attributes).items():
-        kept = [k for a in names if (k := source.owners(a)) is not None]
-        if kept:
-            owned[shape] = union_all_by_name(kept)
-        elif (rows := source.rows(names)) is not None:
-            owned[shape] = owner_map_rows(rows, schema, source.layer_id, shape)
+        rel = source.owners(shape, names)
+        if rel is None and (rows := source.rows(names)) is not None:
+            rel = owner_map_rows(rows, schema, source.layer_id, shape)
+        if rel is not None:
+            owned[shape] = rel
     return owned
+
+
+def stored_owners(data: LayerData, written: LayerSource) -> DuckDBPyRelation | None:
+    """The rows the `owners.parquet` of the layer `written` holds, `None` where it holds none.
+
+    Every owner-map row of each shape in which a row of `written` names a
+    dimension outside `partial`, `_stamped` under `written`'s schema and
+    without `layer_uuid`, which a read stamps as the layer it reads. A shape
+    whose rows name `partial` dimensions alone has an owner row per row, which
+    a fold aggregates as fast as it reads them.
+
+    Parameters
+    ----------
+    data
+        What `written` was written from, whose owner rows are taken where it
+        keeps them, as a staging area does; else they are aggregated from
+        `written`'s files.
+    written
+        The layer's files as written, read as one layer.
+
+    Notes
+    -----
+    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    """
+    schema = written.schema
+    kept = data if isinstance(data, LayerSource) else written
+    grouped = shapes(schema, written.attributes())
+    names = [a for s, n in grouped.items() if _named_outside(written, s, n) for a in n]
+    if not names:
+        return None
+    owned = _stamped(_layer_owners(kept, names), schema, written.workspace.con)
+    return owned.project(star(exclude=[LAYER_COLUMN]))
+
+
+def _named_outside(source: LayerSource, shape: Shape, names: Sequence[str]) -> bool:
+    """Whether a row of `source`'s attributes `names`, of one `shape`, names a dimension of it outside `partial`."""
+    outside = _outside(source.schema, shape)
+    rows = source.rows(names)
+    if not outside or rows is None:
+        return False
+    named = reduce(operator.or_, (col(d).isnotnull() for d in outside))
+    return bool(rows.filter(named).limit(1).fetchall())
 
 
 def source_for(sources: Sequence[LayerSource], layer_uuid: UUID) -> LayerSource:
