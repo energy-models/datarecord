@@ -768,6 +768,9 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
 ):
     """`q` over `entity` gains `scenario`; its row from before reads NULL there, a broadcast.
 
+    `r`, over `entity` as `q` was, keeps its dimensions, so the fold moves `q`
+    alone out of the rows of their shape.
+
     Notes
     -----
     - [extending the map to a wider schema](https://energy-models.github.io/datarecord/reference/resolution/#a-wider-schema)
@@ -776,12 +779,14 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
 
     def q_over(*dims):
         q = AttributeSpec(dtype="float", dims=set(dims))
-        return schema(partial=partial, attributes={"Generator": {"q": q}})
+        r = AttributeSpec(dtype="float", dims={"entity"})
+        return schema(partial=partial, attributes={"Generator": {"q": q, "r": r}})
 
     layer = empty_root(store, q_over("entity"))
     write_component(layer, "Generator", [{"entity": "gas"}])
     write_scenarios(layer, [{"scenario": "low"}, {"scenario": "high"}])
     write_attribute(layer, "q", [{"entity": "gas", "value": 1.0}])
+    write_attribute(layer, "r", [{"entity": "gas", "value": 2.0}])
     root = layer.commit()
     if materialised:
         root.materialise()
@@ -789,9 +794,14 @@ def test_an_attribute_gaining_a_dim_reads_its_rows_broadcast_along_it(
 
     rows = child.record.attributes["q"].project("entity, scenario, value").fetchall()
     assert rows == [("gas", None, 1.0)], "the row from before, NULL along scenario"
-    flags = child.record.flags()["q"]
-    assert flags.broadcast == {"scenario"}, "it broadcasts along scenario"
-    assert flags.varies == {"entity"}
+    flags = child.record.flags()
+    assert flags["q"].broadcast == {"scenario"}, "it broadcasts along scenario"
+    assert flags["q"].varies == {"entity"}
+    assert flags["r"] == Flags(frozenset({"entity"}), frozenset()), (
+        "r stays in its shape, unchanged"
+    )
+    rows = child.record.attributes["r"].project("entity, value").fetchall()
+    assert rows == [("gas", 2.0)]
     assert store.revision(root.id).record.flags()["q"].broadcast == set(), (
         "the root, under its own schema, has q over entity alone"
     )

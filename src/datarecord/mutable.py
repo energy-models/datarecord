@@ -53,12 +53,11 @@ from datarecord.duck import (
     refuse_open_transaction,
     scratch_table,
     transaction,
-    union_all_by_name,
 )
 from datarecord.protocols import RecordLike
 from datarecord.resolve.axes import refuse_unheld
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_map_rows import owner_map_rows
+from datarecord.resolve.owner_map_rows import owner_map_rows, shape_of
 from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
@@ -252,25 +251,6 @@ class StagedSource:
         """One attribute's owner-map rows, kept in a table each edit refreshes (`_refresh_owners`)."""
         return self.record.con.table(self.record._staged[_OWNERS, name])
 
-    def all_attributes(self) -> DuckDBPyRelation | None:
-        """Every staged attribute, unioned by name and unprojected.
-
-        By name because each table carries a column per dimension of its attribute, as
-        its file does, which is what lets `fold_layer` pad both the same way.
-
-        Notes
-        -----
-        - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
-        """
-        arms = [
-            rel
-            for name in self.record._staged_attributes()
-            if (rel := self.attribute(name)) is not None
-        ]
-        if not arms:
-            return None
-        return union_all_by_name(arms)
-
 
 class _Base(Record):
     """A `WorkingRecord`'s own copy of a `Record` base, so closing the caller's leaves its edits working.
@@ -454,7 +434,9 @@ class WorkingRecord(Record):
         shape = self._table(_OWNERS)
         empty = empty_relation(self.con, attribute=sqltypes.VARCHAR)
         create_table(
-            self.con, shape, owner_map_rows(empty, self.schema, self._layer_id, ())
+            self.con,
+            shape,
+            owner_map_rows(empty, self.schema, self._layer_id, frozenset()),
         )
         for attribute in self.schema.attributes:
             name = self._table(_OWNERS, attribute)
@@ -617,7 +599,9 @@ class WorkingRecord(Record):
             insert_into(
                 self.con,
                 table,
-                owner_map_rows(rows, self.schema, self._layer_id, (attribute,)),
+                owner_map_rows(
+                    rows, self.schema, self._layer_id, shape_of(self.schema, attribute)
+                ),
             )
 
     def _rows(self, kind: str, attribute: str | None = None) -> DuckDBPyRelation | None:

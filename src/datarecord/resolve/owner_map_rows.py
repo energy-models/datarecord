@@ -12,6 +12,7 @@ Notes
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from uuid import UUID
 
 from duckdb import ColumnExpression as col
@@ -28,16 +29,38 @@ from datarecord.schema.schema import (
     with_columns,
 )
 
+type Shape = frozenset[str]
+
+
+def shape_of(schema: Schema, attribute: str) -> Shape:
+    """The dimensions `attribute` is over under `schema`, every one where it does not declare it.
+
+    The unit of the fold: attributes of one shape fold together, their flags
+    constant per dimension.
+
+    Notes
+    -----
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
+    """
+    if attribute not in schema.attributes:
+        return frozenset(schema.dimensions)
+    return frozenset(schema.dimensions_of(attribute))
+
+
+def shapes(schema: Schema, attributes: Iterable[str]) -> dict[Shape, list[str]]:
+    """`attributes`, sorted, grouped by their `shape_of` under `schema`."""
+    grouped: dict[Shape, list[str]] = {}
+    for a in sorted(attributes):
+        grouped.setdefault(shape_of(schema, a), []).append(a)
+    return grouped
+
 
 def owner_map_rows(
-    rel: DuckDBPyRelation,
-    schema: Schema,
-    layer_id: UUID,
-    attributes: tuple[str, ...],
+    rel: DuckDBPyRelation, schema: Schema, layer_id: UUID, shape: Shape
 ) -> DuckDBPyRelation:
     """One layer's owner-map rows, as it wrote them: one per distinct index of its attribute rows `rel`, under its `schema`.
 
-    `attributes` are those `rel` holds rows of.
+    `rel` holds rows of attributes of one `shape`.
 
     Notes
     -----
@@ -47,7 +70,7 @@ def owner_map_rows(
     return tagged.aggregate(
         [
             *(col(c) for c in (*schema.owner_map_index, LAYER_COLUMN)),
-            *_flags(schema, attributes),
+            *_flags(schema, shape),
         ]
     )
 
@@ -66,16 +89,19 @@ def _tagged(schema: Schema, rel: DuckDBPyRelation, layer: UUID) -> DuckDBPyRelat
 
 
 @per_schema
-def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...]:
+def _flags(schema: Schema, shape: Shape) -> tuple[Expression, ...]:
     """The aggregates giving one map row's `varies`, `broadcast` and `breakpoints` from its `_tagged` rows.
 
-    `attributes` are those the rows are of.
+    The rows are of attributes of one `shape`. An attribute not over a
+    dimension holds NULL there for want of the column, which is neither a
+    label nor a broadcast.
 
     Notes
     -----
     - [flags](https://energy-models.github.io/datarecord/reference/resolution/#flags)
+    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
-    over = {d: _over(schema, d, attributes) for d in schema.dimensions}
+    over = {d: lit(d in shape) for d in schema.dimensions}
     return (
         fn.struct_pack(
             **{d: fn.bool_or(col(d).isnotnull() & over[d]) for d in over}
@@ -85,26 +111,3 @@ def _flags(schema: Schema, attributes: tuple[str, ...]) -> tuple[Expression, ...
         ).alias("broadcast"),
         fn.bool_or(col("breakpoint").isnotnull()).alias("breakpoints"),
     )
-
-
-def _over(schema: Schema, dim: str, attributes: tuple[str, ...]) -> Expression:
-    """Whether a row's attribute, one of `attributes`, is over `dim`.
-
-    An attribute not over `dim` holds NULL there for want of the column, which
-    is neither a label nor a broadcast. An undeclared attribute counts as over
-    every dimension.
-
-    Notes
-    -----
-    - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
-    """
-    lacking = [
-        a
-        for a in attributes
-        if a in schema.attributes and dim not in schema.dimensions_of(a)
-    ]
-    if not lacking:
-        return lit(True)  # noqa: FBT003
-    if len(lacking) == len(attributes):
-        return lit(False)  # noqa: FBT003
-    return ~col("attribute").isin(*(lit(a) for a in lacking))

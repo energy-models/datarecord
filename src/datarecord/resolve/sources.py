@@ -137,8 +137,7 @@ class LayerSource(Protocol):
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         """`attributes/<name>.parquet` - one attribute's own columns, unpadded.
 
-        Not the singular of `all_attributes`: this is the *owned* read, and it
-        must keep exactly the columns the file has, a padded one being ambiguous
+        It must keep exactly the columns the file has, a padded one being ambiguous
         against the broadcast rule.
 
         Notes
@@ -152,16 +151,6 @@ class LayerSource(Protocol):
 
         A staging area keeps them in a table each edit refreshes, so that a
         fold reading them does not aggregate every staged row once per use.
-        """
-        ...
-
-    def all_attributes(self) -> DuckDBPyRelation | None:
-        """Every `attributes/*.parquet` unioned by name, unprojected.
-
-        Only attributes have one: they share `owner_map_index`, so a single scan
-        answers the ownership `GROUP BY` for every attribute at once. An axis
-        folds on its own column, so a union across them would have
-        nothing to fold on.
         """
         ...
 
@@ -235,11 +224,6 @@ class _FileLayer:
 
     def owners(self, name: str) -> DuckDBPyRelation | None:
         return None
-
-    def all_attributes(self) -> DuckDBPyRelation | None:
-        if not self.files.attributes:
-            return None
-        return self._read("attributes", list(self.files.attributes))
 
     def materialised(self) -> Fold | None:
         """Not materialised by default: only a `ParquetLayer` has a revision to materialise."""
