@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS {revisions} (
   id       UUID,
   parent   UUID,
   meta     JSON,
-  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[], owner_map_rows BOOLEAN),
+  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[], owner_map_rows BIGINT[]),
   schema   VARCHAR,
   PRIMARY KEY (location, id)
 )
@@ -98,28 +98,6 @@ CREATE TABLE IF NOT EXISTS {registered} (
   created  TIMESTAMPTZ DEFAULT now()
 )
 """
-
-
-def _require_current_revisions(
-    con: DuckDBPyConnection, database: str, name: str
-) -> None:
-    """Refuse a `revisions` table whose `files` lacks `owner_map_rows`.
-
-    `CREATE TABLE IF NOT EXISTS` keeps a table an earlier version made, and an
-    insert drops a struct key the table lacks, so the flag would read NULL.
-    """
-    [(files,)] = con.execute(
-        "SELECT data_type FROM information_schema.columns WHERE table_catalog = ? "
-        "AND table_schema = 'main' AND table_name = 'revisions' AND column_name = 'files'",
-        [name],
-    ).fetchall()
-    if "owner_map_rows" not in files:
-        msg = (
-            f"the workspace database {database} has a revisions table without "
-            f"files.owner_map_rows, made by an earlier datarecord; delete it, "
-            f"it holds only caches"
-        )
-        raise RuntimeError(msg)
 
 
 def _in(workspace: Workspace, query: str) -> str:
@@ -260,9 +238,6 @@ class Workspace:
     ------
     duckdb.BinderException
         If `name` is a database already attached to the connection.
-    RuntimeError
-        If `database` holds a `revisions` table an earlier version made, whose
-        `files` lacks `owner_map_rows`.
 
     Notes
     -----
@@ -285,7 +260,6 @@ class Workspace:
             setup.execute(f"ATTACH {lit(database)} AS {col(name)}")
             for ddl in (_SCHEMAS, _REVISIONS, _REGISTERED):
                 setup.execute(_in(self, ddl))
-            _require_current_revisions(setup, database, name)
             for schema in (FOLD, STAGED):
                 setup.execute(f"CREATE SCHEMA IF NOT EXISTS {col(name, schema)}")
             registered = setup.execute(
@@ -752,7 +726,7 @@ class Store:
             files = {
                 "dimensions": list(manifest.files.dimensions),
                 "attributes": list(manifest.files.attributes),
-                "owner_map_rows": manifest.files.owner_map_rows,
+                "owner_map_rows": list(manifest.files.owner_map_rows),
             }
             self._insert(
                 _in(self.workspace, "INSERT OR IGNORE INTO {schemas} VALUES (?, ?)"),
@@ -1154,9 +1128,10 @@ class Claim(_OfStore):
         meta = merge_meta(self.meta, validate_meta(meta))
         if isinstance(source, WorkingRecord):
             source = source.edits
-        if isinstance(source, StagedSource) and source.base != self.parent:
+        staged = source if isinstance(source, StagedSource) else None
+        if staged is not None and staged.base != self.parent:
             msg = (
-                f"these edits were staged over revision {source.base}, so they "
+                f"these edits were staged over revision {staged.base}, so they "
                 f"are a delta against it and not against {self.parent}; commit "
                 f"them as a child of the revision the `WorkingRecord` was built over"
             )
@@ -1178,7 +1153,11 @@ class Claim(_OfStore):
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
             files = write_layer(
-                data, store.layer_dir(self.id), store.workspace, parent=base
+                data,
+                store.layer_dir(self.id),
+                store.workspace,
+                parent=base,
+                owner_rows_from=staged,
             )
         manifest = Manifest(
             id=self.id, parent=self.parent, schema=schema, files=files, meta=meta

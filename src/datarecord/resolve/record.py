@@ -677,8 +677,7 @@ class Record:
                 self.revision_id,
                 self.sources,
                 self._frozen_axes,
-                (attribute,),
-                in_frozen=self._frozen_owners,
+                {attribute: attribute in self._frozen_owners},
             )
             dead = self._axes.dead
         else:

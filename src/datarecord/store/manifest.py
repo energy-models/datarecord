@@ -24,6 +24,7 @@ from uuid import UUID
 from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter, model_validator
 from pydantic.dataclasses import dataclass
 
+from datarecord.duck import pattern
 from datarecord.schema.schema import Schema, schema_digest
 
 if TYPE_CHECKING:
@@ -45,8 +46,9 @@ class LayerFiles:
     Attributes
     ----------
     owner_map_rows
-        Whether the layer wrote `owner_map_rows.parquet`, which holds owner-map rows
-        of some of its attribute files.
+        The `_shape` of each shape whose owner-map rows the layer wrote to
+        `owner_map_rows.parquet`, ascending: bit `i` for the `i`-th dimension of
+        its schema. Empty where it wrote no such file.
 
     Notes
     -----
@@ -55,7 +57,7 @@ class LayerFiles:
 
     dimensions: tuple[str, ...] = ()
     attributes: tuple[str, ...] = ()
-    owner_map_rows: bool = False
+    owner_map_rows: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -88,7 +90,7 @@ class Manifest:
 
     @model_validator(mode="after")
     def _declared_files(self) -> Self:
-        """Refuse an attribute file whose name `schema` does not declare, and `owner_map_rows.parquet` beside no attribute file."""
+        """Refuse an attribute file whose name `schema` does not declare, and an `owner_map_rows` entry out of order or no listed attribute's shape."""
         undeclared = sorted(set(self.files.attributes) - set(self.schema.attributes))
         if undeclared:
             msg = (
@@ -96,10 +98,18 @@ class Manifest:
                 f"does not declare"
             )
             raise ValueError(msg)
-        if self.files.owner_map_rows and not self.files.attributes:
+        masks = self.files.owner_map_rows
+        if list(masks) != sorted(set(masks)):
+            msg = f"layer {self.id} lists owner_map_rows {list(masks)} not ascending"
+            raise ValueError(msg)
+        dims = self.schema.dimensions
+        held = {
+            pattern(dims, self.schema.dimensions_of(a)) for a in self.files.attributes
+        }
+        if strays := sorted(set(masks) - held):
             msg = (
-                f"layer {self.id} lists owner_map_rows.parquet but no attribute file, "
-                f"whose owner-map rows it holds"
+                f"layer {self.id} lists owner_map_rows {strays}, the shape of no "
+                f"attribute file it lists"
             )
             raise ValueError(msg)
         return self

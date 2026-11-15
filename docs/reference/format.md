@@ -44,16 +44,16 @@ The store writes it create-only and keeps it after the commit, so an id is claim
 A `Manifest` is a layer's `manifest.json`, which lists its id, parent, full schema, files and meta.
 The writer writes it last and create-only, and the revision exists from that moment.
 
-| Key      | Contains                                                                                                                                                              |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `id`     | the layer's UUID                                                                                                                                                      |
-| `parent` | the parent's UUID, `null` for a root and for a standalone directory                                                                                                   |
-| `schema` | the full [schema](schema.md) the layer was written under                                                                                                              |
-| `files`  | `{"dimensions": [...], "attributes": [...], "owner_map_rows": false}`: the declared names of the files the layer wrote, and whether it wrote `owner_map_rows.parquet` |
-| `meta`   | the revision's own `meta`: a flat object of strings, integers, finite floats and booleans                                                                             |
+| Key      | Contains                                                                                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`     | the layer's UUID                                                                                                                                                                      |
+| `parent` | the parent's UUID, `null` for a root and for a standalone directory                                                                                                                   |
+| `schema` | the full [schema](schema.md) the layer was written under                                                                                                                              |
+| `files`  | `{"dimensions": [...], "attributes": [...], "owner_map_rows": [...]}`: the declared names of the files the layer wrote, and the `_shape` of each shape `owner_map_rows.parquet` holds |
+| `meta`   | the revision's own `meta`: a flat object of strings, integers, finite floats and booleans                                                                                             |
 
 ```json
-{"id": "4731e41b-…", "parent": "9716e2ef-…", "schema": {…}, "files": {"dimensions": ["entity"], "attributes": ["p_nom"], "owner_map_rows": false}, "meta": {"run": "a"}}
+{"id": "4731e41b-…", "parent": "9716e2ef-…", "schema": {…}, "files": {"dimensions": ["entity"], "attributes": ["p_nom"], "owner_map_rows": []}, "meta": {"run": "a"}}
 ```
 
 A layer that restates only the entity axis and writes only `p_nom` lists those two files.
@@ -117,11 +117,13 @@ An axis file has no attribute values.
 A shape is the set of dimensions an attribute is over.
 The writer keeps every owner-map row of a shape where a row of the layer names a dimension of the shape outside [`partial`](layers.md#partial), and no row of any other shape.
 The other shapes have an owner-map row per attribute row, so a fold aggregates them from the attribute files at no extra cost.
-A layer that keeps no shape has no `owner_map_rows.parquet`, and `files.owner_map_rows` in its manifest is false.
+The manifest lists the `_shape` of each shape the file holds in `files.owner_map_rows`, in ascending order, so a read knows them without opening the file.
+A layer that keeps no shape has no `owner_map_rows.parquet`, and `files.owner_map_rows` is empty.
 
-The file has the owner map's columns but `layer_uuid`, which a read sets to the layer it reads, and the integer column `_shape`.
+The file has the owner map's columns but `layer_uuid`, which a read sets to the layer it reads, and the `BIGINT` column `_shape`.
 Bit `i` of `_shape` is set where the row's attribute is over the `i`-th dimension of the layer's schema.
-The rows are grouped by `_shape`, in ascending order, and the shapes the file holds are the distinct values of `_shape`.
+The rows are grouped by `_shape`, in ascending order, and the distinct values of `_shape` are the list in the manifest.
+A manifest listing a `_shape` that is not the shape of an attribute file it lists, or listing them out of order, is refused when read.
 
 ## Labels
 
@@ -143,7 +145,7 @@ No manifest lists these files, a read opens each by name, and a layer's data sta
 | `owner_map.parquet`        | the [owner map](resolution.md#the-owner-map), written last                                                            |
 
 A revision is materialised once `owner_map.parquet` exists.
-Beside the owner map's columns, `owner_map.parquet` has the integer column `_shape`.
+Beside the owner map's columns, `owner_map.parquet` has the `BIGINT` column `_shape`.
 Bit `i` of `_shape` is set where the row's attribute is over the `i`-th dimension of the revision's schema.
 The rows are grouped by `_shape`, in ascending order, so a fold that reads one shape skips the row groups of the others.
 `dimension_owners.parquet` points into ancestor layers by UUID rather than copying their files.

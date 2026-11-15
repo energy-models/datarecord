@@ -19,7 +19,6 @@ import operator
 from collections.abc import (
     Callable,
     Collection,
-    Container,
     Iterable,
     Iterator,
     Mapping,
@@ -48,7 +47,6 @@ from datarecord.duck import (
     temp_table,
     union_all_by_name,
 )
-from datarecord.protocols import LayerData
 from datarecord.resolve.axes import (
     Axes,
     _base_and_above,
@@ -626,7 +624,7 @@ def _split(
 def _fold_map(
     sources: Sequence[LayerSource],
     *,
-    made: list[str] | None = None,
+    made: dict[str, DuckDBPyRelation] | None = None,
 ) -> dict[Shape, DuckDBPyRelation]:
     """A record's owner map, folded down over `sources`, checkpointed into `made` as `_fold_onto` does.
 
@@ -665,7 +663,7 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
 
     The relation entered reads those tables, so it is read once, before exit.
     """
-    made: list[str] = []
+    made: dict[str, DuckDBPyRelation] = {}
     schema, con = sources[-1].schema, sources[-1].workspace.con
     try:
         maps = _fold_map(sources, made=made)
@@ -676,28 +674,31 @@ def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
 
 
 def _checkpoint(
-    rel: DuckDBPyRelation, made: list[str], con: DuckDBPyConnection
+    rel: DuckDBPyRelation, made: dict[str, DuckDBPyRelation], con: DuckDBPyConnection
 ) -> DuckDBPyRelation:
-    """`rel` as a temporary table of `con`, its name appended to `made`.
+    """`rel` as a temporary table of `con`, `made` mapping its name to the relation returned.
 
     `con` alone sees it, so the fold that makes it reads and drops it there.
     """
     name = temp_table(con, rel, "fold")
-    made.append(name)
-    return con.table(name)
+    made[name] = con.table(name)
+    return made[name]
 
 
 def _drop_unread(
-    made: list[str], read: Iterable[DuckDBPyRelation], con: DuckDBPyConnection
+    made: dict[str, DuckDBPyRelation],
+    read: Iterable[DuckDBPyRelation],
+    con: DuckDBPyConnection,
 ) -> None:
-    """Drop each table `made` names that none of the tables `read` is, the rest staying named there.
+    """Drop each table `made` records whose relation is none of `read`, the rest staying recorded there.
 
-    `_checkpoint` names a table `temp.main.<alias>`, its relation's alias.
+    Matched by identity rather than alias, which a projection inherits from
+    the table it reads; `made` holding each relation keeps its identity its own.
     """
-    aliases = {rel.alias for rel in read}
-    for name in [n for n in made if n.rpartition(".")[2] not in aliases]:
+    read_ids = {id(rel) for rel in read}
+    for name in [n for n, rel in made.items() if id(rel) not in read_ids]:
         con.execute(f"DROP TABLE {name}")
-        made.remove(name)
+        del made[name]
 
 
 def _pruned(schema: Schema) -> tuple[str, ...]:
@@ -718,7 +719,7 @@ def _fold_onto(
     *,
     keyed: Schema,
     dead: Mapping[str, DuckDBPyRelation],
-    made: list[str] | None = None,
+    made: dict[str, DuckDBPyRelation] | None = None,
     attributes: Collection[str] | None = None,
 ) -> dict[Shape, DuckDBPyRelation]:
     """Fold each of `sources` onto the owner map `maps`, one relation per shape under `keyed`, into one per shape under the last source's schema.
@@ -735,11 +736,12 @@ def _fold_onto(
     instead, beside `dead`, its labels removed as of the first source, until
     it joins `partial`.
 
-    Where `made` is a list, each source's fold but the last is kept in a table
-    per shape before the next folds onto it, and so are the pieces of its fold
-    read more than once (`fold_layer`); a relation already a table is not
-    copied. The tables the map is read from are left named in `made`, for the
-    caller to drop once it has read the map (`_checkpointed`).
+    Where `made` is given, each source's fold but the last is kept in a table
+    per shape before the next folds onto it, and so are the labels it removes
+    and the pieces of its fold read more than once (`fold_layer`); a relation
+    already a table is not copied. The tables the map is read from are left
+    recorded in `made`, for the caller to drop once it has read the map
+    (`_checkpointed`).
 
     Where `attributes` is given, `maps` holds their rows alone and each source
     folds its rows of them alone, a plan that reads no staged row
@@ -783,7 +785,7 @@ def _fold_onto(
             if name not in keyed.partial_dimensions:
                 past[name].append(now)
             elif before is not None:
-                removed[name] = removed_labels(before, now, name)
+                removed[name] = keep(removed_labels(before, now, name))
             held[name] = now
         owned = _layer_owner_map_rows(
             source, source.attributes() if attributes is None else attributes
@@ -828,9 +830,9 @@ def _layer_owner_map_rows(
 
 
 def stored_owner_map_rows(
-    data: LayerData, written: LayerSource
-) -> DuckDBPyRelation | None:
-    """The rows the `owner_map_rows.parquet` of the layer `written` holds, `None` where it holds none.
+    written: LayerSource, owner_rows_from: LayerSource | None
+) -> tuple[DuckDBPyRelation, tuple[int, ...]] | None:
+    """The rows the `owner_map_rows.parquet` of the layer `written` holds and their `SHAPE_COLUMN` values, ascending; `None` where it holds none.
 
     Every owner-map row of each shape in which a row of `written` names a
     dimension outside `partial`, `_stamped` under `written`'s schema and
@@ -840,32 +842,36 @@ def stored_owner_map_rows(
 
     Parameters
     ----------
-    data
-        What `written` was written from, whose owner rows are taken where it
-        keeps them, as a staging area does; else they are aggregated from
-        `written`'s files.
     written
         The layer's files as written, read as one layer.
+    owner_rows_from
+        What `written` was written from, whose owner rows are taken where it
+        keeps them, as a staging area does; `None` aggregates them from
+        `written`'s files.
 
     Notes
     -----
     - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
     schema = written.schema
-    kept = data if isinstance(data, LayerSource) else written
+    kept = written if owner_rows_from is None else owner_rows_from
     grouped = shapes(schema, written.attributes())
-    names = [a for s, n in grouped.items() if _named_outside(written, s, n) for a in n]
-    if not names:
+    stored = {s: n for s, n in grouped.items() if _named_outside(written, s, n)}
+    if not stored:
         return None
+    names = [a for n in stored.values() for a in n]
     owned = _stamped(_layer_owner_map_rows(kept, names), schema, written.workspace.con)
-    return owned.project(star(exclude=[LAYER_COLUMN]))
+    masks = tuple(sorted(pattern(schema.dimensions, s) for s in stored))
+    return owned.project(star(exclude=[LAYER_COLUMN])), masks
 
 
 def _named_outside(source: LayerSource, shape: Shape, names: Sequence[str]) -> bool:
     """Whether a row of `source`'s attributes `names`, of one `shape`, names a dimension of it outside `partial`."""
     outside = _outside(source.schema, shape)
+    if not outside:
+        return False
     rows = source.rows(names)
-    if not outside or rows is None:
+    if rows is None:
         return False
     named = reduce(operator.or_, (col(d).isnotnull() for d in outside))
     return bool(rows.filter(named).limit(1).fetchall())
@@ -912,9 +918,7 @@ def _table(
     revision_id: UUID,
     sources: Sequence[LayerSource],
     frozen_axes: Axes,
-    attributes: Collection[str] | None = None,
-    *,
-    in_frozen: Container[str] = frozenset(),
+    attributes: Mapping[str, bool] | None = None,
 ) -> DuckDBPyRelation:
     """The owner map for `revision_id`, materialised as far as `frozen` allows, as a caller reads it (`_unstamped`).
 
@@ -924,11 +928,16 @@ def _table(
     area's edits are picked up with no bookkeeping at all: a relation over a
     staging table reads whatever the table holds when it is collected.
     `frozen_axes` are the frozen layers' axes, which a restatement above
-    them removes labels from. Where `attributes` is given, only their rows,
-    folded above the frozen layers (`_fold_onto`) onto the frozen layers'
-    rows of those `in_frozen` names, the attributes their map holds rows of:
-    a write-once table answers that for good, and a shape none of whose
-    attributes it holds folds onto no map.
+    them removes labels from.
+
+    Parameters
+    ----------
+    attributes
+        Where given, the map of these attributes alone, folded above the
+        frozen layers (`_fold_onto`) onto the frozen layers' rows of those
+        mapped to `True`, the attributes their map holds rows of: a write-once
+        table answers that for good, and a shape none of whose attributes it
+        holds folds onto no map.
 
     Notes
     -----
@@ -940,41 +949,25 @@ def _table(
     rel = _frozen_table(revision_id, frozen)
     if rel is not None and attributes is None and not above:
         return _unstamped(rel)
-    maps = _table_by_shape(
-        revision_id, sources, frozen_axes, attributes, in_frozen=in_frozen
-    )
-    return _as_one(maps, sources[-1].schema, sources[-1].workspace.con)
-
-
-def _table_by_shape(
-    revision_id: UUID,
-    sources: Sequence[LayerSource],
-    frozen_axes: Axes,
-    attributes: Collection[str] | None = None,
-    *,
-    in_frozen: Container[str] = frozenset(),
-) -> dict[Shape, DuckDBPyRelation]:
-    """`_table`, one relation per shape under the last source's schema."""
-    schema = sources[-1].schema
-    frozen, above = split_frozen(sources)
-    rel = _frozen_table(revision_id, frozen)
+    schema, con = sources[-1].schema, sources[-1].workspace.con
     keyed = frozen[-1].schema if frozen else schema
     maps: dict[Shape, DuckDBPyRelation] = {}
     if rel is not None:
         held_by = (
-            None if attributes is None else [a for a in attributes if a in in_frozen]
+            None if attributes is None else [a for a, h in attributes.items() if h]
         )
         maps = _by_shape(rel, keyed, held_by)
     held = {name: frozen_axes.get(name) for name in _pruned(schema)}
-    return _fold_onto(
+    maps = _fold_onto(
         maps,
         above,
         held,
-        sources[-1].workspace.con,
+        con,
         keyed=keyed,
         dead=frozen_axes.dead,
         attributes=attributes,
     )
+    return _as_one(maps, schema, con)
 
 
 def _frozen_table(

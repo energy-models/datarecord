@@ -315,18 +315,23 @@ def test_a_read_refuses_an_owner_map_naming_a_file_the_layer_lacks(store, tmp_pa
         reread.record.attributes["p_nom"]
 
 
+_P_NOM = pattern(schema().dimensions, schema().dimensions_of("p_nom"))
+
+
 @pytest.mark.parametrize(
     ("files", "match"),
     [
         ({"attributes": ["p_nom", "extra"]}, r"files \['extra'\] its schema"),
         (
-            {"attributes": [], "owner_map_rows": True},
-            "owner_map_rows.parquet but no attribute file",
+            {"attributes": [], "owner_map_rows": [_P_NOM]},
+            rf"owner_map_rows \[{_P_NOM}\], the shape of no attribute file",
         ),
+        ({"owner_map_rows": [1]}, r"owner_map_rows \[1\], the shape of no"),
+        ({"owner_map_rows": [_P_NOM, _P_NOM]}, "not ascending"),
     ],
 )
 def test_a_read_refuses_an_inconsistent_manifest(store, tmp_path, files, match):
-    """A hand-made manifest lists `extra`, which its schema does not declare, so no shape folds it, or `owner_map_rows.parquet` owning no file."""
+    """A hand-made manifest lists `extra`, which its schema does not declare, so no shape folds it, or an `owner_map_rows` shape no listed attribute has, or one twice."""
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "gas"}])
     write_attribute(layer, "p_nom", [{"entity": "gas", "value": 1.0}])
@@ -1104,17 +1109,40 @@ def _edited_after_a_reordering(store, *, materialised=True):
     return store.commit(staged)
 
 
+_THIRTY_FOUR_DIMS = Schema(
+    dimensions={"entity": {"dtype": "str"}}
+    | {f"d{i}": {"dtype": "str"} for i in range(33)},
+    attributes={"x": {"dtype": "float", "dims": ["entity", "d32"]}},
+    partial=frozenset({"entity"}),
+)
+
+
+def _over_the_33rd_dimension(store):
+    """A root writing `x` along `d32`, whose bit in `_shape` is past 32."""
+    staged = WorkingRecord(empty_root(store, _THIRTY_FOUR_DIMS).commit().record)
+    staged.add("entity", ["gas"])
+    staged.add("d32", ["a", "b"])
+    staged.set("x", [1.0, 2.0], entity="gas", d32=["a", "b"])
+    return store.commit(staged)
+
+
 def _misstamped(rel, schema: Schema) -> list[tuple]:
     """The rows of the stamped map `rel` whose `_shape` is not the dimensions their `varies` or `broadcast` sets."""
     flagged = [
-        f"(CAST(varies['{d}'] OR broadcast['{d}'] AS INTEGER) << {i})"
+        f"(CAST(varies['{d}'] OR broadcast['{d}'] AS BIGINT) << {i})"
         for i, d in enumerate(schema.dimensions)
     ]
     return rel.filter(f"_shape <> {' + '.join(flagged)}").fetchall()
 
 
 @pytest.mark.parametrize(
-    "build", [_split_by_a_widening, _q_gaining_scenario, _edited_after_a_reordering]
+    "build",
+    [
+        _split_by_a_widening,
+        _q_gaining_scenario,
+        _edited_after_a_reordering,
+        _over_the_33rd_dimension,
+    ],
 )
 def test_each_map_row_is_stamped_with_the_dimensions_its_flags_set(store, build):
     """Folded cold and read back materialised, each row's `_shape` is the dimensions where `varies` or `broadcast` is set.
@@ -1226,7 +1254,7 @@ def test_a_fold_reads_the_same_whether_its_layers_keep_their_owner_rows(
         replace(
             layer,
             manifest=replace(
-                layer.manifest, files=replace(layer.files, owner_map_rows=False)
+                layer.manifest, files=replace(layer.files, owner_map_rows=())
             ),
         )
         for layer in kept
@@ -1247,10 +1275,11 @@ def test_a_layer_keeps_the_owner_rows_of_a_shape_varying_outside_partial_alone(s
     - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
     revision = _series_root(store)
-    assert revision.manifest.files.owner_map_rows
+    kept = (pattern(_SERIES.dimensions, {"entity", "snapshot"}),)
+    assert revision.manifest.files.owner_map_rows == kept
     rel = store.workspace.con.read_parquet(
         f"{store.layer_dir(revision.id)}{OWNER_MAP_ROWS_FILE}"
     )
-    shapes = {s for (s,) in rel.project("_shape").distinct().fetchall()}
-    assert shapes == {pattern(_SERIES.dimensions, {"entity", "snapshot"})}
+    shapes = rel.project("_shape").distinct().order("_shape").fetchall()
+    assert tuple(s for (s,) in shapes) == kept, "the file holds the listed shapes"
     assert _misstamped(rel, _SERIES) == [], "each kept row is stamped with its shape"

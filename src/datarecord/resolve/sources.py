@@ -20,7 +20,6 @@ Notes
 from __future__ import annotations
 
 from dataclasses import dataclass
-from functools import cached_property
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
@@ -174,8 +173,8 @@ class LayerSource(Protocol):
 
         A staging area keeps them in a table per attribute each edit
         refreshes, so that a fold reading them does not aggregate every staged
-        row once per use. A file layer keeps those of each shape its
-        `owner_map_rows.parquet` holds.
+        row once per use. A file layer keeps those of each shape its manifest
+        lists in `files.owner_map_rows`, in `owner_map_rows.parquet`.
 
         Notes
         -----
@@ -271,21 +270,13 @@ class _FileLayer:
         self, shape: Shape, names: Sequence[str]
     ) -> DuckDBPyRelation | None:
         listed = [name for name in names if name in self.files.attributes]
-        if not listed or pattern(self.schema.dimensions, shape) not in self._stored:
+        stored = self.files.owner_map_rows
+        if not listed or pattern(self.schema.dimensions, shape) not in stored:
             return None
         rel = self.workspace.con.read_parquet(self.uri(OWNER_MAP_ROWS_FILE))
         rel = rel.filter(col(SHAPE_COLUMN) == _mask(self.schema, shape))
         rel = cast_declared(self.schema, rel.filter(_isin(listed)))
         return _owned_by(rel, self.schema, self.layer_id)
-
-    @cached_property
-    def _stored(self) -> frozenset[int]:
-        """The `SHAPE_COLUMN` of each shape `owner_map_rows.parquet` holds, none where the layer has no such file."""
-        if not self.files.owner_map_rows:
-            return frozenset()
-        rel = self.workspace.con.read_parquet(self.uri(OWNER_MAP_ROWS_FILE))
-        shapes = rel.project(col(SHAPE_COLUMN)).distinct().fetchall()
-        return frozenset(shape for (shape,) in shapes)
 
     def materialised(self) -> Fold | None:
         """Not materialised by default: only a `ParquetLayer` has a revision to materialise."""

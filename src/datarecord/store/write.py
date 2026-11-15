@@ -76,6 +76,7 @@ def write_layer(
     workspace: Workspace,
     *,
     parent: Record | None = None,
+    owner_rows_from: LayerSource | None = None,
 ) -> LayerFiles:
     """Write `data`'s files into the layer directory `base`, and return what it wrote.
 
@@ -95,6 +96,10 @@ def write_layer(
     parent
         The revision's record the layer folds over; none for a root or a
         standalone record.
+    owner_rows_from
+        The source `data` is, whose owner-map rows `owner_map_rows.parquet`
+        takes where it keeps them, as a staging area does; none aggregates
+        them from the files written.
 
     Raises
     ------
@@ -203,11 +208,12 @@ def write_layer(
     if data.axes():
         _require_living_references(parent, layer, axes)
     whole = _as_layer(base, schema, files, workspace)
-    rows = stored_owner_map_rows(data, whole)
-    if rows is None:
+    stored = stored_owner_map_rows(whole, owner_rows_from)
+    if stored is None:
         return files
+    rows, masks = stored
     write_parquet(rows, whole.uri(OWNER_MAP_ROWS_FILE), con, ordered=True)
-    return replace(files, owner_map_rows=True)
+    return replace(files, owner_map_rows=masks)
 
 
 def _as_layer(

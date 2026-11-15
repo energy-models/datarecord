@@ -13,7 +13,6 @@ Notes
 import json
 import math
 import pickle
-import re
 from collections import Counter
 from datetime import timedelta
 from functools import partial
@@ -91,21 +90,6 @@ def test_the_tree_lives_in_the_layers(store, tree):
         assert again.revision(child.id).ancestry() == [root.id, child.id]
     finally:
         fresh.close()
-
-
-def test_a_workspace_database_without_the_owner_map_rows_flag_is_refused(tmp_path):
-    """An earlier `revisions` table would drop `files.owner_map_rows` on insert, so every fold would aggregate every shape."""
-    database = str(tmp_path / "workspace.duckdb")
-    with duckdb.connect(database) as old:
-        old.execute(
-            "CREATE TABLE revisions (location VARCHAR, id UUID, parent UUID, "
-            "meta JSON, files STRUCT(dimensions VARCHAR[], attributes VARCHAR[]), "
-            "schema VARCHAR, PRIMARY KEY (location, id))"
-        )
-    with pytest.raises(
-        RuntimeError, match=rf"{re.escape(database)} .*owner_map_rows.*delete"
-    ):
-        Workspace(database)
 
 
 def test_a_revision_is_its_location_and_id(store, tree):
