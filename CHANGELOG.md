@@ -522,6 +522,12 @@ All notable changes to datarecord are documented here. The format follows
   holds.
   `Revision.materialise` writes the fold its workspace already holds rather
   than folding again.
+- The fold runs once per shape, the set of dimensions an attribute is over
+  under the layer's schema, so each step tests a constant per dimension
+  rather than the row's attribute against lists of names. The cold fold of a
+  revision with 1.2 billion attribute rows takes 13 seconds rather than about
+  five and a half minutes. A layer whose schema changes an attribute's shape
+  moves its map rows to the new shape. `LayerSource.all_attributes` is gone.
 - A write builds each attribute and axis carrying a multi-dimension once. It checks
   for a tuple with some fields NULL on the file it wrote, not on the source.
 - An edit inside a transaction the caller holds open on the same cursor is

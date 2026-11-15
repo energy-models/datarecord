@@ -673,13 +673,12 @@ class Record:
         con = self.con
         schema = self.schema
         if self._fixed:
-            in_frozen = attribute in self._frozen_owners
             om = _table(
                 self.revision_id,
                 self.sources,
                 self._frozen_axes,
-                attribute,
-                in_frozen=in_frozen,
+                (attribute,),
+                in_frozen=self._frozen_owners,
             )
             dead = self._axes.dead
         else:

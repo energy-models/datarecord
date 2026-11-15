@@ -39,7 +39,7 @@ from duckdb import DuckDBPyRelation, Expression
 from datarecord.duck import FOLD, fn, tables_in, union_all_by_name
 from datarecord.protocols import Flags
 from datarecord.resolve.axes import Axes, _fold_name
-from datarecord.resolve.owner_map_rows import owner_map_rows
+from datarecord.resolve.owner_map_rows import owner_map_rows, shape_of
 from datarecord.schema.categories import (
     categorized_dim,
     matching,
@@ -235,7 +235,10 @@ class Fold:
         """
         schema, attributes, con = record.schema, record.attributes, record.con
         layer = uuid4()
-        owned = [owner_map_rows(attributes[a], schema, layer, (a,)) for a in attributes]
+        owned = [
+            owner_map_rows(attributes[a], schema, layer, shape_of(schema, a))
+            for a in attributes
+        ]
         owner_map = (
             union_all_by_name(owned)
             if owned
