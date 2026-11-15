@@ -743,7 +743,7 @@ def _fold_onto(
 
     Where `attributes` is given, `maps` holds their rows alone and each source
     folds its rows of them alone, a plan that reads no staged row
-    (`_layer_owners`).
+    (`_layer_owner_map_rows`).
 
     Notes
     -----
@@ -785,7 +785,7 @@ def _fold_onto(
             elif before is not None:
                 removed[name] = removed_labels(before, now, name)
             held[name] = now
-        owned = _layer_owners(
+        owned = _layer_owner_map_rows(
             source, source.attributes() if attributes is None else attributes
         )
         refuse = source.layer_id if source.frozen else None
@@ -809,17 +809,17 @@ def _fold_onto(
     return maps
 
 
-def _layer_owners(
+def _layer_owner_map_rows(
     source: LayerSource, attributes: Iterable[str]
 ) -> dict[Shape, DuckDBPyRelation]:
     """`source`'s owner-map rows of `attributes`, one relation per shape under its schema, none for a shape it holds no row of.
 
-    The rows a layer keeps (`LayerSource.owners`) where it keeps them, else
+    The rows a layer keeps (`LayerSource.owner_map_rows`) where it keeps them, else
     aggregated from its rows, read at once per shape.
     """
     schema, owned = source.schema, {}
     for shape, names in shapes(schema, attributes).items():
-        rel = source.owners(shape, names)
+        rel = source.owner_map_rows(shape, names)
         if rel is None and (rows := source.rows(names)) is not None:
             rel = owner_map_rows(rows, schema, source.layer_id, shape)
         if rel is not None:
@@ -827,8 +827,10 @@ def _layer_owners(
     return owned
 
 
-def stored_owners(data: LayerData, written: LayerSource) -> DuckDBPyRelation | None:
-    """The rows the `owners.parquet` of the layer `written` holds, `None` where it holds none.
+def stored_owner_map_rows(
+    data: LayerData, written: LayerSource
+) -> DuckDBPyRelation | None:
+    """The rows the `owner_map_rows.parquet` of the layer `written` holds, `None` where it holds none.
 
     Every owner-map row of each shape in which a row of `written` names a
     dimension outside `partial`, `_stamped` under `written`'s schema and
@@ -847,7 +849,7 @@ def stored_owners(data: LayerData, written: LayerSource) -> DuckDBPyRelation | N
 
     Notes
     -----
-    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
     schema = written.schema
     kept = data if isinstance(data, LayerSource) else written
@@ -855,7 +857,7 @@ def stored_owners(data: LayerData, written: LayerSource) -> DuckDBPyRelation | N
     names = [a for s, n in grouped.items() if _named_outside(written, s, n) for a in n]
     if not names:
         return None
-    owned = _stamped(_layer_owners(kept, names), schema, written.workspace.con)
+    owned = _stamped(_layer_owner_map_rows(kept, names), schema, written.workspace.con)
     return owned.project(star(exclude=[LAYER_COLUMN]))
 
 

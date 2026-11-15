@@ -36,13 +36,13 @@ SHAPE_COLUMN = "_shape"
 """The column of a map kept as one table or file: the `pattern` of each row's shape over the dimensions of the node's schema.
 
 What splits a map arriving as one relation by shape. A caller of the map
-never sees it. A layer's `owners.parquet` carries it under the layer's
+never sees it. A layer's `owner_map_rows.parquet` carries it under the layer's
 schema.
 
 Notes
 -----
 - [`resolved/`](https://energy-models.github.io/datarecord/reference/format/#resolved)
-- [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+- [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
 """
 
 

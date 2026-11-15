@@ -549,14 +549,15 @@ All notable changes to datarecord are documented here. The format follows
 - Breaking: a `manifest.json` listing an attribute file its schema does not
   declare is refused when read, naming the layer and the files, where the
   fold read the attribute as over every dimension.
-- A layer writes `owners.parquet`, its owner-map rows of each shape in which
-  a row names a dimension outside `partial`, and its manifest's `files` says
-  so in `owners`. A fold reads those shapes' rows from the file rather than
-  aggregating the attribute files, and aggregates the rest, and every shape of
-  a layer without the file, as before. `LayerSource.owners` takes a shape and
-  the names of its attributes. The workspace's `revisions` table carries
-  `files.owners`: a workspace database made before drops it, so its folds
-  aggregate every shape until it is deleted.
+- A layer writes `owner_map_rows.parquet`, its owner-map rows of each shape
+  in which a row names a dimension outside `partial`, and its manifest's
+  `files` says so in `owner_map_rows`. A fold reads those shapes' rows from
+  the file rather than aggregating the attribute files, and aggregates the
+  rest, and every shape of a layer without the file, as before.
+  `LayerSource.owner_map_rows` takes a shape and the names of its attributes.
+- Breaking: the workspace's `revisions` table carries `files.owner_map_rows`.
+  Opening a workspace database made before is refused, naming the database
+  file: delete it, it is a cache.
 - A write builds each attribute and axis carrying a multi-dimension once. It checks
   for a tuple with some fields NULL on the file it wrote, not on the source.
 - An edit inside a transaction the caller holds open on the same cursor is

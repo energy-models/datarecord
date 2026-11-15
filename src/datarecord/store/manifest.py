@@ -44,18 +44,18 @@ class LayerFiles:
 
     Attributes
     ----------
-    owners
-        Whether the layer wrote `owners.parquet`, which holds owner-map rows
+    owner_map_rows
+        Whether the layer wrote `owner_map_rows.parquet`, which holds owner-map rows
         of some of its attribute files.
 
     Notes
     -----
-    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
 
     dimensions: tuple[str, ...] = ()
     attributes: tuple[str, ...] = ()
-    owners: bool = False
+    owner_map_rows: bool = False
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -88,7 +88,7 @@ class Manifest:
 
     @model_validator(mode="after")
     def _declared_files(self) -> Self:
-        """Refuse an attribute file whose name `schema` does not declare, and `owners.parquet` beside no attribute file."""
+        """Refuse an attribute file whose name `schema` does not declare, and `owner_map_rows.parquet` beside no attribute file."""
         undeclared = sorted(set(self.files.attributes) - set(self.schema.attributes))
         if undeclared:
             msg = (
@@ -96,9 +96,9 @@ class Manifest:
                 f"does not declare"
             )
             raise ValueError(msg)
-        if self.files.owners and not self.files.attributes:
+        if self.files.owner_map_rows and not self.files.attributes:
             msg = (
-                f"layer {self.id} lists owners.parquet but no attribute file, "
+                f"layer {self.id} lists owner_map_rows.parquet but no attribute file, "
                 f"whose owner-map rows it holds"
             )
             raise ValueError(msg)

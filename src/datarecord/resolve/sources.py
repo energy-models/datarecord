@@ -167,27 +167,29 @@ class LayerSource(Protocol):
         """
         ...
 
-    def owners(self, shape: Shape, names: Sequence[str]) -> DuckDBPyRelation | None:
+    def owner_map_rows(
+        self, shape: Shape, names: Sequence[str]
+    ) -> DuckDBPyRelation | None:
         """The owner-map rows of those of `names` this layer has, attributes of one `shape`, where it keeps them; `None` where the fold aggregates `rows(names)`.
 
         A staging area keeps them in a table per attribute each edit
         refreshes, so that a fold reading them does not aggregate every staged
         row once per use. A file layer keeps those of each shape its
-        `owners.parquet` holds.
+        `owner_map_rows.parquet` holds.
 
         Notes
         -----
-        - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+        - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
         """
         ...
 
 
-OWNERS_FILE = "owners.parquet"
+OWNER_MAP_ROWS_FILE = "owner_map_rows.parquet"
 """A layer's owner-map rows of the shapes it keeps them for, at its root.
 
 Notes
 -----
-- [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+- [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
 """
 
 
@@ -265,21 +267,23 @@ class _FileLayer:
         listed = [name for name in names if name in self.files.attributes]
         return self._read("attributes", listed) if listed else None
 
-    def owners(self, shape: Shape, names: Sequence[str]) -> DuckDBPyRelation | None:
+    def owner_map_rows(
+        self, shape: Shape, names: Sequence[str]
+    ) -> DuckDBPyRelation | None:
         listed = [name for name in names if name in self.files.attributes]
         if not listed or pattern(self.schema.dimensions, shape) not in self._stored:
             return None
-        rel = self.workspace.con.read_parquet(self.uri(OWNERS_FILE))
+        rel = self.workspace.con.read_parquet(self.uri(OWNER_MAP_ROWS_FILE))
         rel = rel.filter(col(SHAPE_COLUMN) == _mask(self.schema, shape))
         rel = cast_declared(self.schema, rel.filter(_isin(listed)))
         return _owned_by(rel, self.schema, self.layer_id)
 
     @cached_property
     def _stored(self) -> frozenset[int]:
-        """The `SHAPE_COLUMN` of each shape `owners.parquet` holds, none where the layer has no such file."""
-        if not self.files.owners:
+        """The `SHAPE_COLUMN` of each shape `owner_map_rows.parquet` holds, none where the layer has no such file."""
+        if not self.files.owner_map_rows:
             return frozenset()
-        rel = self.workspace.con.read_parquet(self.uri(OWNERS_FILE))
+        rel = self.workspace.con.read_parquet(self.uri(OWNER_MAP_ROWS_FILE))
         shapes = rel.project(col(SHAPE_COLUMN)).distinct().fetchall()
         return frozenset(shape for (shape,) in shapes)
 
