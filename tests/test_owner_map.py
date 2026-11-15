@@ -13,6 +13,7 @@ Notes
 
 import json
 from dataclasses import replace
+from functools import partial
 from itertools import product
 from pathlib import Path
 
@@ -21,12 +22,14 @@ import pytest
 from pydantic import ValidationError
 
 from datarecord import Flags, WorkingRecord, Workspace
-from datarecord.duck import union_all_by_name
+from datarecord.duck import pattern, union_all_by_name
 from datarecord.resolve.fold import read_dimension_owners, read_owner_map
-from datarecord.resolve.owner_map import _fold_map, _frozen_table
+from datarecord.resolve.owner_map import _checkpointed, _fold_map, _frozen_table
+from datarecord.resolve.sources import OWNERS_FILE, ParquetLayer
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import AttributeSpec, Dimension
 from datarecord.store.manifest import LayerFiles
+from datarecord.store.store import lineage
 from datarecord.tools.pypsa import PyPSA
 from tests.fixtures import (
     broadcast,
@@ -312,20 +315,25 @@ def test_a_read_refuses_an_owner_map_naming_a_file_the_layer_lacks(store, tmp_pa
         reread.record.attributes["p_nom"]
 
 
-def test_a_read_refuses_a_manifest_listing_an_undeclared_attribute_file(
-    store, tmp_path
-):
-    """A hand-made manifest lists `extra`, which its schema does not declare, so no shape folds it."""
+@pytest.mark.parametrize(
+    ("files", "match"),
+    [
+        ({"attributes": ["p_nom", "extra"]}, r"files \['extra'\] its schema"),
+        ({"attributes": [], "owners": True}, "owners.parquet but no attribute file"),
+    ],
+)
+def test_a_read_refuses_an_inconsistent_manifest(store, tmp_path, files, match):
+    """A hand-made manifest lists `extra`, which its schema does not declare, so no shape folds it, or `owners.parquet` owning no file."""
     layer = empty_root(store, schema())
     write_component(layer, "Generator", [{"entity": "gas"}])
     write_attribute(layer, "p_nom", [{"entity": "gas", "value": 1.0}])
     root = layer.commit()
     uri = Path(store.manifest_uri(root.id))
     raw = json.loads(uri.read_text())
-    raw["files"]["attributes"].append("extra")
+    raw["files"].update(files)
     uri.write_text(json.dumps(raw))
 
-    with pytest.raises(ValidationError, match=r"files \['extra'\] its schema"):
+    with pytest.raises(ValidationError, match=match):
         Workspace().store(str(tmp_path)).revision(root.id)
 
 
@@ -1083,10 +1091,11 @@ def _split_by_a_widening(store):
     return layer.commit()
 
 
-def _edited_after_a_reordering(store):
-    """A grandchild edit under the dimensions in another order than its materialised root's."""
+def _edited_after_a_reordering(store, *, materialised=True):
+    """A grandchild edit under the dimensions in another order than its root's, materialised or not."""
     root = _ordered_root(store, _CONNECTION_FIRST)
-    root.materialise()
+    if materialised:
+        root.materialise()
     staged = WorkingRecord(empty_child(root, _ordered(_DECLARED)).commit().record)
     staged.set("efficiency", 0.9, entity="g", bus="b", snapshot=1)
     return store.commit(staged)
@@ -1146,3 +1155,97 @@ def test_a_layer_leaving_a_dim_outside_partial_unfilled_is_refused(store):
         r"'period': '2030'\} where a parent row names it",
     ):
         child.record.attributes["p_max_pu"].fetchall()
+
+
+_SERIES = Schema(
+    dimensions={
+        "entity": {"dtype": "str"},
+        "snapshot": {"dtype": "int"},
+        "period": {"dtype": "int"},
+    },
+    attributes={
+        "p_nom": {"dtype": "float", "dims": ["entity"]},
+        "p_max_pu": {"dtype": "float", "dims": ["entity", "snapshot"]},
+        "x": {"dtype": "float", "dims": ["entity", "period"]},
+    },
+    partial=frozenset({"entity"}),
+)
+
+
+def _series_root(store):
+    """A root writing `p_max_pu` along `snapshot`, and `p_nom` and `x` broadcast along `period` alone."""
+    staged = WorkingRecord(empty_root(store, _SERIES).commit().record)
+    staged.add("entity", ["wind", "gas"])
+    staged.add("snapshot", [0, 1])
+    staged.add("period", [1, 2])
+    staged.set("p_nom", 100.0)
+    staged.set("p_max_pu", 0.9)
+    staged.set("p_max_pu", [0.2, 0.7], entity="wind", snapshot=[0, 1])
+    staged.set("x", 1.0)
+    return store.commit(staged)
+
+
+def _series_child(store):
+    """A child of `_series_root` writing `gas`'s `p_max_pu` at one snapshot and `wind`'s `x` at one period."""
+    root = _series_root(store)
+    staged = WorkingRecord(root.record)
+    staged.set("p_max_pu", 0.4, entity="gas", snapshot=1)
+    staged.set("x", 2.0, entity="wind", period=2)
+    return store.commit(staged)
+
+
+@pytest.fixture
+def other_workspace():
+    """A workspace holding no fold, so a fold over a store's layers starts from the root."""
+    ws = Workspace()
+    yield ws
+    ws.close()
+
+
+@pytest.mark.parametrize(
+    "build", [_series_child, partial(_edited_after_a_reordering, materialised=False)]
+)
+def test_a_fold_reads_the_same_whether_its_layers_keep_their_owner_rows(
+    store, other_workspace, build
+):
+    """The cold fold over layers written with `owners.parquet` matches the one aggregating every layer's files.
+
+    Notes
+    -----
+    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+    """
+    revision = build(store)
+    opened = other_workspace.store(store.uri)
+    kept = [ParquetLayer(m, opened) for m in lineage(opened, revision.id)]
+    assert any(layer.files.owners for layer in kept), "a layer keeps owner rows"
+    aggregated = [
+        replace(
+            layer,
+            manifest=replace(layer.manifest, files=replace(layer.files, owners=False)),
+        )
+        for layer in kept
+    ]
+
+    def folded(sources):
+        with _checkpointed(sources) as rel:
+            return sorted(rel.fetchall(), key=str)
+
+    assert folded(kept) == folded(aggregated)
+
+
+def test_a_layer_keeps_the_owner_rows_of_a_shape_varying_outside_partial_alone(store):
+    """`_series_root` keeps `p_max_pu`'s shape, along `snapshot`, and not `p_nom`'s or `x`'s, broadcast along `period`.
+
+    Notes
+    -----
+    - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+    """
+    revision = _series_root(store)
+    assert revision.manifest.files.owners
+    rel = store.workspace.con.read_parquet(
+        f"{store.layer_dir(revision.id)}{OWNERS_FILE}"
+    )
+    shapes = {s for (s,) in rel.project("_shape").distinct().fetchall()}
+    assert shapes == {pattern(_SERIES.dimensions, {"entity", "snapshot"})}
+    assert _misstamped(rel, _SERIES) == [], "each kept row is stamped with its shape"

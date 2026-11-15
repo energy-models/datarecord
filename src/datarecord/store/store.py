@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS {revisions} (
   id       UUID,
   parent   UUID,
   meta     JSON,
-  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[]),
+  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[], owners BOOLEAN),
   schema   VARCHAR,
   PRIMARY KEY (location, id)
 )
@@ -726,6 +726,7 @@ class Store:
             files = {
                 "dimensions": list(manifest.files.dimensions),
                 "attributes": list(manifest.files.attributes),
+                "owners": manifest.files.owners,
             }
             self._insert(
                 _in(self.workspace, "INSERT OR IGNORE INTO {schemas} VALUES (?, ?)"),

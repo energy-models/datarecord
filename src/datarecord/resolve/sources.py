@@ -20,16 +20,28 @@ Notes
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import cached_property
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
+from duckdb import ColumnExpression as col
+
+from datarecord.duck import pattern
 from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_map_rows import (
+    SHAPE_COLUMN,
+    _isin,
+    _mask,
+    _owned_by,
+)
+from datarecord.schema.schema import cast_declared
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from duckdb import DuckDBPyRelation
 
+    from datarecord.resolve.owner_map_rows import Shape
     from datarecord.schema.schema import Schema
     from datarecord.store.manifest import LayerFiles, Manifest
     from datarecord.store.store import Store, Workspace
@@ -155,13 +167,28 @@ class LayerSource(Protocol):
         """
         ...
 
-    def owners(self, name: str) -> DuckDBPyRelation | None:
-        """One attribute's owner-map rows, where this layer keeps them; `None` where the fold aggregates `attribute(name)`.
+    def owners(self, shape: Shape, names: Sequence[str]) -> DuckDBPyRelation | None:
+        """The owner-map rows of those of `names` this layer has, attributes of one `shape`, where it keeps them; `None` where the fold aggregates `rows(names)`.
 
-        A staging area keeps them in a table each edit refreshes, so that a
-        fold reading them does not aggregate every staged row once per use.
+        A staging area keeps them in a table per attribute each edit
+        refreshes, so that a fold reading them does not aggregate every staged
+        row once per use. A file layer keeps those of each shape its
+        `owners.parquet` holds.
+
+        Notes
+        -----
+        - [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
         """
         ...
+
+
+OWNERS_FILE = "owners.parquet"
+"""A layer's owner-map rows of the shapes it keeps them for, at its root.
+
+Notes
+-----
+- [`owners.parquet`](https://energy-models.github.io/datarecord/reference/format/#ownersparquet)
+"""
 
 
 class _FileLayer:
@@ -192,6 +219,9 @@ class _FileLayer:
 
         @property
         def workspace(self) -> Workspace: ...
+
+        @property
+        def layer_id(self) -> UUID: ...
 
     @property
     def schema(self) -> Schema:
@@ -235,8 +265,23 @@ class _FileLayer:
         listed = [name for name in names if name in self.files.attributes]
         return self._read("attributes", listed) if listed else None
 
-    def owners(self, name: str) -> DuckDBPyRelation | None:
-        return None
+    def owners(self, shape: Shape, names: Sequence[str]) -> DuckDBPyRelation | None:
+        listed = [name for name in names if name in self.files.attributes]
+        if not listed or pattern(self.schema.dimensions, shape) not in self._stored:
+            return None
+        rel = self.workspace.con.read_parquet(self.uri(OWNERS_FILE))
+        rel = rel.filter(col(SHAPE_COLUMN) == _mask(self.schema, shape))
+        rel = cast_declared(self.schema, rel.filter(_isin(listed)))
+        return _owned_by(rel, self.schema, self.layer_id)
+
+    @cached_property
+    def _stored(self) -> frozenset[int]:
+        """The `SHAPE_COLUMN` of each shape `owners.parquet` holds, none where the layer has no such file."""
+        if not self.files.owners:
+            return frozenset()
+        rel = self.workspace.con.read_parquet(self.uri(OWNERS_FILE))
+        shapes = rel.project(col(SHAPE_COLUMN)).distinct().fetchall()
+        return frozenset(shape for (shape,) in shapes)
 
     def materialised(self) -> Fold | None:
         """Not materialised by default: only a `ParquetLayer` has a revision to materialise."""

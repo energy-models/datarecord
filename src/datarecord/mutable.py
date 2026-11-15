@@ -58,7 +58,7 @@ from datarecord.duck import (
 from datarecord.protocols import RecordLike
 from datarecord.resolve.axes import refuse_unheld
 from datarecord.resolve.fold import Fold
-from datarecord.resolve.owner_map_rows import owner_map_rows, shape_of
+from datarecord.resolve.owner_map_rows import Shape, owner_map_rows, shape_of
 from datarecord.resolve.record import Record, _empty_long, _PerCursor
 from datarecord.schema.categories import matching
 from datarecord.schema.dtypes import takes
@@ -252,9 +252,12 @@ class StagedSource:
         rels = [self.record._collapsed_attribute(name) for name in names]
         return union_all_by_name(rels) if rels else None
 
-    def owners(self, name: str) -> DuckDBPyRelation:
-        """One attribute's owner-map rows, kept in a table each edit refreshes (`_refresh_owners`)."""
-        return self.record.con.table(self.record._staged[_OWNERS, name])
+    def owners(self, shape: Shape, names: Sequence[str]) -> DuckDBPyRelation:
+        """The owner-map rows of `names`, kept in a table per attribute each edit refreshes (`_refresh_owners`)."""
+        staged = self.record._staged
+        return union_all_by_name(
+            [self.record.con.table(staged[_OWNERS, name]) for name in names]
+        )
 
 
 class _Base(Record):
