@@ -112,6 +112,8 @@ class Fold:
         The resolved owner map: `(owner_map_index, layer_uuid, varies,
         broadcast, breakpoints)`, one map row as its layer wrote it,
         expanded along a dimension only where a deeper layer crossed it there.
+        One `read` or `held` also carries `SHAPE_COLUMN`, which a fold
+        starting from it splits the map by.
     """
 
     axes: Axes

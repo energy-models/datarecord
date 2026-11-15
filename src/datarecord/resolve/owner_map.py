@@ -55,10 +55,12 @@ from datarecord.resolve.axes import (
 )
 from datarecord.resolve.fold import Fold, read_owner_map
 from datarecord.resolve.owner_map_rows import (
+    SHAPE_COLUMN,
     Shape,
     _flags,
     _tagged,
     owner_map_rows,
+    shape_mask,
     shape_of,
     shapes,
 )
@@ -464,8 +466,8 @@ def _partitioned[K](
 
     Where `rest` is `None`, `keys` names every attribute `rel` holds, and the
     key most of them share takes the rest. Only the attributes of the other
-    keys are named, in an IN-list: what is split is a seed or a map a schema
-    reshapes, never a fold's step.
+    keys are named, in an IN-list: what is split is a map a schema reshapes,
+    never a fold's step.
     """
     by: dict[K, list[str]] = {}
     for attribute, key in keys.items():
@@ -487,12 +489,41 @@ def _isin(attributes: Sequence[str]) -> Expression:
 def _by_shape(
     rel: DuckDBPyRelation, schema: Schema, attributes: Iterable[str] | None = None
 ) -> dict[Shape, DuckDBPyRelation]:
-    """The map `rel`, keyed by `schema`, one relation per shape: of `attributes` alone, or of every attribute where `None`."""
+    """The map `rel`, one relation `_stamped` under `schema`, one relation per shape: of `attributes` alone, or of every attribute where `None`."""
     if attributes is not None:
         grouped = shapes(schema, attributes)
-        return {shape: rel.filter(_isin(names)) for shape, names in grouped.items()}
-    keys = {a: shape_of(schema, a) for a in schema.attributes}
-    return _partitioned(rel, keys, frozenset(schema.dimensions))
+        return {
+            s: _of_shape(rel, schema, s).filter(_isin(n)) for s, n in grouped.items()
+        }
+    every = [*shapes(schema, schema.attributes), frozenset(schema.dimensions)]
+    return {shape: _of_shape(rel, schema, shape) for shape in every}
+
+
+def _of_shape(rel: DuckDBPyRelation, schema: Schema, shape: Shape) -> DuckDBPyRelation:
+    """The rows of `shape` of the map `rel`, `_stamped` under `schema`, unstamped."""
+    return _unstamped(rel.filter(col(SHAPE_COLUMN) == _mask(schema, shape)))
+
+
+def _mask(schema: Schema, shape: Shape) -> Expression:
+    return lit(shape_mask(schema, shape)).cast(sqltypes.INTEGER)
+
+
+def _stamped(
+    maps: Mapping[Shape, DuckDBPyRelation], keyed: Schema, con: DuckDBPyConnection
+) -> DuckDBPyRelation:
+    """The map `maps`, one relation per shape under `keyed`, as one, each row's `shape_mask` in `SHAPE_COLUMN`."""
+    if not maps:
+        maps = {frozenset(): empty_declared(keyed, con, *keyed.owner_map_columns)}
+    arms = [
+        rel.project(star(), _mask(keyed, shape).alias(SHAPE_COLUMN))
+        for shape, rel in maps.items()
+    ]
+    return union_all_by_name(arms)
+
+
+def _unstamped(rel: DuckDBPyRelation) -> DuckDBPyRelation:
+    """The map `rel` as a caller reads it, without `SHAPE_COLUMN`."""
+    return rel.project(star(exclude=[SHAPE_COLUMN]))
 
 
 def _extended(
@@ -649,11 +680,13 @@ def _fold_at_hand(source: LayerSource) -> Fold | None:
 def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
     """`_fold_map` with each source's fold kept in a temporary table per shape, every one dropped on exit.
 
-    The relation entered reads the last source's tables, so it is read before exit.
+    The relation entered reads the last source's tables, so it is read before
+    exit. It is sorted by `SHAPE_COLUMN` and `attribute`, so that the table or
+    file it is written to skips the row groups of other shapes (`_by_shape`).
     """
     made: list[str] = []
     try:
-        yield _fold_map(sources, made=made)
+        yield _fold_map(sources, made=made).order(f"{SHAPE_COLUMN}, attribute")
     finally:
         for name in made:
             sources[-1].workspace.con.execute(f"DROP TABLE IF EXISTS {name}")
@@ -700,7 +733,7 @@ def _fold_onto(
     made: list[str] | None = None,
     attributes: Collection[str] | None = None,
 ) -> DuckDBPyRelation:
-    """Fold each of `sources` onto the owner map `maps`, one relation per shape under `keyed`, into one map.
+    """Fold each of `sources` onto the owner map `maps`, one relation per shape under `keyed`, into one map, `_stamped`.
 
     Each source folds under its own schema, the map extended to it first
     (`_widened`), so the map is keyed by the last source's schema, `keyed`
@@ -783,9 +816,7 @@ def _fold_onto(
             folded = {shape: keep(rel) for shape, rel in folded.items()}
             _drop_but_last(made, len(folded), con)
         maps = folded
-    if not maps:
-        return empty_declared(keyed, con, *keyed.owner_map_columns)
-    return union_all_by_name(list(maps.values()))
+    return _stamped(maps, keyed, con)
 
 
 def _layer_owners(
@@ -856,7 +887,7 @@ def _table(
     *,
     in_frozen: Container[str] = frozenset(),
 ) -> DuckDBPyRelation:
-    """The owner map for `revision_id`, materialised as far as `frozen` allows.
+    """The owner map for `revision_id`, materialised as far as `frozen` allows, as a caller reads it (`_unstamped`).
 
     The frozen layers are folded once and kept as a connection-scoped table,
     which never needs invalidating since layers are write-once. Whatever follows
@@ -881,7 +912,7 @@ def _table(
     rel = _frozen_table(revision_id, frozen)
     keyed = frozen[-1].schema if frozen else schema
     if rel is not None and attributes is None and not above:
-        return rel
+        return _unstamped(rel)
     maps: dict[Shape, DuckDBPyRelation] = {}
     if rel is not None:
         held_by = (
@@ -889,7 +920,7 @@ def _table(
         )
         maps = _by_shape(rel, keyed, held_by)
     held = {name: frozen_axes.get(name) for name in _pruned(schema)}
-    return _fold_onto(
+    folded = _fold_onto(
         maps,
         above,
         held,
@@ -898,12 +929,13 @@ def _table(
         dead=frozen_axes.dead,
         attributes=attributes,
     )
+    return _unstamped(folded)
 
 
 def _frozen_table(
     revision_id: UUID, sources: Sequence[LayerSource]
 ) -> DuckDBPyRelation | None:
-    """The frozen layers' owner map, its own materialised one or a cached fold.
+    """The frozen layers' owner map, its own materialised one or a cached fold, `_stamped`.
 
     `None` over no source, so that the tail folds onto no map.
 
