@@ -226,6 +226,18 @@ def test_an_absent_s3_key_is_a_miss(s3):
     assert not files.exists(_KEY), "a 404 on HEAD falls back to a listing"
 
 
+def test_an_s3_directory_holding_no_key_is_absent(s3):
+    """SeaweedFS keeps a directory once its keys are deleted, and answers a HEAD on it.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    stub.add_response("list_objects_v2", {"KeyCount": 0})
+    assert not files.exists("s3://bucket/record/layers/x/"), "only a listing decides"
+
+
 @pytest.mark.parametrize(
     ("operations", "call"),
     [

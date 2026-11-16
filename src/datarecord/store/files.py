@@ -295,15 +295,21 @@ class RemoteFiles:
         return [n for n in names if n]
 
     def exists(self, uri: str) -> bool:
-        """An object at `uri`, or any under it, as a local directory exists."""
+        """An object at `uri`, or any under it, as a local directory exists.
+
+        A `uri` ending in a slash is a directory, which exists by a key under
+        it alone: SeaweedFS keeps a directory once its keys are deleted and
+        answers a HEAD on it.
+        """
         bucket, key = _split(uri)
         with self._permitted(uri):
-            try:
-                self._s3.head_object(Bucket=bucket, Key=key)
-                return True
-            except self._error as e:
-                if self._status(e) != 404:
-                    raise
+            if not key.endswith("/"):
+                try:
+                    self._s3.head_object(Bucket=bucket, Key=key)
+                    return True
+                except self._error as e:
+                    if self._status(e) != 404:
+                        raise
             listed = self._s3.list_objects_v2(
                 Bucket=bucket, Prefix=key.rstrip("/") + "/", MaxKeys=1
             )
