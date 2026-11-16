@@ -348,6 +348,9 @@ All notable changes to datarecord are documented here. The format follows
 - A `WorkingRecord` builds the labels each staged restatement removes once per
   thread rather than once per attribute whose owner map it folds. So
   `register` binds that anti-join once per dimension, not once per attribute.
+- A `WorkingRecord` drops a staged row of a removed label by joining the row
+  to every staged axis, then filtering and projecting once, rather than with a
+  join, a filter and a projection per dimension.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is

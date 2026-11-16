@@ -2097,23 +2097,27 @@ class WorkingRecord(Record):
         """
         rel = self.con.table(self._staged[_ATTRIBUTES, attribute])
         columns = rel.columns
-        for name in self.schema.dimensions:
-            if name in self.schema.one_of_dimensions or name not in columns:
-                continue
-            rel = (
-                rel.set_alias("l")
-                .join(self._labels(name), null_safe("l", "k", [name]), how="left")
-                .filter(col("l", name).isnull() | col("k", "_kept").isnotnull())
-                .project(*(col("l", c) for c in columns))
+        dims = [
+            d
+            for d in self.schema.dimensions
+            if d not in self.schema.one_of_dimensions and d in columns
+        ]
+        if not dims:
+            return rel
+        joined = rel.set_alias("l")
+        for d in dims:
+            joined = joined.join(
+                self._labels(d), null_safe("l", f"k_{d}", [d]), how="left"
             )
-        return rel
+        kept = (col("l", d).isnull() | col(f"k_{d}", "_kept").isnotnull() for d in dims)
+        return joined.filter(ex_all(kept)).project(*(col("l", c) for c in columns))
 
     @cached_property
     def _per_cursor(self) -> _StagedPerCursor:
         return _StagedPerCursor()
 
     def _labels(self, dim: str) -> DuckDBPyRelation:
-        """The labels of `dim`'s staged axis, each flagged `_kept`, aliased `k`.
+        """The labels of `dim`'s staged axis, each flagged `_kept`, aliased `k_<dim>`.
 
         Built once per thread (`_collapsed_attribute` joins it per attribute):
         it reads the staging table by name, so it reads every later edit.
@@ -2122,7 +2126,7 @@ class WorkingRecord(Record):
         if dim not in labels:
             held = self.con.table(self._staged[f"{_AXIS_PREFIX}{dim}", None])
             kept = held.project(col(dim), lit(True).alias("_kept"))  # noqa: FBT003
-            labels[dim] = kept.set_alias("k")
+            labels[dim] = kept.set_alias(f"k_{dim}")
         return labels[dim]
 
     # -- what edits write (https://energy-models.github.io/datarecord/reference/editing/#edits) ------------------------------------------
