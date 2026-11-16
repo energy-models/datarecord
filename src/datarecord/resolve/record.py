@@ -49,9 +49,11 @@ from datarecord.protocols import Flags, LazyRelations
 from datarecord.resolve.axes import Axes
 from datarecord.resolve.fold import Fold
 from datarecord.resolve.owner_map import (
+    Restated,
     _frozen_table,
     _table,
     owned_rows,
+    restated_above,
     source_for,
     split_frozen,
 )
@@ -404,6 +406,7 @@ class _PerCursor(threading.local):
         self.frozen_axes: Axes | None = None
         self.frozen_map: DuckDBPyRelation | None = None
         self.axes: Axes | None = None
+        self.restated: list[Restated] | None = None
         self.owners_of: dict[str, DuckDBPyRelation] = {}
 
 
@@ -766,6 +769,23 @@ class Record:
             cache.frozen_map = _frozen_table(self.revision_id, frozen)
         return cache.frozen_map
 
+    @property
+    def _restated(self) -> list[Restated]:
+        """Return the sources above the frozen layers as the map folds them onto theirs (`restated_above`).
+
+        Built once per thread, as `_frozen_axes` is: the labels a restatement
+        removes are the same for every attribute `_owners_of` folds.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+        - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
+        """
+        cache = self._per_cursor
+        if cache.restated is None:
+            cache.restated = restated_above(self.sources, self._frozen_axes)
+        return cache.restated
+
     @cached_property
     def _per_cursor(self) -> _PerCursor:
         return _PerCursor()
@@ -778,7 +798,7 @@ class Record:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        owner_map = _table(self._frozen_map, self.sources, self._frozen_axes)
+        owner_map = _table(self._frozen_map, self.sources, self._restated)
         return Fold(self._axes, owner_map)
 
     def _source_for(self, layer_uuid: UUID) -> LayerSource:
@@ -894,7 +914,7 @@ class Record:
             cache[attribute] = _table(
                 self._frozen_map,
                 self.sources,
-                self._frozen_axes,
+                self._restated,
                 {attribute: attribute in self._frozen_owners},
             )
         return cache[attribute]
@@ -917,10 +937,10 @@ class Record:
         """
         if self.frozen or not self.schema.attributes:
             return self._fold.owner_map
-        frozen_map, axes = self._frozen_map, self._frozen_axes
+        frozen_map, above = self._frozen_map, self._restated
         by_shape = shapes(self.schema, self.schema.attributes).values()
         held = [{a: a in self._frozen_owners for a in names} for names in by_shape]
-        arms = (_text(_table(frozen_map, self.sources, axes, h)) for h in held)
+        arms = (_text(_table(frozen_map, self.sources, above, h)) for h in held)
         return self.con.sql("\nUNION ALL BY NAME\n".join(f"({arm})" for arm in arms))
 
     def _owners(self, attribute: str) -> _Owners:

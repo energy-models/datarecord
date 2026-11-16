@@ -314,6 +314,9 @@ All notable changes to datarecord are documented here. The format follows
   fraction of the time. A filter on `attribute` still reaches every scan of
   the base's map, and one on a dimension now reaches all but one scan per
   shape over two or more dimensions in `partial`.
+- A `WorkingRecord` builds the labels each staged restatement removes once per
+  thread rather than once per attribute whose owner map it folds. So
+  `register` binds that anti-join once per dimension, not once per attribute.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is
