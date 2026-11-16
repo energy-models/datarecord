@@ -1,0 +1,65 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 210" width="780" height="210" style="max-width: 100%; height: auto" role="img" aria-labelledby="tp-t tp-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="tp-t">build places a component's ports by connection order</title>
+  <desc id="tp-d">The record contains the connection tuples link1 north, with role input, and link1 south, with role output, and efficiency 0.9 on link1 south. build writes n.links with bus0 north, bus1 south and efficiency 0.9.</desc>
+  <defs>
+    <marker id="tp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="tp-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H219 A3,3 0 0 1 222,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="16" y="54" width="206" height="18" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H222 V91 A3,3 0 0 1 219,94 H19 A3,3 0 0 1 16,91 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,152 V133 A3,3 0 0 1 19,130 H219 A3,3 0 0 1 222,133 V152 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,152 H222 V171 A3,3 0 0 1 219,174 H19 A3,3 0 0 1 16,171 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M470,54 V35 A3,3 0 0 1 473,32 H747 A3,3 0 0 1 750,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <path d="M470,54 H750 V73 A3,3 0 0 1 747,76 H473 A3,3 0 0 1 470,73 Z" fill="#009E73" fill-opacity="0.08"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">record</text>
+    <text x="78" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/connection</text>
+    <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
+    <text x="164" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">role</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, north)</text>
+    <text x="164" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">input</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, south)</text>
+    <text x="164" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">output</text>
+    <text x="16" y="120" font-weight="bold"></text>
+    <text x="16" y="120" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attributes/efficiency</text>
+    <text x="24" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
+    <text x="164" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
+    <text x="24" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, south)</text>
+    <text x="164" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="470" y="22" font-weight="bold">n.links</text>
+    <text x="478" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">name</text>
+    <text x="538" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">bus0</text>
+    <text x="598" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">bus1</text>
+    <text x="658" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">efficiency</text>
+    <text x="478" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">link1</text>
+    <text x="538" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">north</text>
+    <text x="598" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">south</text>
+    <text x="658" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
+    <text x="310" y="56" font-weight="bold" font-size="12">build</text>
+    <text x="310" y="82" fill-opacity="0.7" font-size="12">the input first,</text>
+    <text x="310" y="97" fill-opacity="0.7" font-size="12">then connection order</text>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="206" height="62" rx="3"/>
+    <line x1="16" y1="54" x2="222" y2="54"/>
+    <rect x="16" y="130" width="206" height="44" rx="3"/>
+    <line x1="16" y1="152" x2="222" y2="152"/>
+    <rect x="470" y="32" width="280" height="44" rx="3"/>
+    <line x1="470" y1="54" x2="750" y2="54"/>
+    <path d="M228,72 H300 V161 H228"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#tp-arrow)">
+    <path d="M300,64 L462,64"/>
+  </g>
+</svg>
