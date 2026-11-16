@@ -351,6 +351,11 @@ All notable changes to datarecord are documented here. The format follows
 - A `WorkingRecord` drops a staged row of a removed label by joining the row
   to every staged axis, then filtering and projecting once, rather than with a
   join, a filter and a projection per dimension.
+- A record builds the read of an attribute once per plan and set of column
+  types, over row-less stand-ins of its rows and map rows, and writes each
+  attribute's own rows and map rows into that SQL text. Before, it built every
+  attribute's read step by step, and DuckDB bound each step.
+  `record.attributes[name]` and the registered view are that text, bound once.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is
