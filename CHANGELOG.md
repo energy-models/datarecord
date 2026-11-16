@@ -579,10 +579,10 @@ All notable changes to datarecord are documented here. The format follows
   row groups whose statistics admit the label. On a multi-dimension, a filter
   on a field such as `connection.entity` prunes row groups, and one on the
   whole struct column does not. An attribute view plans more branches, one
-  per dimension in `partial` a row may leave NULL first and one more, and a
-  ranked view plans them twice. Registering a `WorkingRecord`, whose staged
-  rows may store any dimension either way, and planning a query on its
-  views cost more.
+  per dimension in `partial` a row may leave NULL first and one more. A
+  ranked view plans them once too and splits the rows it ranks from the rest
+  after the join. Registering a `WorkingRecord`, whose staged rows may store
+  any dimension either way, and planning a query on its views cost more.
 
 ### Removed
 
