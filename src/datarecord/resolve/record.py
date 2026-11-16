@@ -187,6 +187,7 @@ def _joined(
     always = [d for d in over if ways[d] == (True,)]
     never = [d for d in over if ways[d] == (False,)]
     free = [d for d in ways if d in over and ways[d] == (True, False)]
+    raw, owned = values.set_alias("l"), stored.set_alias("o")
     branches = []
     for k in range(len(free) + 1):
         setting = [*always, *free[:k]]
@@ -199,7 +200,7 @@ def _joined(
             on.append(null_safe("l", "o", rest))
         taken = {d: col("o", _owned(d)).alias(d) for d in leaving}
         taken |= {d: coalesce(col("l", d), col("o", _owned(d))).alias(d) for d in rest}
-        joined = values.set_alias("l").join(stored.set_alias("o"), ex_all(on))
+        joined = raw.join(owned, ex_all(on))
         branches.append(
             joined.project(*(taken.get(c, col("l", c)) for c in columns), *named)
         )
@@ -831,13 +832,15 @@ class Record:
         )
         if not broadcast_over or not contested:
             return _living(joined(stored), dead, outside_index)
-        stored = _contested(stored, broadcast_over)
-        alone = joined(stored.filter(~col("_contested")))
+        both = joined(
+            _contested(stored, broadcast_over),
+            null_pattern(broadcast_over, "l").alias("_named"),
+            col("o", "_contested").alias("_contested"),
+        )
+        kept = [col(c) for c in columns]
+        alone = both.filter(~col("_contested")).project(*kept)
         ranked = _most_specific(
-            joined(
-                stored.filter(col("_contested")),
-                null_pattern(broadcast_over, "l").alias("_named"),
-            ),
+            both.filter(col("_contested")).project(*kept, col("_named")),
             dims,
             attribute,
         )
