@@ -536,7 +536,7 @@ All notable changes to datarecord are documented here. The format follows
 - The fold runs once per shape, the set of dimensions an attribute is over
   under the layer's schema, so each step tests a constant per dimension
   rather than the row's attribute against lists of names. The cold fold of a
-  revision with 1.2 billion attribute rows takes 13 seconds rather than about
+  revision with 1.2 billion attribute rows takes 6 seconds rather than about
   five and a half minutes. A layer whose schema changes an attribute's shape
   moves its map rows to the new shape. `LayerSource.all_attributes` is gone.
   `LayerSource.rows(names)` hands over several attributes' rows as one
@@ -554,8 +554,10 @@ All notable changes to datarecord are documented here. The format follows
   `files.owner_map_rows` lists those shapes' `_shape`, ascending. A fold reads
   those shapes' rows from the file rather than aggregating the attribute
   files, and aggregates the rest, and every shape of a layer without the
-  file, as before. A manifest listing a shape no attribute file it lists has,
-  or listing them out of order, is refused when read.
+  file, as before. With the file, the cold fold of the revision with 1.2
+  billion attribute rows takes under a second. A manifest listing a shape no
+  attribute file it lists has, or listing them out of order, is refused when
+  read.
   `LayerSource.owner_map_rows` takes a shape and the names of its attributes.
 - The workspace's `revisions` table carries `files.owner_map_rows`. A
   workspace database made before lacks it, so its folds aggregate every
