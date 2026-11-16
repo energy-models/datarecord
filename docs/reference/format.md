@@ -198,7 +198,7 @@ A map row that the edits stage has the `WorkingRecord`'s own layer id as its `la
 
 DuckDB applies a filter on `attribute` or on a dimension's column of the view, such as `WHERE attribute = 'p_nom'` or `WHERE entity = 'gas'`, in its scan of the map.
 Over a `WorkingRecord`, a filter on `attribute` restricts the read to the map rows and edits of that attribute.
-A filter on a dimension there reaches only some of the scans of the base's map, as the fold reads the whole map to find the rows that an edit covers or [crosses](resolution.md#crossing-rows).
+A filter on a dimension there reaches every scan of the base's map but one per shape over two or more dimensions in `partial`, as the fold reads all of that shape's map rows to find those that [cross](resolution.md#crossing-rows) an edit.
 
 Run `USE datarecord` once to write short names, `name.dimensions.bus` and `registered`.
 `USE` holds only for the connection or cursor that runs it, and a client that attached the file under another name runs `USE` with that name.

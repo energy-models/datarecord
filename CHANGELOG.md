@@ -343,7 +343,8 @@ All notable changes to datarecord are documented here. The format follows
   base's map once per shape rather than once per attribute. Its plan is a
   few folds instead of one per attribute, which DuckDB optimises in a
   fraction of the time. A filter on `attribute` still reaches every scan of
-  the base's map.
+  the base's map, and one on a dimension now reaches all but one scan per
+  shape over two or more dimensions in `partial`.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is
