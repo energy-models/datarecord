@@ -8,17 +8,19 @@ Skipped unless `DATARECORD_TEST_S3_ENDPOINT` names an S3 endpoint honouring
 conditional writes atomically - SeaweedFS 4.52 or later, which Manta deploys.
 A mock would pass exactly the tests the headers exist for. To run them::
 
-    docker run --rm --name seaweedfs -p 8333:8333 -e AWS_ACCESS_KEY_ID=datarecord \
-        -e AWS_SECRET_ACCESS_KEY=datarecord chrislusf/seaweedfs:4.52 server -s3
+    docker run -d --rm --name seaweedfs -p 8333:8333 -e AWS_ACCESS_KEY_ID=datarecord \
+        -e AWS_SECRET_ACCESS_KEY=datarecord chrislusf/seaweedfs:4.52 server -s3 \
+        -master.volumeSizeLimitMB=64 -volume.max=1000
     echo "s3.configure -user=denied -access_key=denied -secret_key=denied \
         -actions=Read,List -buckets=elsewhere -apply" | docker exec -i seaweedfs weed shell
     DATARECORD_TEST_S3_ENDPOINT=http://localhost:8333 pixi run pytest tests/test_remote.py
 
-Each test creates its own bucket. The credentials are `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY` where set, and `datarecord` otherwise, which the server
-above is started with: SeaweedFS 4.52 refuses an unknown key. The key `denied`
-may read and list the bucket `elsewhere` only. `AWS_PROFILE` must be unset, or
-botocore reads that profile instead.
+Each test creates its own bucket, for which SeaweedFS grows volumes of its
+own: the volume flags keep them small and plentiful. The credentials are
+`AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` where set, and `datarecord`
+otherwise, which the server above is started with: SeaweedFS 4.52 refuses an
+unknown key. The key `denied` may read and list the bucket `elsewhere` only.
+`AWS_PROFILE` must be unset, or botocore reads that profile instead.
 
 Notes
 -----

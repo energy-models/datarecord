@@ -392,6 +392,31 @@ def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypat
     assert "endpoint" not in secret and "session_token" not in secret
 
 
+@pytest.mark.parametrize("source", ["environment", "credentials-file"])
+def test_the_environments_key_sets_up_duckdb_without_a_config_file(
+    workspace, monkeypatch, tmp_path, source: str
+):
+    """A self-hosted server's key, from the environment or a profile, with no `~/.aws/config`."""
+    credentials = tmp_path / "credentials"
+    credentials.write_text(
+        f"[default]\naws_access_key_id = {_KEY_ID}\naws_secret_access_key = x\n"
+    )
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"):
+        monkeypatch.delenv(name, raising=False)
+    if source == "environment":
+        monkeypatch.setenv("AWS_ACCESS_KEY_ID", _KEY_ID)
+        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", _SECRETS[0])
+    else:
+        monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(credentials))
+    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "missing"))
+    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:8333")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    workspace.files("s3://bucket/record")
+    secret = _secret(workspace)
+    assert (secret["key_id"], secret["endpoint"]) == (_KEY_ID, "localhost:8333")
+
+
 def _stale_profile(monkeypatch: pytest.MonkeyPatch) -> None:
     """boto3 refuses to build: `AWS_PROFILE` names a profile no config file has."""
     monkeypatch.setenv("AWS_PROFILE", "nonexistent")

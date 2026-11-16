@@ -652,6 +652,11 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- A workspace reaching a self-hosted S3 server with `AWS_ENDPOINT_URL` sets
+  up DuckDB from the AWS SDK's default credential chain, as boto3 does. On
+  DuckDB 2.0 its former chain, `env;config`, failed with "no profile
+  'default' found in config file" wherever `~/.aws/config` held no such
+  profile, even with the key in the environment or `~/.aws/credentials`.
 - On S3, a directory exists by a key under it alone. On SeaweedFS, which keeps
   the directory a cleanup emptied, `cleanup(ids=...)` naming that layer again
   raises `ValueError` before it deletes anything, rather than deleting the

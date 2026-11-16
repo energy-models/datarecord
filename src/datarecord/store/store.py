@@ -541,10 +541,11 @@ class Workspace:
 def _chain_options() -> list[str]:
     """The options of a DuckDB S3 secret, `PROVIDER credential_chain`, from the AWS environment.
 
-    With `AWS_ENDPOINT_URL` set, the secret adds what the chain does not
-    supply - the endpoint, path-style addressing, SSL per its scheme - and
-    skips the instance-metadata probe, a self-hosted server having no metadata
-    service.
+    The chain is the AWS SDK's default, as boto3's is. DuckDB 2.0 refuses any
+    `CHAIN` naming `config` unless the AWS config file holds the profile,
+    even where the environment or the credentials file holds the key. With
+    `AWS_ENDPOINT_URL` set, the secret adds what the chain does not supply -
+    the endpoint, path-style addressing, SSL per its scheme.
     """
     options = ["TYPE s3", "PROVIDER credential_chain"]
     endpoint = os.environ.get("AWS_ENDPOINT_URL")
@@ -554,7 +555,6 @@ def _chain_options() -> list[str]:
             f"ENDPOINT '{url.netloc}'",
             "URL_STYLE 'path'",
             f"USE_SSL {str(url.scheme == 'https').lower()}",
-            "CHAIN 'env;config'",
         ]
     return options
 
