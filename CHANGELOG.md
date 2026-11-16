@@ -330,6 +330,14 @@ All notable changes to datarecord are documented here. The format follows
   and column types agree. A frozen record keeps its fold per thread, and an
   attribute no layer holds gets the text of an empty view, kept per set of
   column types.
+- A record folds its frozen layers' owner map in groups of attributes held by
+  the same layers, so a layer folds onto the rows of the attributes it holds
+  alone, and no layer's fold is copied before the next folds onto it. The rows
+  of an attribute only the first layer holds go into the shared table without
+  a temporary copy. A frozen layer's rows are checked for covering a parent
+  row only at the patterns they name. On a three-layer Europe stack this cuts
+  `register` of a committed revision from 3.6 s to 3.1 s and its peak memory
+  by a quarter.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is
