@@ -1287,6 +1287,54 @@ class TestPyPSA:
         assert_networks_equal(PyPSA.build(record), n)
 
     @pytest.mark.parametrize(
+        ("name", "attrs"),
+        [
+            pytest.param("co2", {}, id="bare"),
+            pytest.param("co2", {"bus": "north"}, id="bus"),
+            pytest.param("co2", {"investment_period": 2030}, id="period"),
+            pytest.param(
+                "co2", {"bus": "north", "investment_period": 2040}, id="bus-and-period"
+            ),
+            pytest.param("gen", {"bus": "north"}, id="named-like-an-entity"),
+        ],
+    )
+    def test_a_global_constraint_is_a_label_of_its_dim(self, store, name, attrs):
+        """A global constraint is a label of `global_constraint`, no entity, so it has no connection and may share a generator's name.
+
+        Notes
+        -----
+        - [global constraints](https://energy-models.github.io/datarecord/reference/tools/#global-constraints)
+        """
+        n = _north()
+        if "investment_period" in attrs:
+            n.set_investment_periods([2030, 2040])
+        n.add("GlobalConstraint", name, sense="<=", constant=5.0, **attrs)
+
+        record = export_network(n, store).record
+        labels = record.dims["global_constraint"].df()["global_constraint"]
+        assert labels.tolist() == [name]
+        assert record.dims["entity"].df()["entity"].tolist() == ["gen"]
+        connections = unpacked(record.dims["connection"])
+        assert connections["entity"].tolist() == ["gen"], "the generator's alone"
+        assert_networks_equal(PyPSA.build(record), n)
+
+    def test_a_global_constraint_carrier_attribute_may_differ_by_scenario(self, store):
+        """`carrier_attribute` is an attribute, so a value apart at one scenario round-trips.
+
+        Notes
+        -----
+        - [global constraints](https://energy-models.github.io/datarecord/reference/tools/#global-constraints)
+        """
+        n = _north()
+        n.add("GlobalConstraint", "co2", constant=5.0, carrier_attribute="co2")
+        n.set_scenarios(["a", "b"])
+        n.c.GlobalConstraint.static.loc[("b", "co2"), "carrier_attribute"] = "other"
+
+        built = PyPSA.build(export_network(n, store).record)
+        static = built.c.GlobalConstraint.static
+        assert static["carrier_attribute"].tolist() == ["co2", "other"]
+
+    @pytest.mark.parametrize(
         ("columns", "kind"),
         [
             ({"Bus": ("country", "DE")}, "property"),
@@ -1905,6 +1953,41 @@ class TestPyPSA:
             revision = _results_over(revision, n)
         built = PyPSA.build(revision.record)
         assert built.c.GlobalConstraint.static["mu"].tolist() == second
+
+    @pytest.mark.parametrize(
+        "labels",
+        [
+            pytest.param({}, id="removed"),
+            pytest.param({"bus": ["north"]}, id="selected"),
+        ],
+    )
+    def test_a_re_solve_leaves_the_result_of_a_global_constraint_it_lacks(
+        self, store, labels
+    ):
+        """A re-solve without one of `base`'s global constraints, removed from the network or dropped with its bus by a selection, writes its own `mu` and leaves `base`'s for that one.
+
+        Notes
+        -----
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        """
+        n = _north()
+        n.add("Bus", "south")
+        n.add("GlobalConstraint", ["at north", "at south"], bus=["north", "south"])
+        revision = export_network(n, store)
+        solved = PyPSA.build(revision.record)
+        solved.c.GlobalConstraint.static["mu"] = [1.0, 2.0]
+        base = _results_over(revision, solved)
+
+        part = PyPSA.build(base.record.select(**labels) if labels else base.record)
+        if not labels:
+            part.remove("GlobalConstraint", "at south")
+        part.c.GlobalConstraint.static["mu"] = [5.0]
+        resolved = _results_over(base, part, **labels)
+
+        mu = PyPSA.build(resolved.record).c.GlobalConstraint.static["mu"].to_dict()
+        assert mu == {"at north": 5.0, "at south": 2.0}, (
+            "`base` keeps the `mu` of the constraint the re-solve lacks"
+        )
 
     @pytest.mark.slow
     @pytest.mark.parametrize(
@@ -3419,6 +3502,28 @@ class TestPyPSA:
         record = export_network(n, store).record
         built = PyPSA.build(record.select(carrier=["AC"]))
         assert built.c.Load.static.index.tolist() == ["London"]
+
+    def test_a_global_constraint_goes_with_its_bus(self, store):
+        """A constraint whose `bus` the selection drops goes, and one at no bus stays.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
+        """
+        n = _north()
+        n.add("Bus", "south")
+        n.add(
+            "GlobalConstraint",
+            ["at north", "at south", "anywhere"],
+            bus=["north", "south", ""],
+            constant=1.0,
+        )
+        record = export_network(n, store).record
+        built = PyPSA.build(record.select(bus=["north"]))
+        assert built.c.GlobalConstraint.static.index.tolist() == [
+            "at north",
+            "anywhere",
+        ]
 
     @pytest.mark.parametrize("period", [2030, 2040])
     @pytest.mark.slow

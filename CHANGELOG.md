@@ -278,6 +278,12 @@ All notable changes to datarecord are documented here. The format follows
   static `p_nom` that differs per scenario round-trips (#28). A keyed
   `set("p_nom", {...})` is then open in `entity` and `scenario`; pass the
   labels as `entity=[...]` or as a series indexed by `entity`.
+- Breaking: the PyPSA tool writes a `GlobalConstraint` as a label of the dim
+  `global_constraint`, not as an entity, and writes no `connection` for its
+  `bus`. `type` and `bus` are its properties, `bus` naming a label of `bus`;
+  `investment_period`, `carrier_attribute`, `sense`, `constant` and the result
+  `mu` are over `global_constraint`. A constraint may share its name with an
+  entity, and `ctype` no longer lists `GlobalConstraint`.
 
 - A workspace validates each distinct schema once. Revisions sharing a schema
   hand out one `Schema` object, so reading a long lineage no longer re-runs the
