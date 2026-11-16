@@ -706,6 +706,35 @@ def test_the_owner_map_view_follows_a_working_records_edits(workspace, small, wo
         )
 
 
+def _set_efficiency(working):
+    working.add("connection", [{"entity": "Norway Wind", "bus": "Norway"}])
+    working.set("efficiency", 0.5, entity="Norway Wind", bus="Norway")
+
+
+@pytest.mark.parametrize(
+    ("attribute", "edit"),
+    [
+        ("p_nom", lambda w: w.set("p_nom", 1.0, entity="Norway Wind")),
+        ("e_nom", lambda w: w.set("e_nom", 10.0, entity="Norway Wind")),
+        ("efficiency", _set_efficiency),
+    ],
+    ids=["in the frozen map", "outside it", "over a multi-dimension"],
+)
+def test_the_owner_map_view_follows_an_attribute_staged_after_register(
+    working, attribute, edit
+):
+    """`working` registers before any edit, so its staged layer then holds no attribute."""
+    edit(working)
+    staged = working.con.sql(
+        "SELECT count(*) FROM datarecord.edit.owner_map"
+        " WHERE attribute = ? AND layer_uuid = ?",
+        params=[attribute, working._layer_id],
+    ).fetchall()
+
+    assert staged == [(1,)], "the view holds the staged layer's row"
+    assert _owner_map(working.con, "edit") == _rows(working._fold.owner_map)
+
+
 def test_a_working_record_of_many_attributes_registers_its_owner_map(store):
     """An attribute a frozen layer holds adds some 16 CTEs to the map, which 70 take past DuckDB's default depth."""
     many = {f"a{i}": AttributeSpec(dtype="float", dims={"entity"}) for i in range(70)}

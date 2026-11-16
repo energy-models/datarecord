@@ -206,14 +206,18 @@ def _uncovered_by(
 
     Each row of `kept` is expanded into one copy per subset of the set of
     dimensions it sets, keyed by its labels there, which an own row naming exactly that
-    subset equals: one semi-join finds the covered rows, one anti-join drops
-    them.
+    subset equals. A left join marks the covered copies, and a window over
+    the copies of each row's index keeps the row, as its copy over every
+    dimension it sets, where none is covered.
+
+    `kept` is read once, on the left, and the window is partitioned by the
+    index, so a filter on `attribute` or a dimension reaches every scan of
+    `kept`, which the right side of a semi- or anti-join would not carry.
     """
     dims = schema.partial_dimensions
+    columns = kept.columns
     probe = _expanded(
-        kept.project(col("attribute"), *map(col, dims)),
-        schema,
-        sql("list_filter(range(_p + 1), lambda x: (x & _p) = x)"),
+        kept, schema, sql("list_filter(range(_p + 1), lambda x: (x & _p) = x)")
     )
     keys = own.project(
         col("attribute").alias("_o_attribute"),
@@ -227,11 +231,14 @@ def _uncovered_by(
             *(_same(f"_k_{d}", f"_o__k_{d}") for d in dims),
         ]
     )
-    covered = probe.join(keys, on, how="semi").project(
-        *(col(c).alias(f"_c_{c}") for c in ("attribute", *dims))
+    index = [col("attribute"), *map(col, dims)]
+    covered = fn.bool_or(col("_o__p").isnotnull()).over(partition_by=index)
+    marked = probe.join(keys, on, how="left").project(
+        *map(col, columns), col("_x"), col("_p"), covered.alias("_covered")
     )
-    gone = ex_all(_same(c, f"_c_{c}") for c in ("attribute", *dims))
-    return kept.join(covered, gone, how="anti")
+    return marked.filter((col("_x") == col("_p")) & ~col("_covered")).project(
+        *map(col, columns)
+    )
 
 
 def _same(a: str, b: str) -> Expression:

@@ -55,6 +55,7 @@ from datarecord.resolve.owner_map import (
     source_for,
     split_frozen,
 )
+from datarecord.resolve.owner_map_rows import shapes
 from datarecord.resolve.sources import LayerSource
 from datarecord.schema.categories import with_properties
 from datarecord.schema.schema import LAYER_COLUMN, Schema, with_columns
@@ -901,8 +902,7 @@ class Record:
 
         A plan that reads every later edit, which the whole map's does not:
         that folds only the attributes the staged layer holds when planned.
-        So it is built once per thread, and `register` shares it between the
-        attribute's view and the owner map's.
+        So it is built once per thread.
 
         Notes
         -----
@@ -924,13 +924,12 @@ class Record:
     def _owner_map(self) -> DuckDBPyRelation:
         """Return the owner map `register` creates a view of, a table scan where every source is frozen.
 
-        Above the frozen layers, a `UNION ALL BY NAME` of `_owners_of` per
-        declared attribute, so its plan reads every later edit and DuckDB
-        prunes the branches a filter on `attribute` excludes. Each branch is
+        Above the frozen layers, a `UNION ALL BY NAME` of one fold per shape,
+        each over every declared attribute of its shape, held by the staged
+        layer yet or not, so its plan reads every later edit. Each branch is
         rendered as a statement of its own, its CTEs in a `WITH` list of their
         own: DuckDB's binder needs a depth of about the number of CTEs in one
-        list, which one rendering of the whole union takes past the default
-        `max_expression_depth` of 1000 at some 70 attributes.
+        list.
 
         Notes
         -----
@@ -939,7 +938,10 @@ class Record:
         """
         if self.frozen or not self.schema.attributes:
             return self._fold.owner_map
-        arms = (_text(self._owners_of(a)) for a in self.schema.attributes)
+        frozen_map, axes = self._frozen_map, self._frozen_axes
+        by_shape = shapes(self.schema, self.schema.attributes).values()
+        held = [{a: a in self._frozen_owners for a in names} for names in by_shape]
+        arms = (_text(_table(frozen_map, self.sources, axes, h)) for h in held)
         return self.con.sql("\nUNION ALL BY NAME\n".join(f"({arm})" for arm in arms))
 
     def _owners(self, attribute: str) -> _Owners:
