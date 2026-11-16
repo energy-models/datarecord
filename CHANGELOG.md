@@ -641,6 +641,11 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- On S3, a directory exists by a key under it alone. On SeaweedFS, which keeps
+  the directory a cleanup emptied, `cleanup(ids=...)` naming that layer again
+  raises `ValueError` before it deletes anything, rather than deleting the
+  other layers named and then failing with `FileNotFoundError`, and
+  `Workspace.write` to a URI whose keys were all deleted no longer refuses it.
 - `PyPSA.build` refuses a record whose rows of an attribute hold several
   labels of a dimension PyPSA's registry declares it without, such as a generator's
   `marginal_cost` over `period` in a multi-period record, rather than keeping

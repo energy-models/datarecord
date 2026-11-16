@@ -255,6 +255,7 @@ store.cleanup(older_than=timedelta(days=14))
 ```
 
 `cleanup` takes exactly one of `ids` and `older_than`, and raises `ValueError` before it deletes anything if an id is not pending.
+On S3, a layer directory holding no key, as SeaweedFS keeps one after a cleanup, is no pending layer.
 It checks each layer for a manifest again right before deleting it, without a lock.
 A cleanup that races a commit can still delete a layer that is committing, so pass ids or an age that match no running job.
 

@@ -178,7 +178,7 @@ def test_a_workspace_on_a_callers_connection_keeps_its_unnamed_secret(bucket):
     ws = Workspace(con=caller)
     ws.store(f"{bucket}/record")
     names = {n for (n,) in caller.sql("SELECT name FROM duckdb_secrets()").fetchall()}
-    assert len(names) == 2 and "datarecord_s3" in names, (
+    assert {"__default_s3", "datarecord_s3"} <= names, (
         "the workspace's secret sits beside the caller's, not in its place"
     )
     ws.close()
@@ -235,7 +235,11 @@ def test_a_write_failing_part_way_leaves_a_pending_layer_to_clean_up(workspace, 
     assert [str(c.id) for c in store.claims()] == [pending]
 
     assert store.cleanup(older_than=timedelta(0)) == [UUID(pending)]
-    assert store.files.list(f"{store.uri}/layers/") == [], "every key under it went"
+    assert not store.files.exists(store.layer_dir(UUID(pending))), (
+        "every key under it went, though SeaweedFS keeps the directory"
+    )
+    with pytest.raises(ValueError, match=pending):
+        store.cleanup(ids=[UUID(pending)])
 
 
 def test_a_standalone_write_to_a_non_empty_uri_is_refused(workspace, bucket):

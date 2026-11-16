@@ -913,7 +913,9 @@ class Store:
     def _scan(self) -> set[UUID]:
         """List `layers/` once, cache each manifest not yet held, and return the pending ids.
 
-        A pending layer is one listed without a manifest.
+        A pending layer is one listed without a manifest whose directory
+        exists: SeaweedFS lists the directory a cleanup emptied, where S3
+        lists nothing.
         """
         held = {
             row[0]
@@ -927,7 +929,8 @@ class Store:
         for id, manifest in read.items():
             if manifest is not None:
                 self._cache_upward(id, read)
-        return {id for id, m in read.items() if m is None}
+        unmanifested = [id for id, m in read.items() if m is None]
+        return {id for id in unmanifested if self.files.exists(self.layer_dir(id))}
 
     def revisions(self, *, meta: Meta | None = None) -> list[Revision]:
         """Every revision in this store whose `meta` holds each pair of `meta`, unordered.
