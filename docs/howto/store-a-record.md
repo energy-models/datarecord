@@ -73,7 +73,7 @@ store = ws.store("s3://bucket/my-record")
 record = ws.at("s3://bucket/out/")
 ```
 
-The credentials and the endpoint come from the AWS environment variables and config files. Set `AWS_ENDPOINT_URL` to connect to a self-hosted server, which must honour conditional writes.
+The credentials and the endpoint come from the AWS environment variables and config files. Set `AWS_ENDPOINT_URL` to connect to a self-hosted server, which must honour conditional writes. To pass a key that the environment must not contain, give the workspace [`S3Credentials`](../reference/store.md#s3-credentials).
 
 ## Read from several threads
 
