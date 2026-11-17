@@ -62,6 +62,7 @@ from datarecord.store.manifest import (
 )
 from datarecord.store.materialise import materialise, sources_to_read
 from datarecord.store.write import layer_data, write_layer
+from datarecord.templates import Templates
 
 #: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
 _SECRET = "datarecord_s3"
@@ -243,6 +244,12 @@ class Workspace:
     duckdb.BinderException
         If `name` is a database already attached to the connection.
 
+    Attributes
+    ----------
+    templates
+        The SQL text of each read its records build, kept once for every
+        thread (`datarecord.templates`).
+
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
@@ -283,6 +290,7 @@ class Workspace:
         self._credentials = credentials
         self._remote: Files | None = None
         self._remote_lock = threading.Lock()
+        self.templates = Templates(self)
 
     @property
     def con(self) -> DuckDBPyConnection:
