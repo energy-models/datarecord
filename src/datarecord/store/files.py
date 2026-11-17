@@ -18,6 +18,8 @@ from __future__ import annotations
 import os
 import shutil
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -123,6 +125,10 @@ class RemoteFiles:
     ------
     ImportError
         If boto3 is not installed: it comes with `datarecord[remote]`.
+    PermissionError
+        From any method the server answers with 403, and from `delete` where
+        every key it fails on is `AccessDenied`. Without ListBucket on the
+        prefix, S3 answers 403 for an absent key too.
 
     Notes
     -----
@@ -148,29 +154,41 @@ class RemoteFiles:
     def _status(e: Any) -> int:
         return e.response["ResponseMetadata"]["HTTPStatusCode"]
 
+    @contextmanager
+    def _permitted(self, uri: str) -> Iterator[None]:
+        """Raise a 403 from the S3 calls inside as a `PermissionError` naming `uri`."""
+        try:
+            yield
+        except self._error as e:
+            if self._status(e) == 403:
+                msg = f"access to {uri} denied: {e}"
+                raise PermissionError(msg) from e
+            raise
+
     def read_text(self, uri: str) -> str | None:
         bucket, key = _split(uri)
-        try:
-            got = self._s3.get_object(Bucket=bucket, Key=key)
-        except self._error as e:
-            # 403 too: S3 answers a missing key so without ListBucket.
-            if self._status(e) in (403, 404):
-                return None
-            raise
+        with self._permitted(uri):
+            try:
+                got = self._s3.get_object(Bucket=bucket, Key=key)
+            except self._error as e:
+                if self._status(e) == 404:
+                    return None
+                raise
         return got["Body"].read().decode()
 
     def create(self, uri: str, text: str) -> None:
         bucket, key = _split(uri)
-        try:
-            self._s3.put_object(
-                Bucket=bucket, Key=key, Body=text.encode(), IfNoneMatch="*"
-            )
-        except self._error as e:
-            # 409 is a conditional write racing another on the same key.
-            if self._status(e) in (409, 412):
-                msg = f"{uri} already exists: {e}"
-                raise PreconditionFailedError(msg) from e
-            raise
+        with self._permitted(uri):
+            try:
+                self._s3.put_object(
+                    Bucket=bucket, Key=key, Body=text.encode(), IfNoneMatch="*"
+                )
+            except self._error as e:
+                # 409 is a conditional write racing another on the same key.
+                if self._status(e) in (409, 412):
+                    msg = f"{uri} already exists: {e}"
+                    raise PreconditionFailedError(msg) from e
+                raise
 
     def list(self, prefix: str) -> list[str]:
         bucket, key = _split(prefix)
@@ -180,28 +198,28 @@ class RemoteFiles:
         pages = self._s3.get_paginator("list_objects_v2").paginate(
             Bucket=bucket, Prefix=key, Delimiter="/"
         )
-        for page in pages:
-            names += [o["Key"][len(key) :] for o in page.get("Contents", [])]
-            names += [
-                p["Prefix"][len(key) :].rstrip("/")
-                for p in page.get("CommonPrefixes", [])
-            ]
+        with self._permitted(prefix):
+            for page in pages:
+                names += [o["Key"][len(key) :] for o in page.get("Contents", [])]
+                names += [
+                    p["Prefix"][len(key) :].rstrip("/")
+                    for p in page.get("CommonPrefixes", [])
+                ]
         return [n for n in names if n]
 
     def exists(self, uri: str) -> bool:
         """An object at `uri`, or any under it, as a local directory exists."""
         bucket, key = _split(uri)
-        try:
-            self._s3.head_object(Bucket=bucket, Key=key)
-            return True
-        except self._error as e:
-            # S3 answers 403 rather than 404 for a missing key when the caller
-            # lacks ListBucket, so 403 is a miss too.
-            if self._status(e) not in (403, 404):
-                raise
-        listed = self._s3.list_objects_v2(
-            Bucket=bucket, Prefix=key.rstrip("/") + "/", MaxKeys=1
-        )
+        with self._permitted(uri):
+            try:
+                self._s3.head_object(Bucket=bucket, Key=key)
+                return True
+            except self._error as e:
+                if self._status(e) != 404:
+                    raise
+            listed = self._s3.list_objects_v2(
+                Bucket=bucket, Prefix=key.rstrip("/") + "/", MaxKeys=1
+            )
         return listed.get("KeyCount", 0) > 0
 
     def delete(self, prefix: str) -> None:
@@ -209,13 +227,20 @@ class RemoteFiles:
         pages = self._s3.get_paginator("list_objects_v2").paginate(
             Bucket=bucket, Prefix=key
         )
-        keys = [{"Key": o["Key"]} for page in pages for o in page.get("Contents", [])]
-        if not keys:
-            msg = f"nothing under {prefix} to delete"
-            raise FileNotFoundError(msg)
-        for start in range(0, len(keys), 1000):
-            batch = {"Objects": keys[start : start + 1000]}
-            done = self._s3.delete_objects(Bucket=bucket, Delete=batch)
-            if done.get("Errors"):
-                msg = f"deleting under {prefix} failed: {done['Errors']}"
-                raise OSError(msg)
+        with self._permitted(prefix):
+            keys = [
+                {"Key": o["Key"]} for page in pages for o in page.get("Contents", [])
+            ]
+            if not keys:
+                msg = f"nothing under {prefix} to delete"
+                raise FileNotFoundError(msg)
+            for start in range(0, len(keys), 1000):
+                batch = {"Objects": keys[start : start + 1000]}
+                done = self._s3.delete_objects(Bucket=bucket, Delete=batch)
+                errors = done.get("Errors", [])
+                if errors and all(e["Code"] == "AccessDenied" for e in errors):
+                    msg = f"deleting under {prefix} denied: {errors}"
+                    raise PermissionError(msg)
+                if errors:
+                    msg = f"deleting under {prefix} failed: {errors}"
+                    raise OSError(msg)

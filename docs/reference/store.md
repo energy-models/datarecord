@@ -126,6 +126,13 @@ Locally it writes under a temporary name and hard-links the file into place, so 
 
 An `s3://` URI needs the optional extra `datarecord[remote]`, which installs the boto3 package.
 Remotely, `create` is a `put_object` with `IfNoneMatch="*"`, which the server must honour, as AWS S3 does and SeaweedFS does from version 4.18 on.
+Remotely, a key the server answers with `404` is a miss, and a call it answers with `403` raises `PermissionError` naming the key or prefix.
+So does a `delete` whose every failed key S3 reports as `AccessDenied`.
+A caller needs `s3:ListBucket` on the store's prefix.
+Without it S3 refuses every listing, so `revisions`, `claims` and `cleanup`, which each list `layers/`, always raise.
+S3 then answers `403` for every absent key too, so every miss raises.
+A fold looks for the owner map of the revision it folds, and that map is absent unless the revision was materialised, so folding such a revision, the usual case, raises too.
+On S3 a denied read never counts as absent data, so `cleanup` deletes no layer after one.
 Credentials and the endpoint come from the AWS environment and config files.
 Where `AWS_ENDPOINT_URL` is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.
 The secret is named `datarecord_s3`, so on a connection shared with its caller it replaces none of the caller's secrets.
