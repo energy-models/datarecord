@@ -915,20 +915,19 @@ def split_frozen(
 
 
 def _table(
-    revision_id: UUID,
+    frozen_map: DuckDBPyRelation | None,
     sources: Sequence[LayerSource],
     frozen_axes: Axes,
     attributes: Mapping[str, bool] | None = None,
 ) -> DuckDBPyRelation:
-    """The owner map for `revision_id`, materialised as far as `frozen` allows, as a caller reads it (`_unstamped`).
+    """The owner map over `sources`, folded onto the frozen layers' `frozen_map` (`_frozen_table`), as a caller reads it (`_unstamped`).
 
-    The frozen layers are folded once and kept as a connection-scoped table,
-    which never needs invalidating since layers are write-once. Whatever follows
-    it is folded on top per call and handed back as a relation, so a staging
-    area's edits are picked up with no bookkeeping at all: a relation over a
-    staging table reads whatever the table holds when it is collected.
-    `frozen_axes` are the frozen layers' axes, which a restatement above
-    them removes labels from.
+    Whatever follows the frozen layers is folded on top per call and handed
+    back as a relation, so a staging area's edits are picked up with no
+    bookkeeping at all: a relation over a staging table reads whatever the
+    table holds when it is collected. `frozen_map` is `None` where no source
+    is frozen. `frozen_axes` are the frozen layers' axes, which a
+    restatement above them removes labels from.
 
     Parameters
     ----------
@@ -946,7 +945,7 @@ def _table(
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
     frozen, above = split_frozen(sources)
-    rel = _frozen_table(revision_id, frozen)
+    rel = frozen_map
     if rel is not None and attributes is None and not above:
         return _unstamped(rel)
     schema, con = sources[-1].schema, sources[-1].workspace.con
@@ -972,10 +971,13 @@ def _table(
 
 def _frozen_table(
     revision_id: UUID, sources: Sequence[LayerSource]
-) -> DuckDBPyRelation | None:
+) -> DuckDBPyRelation:
     """The frozen layers' owner map, its own materialised one or a cached fold, `_stamped`.
 
-    `None` over no source, so that the tail folds onto no map.
+    The frozen layers are folded once and kept as a connection-scoped table,
+    which never needs invalidating since layers are write-once. Each call
+    asks the catalog or the store for it, so a caller keeps the relation
+    rather than calling again (`Record._frozen_map`).
 
     Keyed by `revision_id` rather than by the layers: they *are* what that
     node resolves from, a staged source only ever being appended after it.
@@ -990,8 +992,6 @@ def _frozen_table(
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
-    if not sources:
-        return None
     last = sources[-1]
     con = last.workspace.con
     if isinstance(last, ParquetLayer) and last.layer_id == revision_id:
