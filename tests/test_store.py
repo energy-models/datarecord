@@ -719,18 +719,23 @@ def test_a_meta_float_is_finite(store):
 
 
 def test_a_claim_crosses_a_process_boundary(store):
-    """Serialised as its store's location and id, the rest read back from its claim file.
+    """Serialised with all five fields, or as its location and id read back from its claim file.
 
     Notes
     -----
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
     """
     root = store.commit(_p_nom(), parent=None)
     claim = store.claim(parent=root, meta={"run": "a"})
     dumped = claim.model_dump_json()
-    assert json.loads(dumped) == {"id": str(claim.id), "store": store.uri}
+    assert json.loads(dumped).keys() == {"id", "store", "parent", "meta", "created"}
+    short = json.dumps({"id": str(claim.id), "store": store.uri})
 
-    for back in (Claim.model_validate_json(dumped), pickle.loads(pickle.dumps(claim))):
+    for back in (
+        Claim.model_validate_json(dumped),
+        Claim.model_validate_json(short),
+        pickle.loads(pickle.dumps(claim)),
+    ):
         assert back.store is Workspace.process().store(store.uri)
         assert (back.id, back.parent, back.meta, back.created) == (
             claim.id,
@@ -742,6 +747,90 @@ def test_a_claim_crosses_a_process_boundary(store):
     assert store.revision(done.id).meta == {"run": "a", "ok": True}
     with pytest.raises(KeyError, match="No claim"):
         Claim.model_validate({"id": str(uuid4()), "store": store.uri})
+
+
+@pytest.mark.parametrize("form", ["full", "short"])
+def test_a_claim_rebuilds_on_a_store_the_caller_names(store, form):
+    """The full form is taken as it stands, without a read; the short form reads `claim.json`.
+
+    The payload's `meta` differs from the claim file's, so the commit shows
+    which one the rebuilt claim holds; its location has a trailing slash.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    claim = store.claim(parent=root, meta={"run": "a"})
+    full = {
+        **json.loads(claim.model_dump_json()),
+        "store": f"{store.uri}/",
+        "meta": {"run": "b"},
+    }
+    payload = full if form == "full" else {"id": full["id"], "store": full["store"]}
+    back = store.claim_from(json.dumps(payload))
+    assert back.store is store, "the named store, not the process workspace's"
+    assert (back.id, back.parent, back.created) == (claim.id, root.id, claim.created)
+    meta = {"run": "b"} if form == "full" else {"run": "a"}
+    assert back.meta == meta
+    assert back.commit(_p_nom(2.0)).meta == meta
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        ({"store": "elsewhere"}, ValueError),
+        ({"store": None}, ValueError),
+        ({"store": 5}, ValueError),
+        ("[1]", ValueError),
+        ("5", ValueError),
+        ({"id": str(uuid4())}, KeyError),
+        ({"parent": None}, ValidationError),
+        (
+            {"parent": None, "meta": {}, "created": "2026-11-05T17:37:14"},
+            ValidationError,
+        ),
+    ],
+    ids=[
+        "another-store",
+        "no-store",
+        "store-no-string",
+        "a-list",
+        "a-number",
+        "no-claim",
+        "a-field-missing",
+        "created-naive",
+    ],
+)
+def test_a_claim_from_a_bad_payload_is_refused(store, payload, error):
+    """Over a short form `{id, store}` of a pending claim, or JSON text as it stands.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
+    """
+    claim = store.claim(parent=None)
+    short = {"id": str(claim.id), "store": store.uri}
+    text = payload if isinstance(payload, str) else json.dumps({**short, **payload})
+    with pytest.raises(error):
+        store.claim_from(text)
+
+
+def test_a_claim_on_a_pending_parent_commits_after_it(store):
+    """A chain claimed up front commits in order, and a child before its parent waits.
+
+    Notes
+    -----
+    - [the claim](https://energy-models.github.io/datarecord/reference/store/#claim)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    first = store.claim(parent=root)
+    second = store.claim(parent=first)
+    with pytest.raises(KeyError, match=str(first.id)):
+        second.commit(_p_nom(3.0))
+    assert sorted(_pending(store)) == sorted([str(first.id), str(second.id)])
+    first.commit(_p_nom(2.0))
+    assert second.commit(_p_nom(3.0)).ancestry() == [root.id, first.id, second.id]
 
 
 @pytest.mark.parametrize(
