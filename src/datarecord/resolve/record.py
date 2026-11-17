@@ -58,7 +58,7 @@ from datarecord.resolve.owner_map import (
 )
 from datarecord.resolve.owner_map_rows import shapes
 from datarecord.resolve.sources import LayerSource
-from datarecord.resolve.sql_text import Template, template, text
+from datarecord.resolve.sql_text import Template, filled, text
 from datarecord.schema.categories import with_properties
 from datarecord.schema.schema import LAYER_COLUMN, Schema, with_columns
 from datarecord.select import Selection, select
@@ -344,11 +344,6 @@ def _resolved(
         both.filter(col("_contested")).project(*kept, col("_named")), plan.dims
     )
     return _living(alone.union(ranked), dead, outside_index)
-
-
-def _typed(rel: DuckDBPyRelation) -> tuple[tuple[str, str], ...]:
-    """`rel`'s column names and types, which a `_resolved` template is kept by."""
-    return tuple(zip(rel.columns, map(str, rel.types), strict=True))
 
 
 def _empty_long(
@@ -973,12 +968,9 @@ class Record:
             return self._empty_text(attribute)
         values = union_all_by_name(layers)
         plan = _Plan(columns, dims, broadcast_over, tuple(ways.items()), contested)
-        key = (plan, _typed(values), _typed(om))
+        build = partial(_resolved, dead=dead, schema=schema, plan=plan)
         templates = self._per_cursor.templates
-        if key not in templates:
-            build = partial(_resolved, dead=dead, schema=schema, plan=plan)
-            templates[key] = template(con, build, values=values, om=om)
-        return templates[key].filled(values=values, om=om)
+        return filled(templates, plan, con, build, values=values, om=om)
 
     def _empty_text(self, attribute: str) -> str:
         """Return the text of `_empty_long` of `attribute`, kept per thread by its columns' types."""
