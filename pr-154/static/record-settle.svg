@@ -1,0 +1,109 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 250" width="780" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="rs-t rs-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rs-t">Settling p_max_pu over the generators</title>
+  <desc id="rs-d">The attribute p_max_pu has rows for wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and one row with entity and snapshot NULL and value 1.0. settle takes labels for entity alone, the generators wind and gas. The NULL row expands over them, so gas and wind each get a row at snapshot NULL with 1.0. snapshot is not in labels, so it stays as written: wind keeps its series beside its row at snapshot NULL. dc is no generator, so it has no row.</desc>
+  <defs>
+    <marker id="rs-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rs-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H213 A3,3 0 0 1 216,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,54 H216 V72 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H216 V90 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H216 V108 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,108 H216 V123 A3,3 0 0 1 213,126 H19 A3,3 0 0 1 16,123 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,194 V175 A3,3 0 0 1 19,172 H105 A3,3 0 0 1 108,175 V194 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,194 H108 V212 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,212 H108 V227 A3,3 0 0 1 105,230 H19 A3,3 0 0 1 16,227 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M476,54 V35 A3,3 0 0 1 479,32 H673 A3,3 0 0 1 676,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <path d="M476,54 H676 V72 H476 Z" fill="#009E73" fill-opacity="0.08"/>
+    <path d="M476,72 H676 V90 H476 Z" fill="#009E73" fill-opacity="0.08"/>
+    <path d="M476,90 H676 V108 H476 Z" fill="#009E73" fill-opacity="0.08"/>
+    <path d="M476,108 H676 V126 H476 Z" fill="#009E73" fill-opacity="0.08"/>
+    <path d="M476,126 H676 V141 A3,3 0 0 1 673,144 H479 A3,3 0 0 1 476,141 Z" fill="#009E73" fill-opacity="0.08"/>
+    <rect x="476" y="196" width="14" height="14" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="476" y="220" width="14" height="14" fill="#009E73" fill-opacity="0.2"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">attribute rows</text>
+    <text x="142" y="22" fill-opacity="0.75">p_max_pu</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="24" y="47" font-weight="bold">entity</text>
+    <text x="88" y="47" font-weight="bold">snapshot</text>
+    <text x="166" y="47" font-weight="bold">value</text>
+    <text x="24" y="67">wind</text>
+    <text x="88" y="67">0</text>
+    <text x="166" y="67">0.3</text>
+    <text x="24" y="85">wind</text>
+    <text x="88" y="85">1</text>
+    <text x="166" y="85">0.8</text>
+    <text x="24" y="103">wind</text>
+    <text x="88" y="103">2</text>
+    <text x="166" y="103">0.5</text>
+    <text x="24" y="121">NULL</text>
+    <text x="88" y="121">NULL</text>
+    <text x="166" y="121">1.0</text>
+    </g>
+    <text x="16" y="162" font-weight="bold">labels</text>
+    <text x="68" y="162" fill-opacity="0.75">entity</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="24" y="187" font-weight="bold">entity</text>
+    <text x="24" y="207">wind</text>
+    <text x="24" y="225">gas</text>
+    </g>
+    <text x="476" y="22" font-weight="bold">settled rows</text>
+    <text x="582" y="22" fill-opacity="0.75">over entity</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="484" y="47" font-weight="bold">entity</text>
+    <text x="548" y="47" font-weight="bold">snapshot</text>
+    <text x="626" y="47" font-weight="bold">value</text>
+    <text x="484" y="67">gas</text>
+    <text x="548" y="67">NULL</text>
+    <text x="626" y="67">1.0</text>
+    <text x="484" y="85">wind</text>
+    <text x="548" y="85">0</text>
+    <text x="626" y="85">0.3</text>
+    <text x="484" y="103">wind</text>
+    <text x="548" y="103">1</text>
+    <text x="626" y="103">0.8</text>
+    <text x="484" y="121">wind</text>
+    <text x="548" y="121">2</text>
+    <text x="626" y="121">0.5</text>
+    <text x="484" y="139">wind</text>
+    <text x="548" y="139">NULL</text>
+    <text x="626" y="139">1.0</text>
+    </g>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="200" height="94" rx="3"/>
+    <line x1="16" y1="54" x2="216" y2="54"/>
+    <rect x="16" y="172" width="92" height="58" rx="3"/>
+    <line x1="16" y1="194" x2="108" y2="194"/>
+    <rect x="476" y="32" width="200" height="112" rx="3"/>
+    <line x1="476" y1="54" x2="676" y2="54"/>
+    <rect x="476" y="196" width="14" height="14"/>
+    <rect x="476" y="220" width="14" height="14"/>
+    <rect x="476" y="152" width="200" height="18" rx="3" stroke-dasharray="4 3"/>
+    <path d="M108,212 H250 V99"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rs-arrow)">
+    <path d="M216,99 H468"/>
+  </g>
+  <g fill="currentColor">
+    <text x="262" y="124" font-size="12" font-weight="bold">settle</text>
+    <text x="262" y="140" font-size="12" fill-opacity="0.75">NULL entity takes wind and gas,</text>
+    <text x="262" y="156" font-size="12" fill-opacity="0.75">snapshot stays as written</text>
+    <text x="684" y="67" font-size="12">from NULL row</text>
+    <text x="684" y="139" font-size="12">from NULL row</text>
+    <text x="484" y="165" font-size="12">no row: dc is no generator</text>
+    <text x="496" y="207" font-size="12">rows and labels given</text>
+    <text x="496" y="231" font-size="12">settled rows</text>
+  </g>
+</svg>
