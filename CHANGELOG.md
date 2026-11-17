@@ -325,6 +325,9 @@ All notable changes to datarecord are documented here. The format follows
   attribute's own rows and map rows into that SQL text. Before, it built every
   attribute's read step by step, and DuckDB bound each step.
   `record.attributes[name]` and the registered view are that text, bound once.
+  A frozen record keeps its fold per thread, and an attribute no layer holds
+  gets the text of an empty view, kept per set of column types, before any of
+  its map rows are built.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is

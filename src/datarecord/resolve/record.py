@@ -65,6 +65,8 @@ from datarecord.select import Selection, select
 from datarecord.settle import most_specific
 
 if TYPE_CHECKING:
+    from duckdb.sqltypes import DuckDBPyType
+
     from datarecord.store.store import Workspace
 
 
@@ -358,11 +360,16 @@ def _empty_long(
     -----
     - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     """
+    return empty_relation(con, **_long_types(schema, attribute))
+
+
+def _long_types(schema: Schema, attribute: str) -> dict[str, DuckDBPyType]:
+    """`attribute`'s long columns and their declared types, VARCHAR where none is declared."""
     types = {
         c: schema.value_type(attribute) if c == "value" else schema.column_type(c)
         for c in schema.long_columns_for(attribute)
     }
-    return empty_relation(con, **{c: t or sqltypes.VARCHAR for c, t in types.items()})
+    return {c: t or sqltypes.VARCHAR for c, t in types.items()}
 
 
 def _empty_axis(schema: Schema, dim: str, con: DuckDBPyConnection) -> DuckDBPyRelation:
@@ -479,6 +486,8 @@ class _PerCursor(threading.local):
         self.restated: list[Restated] | None = None
         self.owners_of: dict[str, DuckDBPyRelation] = {}
         self.templates: dict[Hashable, Template] = {}
+        self.empty: dict[tuple[tuple[str, str], ...], str] = {}
+        self.fold: Fold | None = None
 
 
 @dataclass(frozen=True)
@@ -576,8 +585,8 @@ class Record:
         """Refuse a closed record before DuckDB finds its tables gone.
 
         Called where a read starts from a per-thread cache: `_frozen_axes`,
-        `_frozen_map` and `_owners_of`. A subclass says what it lost in
-        `_closed_message`.
+        `_frozen_map`, `_fold` and `_owners_of`. A subclass says what it lost
+        in `_closed_message`.
 
         Raises
         ------
@@ -864,12 +873,20 @@ class Record:
     def _fold(self) -> Fold:
         """Return the folded axes and the owner map as one `Fold`.
 
+        Kept per thread where every source is frozen, so it cannot go stale.
+
         Notes
         -----
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        owner_map = _table(self._frozen_map, self.sources, self._restated)
-        return Fold(self._axes, owner_map)
+        self._require_open()
+        cache = self._per_cursor
+        if cache.fold is not None:
+            return cache.fold
+        fold = Fold(self._axes, _table(self._frozen_map, self.sources, self._restated))
+        if self.frozen:
+            cache.fold = fold
+        return fold
 
     def _source_for(self, layer_uuid: UUID) -> LayerSource:
         """Return the source the fold stamped `layer_uuid` from.
@@ -924,6 +941,9 @@ class Record:
         """
         con = self.con
         schema = self.schema
+        owners, contested, ways = self._owners(attribute)
+        if not owners:
+            return self._empty_text(attribute)
         if self._fixed:
             om = self._owners_of(attribute)
             dead = self._axes.dead
@@ -942,7 +962,6 @@ class Record:
         # rest (https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule).
         dims = schema.dimensions_of(attribute)
         broadcast_over = tuple(d for d in schema.partial_dimensions if d in dims)
-        owners, contested, ways = self._owners(attribute)
         layers: list[DuckDBPyRelation] = []
         for layer_uuid in owners:
             rel = owned_rows(self._source_for(layer_uuid), attribute)
@@ -951,7 +970,7 @@ class Record:
             rel = with_columns(schema, rel, *columns)
             layers.append(rel.project(lit(layer_uuid).alias(LAYER_COLUMN), star()))
         if not layers:
-            return text(_empty_long(schema, attribute, con))
+            return self._empty_text(attribute)
         values = union_all_by_name(layers)
         plan = _Plan(columns, dims, broadcast_over, tuple(ways.items()), contested)
         key = (plan, _typed(values), _typed(om))
@@ -960,6 +979,15 @@ class Record:
             build = partial(_resolved, dead=dead, schema=schema, plan=plan)
             templates[key] = template(con, build, values=values, om=om)
         return templates[key].filled(values=values, om=om)
+
+    def _empty_text(self, attribute: str) -> str:
+        """Return the text of `_empty_long` of `attribute`, kept per thread by its columns' types."""
+        typed = _long_types(self.schema, attribute)
+        key = tuple((c, str(t)) for c, t in typed.items())
+        empty = self._per_cursor.empty
+        if key not in empty:
+            empty[key] = text(empty_relation(self.con, **typed))
+        return empty[key]
 
     def _owners_of(self, attribute: str) -> DuckDBPyRelation:
         """Return the owner map's rows of `attribute`, folded above the frozen layers on their own.
