@@ -352,9 +352,10 @@ All notable changes to datarecord are documented here. The format follows
   to every staged axis, then filtering and projecting once, rather than with a
   join, a filter and a projection per dimension.
 - A record builds the read of an attribute once per plan and set of column
-  types, over row-less stand-ins of its rows and map rows, and writes each
-  attribute's own rows and map rows into that SQL text. Before, it built every
-  attribute's read step by step, and DuckDB bound each step.
+  types, over the rows and map rows of the first attribute it reads, and
+  writes each later attribute's own rows and map rows into that SQL text where
+  the first one's were. Before, it built every attribute's read step by step,
+  and DuckDB bound each step.
   `record.attributes[name]` and the registered view are that text, bound once.
   A frozen record keeps its fold per thread, and an attribute no layer holds
   gets the text of an empty view, kept per set of column types, before any of
