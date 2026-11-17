@@ -306,9 +306,14 @@ All notable changes to datarecord are documented here. The format follows
 ### Changed
 
 - A record finds its frozen layers' owner map once per thread rather than
-  once per attribute read, and a `WorkingRecord` builds each attribute's
-  owner-map rows once for both its view and `name.owner_map`. So
-  `register` asks DuckDB's catalog once rather than twice per attribute.
+  once per attribute read. So `register` asks DuckDB's catalog once rather
+  than twice per attribute.
+- A `WorkingRecord`'s `name.owner_map` view folds the staged layer onto the
+  base's map once per shape rather than once per attribute. Its plan is a
+  few folds instead of one per attribute, which DuckDB optimises in a
+  fraction of the time. A filter on `attribute` still reaches every scan of
+  the base's map, and one on a dimension now reaches all but one scan per
+  shape over two or more dimensions in `partial`.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is
