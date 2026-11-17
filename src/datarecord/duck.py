@@ -27,7 +27,7 @@ import operator
 import sys
 import time
 import weakref
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, suppress
 from functools import partial, reduce
 from pathlib import Path
@@ -228,6 +228,11 @@ def null_pattern(dims: Sequence[str], alias: str | None = None) -> Expression:
         ),
         lit(0),
     )
+
+
+def pattern(dims: Iterable[str], named: Container[str]) -> int:
+    """The `null_pattern` of a row naming exactly those of `dims` in `named`."""
+    return sum(1 << i for i, d in enumerate(dims) if d in named)
 
 
 def is_frame(value: Any) -> bool:
