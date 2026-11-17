@@ -516,6 +516,16 @@ def test_credentials_on_a_local_workspace_set_up_no_secret(workspace, tmp_path):
     assert ("datarecord_s3",) not in names
 
 
+def test_a_key_for_its_layer_is_refused_on_a_local_store(store):
+    claim = store.claim(parent=None)
+    with pytest.raises(ValueError, match="is local, so it takes no S3 credentials"):
+        claim.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long()}),
+            credentials=S3Credentials(_KEY_ID, _SECRETS[0]),
+        )
+    assert store.claims() == [claim], "the layer stays pending"
+
+
 def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
     """A layer holding a claim and data but no manifest is no revision, but a claim.
 
