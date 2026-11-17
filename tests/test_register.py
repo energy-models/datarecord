@@ -21,15 +21,17 @@ import pytest
 from datarecord import Workspace
 from datarecord.duck import transaction
 from datarecord.mutable import WorkingRecord
+from datarecord.schema.specs import AttributeSpec
 from tests.fixtures import (
     empty_root,
     in_threads,
     nested_tables,
     scratch_tables,
     write_attribute,
+    write_component,
 )
 from tests.fixtures import schema as pypsa_schema
-from tests.test_mutable import _rows, _small, _staging
+from tests.test_mutable import GEN, _rows, _small, _staging
 
 KINDS = ("dimensions", "properties", "attributes")
 
@@ -606,25 +608,29 @@ def test_a_reopened_workspace_holds_and_unregisters_an_earlier_registration(
         reopened.close()
 
 
-def _parquet_scans(con, query):
-    """Per parquet scan of `query` run: its filters, the row groups it read, and those of its files."""
+def _operators(con, query):
+    """Every operator of `query` run, from `EXPLAIN ANALYZE`."""
     plan = json.loads(
         con.sql(f"EXPLAIN (ANALYZE, FORMAT json) {query}").fetchall()[0][1]
     )
     ops = list(plan["operator"])
-    scans = []
     while ops:
         op = ops.pop()
         ops += op.get("children", [])
-        if op["extra_info"].get("Function") == "PARQUET_SCAN":
-            scans.append(
-                (
-                    str(op["extra_info"].get("Filters", "")),
-                    op["row_groups_scanned"],
-                    op["total_row_groups_to_scan"],
-                )
-            )
-    return scans
+        yield op
+
+
+def _parquet_scans(con, query):
+    """Per parquet scan of `query` run: its filters, the row groups it read, and those of its files."""
+    return [
+        (
+            str(op["extra_info"].get("Filters", "")),
+            op["row_groups_scanned"],
+            op["total_row_groups_to_scan"],
+        )
+        for op in _operators(con, query)
+        if op["extra_info"].get("Function") == "PARQUET_SCAN"
+    ]
 
 
 @pytest.mark.parametrize("working", [False, True], ids=["record", "working"])
@@ -664,4 +670,137 @@ def test_a_filter_on_a_dimension_in_partial_reaches_the_layer_scan(
     )
     assert all(n <= 1 and total == 5 for _, n, total in scans), (
         f"each scan reads at most one row group of five: {scans}"
+    )
+
+
+@pytest.fixture
+def series(small):
+    """`small` with a `p_max_pu` series of one generator, a constant of the other, and a `weight`."""
+    index = pd.DatetimeIndex(["2030-01-01", "2030-01-02"], name="snapshot")
+    with small.record as base, WorkingRecord(base) as staged:
+        staged.add("snapshot", list(index))
+        staged.set(
+            "p_max_pu", pd.Series([0.4, 0.5], index=index), entity="Manchester Wind"
+        )
+        staged.set("p_max_pu", 0.9, entity="Norway Wind")
+        staged.set("weight", 1.0)
+        return small.store.commit(staged)
+
+
+def _owner_map(con, name):
+    return _rows(con.sql(f"FROM datarecord.{name}.owner_map"))
+
+
+def test_the_owner_map_view_follows_a_working_records_edits(workspace, small, working):
+    """Read on the cursor of another thread than the one that registered."""
+    small.record.register("base")
+    base = _owner_map(workspace.con, "base")
+    for step, edit in enumerate(EDITS):
+        edit(working)
+        [read] = in_threads(
+            1, lambda _: tuple(_owner_map(workspace.con, n) for n in ("base", "edit"))
+        )
+        assert read == (base, _rows(working._fold.owner_map)), (
+            f"after edit {step} the view reads as the map, the record's unchanged"
+        )
+
+
+def test_a_working_record_of_many_attributes_registers_its_owner_map(store):
+    """An attribute a frozen layer holds adds some 16 CTEs to the map, which 70 take past DuckDB's default depth."""
+    many = {f"a{i}": AttributeSpec(dtype="float", dims={"entity"}) for i in range(70)}
+    layer = empty_root(store, pypsa_schema(attributes={GEN: many}))
+    write_component(layer, GEN, [{"entity": "g"}])
+    for attribute in many:
+        write_attribute(layer, attribute, [{"entity": "g", "value": 1.0}])
+    working = WorkingRecord(layer.commit().record)
+    con = working.con
+    working.register("r")
+    before = _owner_map(con, "r")
+    working.set("a0", 2.0, entity="g")
+    after = _owner_map(con, "r")
+
+    assert con.sql("SELECT current_setting('max_expression_depth')").fetchall() == [
+        (1000,)
+    ], "the binder runs at DuckDB's default depth"
+    assert before != after, "the view follows the edit"
+    assert after == _rows(working._fold.owner_map)
+
+
+@pytest.mark.parametrize("dimension", ["snapshot", "entity", "connection"])
+@pytest.mark.parametrize("working", [False, True], ids=["record", "working"])
+def test_flags_aggregate_off_the_owner_map_view(series, working, dimension):
+    """`weight` is over `scenario` alone, so a flag of `entity` on its map rows is stray."""
+    record = series.record
+    if working:
+        record = WorkingRecord(record)
+        record.set(
+            "p_max_pu",
+            pd.Series([0.1], index=pd.DatetimeIndex(["2030-01-01"], name="snapshot")),
+            entity="Norway Wind",
+        )
+    record.register("r")
+    rows = record.con.sql(
+        f"SELECT attribute, bool_or(varies.{dimension}), bool_or(broadcast.{dimension})"
+        " FROM datarecord.r.owner_map GROUP BY attribute"
+    ).fetchall()
+    assert {a: (v, b) for a, v, b in rows} == {
+        a: (dimension in f.varies, dimension in f.broadcast)
+        for a, f in record.flags().items()
+    }
+
+
+@pytest.mark.parametrize(
+    ("kind", "where", "reach"),
+    [
+        ("record", "attribute = 'p_max_pu'", all),
+        ("record", "entity = 'Norway Wind'", all),
+        ("materialised", "attribute = 'p_max_pu'", all),
+        ("materialised", "entity = 'Norway Wind'", all),
+        ("working", "attribute = 'p_max_pu'", all),
+        ("working", "attribute = 'p_nom'", all),
+        ("working", "entity = 'Norway Wind'", any),
+    ],
+)
+def test_a_filter_on_the_owner_map_view_reaches_the_maps_scan(
+    series, kind, where, reach
+):
+    """A WorkingRecord's fold also reads its base's whole map, to find overlap rows."""
+    if kind == "materialised":
+        series.materialise()
+    record = series.record
+    if kind == "working":
+        record = WorkingRecord(record)
+        record.set("p_nom", 1.0, entity="Norway Wind")
+    record.register("r")
+    query = f"FROM datarecord.r.owner_map WHERE {where}"
+    filters = [
+        str(op["extra_info"].get("Filters", ""))
+        for op in _operators(record.con, query)
+        if op["extra_info"].get("Function") == "PARQUET_SCAN"
+        or str(op["extra_info"].get("Table", "")).endswith(".owner_map")
+    ]
+    label = where.partition(" = ")[2]
+
+    assert filters, "the plan scans the map"
+    assert reach(label in f for f in filters), (
+        f"the scans of the map carry the filter: {filters}"
+    )
+
+
+@pytest.mark.parametrize("kind", ["record", "materialised", "working"])
+def test_a_schema_without_attributes_registers_an_empty_owner_map(store, kind):
+    schema = pypsa_schema().model_copy(update={"attributes": {}})
+    revision = empty_root(store, schema).commit()
+    if kind == "materialised":
+        revision.materialise()
+    record = revision.record
+    if kind == "working":
+        record = WorkingRecord(record)
+    record.register("r")
+    view = record.con.sql("DESCRIBE datarecord.r.owner_map")
+    declared = {c: str(schema.column_type(c)) for c in schema.owner_map_columns}
+
+    assert not record.con.sql("FROM datarecord.r.owner_map").fetchall()
+    assert dict(view.project("column_name, column_type").fetchall()) == declared, (
+        "the empty view has the map's declared types"
     )
