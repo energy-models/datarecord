@@ -7,8 +7,7 @@ import os
 import duckdb
 import pytest
 
-from datarecord import Workspace
-from datarecord.resolve import sql_text
+from datarecord import Workspace, templates
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -20,7 +19,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
-    sql_text.CHECKED = config.getoption("--check-templates")
+    templates.CHECKED = config.getoption("--check-templates")
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:
