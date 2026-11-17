@@ -12,6 +12,7 @@ datarecord is a core of subpackages that import each other in one direction, and
 datarecord/
 ├── __init__.py        # every public name, which a user imports from here
 ├── duck.py            # relation helpers, transactions and shared tables
+├── templates.py       # Plan, Templates, Templated: a read built once per plan and slot types
 ├── protocols.py       # RecordLike, LayerData, Relations, LazyRelations, EMPTY, Flags
 ├── schema/
 │   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec
@@ -45,7 +46,7 @@ datarecord/
 
 ## The import order
 
-Runtime imports follow the order `duck` → `schema` → `protocols` → `settle` → `select` → `resolve` → `mutable` → `store` → `tools`. A module imports at runtime only from modules earlier in that order or in its own subpackage. An import under `TYPE_CHECKING` may point the other way, as when `resolve/record.py` names `Workspace` in an annotation.
+Runtime imports follow the order `duck` → `templates` → `schema` → `protocols` → `settle` → `select` → `resolve` → `mutable` → `store` → `tools`. A module imports at runtime only from modules earlier in that order or in its own subpackage. An import under `TYPE_CHECKING` may point the other way, as when `resolve/record.py` names `Workspace` in an annotation.
 
 A subpackage's `__init__.py` re-exports its public names, and `datarecord/__init__.py` imports them from there, so a user imports from `datarecord` alone. Code inside the package imports a name from the module that defines it, so no internal import runs through an `__init__.py`.
 
@@ -55,7 +56,7 @@ Some modules are one module because their classes need each other at runtime:
 - `mutable.py` contains `WorkingRecord` and `StagedSource`, because `StagedSource` reads private members of `WorkingRecord`.
 - `protocols.py` contains the protocols apart from `Record`, because `resolve/fold.py` imports `Flags`, and a module that defined both would import the fold back.
 
-`store/` sets where a connection and a location come from, so `duck.py` contains no state. The modules in `resolve/` take a `Workspace` and read `workspace.con` on each call, so each call runs on the calling thread's cursor.
+`store/` sets where a connection and a location come from, so `duck.py` contains no state. `Workspace.templates` is the cache of the reads that `templates.py` builds. The modules in `resolve/` take a `Workspace` and read `workspace.con` on each call, so each call runs on the calling thread's cursor.
 
 ## Core and tools
 
