@@ -451,6 +451,45 @@ def test_failed_replacement_keeps_the_old_credentials(
     workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0]))
     files = workspace.files("s3://bucket/record")
     environment(monkeypatch)
+    import pathlib
+    import sys
+
+    print("DIAG platform", sys.platform, "devnull", repr(os.devnull))
+    print("DIAG py env", {k: v for k, v in os.environ.items() if k.startswith("AWS")})
+    os.environ["AWS_ACCESS_KEY_ID"] = "PROBEKEY"
+    os.environ["AWS_SECRET_ACCESS_KEY"] = "probesecret"
+    probe = duckdb.connect()
+    try:
+        probe.execute(
+            "CREATE SECRET p (TYPE s3, PROVIDER credential_chain, CHAIN 'env')"
+        )
+        print(
+            "DIAG env probe",
+            probe.execute("SELECT secret_string FROM duckdb_secrets()").fetchall(),
+        )
+    except duckdb.Error as e:
+        print("DIAG env probe raised", e)
+    del os.environ["AWS_ACCESS_KEY_ID"], os.environ["AWS_SECRET_ACCESS_KEY"]
+    aws = pathlib.Path.home() / ".aws"
+    print("DIAG ~/.aws", aws, aws.exists() and sorted(p.name for p in aws.iterdir()))
+    try:
+        workspace.set_credentials(replacement)
+    except raised as e:
+        print("DIAG raised", type(e).__name__, e)
+    else:
+        print("DIAG no raise; secret", _secret(workspace))
+        print(
+            "DIAG secrets",
+            workspace.con.execute(
+                "SELECT name, provider, secret_string FROM duckdb_secrets()"
+            ).fetchall(),
+        )
+        print(
+            "DIAG extensions",
+            workspace.con.execute(
+                "SELECT extension_name, extension_version FROM duckdb_extensions() WHERE loaded"
+            ).fetchall(),
+        )
     with pytest.raises(raised):
         workspace.set_credentials(replacement)
     assert workspace.files("s3://bucket/record") is files
