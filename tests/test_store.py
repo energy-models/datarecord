@@ -15,6 +15,7 @@ import math
 import os
 import pickle
 import re
+import sys
 from collections import Counter
 from collections.abc import Callable, Iterator
 from datetime import timedelta
@@ -392,6 +393,14 @@ def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypat
     assert "endpoint" not in secret and "session_token" not in secret
 
 
+_frozen_chain_environment = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="DuckDB's AWS SDK on Windows reads the environment as it was when "
+    "the aws extension loaded, so a test cannot set its credential chain",
+)
+
+
+@_frozen_chain_environment
 @pytest.mark.parametrize("source", ["environment", "credentials-file"])
 def test_the_environments_key_sets_up_duckdb_without_a_config_file(
     workspace, monkeypatch, tmp_path, source: str
@@ -437,7 +446,7 @@ def _empty_chain(monkeypatch: pytest.MonkeyPatch) -> None:
     ("environment", "replacement", "raised"),
     [
         (_stale_profile, S3Credentials("other", "other"), ProfileNotFound),
-        (_empty_chain, None, duckdb.Error),
+        pytest.param(_empty_chain, None, duckdb.Error, marks=_frozen_chain_environment),
     ],
     ids=["boto3-refuses", "duckdb-refuses"],
 )

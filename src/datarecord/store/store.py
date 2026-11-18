@@ -552,7 +552,7 @@ def _chain_options() -> list[str]:
     if endpoint:
         url = urlparse(endpoint)
         options += [
-            f"ENDPOINT '{url.netloc}'",
+            f"ENDPOINT {lit(url.netloc)}",
             "URL_STYLE 'path'",
             f"USE_SSL {str(url.scheme == 'https').lower()}",
         ]
