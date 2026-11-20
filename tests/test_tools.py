@@ -22,7 +22,6 @@ import pytest
 from duckdb import DuckDBPyRelation
 
 from datarecord import Revision, Workspace
-from datarecord.schema.categories import matching
 from datarecord.schema.specs import Dimension, PropertySpec
 from datarecord.tools.base import Schema, UnsupportedRecordError
 from datarecord.tools.pypsa import (
@@ -128,13 +127,13 @@ def _prices(revision) -> pd.DataFrame:
 
 
 def _flat(rel: DuckDBPyRelation) -> pd.DataFrame:
-    """A connection attribute's rows with the `connection` struct spread to `entity` and `bus`."""
-    return rel.project("*, connection.entity AS entity, connection.bus AS bus").df()
+    """A connection attribute's rows with the `connection` struct spread to `entity` and `port`."""
+    return rel.project("*, connection.entity AS entity, connection.port AS port").df()
 
 
 def _add_generator(w, name: str) -> None:
     w.add("entity", [name], ctype="Generator")
-    w.add("connection", [{"entity": name, "bus": "b"}], role="attached")
+    w.add("connection", [{"entity": name, "port": 0}], bus="b")
 
 
 _DIMS = {
@@ -277,14 +276,14 @@ def _shapes(n) -> pd.DataFrame:
     return n.c.Shape.static.set_index(["component", "idx", "type"]).sort_index()
 
 
-def _three_port_link():
+def _three_port_link(bus1: str = "b"):
     import pypsa
 
     n = pypsa.Network()
     n.set_snapshots(pd.date_range("2020-01-01", periods=2, freq="h"))
     for bus in ("a", "b", "c"):
         n.add("Bus", bus)
-    n.add("Link", "split", bus0="a", bus1="b", bus2="c")
+    n.add("Link", "split", bus0="a", bus1=bus1, bus2="c")
     return n
 
 
@@ -690,8 +689,8 @@ class TestPyPSA:
         """A record written by `export_to_parquet` supplies everything PyPSA needs."""
         assert not PyPSA.verify(single_revision.record)
 
-    def test_the_tool_writes_no_type_or_role_axis(self, single_revision):
-        """The schema lists every type and role, so the record reads them from it.
+    def test_the_tool_writes_no_type_axis(self, single_revision):
+        """The schema lists every type, so the record reads them from it.
 
         Notes
         -----
@@ -706,34 +705,6 @@ class TestPyPSA:
         assert record.dims[dim].df()[dim].tolist() == list(one_of), (
             "every label of `one_of`, those the network leaves unused included"
         )
-
-    def test_flags_per_role_name_the_attributes_reaching_a_connection_of_it(
-        self,
-        single_revision,
-    ):
-        """`role` categorizes `connection`, so `flags(role=...)` reads as `flags(ctype=...)` does.
-
-        Notes
-        -----
-        - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
-        """
-        role = "output"
-        record = single_revision.record
-        tuples = matching(record.properties["connection"], {"role": (role,)})
-        over = [
-            a
-            for a in record.attributes
-            if "connection" in record.schema.coordinates_of(a)
-        ]
-        reaching = {
-            a
-            for a in over
-            if record.attributes[a]
-            .join(tuples.project("connection"), "connection")
-            .limit(1)
-            .fetchall()
-        }
-        assert set(record.flags(role=role)) == reaching
 
     def test_buses_and_carriers_are_labels_of_their_dims(
         self, single_revision, built, ac_dc
@@ -868,6 +839,43 @@ class TestPyPSA:
         assert "p_max_pu" not in n.c.Load.static
         assert "p_max_pu" not in n.c.Load.dynamic
 
+    @pytest.mark.parametrize("series", [False, True], ids=["static", "series"])
+    @pytest.mark.parametrize(
+        ("port", "efficiency"), [(0, 1.0), (1, 0.7)], ids=["port-0", "port-1"]
+    )
+    def test_a_value_at_a_port_without_its_column_is_left_out(
+        self, store, series, port, efficiency
+    ):
+        """A Link has no `efficiency0`, so `build` leaves a value at port 0 out.
+
+        Notes
+        -----
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        """
+        from datarecord.mutable import WorkingRecord
+
+        n = _north()
+        n.add("Bus", "south")
+        n.add("Link", "in_south", bus0="south", bus1="north")
+        w = WorkingRecord(export_network(n, store).record)
+        at = {"snapshot": list(n.snapshots)} if series else {}
+        w.set(
+            "efficiency",
+            [0.7, 0.7] if series else 0.7,
+            entity="in_south",
+            port=port,
+            **at,
+        )
+
+        assert not PyPSA.verify(w), "a value PyPSA has no column for fails no build"
+        built = PyPSA.build(w).c.Link
+        values = (
+            built.dynamic["efficiency"]["in_south"].tolist()
+            if series and port == 1
+            else [built.static.at["in_south", "efficiency"]]
+        )
+        assert set(values) == {efficiency}
+
     @pytest.mark.parametrize(
         ("layers", "built"),
         [
@@ -924,7 +932,7 @@ class TestPyPSA:
         assert static["p_max_pu"].to_dict() == built
 
     def test_verify_reports_an_entity_attached_to_no_bus(self, single_revision):
-        """Removing a bus removes its connections; what was attached to it is unbuildable.
+        """A bus a connection's `bus` holds is removed after the connections; what was attached to it is unbuildable.
 
         Notes
         -----
@@ -933,11 +941,48 @@ class TestPyPSA:
         from datarecord.mutable import WorkingRecord
 
         w = WorkingRecord(single_revision.record)
+        with pytest.raises(ValueError, match="`connection.bus` names them"):
+            w.remove("bus", ["Manchester"])
+        attached = unpacked(w.properties["connection"]).query("bus == 'Manchester'")
+        w.remove("connection", attached[["entity", "port"]].to_dict("records"))
         w.remove("bus", ["Manchester"])
 
         missing = PyPSA.verify(w).attributes
         assert {("Generator", "bus"), ("Load", "bus")} <= missing
         assert ("Link", "bus0") not in missing, "no link is at Manchester"
+
+    @pytest.mark.parametrize(
+        ("ctype", "entity", "port", "dropped"),
+        [
+            ("Generator", "gen", 1, None),
+            ("Generator", "gen", 1, 0),
+            ("Line", "line", 2, None),
+        ],
+        ids=["both", "port-1", "line-port-2"],
+    )
+    def test_verify_reports_a_bus_at_a_port_its_type_lacks(
+        self, store, ctype, entity, port, dropped
+    ):
+        """A Generator has its `bus` at port 0 alone and a Line at ports 0 and 1, so a connection at another port blocks the build.
+
+        Notes
+        -----
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        """
+        from datarecord.mutable import WorkingRecord
+
+        n = _north()
+        n.add("Bus", "south")
+        n.add("Line", "line", bus0="north", bus1="south", x=0.1)
+        n.add("Link", "link", bus0="north", bus1="south", bus2="south")
+        w = WorkingRecord(export_network(n, store).record)
+        if dropped is not None:
+            w.remove("connection", [{"entity": entity, "port": dropped}])
+        w.add("connection", [{"entity": entity, "port": port}], bus="south")
+
+        assert (ctype, "bus") in PyPSA.verify(w).unsupported_values
+        with pytest.raises(UnsupportedRecordError, match=ctype):
+            PyPSA.build(w)
 
     def test_requires_reports_the_records_own_types(self, single_revision):
         """`requires` is record-dependent: PyPSA's axes plus this record's types."""
@@ -1677,7 +1722,7 @@ class TestPyPSA:
         assert "p_nom_opt" not in results
 
     def test_a_solved_p_is_one_row_per_connection(self, single_revision, solved):
-        """`p` holds a row per `(entity, bus)` per snapshot, each port's own sign.
+        """`p` holds a row per `(entity, port)` per snapshot, each port's own sign.
 
         Notes
         -----
@@ -1687,17 +1732,16 @@ class TestPyPSA:
 
         p = _flat(PyPSA.to_datarecord(n, single_revision.record.con).attributes["p"])
         connections = unpacked(single_revision.record.dims["connection"])
-        per_connection = p.groupby(["entity", "bus"]).size()
+        per_connection = p.groupby(["entity", "port"]).size()
         assert set(per_connection.index) == set(
-            zip(connections["entity"], connections["bus"])
+            zip(connections["entity"], connections["port"])
         ), "every connection carries `p`, and nothing else does"
         assert (per_connection == len(n.snapshots)).all(), "one row per snapshot"
 
         lines = n.c["Line"]
         line = lines.static.index[0]
-        for port in ("0", "1"):
-            bus = lines.static.at[line, f"bus{port}"]
-            rows = p[(p["entity"] == line) & (p["bus"] == bus)].set_index("snapshot")
+        for port in (0, 1):
+            rows = p[(p["entity"] == line) & (p["port"] == port)].set_index("snapshot")
             expected = lines.dynamic[f"p{port}"][line]
             assert np.allclose(rows["value"].reindex(expected.index), expected), (
                 f"`p{port}` lands on the line's bus{port} connection"
@@ -2249,27 +2293,34 @@ class TestPyPSA:
         assert len(internal) == len(n.snapshots) * len(links)
         assert "p_internal" in _registry().schema.attributes
 
-    def test_a_three_port_record_writes_p_on_each_connection(self, workspace):
+    @pytest.mark.parametrize("bus1", ["b", "a"], ids=["own-buses", "one-bus"])
+    def test_a_three_port_record_writes_p_on_each_connection(self, workspace, bus1):
         """`p0`, `p1` and `p2` are `p` on each port's connection, though the bare registry has no `p2`.
+
+        Ports 0 and 1 at one bus keep their flows apart.
 
         Notes
         -----
         - [results on connections](https://energy-models.github.io/datarecord/reference/tools/#results-on-connections)
         """
-        n = _three_port_link()
+        n = _three_port_link(bus1)
         flows = {"p0": [3.0, 4.0], "p1": [-1.0, -2.0], "p2": [-1.5, -1.5]}
         for attr, values in flows.items():
             n.c["Link"].dynamic[attr] = pd.DataFrame(
                 {"split": values}, index=n.snapshots
             )
 
-        results = PyPSA.to_datarecord(n, workspace.con).attributes
+        record = PyPSA.to_datarecord(n, workspace.con)
+        assert record.dims["port"].df()["port"].tolist() == [0, 1, 2], (
+            "the registry's ports 0 and 1, and the link's port 2"
+        )
+        results = record.attributes
         assert not set(flows) & set(results), "no positional names"
-        p = _flat(results["p"]).sort_values(["bus", "snapshot"])
-        assert p.groupby("bus")["value"].apply(list).to_dict() == {
-            "a": flows["p0"],
-            "b": flows["p1"],
-            "c": flows["p2"],
+        p = _flat(results["p"]).sort_values(["port", "snapshot"])
+        assert p.groupby("port")["value"].apply(list).to_dict() == {
+            0: flows["p0"],
+            1: flows["p1"],
+            2: flows["p2"],
         }
 
     def test_a_static_attribute_differing_per_scenario_survives_a_round_trip(
@@ -2403,6 +2454,46 @@ class TestPyPSA:
         assert c.dynamic[series_attr][name].to_list() == values
         assert_networks_equal(built, n)
 
+    @pytest.mark.parametrize("stochastic", [False, True], ids=["one", "scenarios"])
+    @pytest.mark.parametrize("bus1", ["north", "mid"], ids=["one-bus", "own-buses"])
+    def test_ports_at_one_bus_survive_a_round_trip(self, store, bus1, stochastic):
+        """Two ports of a Link at one bus are two connections, each with its own efficiency.
+
+        Over scenarios, the efficiency at port 1 differs per scenario.
+
+        Notes
+        -----
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        """
+        n = pypsa.Network()
+        n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
+        n.add("Bus", ["north", "mid", "south"])
+        n.add(
+            "Link",
+            "heat_pump",
+            bus0="north",
+            bus1=bus1,
+            bus2="south",
+            efficiency=3.0,
+            efficiency2=-1.0,
+            p_nom=10.0,
+        )
+        if stochastic:
+            n.set_scenarios({"low": 0.5, "high": 0.5})
+            n.c["Link"].static.loc[("high", "heat_pump"), "efficiency"] = 2.0
+
+        built = PyPSA.build(export_network(n, store).record)
+        columns = ["bus0", "bus1", "bus2", "efficiency", "efficiency2"]
+        links = built.c["Link"].static[columns].to_dict("index")
+        assert links == n.c["Link"].static[columns].to_dict("index"), (
+            "each port keeps its bus and its efficiency"
+        )
+        assert links[("high", "heat_pump") if stochastic else "heat_pump"][
+            "efficiency"
+        ] == (2.0 if stochastic else 3.0)
+        if not stochastic:
+            assert_networks_equal(built, n)
+
     def test_per_type_defaults_round_trip_with_nothing_written(self, store):
         """A Load and a StorageUnit added without `sign` or `p_min_pu` build with their own defaults.
 
@@ -2431,8 +2522,8 @@ class TestPyPSA:
         staged.add("entity", ["su1"], ctype="StorageUnit")
         staged.add(
             "connection",
-            [{"entity": e, "bus": "b"} for e in ("l1", "su1")],
-            role="attached",
+            [{"entity": e, "port": 0} for e in ("l1", "su1")],
+            bus="b",
         )
         child = root.store.commit(staged)
 
@@ -2450,11 +2541,11 @@ class TestPyPSA:
         )
 
     def test_delays_are_rows_keyed_by_their_connections(self, workspace, store):
-        """A Process's `delay0`/`delay1` and a Link's `delay`/`delay2` are one `delay` per bus.
+        """A Process's `delay0`/`delay1` and a Link's `delay`/`delay2` are one `delay` per port.
 
         A Link leaves `delay` unsuffixed at bus1, so no suffix marks it per-port.
         Never varying, it is still an attribute: long rows keyed by the connection,
-        where `role` is the connection's one property.
+        where `bus` is the connection's one property.
 
         Notes
         -----
@@ -2470,18 +2561,18 @@ class TestPyPSA:
         assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & members, (
             "no positional names on the members"
         )
-        assert set(record.properties["connection"].columns) == {"connection", "role"}, (
+        assert set(record.properties["connection"].columns) == {"connection", "bus"}, (
             "a connection row carries its key and its property"
         )
         rows = unpacked(record.attributes["delay"])
-        delay = rows.set_index(["entity", "bus"])["value"].dropna().to_dict()
+        delay = rows.set_index(["entity", "port"])["value"].dropna().to_dict()
         assert delay == {
-            ("dri", "a"): 1,
-            ("dri", "b"): 2,
-            ("dri", "c"): 0,
-            ("split", "b"): 3,
-            ("split", "c"): 4,
-        }, "bus0 of a Link has no delay"
+            ("dri", 0): 1,
+            ("dri", 1): 2,
+            ("dri", 2): 0,
+            ("split", 1): 3,
+            ("split", 2): 4,
+        }, "port 0 of a Link has no delay"
         assert _registry().schema.attributes["cyclic_delay"].dims == {
             "connection",
             "scenario",

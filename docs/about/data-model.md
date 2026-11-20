@@ -26,7 +26,7 @@ The rejected alternative flattens the tuple into a column per field, so an attri
 
 With one struct column, the two stay apart. A NULL `connection` means every connection, a NULL `bus` means every bus, and the column's name states which multi-dim a row belongs to. A struct is a whole tuple or NULL, so a row cannot set only part of a tuple.
 
-The other alternatives lose more. Without multi-dims, with valid pairs stated by a condition, the record loses the whole-or-NULL broadcast and the axis file that contains `connection.role`. A surrogate dim with one label per tuple makes you write a value against a port label and look up its entity and bus. Then the port label, not the tuple, is the value's key.
+The other alternatives lose more. Without multi-dims, with valid pairs stated by a condition, the record loses the whole-or-NULL broadcast and the axis file that contains a multi-dim's properties, such as the PyPSA tool's `connection.bus`. A surrogate dim with one label per tuple makes you write a value against a port label and look up its entity and bus. Then the port label, not the tuple, is the value's key.
 
 datarecord applies every rule for a dim to a multi-dim. It is declared under `dimensions`, has its file under `dims/`, takes `add` and `remove`, and may sit in `partial`. Each of those rules is stated once for both.
 
