@@ -15,7 +15,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Created       | 2026-10-21                                                                                                                                                                                                                       |
 | Version       | Unreleased                                                                                                                                                                                                                       |
 | Replaces      | the groups of [DEP 2](dep-0002-groups.md) and [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                                                                                                   |
-| Superseded-By | [DEP 36](dep-0036-a-connection-is-keyed-by-its-port.md) (the PyPSA tool's `connection` over `(entity, bus)` and its `role`)                                                                                                      |
+| Superseded-By |                                                                                                     |
 
 The design landed in [the data model](../../reference/data-model.md), [the schema](../../reference/schema.md), [editing](../../reference/editing.md) and [the record format](../../reference/format.md). Where they and this DEP differ, follow those pages.
 
