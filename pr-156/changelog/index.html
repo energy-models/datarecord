@@ -1398,7 +1398,11 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>A record finds its frozen layers' owner map once per thread rather than
   once per attribute read, and a <code>WorkingRecord</code> builds each attribute's
   owner-map rows once for both its view and <code>name.owner_map</code>. So
-  <code>register</code> asks DuckDB's catalog once rather than twice per attribute.</li>
+  <code>register</code> asks DuckDB's catalog once rather than twice per attribute.
+  A record's first read in a workspace creates these shared tables, so it
+  raises <code>duckdb.TransactionException</code> inside an open transaction on
+  <code>ws.con</code>, whose rollback would drop them. <code>Record.prepare()</code> creates them
+  beforehand.</li>
 <li>Breaking: on S3, a <code>403</code> no longer counts as a missing key. Every call of
   <code>RemoteFiles</code> the server answers with <code>403</code> raises <code>PermissionError</code> naming
   the key or prefix, as does a <code>delete</code> whose every failed key is
