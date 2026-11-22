@@ -152,7 +152,7 @@ credentials = S3Credentials(
     secret,
     session_token=token,
     endpoint="http://localhost:8333",
-    region="us-east-1",
+    region="eu-central-1",
     url_style="path",
 )
 ws = Workspace(credentials=credentials)
@@ -163,7 +163,7 @@ ws.set_credentials(
 
 The workspace builds both its boto3 client and DuckDB's secret, with `PROVIDER config`, from the same `S3Credentials`, so the key and the endpoint come from them, not from the AWS environment.
 boto3 still reads `AWS_PROFILE` and the AWS config files for the rest, so a profile that `AWS_PROFILE` names and the config files lack raises `ProfileNotFound`.
-`endpoint` is the server's URL, or `None` for AWS, and `url_style` is `"path"` for a self-hosted server and `"vhost"` by default.
+`endpoint` is the server's URL, or `None` for AWS, `region` is `"eu-central-1"` by default, and `url_style` is `"path"` for a self-hosted server and `"vhost"` by default.
 `S3Credentials` raises `ValueError` for an empty key or secret, an endpoint without a scheme or with a user, a path, a query or a fragment, and any other URL style.
 Its `repr` leaves out the secret and the session token.
 

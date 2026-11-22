@@ -387,7 +387,7 @@ def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypat
     workspace.set_credentials(S3Credentials("other", "other"))
     files = workspace.files("s3://bucket/record")
     assert isinstance(files, RemoteFiles)
-    assert files._s3.meta.endpoint_url == "https://s3.amazonaws.com"
+    assert files._s3.meta.endpoint_url == "https://s3.eu-central-1.amazonaws.com"
     secret = _secret(workspace)
     assert (secret["key_id"], secret["url_style"]) == ("other", "vhost")
     assert "endpoint" not in secret and "session_token" not in secret

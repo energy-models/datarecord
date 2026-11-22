@@ -276,7 +276,8 @@ All notable changes to datarecord are documented here. The format follows
   squeezes.
 - `Workspace(credentials=S3Credentials(...))` reaches S3 with a key passed in
   rather than the AWS environment's: an access key id, a secret, a session
-  token, an endpoint, a region and a URL style. The workspace builds its
+  token, an endpoint, a region (`eu-central-1` by default) and a URL
+  style. The workspace builds its
   boto3 client and DuckDB's secret, with `PROVIDER config`, from the same
   `S3Credentials`, whose `repr` leaves out the secret and the token.
   `Workspace.set_credentials` replaces both on a live workspace, so open

@@ -149,7 +149,7 @@ class S3Credentials:
     secret: str = field(repr=False)
     session_token: str | None = field(default=None, repr=False)
     endpoint: str | None = None
-    region: str = "us-east-1"
+    region: str = "eu-central-1"
     url_style: Literal["path", "vhost"] = "vhost"
 
     def __post_init__(self) -> None:
