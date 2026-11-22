@@ -21,12 +21,10 @@ Notes
 
 from __future__ import annotations
 
-import inspect
 import re
 from collections.abc import Callable, Hashable, Mapping
-from copy import copy
 from dataclasses import dataclass, field, replace
-from functools import cache, partial
+from functools import partial
 from typing import TYPE_CHECKING, Any, Protocol
 
 from duckdb import ColumnExpression as col
@@ -56,9 +54,9 @@ def typed(rel: DuckDBPyRelation) -> Typed:
 class Plan(Protocol):
     """Hashable data whose `build` makes a read of the relations it is passed, its slots.
 
-    Every argument of `build` after `con`, one collected by `**kwargs` too, is
-    a slot, or a mapping whose every value is one. `build` must hold to a
-    contract, which `CHECKED` tests:
+    Every keyword argument of `build`, one collected by `**kwargs` too, is a
+    slot, or a mapping whose every value is one; `con` is its only positional
+    argument. `build` must hold to a contract, which `CHECKED` tests:
 
     - its text depends on the plan's fields and on each slot's columns, types
       and whether it is a table or held rows alone;
@@ -100,23 +98,23 @@ class Templates:
         """Return `plan`'s read, built once per set of slot types and filled with each call's slots."""
         return Templated(self, plan)
 
-    def _filled(self, plan: Plan, *slots: Slot, **named: Slot) -> str:
+    def _filled(self, plan: Plan, named: Mapping[str, Slot]) -> str:
         """`plan.build` over the slots, its text that of the template kept for them, built on a miss.
 
         Raises
         ------
         TypeError
-            Where the slots do not bind to `plan.build`'s arguments.
+            Where the slots are not `plan.build`'s keyword arguments, raised
+            before a template is kept.
         AssertionError
             Where `CHECKED` is set and `plan.build` breaks the contract `Plan`
             states.
         """
         con = self.workspace.con
-        bound = _signature(type(plan)).bind(con, *slots, **named)
-        parts = _slots(bound)
+        parts = _slots(named)
         held = tuple((n, typed(p), _scanned(p)) for n, p in sorted(parts.items()))
         key = (plan, held)
-        build = partial(_built, plan, bound)
+        build = partial(_built, plan, con, named)
         found = self._kept.get(key)
         if found is None:
             found = self._kept[key] = _template(con, build, parts)
@@ -137,35 +135,33 @@ class Templates:
 class Templated:
     """A plan's read, its template kept in `templates`.
 
-    Called with the slots `plan.build` takes after `con`, it returns that
-    read, its statement bound once. Slots given to `bind` come first, as
-    `functools.partial` passes its arguments.
+    Called with the slots `plan.build` takes as keyword arguments, it
+    returns that read, its statement bound once. A later call's slot
+    replaces one of the same name given to `bind`, as `functools.partial`
+    passes keywords.
     """
 
     templates: Templates
     plan: Plan
-    args: tuple[Slot, ...] = ()
     kwargs: Mapping[str, Slot] = field(default_factory=dict)
 
-    def bind(self, *slots: Slot, **named: Slot) -> Templated:
-        """Return this read with `slots` and `named` filled in before those of a later call."""
-        return replace(self, args=(*self.args, *slots), kwargs={**self.kwargs, **named})
+    def bind(self, **named: Slot) -> Templated:
+        """Return this read with `named` filled in for every later call."""
+        return replace(self, kwargs={**self.kwargs, **named})
 
-    def text(self, *slots: Slot, **named: Slot) -> str:
+    def text(self, **named: Slot) -> str:
         """Return the statement of the read over the bound slots and these.
 
         Raises
         ------
         TypeError
-            Where the slots do not bind to `plan.build`'s arguments.
+            Where the slots are not `plan.build`'s keyword arguments.
         """
-        return self.templates._filled(
-            self.plan, *self.args, *slots, **self.kwargs, **named
-        )
+        return self.templates._filled(self.plan, {**self.kwargs, **named})
 
-    def __call__(self, *slots: Slot, **named: Slot) -> DuckDBPyRelation:
+    def __call__(self, **named: Slot) -> DuckDBPyRelation:
         """Return the read over these slots, on the calling thread's cursor."""
-        return self.templates.workspace.con.sql(self.text(*slots, **named))
+        return self.templates.workspace.con.sql(self.text(**named))
 
 
 @dataclass(frozen=True)
@@ -253,21 +249,14 @@ def _template(
     return _Template(tuple(strings), tuple(order))
 
 
-@cache
-def _signature(kind: type[Plan]) -> inspect.Signature:
-    """`kind.build`'s signature without `self`, which a call's slots bind to."""
-    parameters = list(inspect.signature(kind.build).parameters.values())
-    return inspect.Signature(parameters[1:])
-
-
-def _slots(bound: inspect.BoundArguments) -> dict[str, DuckDBPyRelation]:
-    """The slots `bound` passes after `con`, each by its argument's name, a mapping's as `{argument}.{key}`.
+def _slots(named: Mapping[str, Slot]) -> dict[str, DuckDBPyRelation]:
+    """The slots `named` passes, each by its argument's name, a mapping's as `{argument}.{key}`.
 
     No argument's name holds a dot, so a mapping's keys never collide with
     another argument's slot, whatever they are. `_built` reads them back.
     """
     out: dict[str, DuckDBPyRelation] = {}
-    for name, value in list(bound.arguments.items())[1:]:
+    for name, value in named.items():
         if isinstance(value, Mapping):
             out |= {f"{name}.{k}": v for k, v in value.items()}
         else:
@@ -276,17 +265,17 @@ def _slots(bound: inspect.BoundArguments) -> dict[str, DuckDBPyRelation]:
 
 
 def _built(
-    plan: Plan, bound: inspect.BoundArguments, parts: Mapping[str, DuckDBPyRelation]
+    plan: Plan,
+    con: DuckDBPyConnection,
+    named: Mapping[str, Slot],
+    parts: Mapping[str, DuckDBPyRelation],
 ) -> DuckDBPyRelation:
-    """`plan.build` called as `bound` calls it, each slot `_slots` names given its relation in `parts`."""
-    called = copy(bound)
-    called.arguments = {
-        n: {k: parts[f"{n}.{k}"] for k in v}
-        if isinstance(v, Mapping)
-        else parts.get(n, v)
-        for n, v in bound.arguments.items()
+    """`plan.build` called with `named`, each slot `_slots` names given its relation in `parts`."""
+    rebuilt = {
+        n: {k: parts[f"{n}.{k}"] for k in v} if isinstance(v, Mapping) else parts[n]
+        for n, v in named.items()
     }
-    return plan.build(*called.args, **called.kwargs)
+    return plan.build(con, **rebuilt)
 
 
 def _scanned(rel: DuckDBPyRelation) -> bool:

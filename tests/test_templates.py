@@ -18,7 +18,11 @@ class Joined:
     key: str
 
     def build(
-        self, con: DuckDBPyConnection, left: DuckDBPyRelation, right: DuckDBPyRelation
+        self,
+        con: DuckDBPyConnection,
+        *,
+        left: DuckDBPyRelation,
+        right: DuckDBPyRelation,
     ) -> DuckDBPyRelation:
         return (
             left.set_alias("l")
@@ -47,28 +51,28 @@ class Only:
 
 
 def test_one_template_serves_two_calls_of_the_same_types(workspace: Workspace):
-    """A template built over one pair of relations fills with another pair of the same types, passed by position or by name."""
+    """A template built over one pair of relations fills with another pair of the same types, bound ahead or passed in the call."""
     con = workspace.con
     left = con.sql("SELECT * FROM (VALUES (1, 'a'), (2, 'b')) t(k, v)")
     right = con.sql("SELECT * FROM (VALUES (2, 2.5), (3, 3.5)) t(k, w)")
     read = workspace.templates.memoize(Joined("k"))
-    read(left.limit(0), right)
+    read(left=left.limit(0), right=right)
     statement = read.text(left=left, right=right)
     assert len(workspace.templates._kept) == 1, "one template serves both calls"
-    assert read(left, right).fetchall() == [(2, "b", 2.5)]
-    assert read.bind(left)(right).fetchall() == [(2, "b", 2.5)], (
-        "bound slots come first"
+    assert read(left=left, right=right).fetchall() == [(2, "b", 2.5)]
+    assert read.bind(left=left)(right=right).fetchall() == [(2, "b", 2.5)], (
+        "bound slots join the call's"
     )
-    assert (
-        con.sql(statement).fetchall() == Joined("k").build(con, left, right).fetchall()
+    assert con.sql(statement).fetchall() == (
+        Joined("k").build(con, left=left, right=right).fetchall()
     )
 
 
 def test_a_read_refuses_slots_its_build_does_not_take(workspace: Workspace):
-    """The slots bind to `build`'s arguments, so one missing fails before any template is built."""
+    """The slots are `build`'s keyword arguments, so one missing fails before any template is built."""
     left = workspace.con.sql("SELECT 1 AS k, 'a' AS v")
     with pytest.raises(TypeError, match="right"):
-        workspace.templates.memoize(Joined("k")).text(left)
+        workspace.templates.memoize(Joined("k")).text(left=left)
 
 
 @pytest.mark.parametrize(
