@@ -17,33 +17,21 @@ Notes
 from __future__ import annotations
 
 import json
-import reprlib
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Self
+from typing import TYPE_CHECKING, Self
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter, model_validator
 from pydantic.dataclasses import dataclass
 
 from datarecord.duck import pattern
+from datarecord.schema.meta import Meta, MetaValue
 from datarecord.schema.schema import Schema, schema_digest
 
 if TYPE_CHECKING:
     from datarecord.store.files import Files
 
 _CONFIG = ConfigDict(extra="forbid", ser_json_inf_nan="constants")
-
-type MetaValue = (
-    str | int | float | bool | None | list[MetaValue] | dict[str, MetaValue]
-)
-"""A JSON value of `meta`: a string, number, boolean, null, array or object.
-
-A float may be `inf`, `-inf` or `nan`, written as the bare `Infinity`,
-`-Infinity` and `NaN` that Python's `json` writes and reads.
-"""
-
-Meta = dict[str, MetaValue]
-"""A revision's own `meta`, set at its write and not inherited."""
 
 
 @dataclass(frozen=True, config=_CONFIG)
@@ -202,54 +190,6 @@ def _create[T](files: Files, uri: str, adapter: TypeAdapter[T], value: T) -> Non
 def _read[T](files: Files, uri: str, adapter: TypeAdapter[T]) -> T | None:
     found = files.read_text(uri)
     return None if found is None else adapter.validate_json(found)
-
-
-def validate_meta(meta: Meta | None) -> Meta:
-    """`meta` checked as a JSON object with string keys, copied.
-
-    Raises
-    ------
-    TypeError
-        Naming the path of the first value that is no JSON value, or of a
-        key that is no string.
-
-    Notes
-    -----
-    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
-    """
-    meta = meta or {}
-    if not isinstance(meta, dict):
-        msg = f"meta is of type {type(meta).__name__}; meta is a dict"
-        raise TypeError(msg)
-    return _meta_object(meta, "meta")
-
-
-def _meta_object(value: dict[Any, Any], path: str) -> dict[str, MetaValue]:
-    """`value` with every key a string and every value checked by `_meta_value`."""
-    for key in value:
-        if not isinstance(key, str):
-            msg = (
-                f"{path} has the key {key!r} of type {type(key).__name__}; a meta "
-                f"key is a str"
-            )
-            raise TypeError(msg)
-    return {k: _meta_value(v, f"{path}[{k!r}]") for k, v in value.items()}
-
-
-def _meta_value(value: Any, path: str) -> MetaValue:
-    """`value` copied where it is a JSON value, raising at `path` on the first that is not."""
-    match value:
-        case None | str() | int() | float():
-            return value
-        case list():
-            return [_meta_value(v, f"{path}[{i}]") for i, v in enumerate(value)]
-        case dict():
-            return _meta_object(value, path)
-    msg = (
-        f"{path} is {reprlib.repr(value)} of type {type(value).__name__}; a meta value "
-        f"is a str, int, float, bool, None, list or dict"
-    )
-    raise TypeError(msg)
 
 
 def merge_meta(claimed: Meta, given: Meta) -> Meta:

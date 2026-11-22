@@ -27,6 +27,7 @@ from typing import Any
 from uuid import uuid4
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pytest
 from botocore import UNSIGNED
@@ -35,6 +36,7 @@ from pydantic import ValidationError
 
 from datarecord import Claim, Revision, S3Credentials, Workspace
 from datarecord.mutable import WorkingRecord
+from datarecord.schema.schema import Schema
 from datarecord.schema.specs import Dimension
 from datarecord.store import write
 from datarecord.store.files import LocalFiles, PreconditionFailedError, RemoteFiles
@@ -803,32 +805,43 @@ def test_revisions_filter_by_meta(metas, meta, found):
         (math.inf, "Infinity"),
         (-math.inf, "-Infinity"),
         (math.nan, "NaN"),
+        (np.int64(3), "3"),
+        (np.float32(1.5), "1.5"),
+        (np.bool_(True), "true"),
     ],
-    ids=["null", "inf", "-inf", "nan"],
+    ids=["null", "inf", "-inf", "nan", "np.int64", "np.float32", "np.bool_"],
 )
-def test_a_meta_value_may_be_null_or_non_finite(store, value, written):
-    """Written as Python's `json` writes it, read back equal, and found by a lookup.
+def test_a_meta_value_may_be_null_non_finite_or_numpy(store, value, written):
+    """Written as Python's `json` writes it, read back equal, and found by a lookup, in the schema's `meta` too.
 
-    A lookup compares JSON, so `NaN` finds `NaN` though the float equals nothing.
+    A lookup compares JSON, so `NaN` finds `NaN` though the float equals nothing,
+    and a NumPy scalar is stored as the Python value it holds.
 
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
     meta = {"x": value, "nested": {"xs": [value]}}
+    stored = {"x": json.loads(written), "nested": {"xs": [json.loads(written)]}}
     claim = store.claim(parent=None, meta=meta)
-    done = claim.commit(_p_nom(), meta={"y": value})
+    schema = Schema(**{**_SCHEMA.model_dump(), "meta": meta})
+    done = claim.commit(
+        _Source(schema, attributes={"p_nom": _long()}), meta={"y": value}
+    )
     raw = Path(store.layer_dir(done.id), "manifest.json").read_text()
     assert f'"x":{written}' in raw.replace(" ", ""), "the manifest keeps the bare word"
     fresh = Workspace()
     try:
         for reader in (store, fresh.store(store.uri)):
-            back = reader.revision(done.id).meta
-            assert json.dumps(back) == json.dumps({**meta, "y": value})
+            back = reader.revision(done.id)
+            assert json.dumps(back.meta) == json.dumps({**stored, "y": stored["x"]})
+            assert json.dumps(back.manifest.schema.meta) == json.dumps(stored), (
+                "the schema's too"
+            )
             listed = [r.id for r in reader.revisions(meta={"nested": {"xs": [value]}})]
             assert listed == [done.id]
         again = fresh.store(store.uri).claim_from(claim.model_dump_json())
-        assert json.dumps(again.meta) == json.dumps(meta), "a claim crosses too"
+        assert json.dumps(again.meta) == json.dumps(stored), "a claim crosses too"
     finally:
         fresh.close()
 
@@ -843,8 +856,19 @@ def test_a_meta_value_may_be_null_or_non_finite(store, value, written):
         ),
         ({"x": {1: "a"}}, r"meta\['x'\] has the key 1 of type int"),
         ([("x", 1)], "meta is of type list"),
+        ([], "meta is of type list"),
+        ("", "meta is of type str"),
+        (0, "meta is of type int"),
     ],
-    ids=["date", "nested-tuple", "int-key", "no-object"],
+    ids=[
+        "date",
+        "nested-tuple",
+        "int-key",
+        "no-object",
+        "empty-list",
+        "empty-str",
+        "zero",
+    ],
 )
 def test_a_meta_value_that_is_no_json_names_its_path(store, meta, match):
     """Refused at any depth, before the claim or the manifest is written, with the path of the first one.

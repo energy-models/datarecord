@@ -1461,6 +1461,21 @@ class TestPyPSA:
         finally:
             fresh.close()
 
+    def test_network_meta_that_is_no_json_is_refused_with_its_path(self, store):
+        """An int key, as a network built from a config may carry, is refused before anything is written.
+
+        Notes
+        -----
+        - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+        """
+        n = _north()
+        n.meta = {"co2_budget": {2030: 0.4}}
+        with pytest.raises(
+            TypeError, match=r"meta\['meta'\]\['co2_budget'\] has the key 2030"
+        ):
+            export_network(n, store)
+        assert store.revisions() == []
+
     def test_a_shape_is_a_property_of_the_label_it_outlines(self, store):
         """A shape is `{dim}.shape_{type}` as WKT, a `component` that is no PyPSA type a dim of its own, its CRS in the schema's `meta`.
 

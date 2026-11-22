@@ -51,15 +51,14 @@ from datarecord.mutable import StagedSource, WorkingRecord
 from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource
+from datarecord.schema.meta import Meta, validate_meta
 from datarecord.schema.schema import Schema
 from datarecord.store.files import Files, LocalFiles, RemoteFiles, S3Credentials
 from datarecord.store.manifest import (
     ClaimFile,
     LayerFiles,
     Manifest,
-    Meta,
     merge_meta,
-    validate_meta,
 )
 from datarecord.store.materialise import materialise, sources_to_read
 from datarecord.store.write import layer_data, write_layer

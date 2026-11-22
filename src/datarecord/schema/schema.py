@@ -35,10 +35,11 @@ from duckdb import DuckDBPyConnection, DuckDBPyRelation, Expression, sqltypes
 from duckdb import StarExpression as star
 from duckdb.sqltypes import DuckDBPyType
 from mathspec._expression_parser import NAME
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 
 from datarecord.duck import empty_relation, fn
 from datarecord.schema.dtypes import DUCK_TYPES, enum_type, takes
+from datarecord.schema.meta import Meta, validate_meta
 from datarecord.schema.specs import (
     AttributeSpec,
     Dimension,
@@ -189,7 +190,8 @@ class Schema(_Declared):
     meta
         A framework's own top-level data - network attributes, CRS, free-form
         metadata. Stored and never interpreted, since none of it describes the
-        dimensioned data.
+        dimensioned data. A JSON object as a revision's `meta` is; any other
+        value raises `TypeError` naming its path.
 
     Notes
     -----
@@ -223,6 +225,11 @@ class Schema(_Declared):
         copied = super().model_copy(update=update, deep=deep)
         copied.__dict__.pop("digest", None)
         return copied
+
+    @field_validator("meta", mode="before")
+    @classmethod
+    def _validate_meta(cls, value: Any) -> Meta:
+        return validate_meta(value)
 
     @model_validator(mode="after")
     def _validate(self) -> Schema:

@@ -10,8 +10,10 @@ Notes
 """
 
 import json
+from datetime import timedelta
 from typing import Any
 
+import numpy as np
 import pytest
 from duckdb import sqltypes
 from duckdb.sqltypes import DuckDBPyType
@@ -674,6 +676,34 @@ def test_a_default_survives_the_manifest_round_trip(value):
     )
     back = Schema.model_validate_json(schema.model_dump_json())
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
+
+
+# -- meta (https://energy-models.github.io/datarecord/reference/schema/#meta) --
+
+
+@pytest.mark.parametrize(
+    ("meta", "match"),
+    [
+        ({"x": (1, 2)}, r"meta\['x'\] is \(1, 2\) of type tuple"),
+        ({"x": {"y": timedelta(1)}}, r"meta\['x'\]\['y'\] is .* of type timedelta"),
+        (
+            {"co2_budget": {2030: 0.4}},
+            r"meta\['co2_budget'\] has the key 2030 of type int",
+        ),
+        ({"x": [{1, 2}]}, r"meta\['x'\]\[0\] is .* of type set"),
+        ({"x": np.datetime64(1, "D")}, r"meta\['x'\] is .* of type datetime64"),
+    ],
+    ids=["tuple", "timedelta", "int-key", "set", "np.datetime64"],
+)
+def test_a_schema_meta_value_that_is_no_json_names_its_path(meta, match):
+    """Refused at construction by the rule a revision's `meta` follows, not converted at the write.
+
+    Notes
+    -----
+    - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+    """
+    with pytest.raises(TypeError, match=match):
+        Schema(meta=meta)
 
 
 # -- versioning (https://energy-models.github.io/datarecord/reference/schema/#compatibility) -------------------------------------------------------

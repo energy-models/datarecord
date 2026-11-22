@@ -271,6 +271,7 @@ When two threads fold one revision at once, both fold and datarecord keeps one o
 
 `parent` is a required keyword, so a new root is `parent=None`.
 A revision's `meta` is a JSON object whose values are strings, numbers, booleans, null, and arrays and objects of these.
+A NumPy integer, float or bool is stored as the Python value it holds.
 Any other value, such as a date or a tuple, or a key that is no string, is refused with its path, as in `meta['run']['started']`.
 `revisions(meta=...)` matches by containment, key by key from the top: an object contains each pair of the given object, an array contains each element of the given array in some element of its own, and any other value is equal.
 So `revisions(meta={"changes": {"rows": [3, 1]}})` matches a stored `{"changes": {"rows": [1, 2, 3], "n": 4}}`: a given array matches as a set, in any order and with duplicates counting once, so `{"a": [1, 1]}` matches a stored `{"a": [1]}`.
