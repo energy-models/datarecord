@@ -1367,7 +1367,10 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>S3Credentials</code>, whose <code>repr</code> leaves out the secret and the token.
   <code>Workspace.set_credentials</code> replaces both on a live workspace, so open
   records and registered views read with the new key, and <code>None</code> returns to
-  the AWS environment.</li>
+  the AWS environment.
+  Only one workspace per DuckDB connection may reach S3, since DuckDB's
+  secrets belong to the whole connection: the first <code>s3://</code> URI of a
+  second one raises <code>duckdb.InvalidInputException</code>.</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>

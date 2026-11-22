@@ -1854,7 +1854,6 @@ Where <code>AWS_ENDPOINT_URL</code> is set, DuckDB's S3 secret takes its endpoin
 <a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">)</span>
 </code></pre></div>
 <p>The workspace builds both its boto3 client and DuckDB's secret, with <code>PROVIDER config</code>, from the same <code>S3Credentials</code>, so the key and the endpoint come from them, not from the AWS environment.
-boto3 still reads <code>AWS_PROFILE</code> and the AWS config files for the rest, so a profile that <code>AWS_PROFILE</code> names and the config files lack raises <code>ProfileNotFound</code>.
 <code>endpoint</code> is the server's URL, or <code>None</code> for AWS, <code>region</code> is <code>"eu-central-1"</code> by default, and <code>url_style</code> is <code>"path"</code> for a self-hosted server and <code>"vhost"</code> by default.
 <code>S3Credentials</code> raises <code>ValueError</code> for an empty key or secret, an endpoint without a scheme or with a user, a path, a query or a fragment, and any other URL style.
 Its <code>repr</code> leaves out the secret and the session token.</p>
@@ -1866,7 +1865,8 @@ Credentials do not cross a process boundary: a pickled store, revision or claim 
 <p>DuckDB's secret is named <code>datarecord_s3</code> and has no scope, so on a connection shared with its caller it replaces none of the caller's secrets.
 Where the caller holds a secret for all of <code>s3://</code> too, DuckDB picks between the two by name: a caller's secret named before <code>datarecord_s3</code> in sort order, such as <code>aws</code>, is read in its place, and one named after it, or unnamed, is not read.
 <code>close()</code> drops <code>datarecord_s3</code> from a connection passed in.
-Workspaces that share a caller's connection share its one <code>datarecord_s3</code>, so the last to set credentials wins and closing one drops the secret for all.</p>
+DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3.
+The first <code>s3://</code> URI of a second one raises <code>duckdb.InvalidInputException</code>, and the first keeps its key; open the second on its own connection.</p>
 <h3 id="threads">Threads<a class="headerlink" href="#threads" title="Permanent link">&para;</a></h3>
 <p><code>ws.con</code> returns the calling thread's cursor, so every thread can share one workspace, one store and one <code>Record</code>.
 Tables, registered views and fold results are shared between cursors.
