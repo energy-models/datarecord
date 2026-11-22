@@ -375,7 +375,7 @@ def numbered_relation(
 
 
 def empty_relation(
-    con: DuckDBPyConnection, **columns: DuckDBPyType
+    con: DuckDBPyConnection, /, **columns: DuckDBPyType
 ) -> DuckDBPyRelation:
     """Return a relation with no rows and the names and types given in `columns`.
 

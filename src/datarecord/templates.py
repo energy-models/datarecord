@@ -23,7 +23,8 @@ from __future__ import annotations
 
 import inspect
 import re
-from collections.abc import Hashable, Mapping
+from collections.abc import Callable, Hashable, Mapping
+from copy import copy
 from dataclasses import dataclass, field, replace
 from functools import cache, partial
 from typing import TYPE_CHECKING, Any, Protocol
@@ -36,6 +37,7 @@ if TYPE_CHECKING:
     from datarecord.store.store import Workspace
 
 type Typed = tuple[tuple[str, str], ...]
+type Slot = DuckDBPyRelation | Mapping[str, DuckDBPyRelation]
 
 CHECKED = False
 """Whether every call builds its plan afresh too and refuses a template whose text differs, as the test suite's `--check-templates` sets it."""
@@ -55,7 +57,8 @@ class Plan(Protocol):
     """Hashable data whose `build` makes a read of the relations it is passed, its slots.
 
     Every argument of `build` after `con`, one collected by `**kwargs` too, is
-    a slot. `build` must hold to a contract, which `CHECKED` tests:
+    a slot, or a mapping whose every value is one. `build` must hold to a
+    contract, which `CHECKED` tests:
 
     - its text depends on the plan's fields and on each slot's columns, types
       and whether it is a table or held rows alone;
@@ -97,9 +100,7 @@ class Templates:
         """Return `plan`'s read, built once per set of slot types and filled with each call's slots."""
         return Templated(self, plan)
 
-    def _filled(
-        self, plan: Plan, *slots: DuckDBPyRelation, **named: DuckDBPyRelation
-    ) -> str:
+    def _filled(self, plan: Plan, *slots: Slot, **named: Slot) -> str:
         """`plan.build` over the slots, its text that of the template kept for them, built on a miss.
 
         Raises
@@ -111,10 +112,11 @@ class Templates:
             states.
         """
         con = self.workspace.con
-        parts = _slots(_signature(type(plan)).bind(con, *slots, **named))
+        bound = _signature(type(plan)).bind(con, *slots, **named)
+        parts = _slots(bound)
         held = tuple((n, typed(p), _scanned(p)) for n, p in sorted(parts.items()))
         key = (plan, held)
-        build = partial(plan.build, con)
+        build = partial(_built, plan, bound)
         found = self._kept.get(key)
         if found is None:
             found = self._kept[key] = _template(con, build, parts)
@@ -142,14 +144,14 @@ class Templated:
 
     templates: Templates
     plan: Plan
-    args: tuple[DuckDBPyRelation, ...] = ()
-    kwargs: Mapping[str, DuckDBPyRelation] = field(default_factory=dict)
+    args: tuple[Slot, ...] = ()
+    kwargs: Mapping[str, Slot] = field(default_factory=dict)
 
-    def bind(self, *slots: DuckDBPyRelation, **named: DuckDBPyRelation) -> Templated:
+    def bind(self, *slots: Slot, **named: Slot) -> Templated:
         """Return this read with `slots` and `named` filled in before those of a later call."""
         return replace(self, args=(*self.args, *slots), kwargs={**self.kwargs, **named})
 
-    def text(self, *slots: DuckDBPyRelation, **named: DuckDBPyRelation) -> str:
+    def text(self, *slots: Slot, **named: Slot) -> str:
         """Return the statement of the read over the bound slots and these.
 
         Raises
@@ -161,9 +163,7 @@ class Templated:
             self.plan, *self.args, *slots, **self.kwargs, **named
         )
 
-    def __call__(
-        self, *slots: DuckDBPyRelation, **named: DuckDBPyRelation
-    ) -> DuckDBPyRelation:
+    def __call__(self, *slots: Slot, **named: Slot) -> DuckDBPyRelation:
         """Return the read over these slots, on the calling thread's cursor."""
         return self.templates.workspace.con.sql(self.text(*slots, **named))
 
@@ -204,7 +204,7 @@ class _Template:
 
 def _template(
     con: DuckDBPyConnection,
-    build: partial[DuckDBPyRelation],
+    build: Callable[[Mapping[str, DuckDBPyRelation]], DuckDBPyRelation],
     slots: Mapping[str, DuckDBPyRelation],
 ) -> _Template:
     """`build` called with each of `slots` read behind a subquery of its own, rendered as a `_Template` its texts are cut out of.
@@ -228,7 +228,7 @@ def _template(
     """
     texts = {n: text(p) for n, p in slots.items()}
     bounded = {n: _bounded(n, t) for n, t in texts.items()}
-    whole = text(build(**{n: con.sql(b) for n, b in bounded.items()}))
+    whole = text(build({n: con.sql(b) for n, b in bounded.items()}))
     for n in (n for n, p in slots.items() if _scanned(p)):
         whole = whole.replace(_INLINED + bounded[n], _CHOSEN + bounded[n])
     found = sorted(
@@ -261,15 +261,32 @@ def _signature(kind: type[Plan]) -> inspect.Signature:
 
 
 def _slots(bound: inspect.BoundArguments) -> dict[str, DuckDBPyRelation]:
-    """The slots `bound` passes after `con`, each by the name `build` takes it by, so `build(con, **slots)` calls it alike."""
-    parameters = bound.signature.parameters
+    """The slots `bound` passes after `con`, each by its argument's name, a mapping's as `{argument}.{key}`.
+
+    No argument's name holds a dot, so a mapping's keys never collide with
+    another argument's slot, whatever they are. `_built` reads them back.
+    """
     out: dict[str, DuckDBPyRelation] = {}
     for name, value in list(bound.arguments.items())[1:]:
-        if parameters[name].kind is inspect.Parameter.VAR_KEYWORD:
-            out |= value
+        if isinstance(value, Mapping):
+            out |= {f"{name}.{k}": v for k, v in value.items()}
         else:
             out[name] = value
     return out
+
+
+def _built(
+    plan: Plan, bound: inspect.BoundArguments, parts: Mapping[str, DuckDBPyRelation]
+) -> DuckDBPyRelation:
+    """`plan.build` called as `bound` calls it, each slot `_slots` names given its relation in `parts`."""
+    called = copy(bound)
+    called.arguments = {
+        n: {k: parts[f"{n}.{k}"] for k in v}
+        if isinstance(v, Mapping)
+        else parts.get(n, v)
+        for n, v in bound.arguments.items()
+    }
+    return plan.build(*called.args, **called.kwargs)
 
 
 def _scanned(rel: DuckDBPyRelation) -> bool:

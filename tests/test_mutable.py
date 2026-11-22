@@ -734,6 +734,26 @@ def _unit_axis(record):
     return record.properties["unit"].df().set_index("unit")
 
 
+@pytest.mark.parametrize("dim", ["values", "om", "con"])
+def test_a_label_removed_along_a_dim_named_like_a_read_slot_drops_its_rows(store, dim):
+    """A dimension outside `partial` may take a name `ReadPlan.build` takes a relation by."""
+    base = empty_root(
+        store,
+        Schema(
+            dimensions={"unit": Dimension(dtype="str"), dim: Dimension(dtype="str")},
+            attributes={"output": AttributeSpec(dtype="float", dims={"unit", dim})},
+            partial=frozenset({"unit"}),
+        ),
+    ).commit()
+    staged = WorkingRecord(base.record)
+    staged.add("unit", ["p1"])
+    staged.add(dim, ["a", "b"])
+    staged.set("output", [1.0, 2.0], unit="p1", **{dim: ["a", "b"]})
+    staged.remove(dim, ["a"])
+    rows = staged.attributes["output"].project(f"unit, {dim}, value").fetchall()
+    assert rows == [("p1", "b", 2.0)], "the row naming the removed label is dropped"
+
+
 def test_set_may_change_a_category(units):
     """A category is a patch of one column of the axis row, like any property.
 

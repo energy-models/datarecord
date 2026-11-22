@@ -343,7 +343,7 @@ class ReadPlan:
         con: DuckDBPyConnection,
         values: DuckDBPyRelation,
         om: DuckDBPyRelation,
-        **dead: DuckDBPyRelation,
+        dead: Mapping[str, DuckDBPyRelation],
     ) -> DuckDBPyRelation:
         """The owning layers' rows `values` joined to the attribute's map rows `om`, as `Record._relation` reads them.
 
@@ -1033,7 +1033,7 @@ class Record:
             om = fold.owners(attribute)
             dead = fold.axes.dead
         held = {c: dead[c] for c in plan.outside_index if c in dead}
-        return templates.memoize(plan).bind(union_all_by_name(layers), om, **held)
+        return templates.memoize(plan).bind(union_all_by_name(layers), om, held)
 
     def _owners_of(self, attribute: str) -> DuckDBPyRelation:
         """Return the owner map's rows of `attribute`, folded above the frozen layers on their own.
