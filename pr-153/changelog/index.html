@@ -1372,12 +1372,17 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>S3Credentials</code>, whose <code>repr</code> leaves out the secret and the token.
   <code>Workspace.set_credentials</code> replaces both on a live workspace, so open
   records and registered views read with the new key, and <code>None</code> returns to
-  the AWS environment.</li>
+  the AWS environment. Where that holds no key either, the workspace reaches
+  S3 anonymously, with unsigned requests from boto3 and DuckDB alike, so it
+  reads a bucket open to anyone.
+  Only one workspace per DuckDB connection may reach S3, since DuckDB's
+  secrets belong to the whole connection: the first <code>s3://</code> URI of a
+  second one raises <code>duckdb.InvalidInputException</code>.</li>
 <li><code>Claim.commit(source, credentials=S3Credentials(...))</code> writes the layer
   with a key for <code>layers/&lt;id&gt;/</code> alone. During the commit, datarecord reaches
   every key under the layer with it, through boto3 and through a DuckDB
   secret scoped to the layer, and reads the ancestors with the workspace's
-  key. The <a href="https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer">store reference</a>
+  key, or anonymously where the workspace has none. The <a href="https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer">store reference</a>
   lists the S3 actions each key needs.</li>
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
