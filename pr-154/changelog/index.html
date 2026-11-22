@@ -1120,8 +1120,9 @@ SPDX-License-Identifier: CC-BY-4.0
   returns the spec of a name, and <code>Schema.column_type</code> takes the property's
   subject. A property may share its name with an attribute, a dimension or a
   property of another subject.</li>
-<li>A property declares exactly one of <code>dtype</code> and <code>refers: &lt;dim&gt;</code>, the dimension it
-  refers to, whose live labels are then its values. <code>set</code> and <code>add</code> check them, and the writer checks every layer.
+<li>A property declares exactly one of <code>dtype</code> and <code>one_of: &lt;dim&gt;</code>. A property
+  with <code>one_of</code> refers to that dimension, and its values are live labels
+  of that dimension. <code>set</code> and <code>add</code> check them, and the writer checks every layer.
   <code>remove(dim, labels)</code> fails while such a property still holds a label.</li>
 <li>A property that refers to a dimension with <code>one_of</code>, on a subject in
   <code>partial</code>, a multi-dimension among them, categorizes the subject. Categories select labels in
@@ -1139,8 +1140,11 @@ SPDX-License-Identifier: CC-BY-4.0
 <li><code>Workspace</code> holds the DuckDB database and <code>Store</code> holds one location. Each
   layer under <code>layers/&lt;id&gt;/</code> carries its own <code>manifest.json</code>, a <code>Manifest</code>
   holding its id, its parent, the full schema it was written under, the files
-  it wrote and a <code>meta</code> of strings, integers, finite floats, booleans, and
-  arrays and objects of these, with no null.
+  it wrote and a <code>meta</code> of strings, numbers, booleans, null, and arrays and
+  objects of these. A float may be <code>inf</code>, <code>-inf</code> or <code>nan</code>, written as the bare
+  <code>Infinity</code>, <code>-Infinity</code> and <code>NaN</code> of Python's <code>json</code>, in a revision's <code>meta</code>
+  as in the schema's, so a PyPSA network's <code>n.meta</code> keeps them. Any other
+  value is refused with a <code>TypeError</code> naming its path.
   A read opens exactly the files the manifest lists and globs nothing. A
   <code>Revision</code> is its location and id: it compares, hashes and serialises as
   them, and reads its ancestry in a new process. <code>rev.manifest</code> and
@@ -1207,7 +1211,7 @@ SPDX-License-Identifier: CC-BY-4.0
   the layer holding each axis's deepest file in <code>resolved/dimension_owners.parquet</code>.</li>
 <li><code>WorkingRecord.set</code> checks that each label of an attribute row is on its
   dimension's axis as staged, a multi-dimension's tuple among them. <code>add</code> checks that each label of a tuple is on its axis
-  as staged, and that a value of a property with <code>refers</code> is a label of that
+  as staged, and that a value of a property with <code>one_of</code> is a label of that
   dimension as staged. <code>write_layer</code> checks every attribute row against the final
   axes of the layer, and every tuple of a multi-dimension against the final axes of
   the dimensions its fields draw on.
@@ -1271,7 +1275,7 @@ SPDX-License-Identifier: CC-BY-4.0
   pypsa-eur's <code>country</code>, is a dimension of its own whose labels are the shapes'
   <code>idx</code>. Such a dimension is no dimension of the record's own, and a network is built
   from no selection squeezing it. A custom text column named like a dimension
-  refers to it, so pypsa-eur's <code>bus.country</code> is <code>{refers: country}</code>. The CRS
+  refers to it, so pypsa-eur's <code>bus.country</code> is <code>{one_of: country}</code>. The CRS
   is <code>crs</code> in the schema's <code>meta</code>, and <code>build</code> restores <code>n.shapes</code> in that
   CRS.
   <code>to_datarecord</code> refuses a shape without a <code>component</code>, <code>idx</code> or <code>type</code>, two
@@ -1369,7 +1373,8 @@ SPDX-License-Identifier: CC-BY-4.0
   squeezes.</li>
 <li><code>Workspace(credentials=S3Credentials(...))</code> reaches S3 with a key passed in
   rather than the AWS environment's: an access key id, a secret, a session
-  token, an endpoint, a region and a URL style. The workspace builds its
+  token, an endpoint, a region (<code>eu-central-1</code> by default) and a URL
+  style. The workspace builds its
   boto3 client and DuckDB's secret, with <code>PROVIDER config</code>, from the same
   <code>S3Credentials</code>, whose <code>repr</code> leaves out the secret and the token.
   <code>Workspace.set_credentials</code> replaces both on a live workspace, so open
@@ -1414,9 +1419,6 @@ SPDX-License-Identifier: CC-BY-4.0
   with its column <code>dim</code> now <code>dimension</code>, so a store written before does not
   read. <code>Store.dim_owners_uri</code> is <code>dimension_owners_uri</code>. An attribute still
   lists its dimensions under <code>dims</code>.</li>
-<li>Breaking: a property names the dimension it refers to with <code>refers</code>, which was
-  <code>one_of</code>, so <code>one_of</code> is a dimension's list of labels alone.
-  <code>Schema.one_of_properties</code> is now <code>Schema.referring_properties</code>.</li>
 <li>The pages, docstrings and error messages take mathspec's words. A named
   part of a multi-dimension's tuple, such as <code>bus</code> of <code>connection</code>, is a field. A
   coordinate is one label on each dimension of an attribute, such as <code>(gas, high)</code>,
@@ -1727,8 +1729,8 @@ SPDX-License-Identifier: CC-BY-4.0
 <li><code>set</code> takes no expression. Compute the new values from <code>attributes[name]</code>
   and <code>set</code> the frame.</li>
 <li><code>Dimension.within</code> is gone. Every axis is keyed by its label alone, with
-  labels unique across the dimension. A nested dimension is a property with <code>refers</code> on
-  the parent dimension, such as <code>snapshot.period</code> with <code>refers: period</code>. <code>add</code>
+  labels unique across the dimension. A nested dimension is a property with <code>one_of</code> on
+  the parent dimension, such as <code>snapshot.period</code> with <code>one_of: period</code>. <code>add</code>
   takes no parent keys, and <code>Schema.axis_key</code> is gone.</li>
 <li>Traits are gone: <code>Trait</code>, <code>Schema.traits</code>, <code>Schema.attributes_for</code> and
   <code>Schema.properties_for</code>.</li>
