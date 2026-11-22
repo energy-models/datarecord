@@ -1867,7 +1867,7 @@ Where <code>AWS_ENDPOINT_URL</code> is set, DuckDB's S3 secret takes its endpoin
 <a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">secret</span><span class="p">,</span>
 <a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">session_token</span><span class="o">=</span><span class="n">token</span><span class="p">,</span>
 <a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">endpoint</span><span class="o">=</span><span class="s2">"http://localhost:8333"</span><span class="p">,</span>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">region</span><span class="o">=</span><span class="s2">"us-east-1"</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">region</span><span class="o">=</span><span class="s2">"eu-central-1"</span><span class="p">,</span>
 <a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">url_style</span><span class="o">=</span><span class="s2">"path"</span><span class="p">,</span>
 <a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">)</span>
 <a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">(</span><span class="n">credentials</span><span class="o">=</span><span class="n">credentials</span><span class="p">)</span>
@@ -1877,7 +1877,7 @@ Where <code>AWS_ENDPOINT_URL</code> is set, DuckDB's S3 secret takes its endpoin
 </code></pre></div>
 <p>The workspace builds both its boto3 client and DuckDB's secret, with <code>PROVIDER config</code>, from the same <code>S3Credentials</code>, so the key and the endpoint come from them, not from the AWS environment.
 boto3 still reads <code>AWS_PROFILE</code> and the AWS config files for the rest, so a profile that <code>AWS_PROFILE</code> names and the config files lack raises <code>ProfileNotFound</code>.
-<code>endpoint</code> is the server's URL, or <code>None</code> for AWS, and <code>url_style</code> is <code>"path"</code> for a self-hosted server and <code>"vhost"</code> by default.
+<code>endpoint</code> is the server's URL, or <code>None</code> for AWS, <code>region</code> is <code>"eu-central-1"</code> by default, and <code>url_style</code> is <code>"path"</code> for a self-hosted server and <code>"vhost"</code> by default.
 <code>S3Credentials</code> raises <code>ValueError</code> for an empty key or secret, an endpoint without a scheme or with a user, a path, a query or a fragment, and any other URL style.
 Its <code>repr</code> leaves out the secret and the session token.</p>
 <p><code>set_credentials</code> replaces the boto3 client and the secret together, so open records and registered views read with the new key from the next query on.
