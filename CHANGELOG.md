@@ -283,6 +283,9 @@ All notable changes to datarecord are documented here. The format follows
   `Workspace.set_credentials` replaces both on a live workspace, so open
   records and registered views read with the new key, and `None` returns to
   the AWS environment.
+  Only one workspace per DuckDB connection may reach S3, since DuckDB's
+  secrets belong to the whole connection: the first `s3://` URI of a
+  second one raises `duckdb.InvalidInputException`.
 
 ### Changed
 

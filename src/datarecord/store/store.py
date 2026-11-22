@@ -231,6 +231,8 @@ class Workspace:
     con
         A connection to attach `database` on, such as a server's; its default
         database and transactions stay its own. A fresh in-memory one by default.
+        DuckDB shares an S3 secret across the whole connection, so only one
+        workspace on it may reach `s3://` URIs.
     name
         What `database` is attached as, and named by in SQL.
     credentials
@@ -408,9 +410,13 @@ class Workspace:
         ------
         ImportError
             If boto3, from `datarecord[remote]`, is missing.
+        duckdb.InvalidInputException
+            On the first `s3://` URI, if another workspace on this DuckDB
+            connection already reaches S3.
 
         Notes
         -----
+        - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
         - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
         """
         files = RemoteFiles(credentials)
@@ -421,6 +427,14 @@ class Workspace:
             options, parameters = _config_options(credentials)
         with self._db.cursor() as setup:
             setup.execute("INSTALL httpfs; LOAD httpfs;")
+            if self._remote is None and _secret_exists(setup):
+                msg = (
+                    f"another workspace on this DuckDB connection already reaches "
+                    f"S3 with the secret `{_SECRET}`, and only one per connection "
+                    f"is supported; open workspace `{self.name}` on its own "
+                    f"connection"
+                )
+                raise duckdb.InvalidInputException(msg)
             setup.execute(
                 f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})", parameters
             )
@@ -537,6 +551,15 @@ class Workspace:
                 teardown.execute(f"DROP SECRET IF EXISTS {_SECRET}")
         if self._owned:
             self._db.close()
+
+
+def _secret_exists(con: DuckDBPyConnection) -> bool:
+    """Whether the connection holds a secret named `_SECRET`, whichever workspace made it."""
+    return bool(
+        con.execute(
+            "SELECT 1 FROM duckdb_secrets() WHERE name = ?", [_SECRET]
+        ).fetchall()
+    )
 
 
 def _chain_options() -> list[str]:

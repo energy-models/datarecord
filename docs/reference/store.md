@@ -175,7 +175,8 @@ Credentials do not cross a process boundary: a pickled store, revision or claim 
 DuckDB's secret is named `datarecord_s3` and has no scope, so on a connection shared with its caller it replaces none of the caller's secrets.
 Where the caller holds a secret for all of `s3://` too, DuckDB picks between the two by name: a caller's secret named before `datarecord_s3` in sort order, such as `aws`, is read in its place, and one named after it, or unnamed, is not read.
 `close()` drops `datarecord_s3` from a connection passed in.
-Workspaces that share a caller's connection share its one `datarecord_s3`, so the last to set credentials wins and closing one drops the secret for all.
+DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3.
+The first `s3://` URI of a second one raises `duckdb.InvalidInputException`, and the first keeps its key; open the second on its own connection.
 
 ### Threads
 

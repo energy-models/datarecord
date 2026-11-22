@@ -490,6 +490,23 @@ def test_closing_a_workspace_drops_its_secret_from_a_callers_connection():
     caller.close()
 
 
+def test_a_second_workspace_on_a_connection_cannot_reach_s3():
+    """DuckDB's secrets belong to the whole connection, so a second would replace the first's key."""
+    caller = duckdb.connect()
+    first = Workspace(con=caller, name="a", credentials=S3Credentials(_KEY_ID, "x"))
+    second = Workspace(con=caller, name="b", credentials=S3Credentials("other", "y"))
+    first.files("s3://bucket/record")
+    with pytest.raises(duckdb.InvalidInputException, match="only one per connection"):
+        second.files("s3://bucket/record")
+    assert _secret(first)["key_id"] == _KEY_ID, "the first keeps its key"
+    first.set_credentials(S3Credentials("renewed", "z"))
+    assert _secret(first)["key_id"] == "renewed", "the first still replaces its own"
+    second.close()
+    assert _secret(first)["key_id"] == "renewed", "closing the second keeps it"
+    first.close()
+    caller.close()
+
+
 def test_credentials_on_a_local_workspace_set_up_no_secret(workspace, tmp_path):
     """No `httpfs` and no secret until the first `s3://` URI."""
     workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0]))
