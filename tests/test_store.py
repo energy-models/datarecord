@@ -15,12 +15,14 @@ import math
 import os
 import pickle
 import re
+import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterator
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
+from textwrap import dedent
 from typing import Any
 from uuid import uuid4
 
@@ -393,77 +395,90 @@ def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypat
     assert "endpoint" not in secret and "session_token" not in secret
 
 
-_frozen_chain_environment = pytest.mark.skipif(
-    sys.platform == "win32",
-    reason="DuckDB's AWS SDK on Windows reads the environment as it was when "
-    "the aws extension loaded, so a test cannot set its credential chain",
-)
+def _secret_in_a_fresh_process(script: str, **environment: str) -> dict[str, str]:
+    """The DuckDB S3 secret of `script`'s workspace `ws`, run in a process started with `environment`.
+
+    DuckDB's AWS SDK on Windows reads the environment as it was when the aws
+    extension loaded, so its credential chain never sees a `monkeypatch` made
+    after an earlier test loaded it. A fresh process reads `environment` from
+    the start, on every platform.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("AWS_")}
+    env |= {"AWS_REGION": "us-east-1", "AWS_EC2_METADATA_DISABLED": "true"}
+    listing = (
+        'print(ws.con.execute("SELECT secret_string FROM duckdb_secrets() '
+        "WHERE name = 'datarecord_s3'\").fetchone()[0])"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", f"{dedent(script)}\n{listing}"],
+        env=env | environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    return dict(kv.split("=", 1) for kv in done.stdout.strip().split(";"))
 
 
-@_frozen_chain_environment
 @pytest.mark.parametrize("source", ["environment", "credentials-file"])
 def test_the_environments_key_sets_up_duckdb_without_a_config_file(
-    workspace, monkeypatch, tmp_path, source: str
+    tmp_path, source: str
 ):
     """A self-hosted server's key, from the environment or a profile, with no `~/.aws/config`."""
     credentials = tmp_path / "credentials"
     credentials.write_text(
         f"[default]\naws_access_key_id = {_KEY_ID}\naws_secret_access_key = x\n"
     )
-    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"):
-        monkeypatch.delenv(name, raising=False)
-    if source == "environment":
-        monkeypatch.setenv("AWS_ACCESS_KEY_ID", _KEY_ID)
-        monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", _SECRETS[0])
-    else:
-        monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", str(credentials))
-    monkeypatch.setenv("AWS_CONFIG_FILE", str(tmp_path / "missing"))
-    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:8333")
-    monkeypatch.setenv("AWS_REGION", "us-east-1")
-    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
-    workspace.files("s3://bucket/record")
-    secret = _secret(workspace)
+    environment = (
+        {"AWS_ACCESS_KEY_ID": _KEY_ID, "AWS_SECRET_ACCESS_KEY": _SECRETS[0]}
+        if source == "environment"
+        else {"AWS_SHARED_CREDENTIALS_FILE": str(credentials)}
+    )
+    secret = _secret_in_a_fresh_process(
+        """
+        from datarecord import Workspace
+        ws = Workspace()
+        ws.files("s3://bucket/record")
+        """,
+        **environment,
+        AWS_CONFIG_FILE=str(tmp_path / "missing"),
+        AWS_ENDPOINT_URL="http://localhost:8333",
+    )
     assert (secret["key_id"], secret["endpoint"]) == (_KEY_ID, "localhost:8333")
 
 
-def _stale_profile(monkeypatch: pytest.MonkeyPatch) -> None:
-    """boto3 refuses to build: `AWS_PROFILE` names a profile no config file has."""
-    monkeypatch.setenv("AWS_PROFILE", "nonexistent")
-
-
-def _empty_chain(monkeypatch: pytest.MonkeyPatch) -> None:
-    """boto3 builds, keyless, and DuckDB's credential chain finds no key."""
-    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_PROFILE"):
-        monkeypatch.delenv(name, raising=False)
-    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
-    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
-    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://localhost:1")
-    monkeypatch.setenv("AWS_REGION", "us-east-1")
-    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
-
-
-@pytest.mark.parametrize(
-    ("environment", "replacement", "raised"),
-    [
-        (_stale_profile, S3Credentials("other", "other"), ProfileNotFound),
-        pytest.param(_empty_chain, None, duckdb.Error, marks=_frozen_chain_environment),
-    ],
-    ids=["boto3-refuses", "duckdb-refuses"],
-)
-def test_failed_replacement_keeps_the_old_credentials(
-    workspace,
-    monkeypatch,
-    environment: Callable[[pytest.MonkeyPatch], None],
-    replacement: S3Credentials | None,
-    raised: type[Exception],
+def test_failed_replacement_keeps_the_old_credentials_where_boto3_refuses(
+    workspace, monkeypatch
 ):
     workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0]))
     files = workspace.files("s3://bucket/record")
-    environment(monkeypatch)
-    with pytest.raises(raised):
-        workspace.set_credentials(replacement)
+    monkeypatch.setenv("AWS_PROFILE", "nonexistent")
+    with pytest.raises(ProfileNotFound):
+        workspace.set_credentials(S3Credentials("other", "other"))
     assert workspace.files("s3://bucket/record") is files
     assert _secret(workspace)["key_id"] == _KEY_ID, "boto3 and DuckDB stay alike"
+
+
+def test_failed_replacement_keeps_the_old_credentials_where_duckdb_refuses():
+    """boto3 builds, keyless, and DuckDB's credential chain finds no key."""
+    secret = _secret_in_a_fresh_process(
+        f"""
+        import duckdb
+        from datarecord import S3Credentials, Workspace
+        ws = Workspace(credentials=S3Credentials({_KEY_ID!r}, "x"))
+        files = ws.files("s3://bucket/record")
+        try:
+            ws.set_credentials(None)
+        except duckdb.Error:
+            assert ws.files("s3://bucket/record") is files, "boto3 keeps the old key"
+        else:
+            raise AssertionError("DuckDB took an empty credential chain")
+        """,
+        AWS_CONFIG_FILE=os.devnull,
+        AWS_SHARED_CREDENTIALS_FILE=os.devnull,
+        AWS_ENDPOINT_URL="http://localhost:1",
+    )
+    assert secret["key_id"] == _KEY_ID, "boto3 and DuckDB stay alike"
 
 
 def test_closing_a_workspace_drops_its_secret_from_a_callers_connection():
