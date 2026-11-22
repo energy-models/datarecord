@@ -1141,10 +1141,14 @@ SPDX-License-Identifier: CC-BY-4.0
   layer under <code>layers/&lt;id&gt;/</code> carries its own <code>manifest.json</code>, a <code>Manifest</code>
   holding its id, its parent, the full schema it was written under, the files
   it wrote and a <code>meta</code> of strings, numbers, booleans, null, and arrays and
-  objects of these. A float may be <code>inf</code>, <code>-inf</code> or <code>nan</code>, written as the bare
-  <code>Infinity</code>, <code>-Infinity</code> and <code>NaN</code> of Python's <code>json</code>, in a revision's <code>meta</code>
-  as in the schema's, so a PyPSA network's <code>n.meta</code> keeps them. Any other
-  value is refused with a <code>TypeError</code> naming its path.
+  objects of these. The schema's <code>meta</code> follows the same rule, except that an
+  int, float, bool or None key becomes the string <code>json.dumps</code> writes for it,
+  so a PyPSA network's <code>n.meta</code> keeps its year keys. A float may be
+  <code>inf</code>, <code>-inf</code> or <code>nan</code>, written as the bare <code>Infinity</code>, <code>-Infinity</code> and <code>NaN</code>
+  of Python's <code>json</code>, in either <code>meta</code> and in a <code>default</code>, so a PyPSA
+  network's <code>n.meta</code> keeps them. A NumPy integer, float or bool is stored as
+  its Python value. Any other value in either <code>meta</code> is refused with a
+  <code>TypeError</code> naming its path, when the claim, commit or schema is made.
   A read opens exactly the files the manifest lists and globs nothing. A
   <code>Revision</code> is its location and id: it compares, hashes and serialises as
   them, and reads its ancestry in a new process. <code>rev.manifest</code> and
@@ -1379,12 +1383,17 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>S3Credentials</code>, whose <code>repr</code> leaves out the secret and the token.
   <code>Workspace.set_credentials</code> replaces both on a live workspace, so open
   records and registered views read with the new key, and <code>None</code> returns to
-  the AWS environment.</li>
+  the AWS environment. Where that holds no key either, the workspace reaches
+  S3 anonymously, with unsigned requests from boto3 and DuckDB alike, so it
+  reads a bucket open to anyone.
+  Only one workspace per DuckDB connection may reach S3, since DuckDB's
+  secrets belong to the whole connection: the first <code>s3://</code> URI of a
+  second one raises <code>duckdb.InvalidInputException</code>.</li>
 <li><code>Claim.commit(source, credentials=S3Credentials(...))</code> writes the layer
   with a key for <code>layers/&lt;id&gt;/</code> alone. During the commit, datarecord reaches
   every key under the layer with it, through boto3 and through a DuckDB
   secret scoped to the layer, and reads the ancestors with the workspace's
-  key. The <a href="https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer">store reference</a>
+  key, or anonymously where the workspace has none. The <a href="https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer">store reference</a>
   lists the S3 actions each key needs.</li>
 <li><code>tests/settle_cases.json</code> lists cases of <code>settle</code>: rows as DuckDB types,
   labels, <code>filter</code>, and the rows <code>settle</code> returns or the error it raises. A
