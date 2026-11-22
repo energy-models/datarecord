@@ -58,9 +58,9 @@ All notable changes to datarecord are documented here. The format follows
   it wrote and a `meta` of strings, numbers, booleans, null, and arrays and
   objects of these. The schema's `meta` follows the same rule. A float may be
   `inf`, `-inf` or `nan`, written as the bare `Infinity`, `-Infinity` and `NaN`
-  of Python's `json`, in either `meta`, so a PyPSA network's
-  `n.meta` keeps them. A NumPy integer, float or bool is stored as its Python
-  value. Any other value in either `meta` is refused with a
+  of Python's `json`, in either `meta` and in a `default`, so a PyPSA
+  network's `n.meta` keeps them. A NumPy integer, float or bool is stored as
+  its Python value. Any other value in either `meta` is refused with a
   `TypeError` naming its path, when the claim, commit or schema is made, so a
   PyPSA network whose `n.meta` has an int key is refused at its export.
   A read opens exactly the files the manifest lists and globs nothing. A

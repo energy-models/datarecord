@@ -10,6 +10,7 @@ Notes
 """
 
 import json
+import math
 from datetime import timedelta
 from typing import Any
 
@@ -656,25 +657,34 @@ def test_a_dim_reference_must_resolve(build, match):
 # -- defaults through the manifest (https://energy-models.github.io/datarecord/reference/schema/#attributes, https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record) ------------------------------
 
 
-@pytest.mark.parametrize("value", [float("inf"), None])
-def test_a_default_survives_the_manifest_round_trip(value):
-    """An `inf` default must read back as `inf`, not as "no default".
+@pytest.mark.parametrize(
+    ("value", "written"),
+    [
+        (math.inf, "Infinity"),
+        (-math.inf, "-Infinity"),
+        (math.nan, "NaN"),
+        (None, "null"),
+    ],
+    ids=["inf", "-inf", "nan", "null"],
+)
+def test_a_default_survives_the_manifest_round_trip(value, written):
+    """A non-finite default is written as the bare word `meta` uses and reads back, not as "no default".
 
-    JSON has no literal for a non-finite float, and pydantic's own serialiser
-    emits `null` for one - which would silently turn an unbounded capacity into
-    an absent bound. PyPSA declares `inf` defaults (`p_nom_max`), so this is the
-    ordinary case rather than an edge one, and it is only the encoding in
-    `AttributeSpec` that keeps it.
+    PyPSA declares `inf` defaults (`p_nom_max`), where `null` would turn an
+    unbounded capacity into an absent bound.
 
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/#manifestjson)
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="str")},
         attributes={"p_nom_max": AttributeSpec(dtype="float", default=value)},
     )
-    back = Schema.model_validate_json(schema.model_dump_json())
+    raw = schema.model_dump_json()
+    assert f'"default":{written}' in raw, "the bare word, no sentinel string"
+    back = Schema.model_validate_json(raw)
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
 
 

@@ -11,7 +11,6 @@ Notes
 
 from __future__ import annotations
 
-import math
 from typing import Annotated, Any
 
 from mathspec.program import DimensionDtype, ParameterDtype
@@ -21,7 +20,6 @@ from pydantic import (
     Field,
     PlainSerializer,
     ValidationInfo,
-    field_serializer,
     field_validator,
     model_validator,
 )
@@ -145,66 +143,14 @@ class Dimension(_Declared):
 class _ValueSpec(_Declared):
     """What `AttributeSpec` and `PropertySpec` share: a typed value and its defaults.
 
-    The `default`/`default_by` encoding lives here once, so a property and an
-    attribute round-trip `manifest.json` identically.
+    A non-finite float default is written as the bare `Infinity`, `-Infinity`
+    or `NaN`, as in `meta`.
     """
 
     default: Any | None = None
     default_by: dict[str, dict[str, Any]] = Field(default_factory=dict)
     unit: str | None = None
     description: str | None = None
-
-    @field_serializer("default")
-    def _serialise_default(self, value: Any) -> Any:
-        return _encode_default(value)
-
-    @field_validator("default", mode="before")
-    @classmethod
-    def _parse_default(cls, value: Any) -> Any:
-        return _decode_default(value)
-
-    @field_serializer("default_by")
-    def _serialise_default_by(
-        self, value: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, Any]]:
-        return {
-            key: {label: _encode_default(v) for label, v in by.items()}
-            for key, by in value.items()
-        }
-
-    @field_validator("default_by", mode="before")
-    @classmethod
-    def _parse_default_by(cls, value: Any) -> Any:
-        if not isinstance(value, dict):
-            return value
-        return {
-            key: {label: _decode_default(v) for label, v in by.items()}
-            if isinstance(by, dict)
-            else by
-            for key, by in value.items()
-        }
-
-
-def _encode_default(value: Any) -> Any:
-    """Encode a non-finite default as a string; JSON has no literal for one.
-
-    `inf` is an ordinary default for an unbounded capacity, and JSON's
-    `Infinity` is not valid JSON - a plain dump reads back as `None`,
-    turning "unbounded" into "no default". `_decode_default` reverses this.
-    """
-    if isinstance(value, float) and not math.isfinite(value):
-        return f"__{value}__"
-    return value
-
-
-def _decode_default(value: Any) -> Any:
-    """Decode what `_encode_default` encoded."""
-    if isinstance(value, str) and value.startswith("__") and value.endswith("__"):
-        try:
-            return float(value[2:-2])
-        except ValueError:
-            return value
-    return value
 
 
 class AttributeSpec(_ValueSpec):

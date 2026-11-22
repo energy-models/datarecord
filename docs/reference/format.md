@@ -49,7 +49,7 @@ The writer writes it last and create-only, and the revision exists from that mom
 | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `id`     | the layer's UUID                                                                                                                                                                      |
 | `parent` | the parent's UUID, `null` for a root and for a standalone directory                                                                                                                   |
-| `schema` | the full [schema](schema.md) the layer was written under, its `meta` written as `meta` is                                                                                             |
+| `schema` | the full [schema](schema.md) the layer was written under, its `meta` and a non-finite `default` written as `meta` is                                                                  |
 | `files`  | `{"dimensions": [...], "attributes": [...], "owner_map_rows": [...]}`: the declared names of the files the layer wrote, and the `_shape` of each shape `owner_map_rows.parquet` holds |
 | `meta`   | the revision's own `meta`: an object of strings, numbers, booleans, null, arrays and objects, a float possibly `Infinity`, `-Infinity` or `NaN`                                       |
 
