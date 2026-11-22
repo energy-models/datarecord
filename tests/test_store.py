@@ -395,6 +395,18 @@ def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypat
     assert "endpoint" not in secret and "session_token" not in secret
 
 
+def test_credentials_stay_out_of_duckdbs_query_log(workspace):
+    workspace.con.execute("SET enable_logging = true")
+    workspace.set_credentials(
+        S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1])
+    )
+    workspace.files("s3://bucket/record")
+    logged = workspace.con.execute("SELECT message FROM duckdb_logs").fetchall()
+    assert any("CREATE OR REPLACE SECRET" in m for (m,) in logged), "the log is on"
+    leaked = [m for (m,) in logged for s in (_KEY_ID, *_SECRETS) if s in m]
+    assert leaked == [], "credentials bind as parameters, out of the logged text"
+
+
 def _secret_in_a_fresh_process(script: str, **environment: str) -> dict[str, str]:
     """The DuckDB S3 secret of `script`'s workspace `ws`, run in a process started with `environment`.
 

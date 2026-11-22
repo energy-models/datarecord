@@ -416,13 +416,16 @@ class Workspace:
         - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
         """
         files = RemoteFiles(credentials)
+        parameters: list[str | bool] = []
         if credentials is None:
             options = _chain_options()
         else:
-            options = _config_options(credentials)
+            options, parameters = _config_options(credentials)
         with self._db.cursor() as setup:
             setup.execute("INSTALL httpfs; LOAD httpfs;")
-            setup.execute(f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})")
+            setup.execute(
+                f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})", parameters
+            )
         return files
 
     def store(self, uri: str) -> Store:
@@ -559,8 +562,12 @@ def _chain_options() -> list[str]:
     return options
 
 
-def _config_options(credentials: S3Credentials) -> list[str]:
-    """The options of a DuckDB S3 secret, `PROVIDER config`, with `credentials`."""
+def _config_options(credentials: S3Credentials) -> tuple[list[str], list[str | bool]]:
+    """The options of a DuckDB S3 secret, `PROVIDER config`, and the values they bind.
+
+    The values travel as prepared parameters, never in the statement's text,
+    which DuckDB's query log and parser errors repeat.
+    """
     values: dict[str, str | bool | None] = {
         "KEY_ID": credentials.key_id,
         "SECRET": credentials.secret,
@@ -572,8 +579,9 @@ def _config_options(credentials: S3Credentials) -> list[str]:
         url = urlparse(credentials.endpoint)
         values["ENDPOINT"] = url.netloc
         values["USE_SSL"] = url.scheme == "https"
-    options = ["TYPE s3", "PROVIDER config"]
-    return options + [f"{k} {lit(v)}" for k, v in values.items() if v is not None]
+    given = {k: v for k, v in values.items() if v is not None}
+    options = ["TYPE s3", "PROVIDER config", *(f"{k} ?" for k in given)]
+    return options, list(given.values())
 
 
 _process: Workspace | None = None
