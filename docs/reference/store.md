@@ -250,6 +250,16 @@ ValueError: this relation was built on another connection or thread; build it on
 
 When two threads fold one revision at once, both fold and datarecord keeps one of the two tables, so each reads the same answer.
 
+The first read of a record in a workspace creates the shared tables of its fold.
+A rollback drops a table created inside the transaction, so datarecord refuses that read while you hold a transaction open on `ws.con`:
+
+```text
+TransactionException: this read would create the record's shared tables inside the open transaction on this cursor, and a rollback would drop them; call `record.prepare()` before opening the transaction (https://energy-models.github.io/datarecord/reference/store/#threads)
+```
+
+`record.prepare()` creates those tables and commits them, and calling it again does nothing.
+After it, you can read the record on any thread inside a transaction that you roll back later.
+
 !!! info "See also"
 
     [Store a record](../howto/store-a-record.md) shows a store, a directory, S3 and threads in use.

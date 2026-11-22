@@ -239,6 +239,7 @@ def test_a_reader_sees_only_whole_edits(workspace, working):
     ],
 )
 def test_register_and_unregister_refuse_an_open_transaction(workspace, small, call):
+    small.record.prepare()
     workspace.con.begin()
     try:
         with pytest.raises(duckdb.TransactionException, match="already holds one open"):

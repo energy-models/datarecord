@@ -334,6 +334,10 @@ All notable changes to datarecord are documented here. The format follows
   once per attribute read, and a `WorkingRecord` builds each attribute's
   owner-map rows once for both its view and `name.owner_map`. So
   `register` asks DuckDB's catalog once rather than twice per attribute.
+  A record's first read in a workspace creates these shared tables, so it
+  raises `duckdb.TransactionException` inside an open transaction on
+  `ws.con`, whose rollback would drop them. `Record.prepare()` creates them
+  beforehand.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is

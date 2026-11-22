@@ -486,6 +486,27 @@ class Record:
         """Whether `close()` ran, after which the record refuses every read."""
         return not self._release.alive
 
+    def prepare(self) -> None:
+        """Build the shared tables this record's reads create on first use, committed.
+
+        After it, a read of this record on any thread is safe inside a
+        transaction that may roll back. Calling it again does nothing.
+
+        Raises
+        ------
+        duckdb.TransactionException
+            Where the tables are missing and the calling thread's cursor holds
+            an open transaction.
+        ValueError
+            Once `close()` ran.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+        """
+        self._frozen_axes  # noqa: B018 - built for the shared tables it creates
+        self._frozen_map  # noqa: B018 - built for the shared table it creates
+
     def __enter__(self) -> Self:
         return self
 
