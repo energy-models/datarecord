@@ -533,7 +533,7 @@ class Workspace:
         with self._db.cursor() as teardown:
             teardown.execute(f"DETACH {col(self.name)}")
             if not self._owned and self._remote is not None:
-                teardown.execute(f"DROP SECRET {_SECRET}")
+                teardown.execute(f"DROP SECRET IF EXISTS {_SECRET}")
         if self._owned:
             self._db.close()
 
