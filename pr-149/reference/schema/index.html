@@ -1724,8 +1724,8 @@ The <a href="../data-model/">data model</a> defines each of those words.</p>
 <a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>    <span class="p">},</span>
 <a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>    <span class="n">properties</span><span class="o">=</span><span class="p">{</span>
 <a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>        <span class="s2">"entity"</span><span class="p">:</span> <span class="p">{</span>
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            <span class="s2">"ctype"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">refers</span><span class="o">=</span><span class="s2">"ctype"</span><span class="p">),</span>
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>            <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">refers</span><span class="o">=</span><span class="s2">"carrier"</span><span class="p">),</span>
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>            <span class="s2">"ctype"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="s2">"ctype"</span><span class="p">),</span>
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>            <span class="s2">"carrier"</span><span class="p">:</span> <span class="n">PropertySpec</span><span class="p">(</span><span class="n">one_of</span><span class="o">=</span><span class="s2">"carrier"</span><span class="p">),</span>
 <a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>        <span class="p">},</span>
 <a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>    <span class="p">},</span>
 <a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>    <span class="n">partial</span><span class="o">=</span><span class="p">{</span><span class="s2">"entity"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">,</span> <span class="s2">"connection"</span><span class="p">},</span>
@@ -1865,7 +1865,7 @@ A property is indexed over its subject and the dimensions that the subject's fie
 <td><code>None</code></td>
 </tr>
 <tr>
-<td><code>refers</code></td>
+<td><code>one_of</code></td>
 <td>the dimension the property refers to</td>
 <td><code>None</code></td>
 </tr>
@@ -1891,12 +1891,12 @@ A property is indexed over its subject and the dimensions that the subject's fie
 </tr>
 </tbody>
 </table>
-<p>A property declares exactly one of <code>dtype</code> and <code>refers</code>.
-With <code>refers</code>, the property <a href="../data-model/#properties">refers to that dimension</a> and takes its type.
+<p>A property declares exactly one of <code>dtype</code> and <code>one_of</code>.
+With <code>one_of</code>, the property <a href="../data-model/#properties">refers to that dimension</a> and takes its type.
 <code>Schema.resolve("entity.carrier")</code> returns the subject and the spec, and <code>Schema.categorizing(dim)</code> lists the categorising properties of <code>dim</code>.</p>
 <p>datarecord refuses a property:</p>
 <ul>
-<li>that declares both <code>dtype</code> and <code>refers</code>, or neither</li>
+<li>that declares both <code>dtype</code> and <code>one_of</code>, or neither</li>
 <li>of an undeclared subject, or of a dimension with <code>one_of</code></li>
 <li>that refers to an undeclared dimension or to a multi-dimension</li>
 <li>named like its subject's column, or like a field of its multi-dimension</li>
@@ -1963,12 +1963,12 @@ Each declaration maps to one DuckDB type:</p>
 </tr>
 <tr>
 <td>property</td>
-<td><code>refers: &lt;dim&gt;</code></td>
+<td><code>one_of: &lt;dim&gt;</code></td>
 <td>that dimension's type</td>
 </tr>
 </tbody>
 </table>
-<p>An attribute takes neither <code>one_of</code> nor <code>refers</code>, and no attribute or property is <code>datetime</code>.
+<p>An attribute takes no <code>one_of</code>, and no attribute or property is <code>datetime</code>.
 A property whose values are times refers to a <code>datetime</code> dimension.
 The format fixes three more columns: <code>attribute VARCHAR</code>, <code>breakpoint DOUBLE</code> and <code>value</code>, typed as the attribute's <code>dtype</code>.</p>
 <h2 id="names">Names<a class="headerlink" href="#names" title="Permanent link">&para;</a></h2>
@@ -2013,7 +2013,7 @@ Labels are data, and these rules do not apply to them.</p>
 <td>no</td>
 </tr>
 <tr>
-<td>change a <code>dtype</code>, <code>one_of</code>, <code>refers</code> or <code>over</code></td>
+<td>change a <code>dtype</code>, a <code>one_of</code> or an <code>over</code></td>
 <td>no</td>
 </tr>
 <tr>
