@@ -190,8 +190,9 @@ class Schema(_Declared):
     meta
         A framework's own top-level data - network attributes, CRS, free-form
         metadata. Stored and never interpreted, since none of it describes the
-        dimensioned data. A JSON object as a revision's `meta` is; any other
-        value raises `TypeError` naming its path.
+        dimensioned data. A JSON object as a revision's `meta` is, except that
+        an int, float, bool or None key becomes the string `json.dumps` writes
+        for it. Any other value raises `TypeError` naming its path.
 
     Notes
     -----
@@ -229,7 +230,7 @@ class Schema(_Declared):
     @field_validator("meta", mode="before")
     @classmethod
     def _validate_meta(cls, value: Any) -> Meta:
-        return validate_meta(value)
+        return validate_meta(value, json_keys=True)
 
     @model_validator(mode="after")
     def _validate(self) -> Schema:

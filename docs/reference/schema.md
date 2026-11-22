@@ -154,7 +154,9 @@ datarecord refuses a name in `partial` that the schema does not declare as a dim
 `meta` is a dict of a framework's own data, such as network attributes or a coordinate reference system.
 datarecord stores it and never reads it.
 It is a JSON object as a [revision's `meta`](store.md#store) is, a float possibly `inf`, `-inf` or `nan`.
-Any other value, such as a tuple, a set or a key that is no string, raises a `TypeError` naming its path when the schema is made, as in `meta['co2_budget']`.
+An int, float, bool or None key becomes the string that `json.dumps` writes for it, so `{2030: 0.4}` is stored as `{"2030": 0.4}`, as PyPSA's own files store it.
+Any other value, such as a tuple, a set or a key of another type, raises a `TypeError` naming its path when the schema is made, as in `meta['co2_budget']`.
+Two keys that become the same string, such as `2030` and `"2030"`, raise a `TypeError` too.
 
 ## `unit` and `description`
 

@@ -1461,17 +1461,30 @@ class TestPyPSA:
         finally:
             fresh.close()
 
-    def test_network_meta_that_is_no_json_is_refused_with_its_path(self, store):
-        """An int key, as a network built from a config may carry, is refused before anything is written.
+    def test_network_meta_year_keys_come_back_as_strings(self, store):
+        """An int key, as PyPSA-Eur's planning horizons are, reads back as the string PyPSA's own files hold.
 
         Notes
         -----
         - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
         """
         n = _north()
-        n.meta = {"co2_budget": {2030: 0.4}}
+        n.meta = {"co2_budget": {2030: 0.4, 2040: 0.1}}
+        revision = export_network(n, store)
+        built = PyPSA.build(store.revision(revision.id).record)
+        assert built.meta == {"co2_budget": {"2030": 0.4, "2040": 0.1}}
+
+    def test_network_meta_that_is_no_json_is_refused_with_its_path(self, store):
+        """A tuple is refused before anything is written.
+
+        Notes
+        -----
+        - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+        """
+        n = _north()
+        n.meta = {"co2_budget": (0.4, 0.1)}
         with pytest.raises(
-            TypeError, match=r"meta\['meta'\]\['co2_budget'\] has the key 2030"
+            TypeError, match=r"meta\['meta'\]\['co2_budget'\] is \(0\.4, 0\.1\)"
         ):
             export_network(n, store)
         assert store.revisions() == []

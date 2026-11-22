@@ -697,13 +697,17 @@ def test_a_default_survives_the_manifest_round_trip(value, written):
         ({"x": (1, 2)}, r"meta\['x'\] is \(1, 2\) of type tuple"),
         ({"x": {"y": timedelta(1)}}, r"meta\['x'\]\['y'\] is .* of type timedelta"),
         (
-            {"co2_budget": {2030: 0.4}},
-            r"meta\['co2_budget'\] has the key 2030 of type int",
+            {"x": {(2030, 2040): 0.4}},
+            r"meta\['x'\] has the key \(2030, 2040\) of type tuple",
+        ),
+        (
+            {"x": {2030: 0.4, "2030": 0.1}},
+            r"meta\['x'\] has the key '2030' and another that is also '2030'",
         ),
         ({"x": [{1, 2}]}, r"meta\['x'\]\[0\] is .* of type set"),
         ({"x": np.datetime64(1, "D")}, r"meta\['x'\] is .* of type datetime64"),
     ],
-    ids=["tuple", "timedelta", "int-key", "set", "np.datetime64"],
+    ids=["tuple", "timedelta", "tuple-key", "colliding-keys", "set", "np.datetime64"],
 )
 def test_a_schema_meta_value_that_is_no_json_names_its_path(meta, match):
     """Refused at construction by the rule a revision's `meta` follows, not converted at the write.
@@ -714,6 +718,20 @@ def test_a_schema_meta_value_that_is_no_json_names_its_path(meta, match):
     """
     with pytest.raises(TypeError, match=match):
         Schema(meta=meta)
+
+
+@pytest.mark.parametrize(
+    ("key", "name"),
+    [(2030, "2030"), (1.5, "1.5"), (True, "true"), (None, "null"), (np.int64(7), "7")],
+)
+def test_a_schema_meta_key_becomes_the_string_json_writes(key, name):
+    """Nested too, so a PyPSA-Eur `n.meta` keyed by planning horizon is kept.
+
+    Notes
+    -----
+    - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+    """
+    assert Schema(meta={"x": {key: 1}}).meta == {"x": {name: 1}}
 
 
 # -- versioning (https://energy-models.github.io/datarecord/reference/schema/#compatibility) -------------------------------------------------------
