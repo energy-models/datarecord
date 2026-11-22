@@ -1360,7 +1360,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>True
 </code></pre></div>
-<p><code>high</code> and <code>low</code> are siblings, each a layer with one row over <code>rev</code>. A <code>meta</code> value is any JSON value but null: a string, a finite number, a boolean, an array or an object.</p>
+<p><code>high</code> and <code>low</code> are siblings, each a layer with one row over <code>rev</code>. A <code>meta</code> value is any JSON value: a string, a number, a boolean, null, an array or an object.</p>
 <h2 id="find-a-revision">Find a revision<a class="headerlink" href="#find-a-revision" title="Permanent link">&para;</a></h2>
 <p><code>store.revisions(meta=...)</code> returns the revisions whose <code>meta</code> contains every pair you pass. <code>ancestry()</code> returns the ids from the root down:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="k">for</span> <span class="n">revision</span> <span class="ow">in</span> <span class="n">store</span><span class="o">.</span><span class="n">revisions</span><span class="p">(</span><span class="n">meta</span><span class="o">=</span><span class="p">{</span><span class="s2">"scenario"</span><span class="p">:</span> <span class="s2">"high"</span><span class="p">}):</span>
