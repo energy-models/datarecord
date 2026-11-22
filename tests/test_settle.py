@@ -10,7 +10,7 @@ Notes
 """
 
 import json
-from importlib.resources import files
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -19,7 +19,7 @@ import pytest
 from datarecord import Flags, settle
 
 CASES: list[dict[str, Any]] = json.loads(
-    (files("datarecord") / "settle_cases.json").read_text()
+    (Path(__file__).parent / "settle_cases.json").read_text()
 )
 
 

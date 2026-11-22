@@ -165,15 +165,8 @@ A [curve](data-model.md#attributes) is kept or dropped whole.
 ### Cases for a port
 
 A case of `settle` is a set of rows and labels with the rows `settle` returns for them, or the error it raises.
-datarecord ships its cases as `src/datarecord/settle_cases.json`, so a reader that settles rows in its own SQL can run them against its port.
-Pin it by datarecord's version and read it from the installed package:
-
-```python
-import json
-from importlib.resources import files
-
-cases = json.loads((files("datarecord") / "settle_cases.json").read_text())
-```
+datarecord keeps its cases in [`tests/settle_cases.json`](https://github.com/energy-models/datarecord/blob/main/tests/settle_cases.json), so a reader that settles rows in its own SQL can run them against its port.
+The file is not part of the package: pin it by fetching it from the repository at the tag of a datarecord release.
 
 The file is a JSON list of cases, and each case is an object with these keys:
 
