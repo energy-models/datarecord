@@ -254,7 +254,7 @@ The first read of a record in a workspace creates the shared tables of its fold.
 A rollback drops a table created inside the transaction, so datarecord refuses that read while you hold a transaction open on `ws.con`:
 
 ```text
-TransactionException: this read would create the record's shared tables inside the open transaction on this cursor, and a rollback would drop them; call `record.prepare()` before opening the transaction (https://energy-models.github.io/datarecord/reference/store/#threads)
+TransactionException: this would create the record's shared tables inside the open transaction on this cursor, and a rollback would drop them; call `record.prepare()` before opening the transaction (https://energy-models.github.io/datarecord/reference/store/#threads)
 ```
 
 `record.prepare()` creates those tables and commits them, and calling it again does nothing.

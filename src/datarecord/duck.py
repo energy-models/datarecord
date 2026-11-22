@@ -427,7 +427,7 @@ def tables_in(
 
 #: What `shared_table` raises where it would create a table in an open transaction.
 _CREATE_IN_TRANSACTION = (
-    "this read would create the record's shared tables inside the open "
+    "this would create the record's shared tables inside the open "
     "transaction on this cursor, and a rollback would drop them; call "
     "`record.prepare()` before opening the transaction "
     "(https://energy-models.github.io/datarecord/reference/store/#threads)"
