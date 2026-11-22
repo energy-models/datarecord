@@ -237,6 +237,7 @@ class Workspace:
         What `database` is attached as, and named by in SQL.
     credentials
         The S3 key for `s3://` URIs, in place of the AWS environment's.
+        Without a key from either, the workspace reaches S3 anonymously.
 
     Raises
     ------
@@ -387,8 +388,8 @@ class Workspace:
         Raises
         ------
         duckdb.Error
-            If DuckDB refuses the S3 secret, such as for `None` where its
-            credential chain finds no key.
+            If DuckDB refuses the S3 secret, such as for `None` where boto3
+            finds a key that DuckDB's credential chain does not.
 
         Notes
         -----
@@ -401,6 +402,9 @@ class Workspace:
 
     def _connect_remote(self, credentials: S3Credentials | None) -> Files:
         """Set up boto3 and DuckDB's `httpfs` with `credentials`, or the AWS environment.
+
+        Where boto3 finds no key in the AWS environment, both send their
+        requests unsigned.
 
         Runs on the first `s3://` URI and again on each `set_credentials`,
         never for a local workspace: `PROVIDER credential_chain` probes
@@ -422,7 +426,7 @@ class Workspace:
         files = RemoteFiles(credentials)
         parameters: list[str | bool] = []
         if credentials is None:
-            options = _chain_options()
+            options = _environment_options(anonymous=files.anonymous)
         else:
             options, parameters = _config_options(credentials)
         with self._db.cursor() as setup:
@@ -597,16 +601,21 @@ def _secret_exists(con: DuckDBPyConnection) -> bool:
     )
 
 
-def _chain_options() -> list[str]:
-    """The options of a DuckDB S3 secret, `PROVIDER credential_chain`, from the AWS environment.
+def _environment_options(*, anonymous: bool) -> list[str]:
+    """The options of a DuckDB S3 secret from the AWS environment.
 
-    The chain is the AWS SDK's default, as boto3's is. DuckDB 2.0 refuses any
-    `CHAIN` naming `config` unless the AWS config file holds the profile,
-    even where the environment or the credentials file holds the key. With
+    With a key, `PROVIDER credential_chain`: the chain is the AWS SDK's
+    default, as boto3's is. DuckDB 2.0 refuses any `CHAIN` naming `config`
+    unless the AWS config file holds the profile, even where the environment
+    or the credentials file holds the key. `anonymous`, where boto3's chain
+    finds no key, is `PROVIDER config` with no key, so DuckDB sends its
+    requests unsigned rather than refuse the empty chain, and still reaches
+    the environment's endpoint, which no secret at all would lose. With
     `AWS_ENDPOINT_URL` set, the secret adds what the chain does not supply -
     the endpoint, path-style addressing, SSL per its scheme.
     """
-    options = ["TYPE s3", "PROVIDER credential_chain"]
+    provider = "config" if anonymous else "credential_chain"
+    options = ["TYPE s3", f"PROVIDER {provider}"]
     endpoint = os.environ.get("AWS_ENDPOINT_URL")
     if endpoint:
         url = urlparse(endpoint)

@@ -187,7 +187,9 @@ class RemoteFiles:
 
     The client has a boto3 session of its own, so it reads the AWS environment
     as it stands when built. With `credentials`, the key and the endpoint come
-    from them, not from the environment.
+    from them, not from the environment. Without them, where the environment
+    holds no key either, the client sends its requests unsigned, so it reaches
+    what a bucket grants anyone.
 
     `create` is `put_object` with the conditional header `IfNoneMatch="*"`,
     which holds only as far as the server honours it.
@@ -201,6 +203,11 @@ class RemoteFiles:
         every key it fails on is `AccessDenied`. Without ListBucket on the
         prefix, S3 answers 403 for an absent key too.
 
+    Attributes
+    ----------
+    anonymous
+        Whether the client sends its requests unsigned, for want of a key.
+
     Notes
     -----
     - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
@@ -209,6 +216,7 @@ class RemoteFiles:
     def __init__(self, credentials: S3Credentials | None = None) -> None:
         try:
             import boto3
+            from botocore import UNSIGNED
             from botocore.config import Config
         except ImportError as e:
             msg = (
@@ -221,7 +229,11 @@ class RemoteFiles:
             style = "path" if os.environ.get("AWS_ENDPOINT_URL") else "auto"
             session = boto3.Session()
             endpoint = None
-            config = Config(s3={"addressing_style": style})
+            self.anonymous = session.get_credentials() is None
+            config = Config(
+                s3={"addressing_style": style},
+                signature_version=UNSIGNED if self.anonymous else None,
+            )
         else:
             session = boto3.Session(
                 aws_access_key_id=credentials.key_id,
@@ -230,6 +242,7 @@ class RemoteFiles:
                 region_name=credentials.region,
             )
             endpoint = credentials.endpoint
+            self.anonymous = False
             style = {"path": "path", "vhost": "virtual"}[credentials.url_style]
             config = Config(
                 s3={"addressing_style": style}, ignore_configured_endpoint_urls=True

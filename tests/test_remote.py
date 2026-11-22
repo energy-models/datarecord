@@ -195,8 +195,12 @@ def _allow_only_their_layers(
     admin: S3Credentials,
     layers: dict[str, UUID],
     denied: tuple[str, ...] = (),
+    *,
+    public: bool = False,
 ) -> None:
     """Grant each key in `layers`, by bucket policy, the S3 actions a commit takes under its layer except `denied`, and none elsewhere.
+
+    `public` grants anyone, without a key, the reads of the whole bucket.
 
     Notes
     -----
@@ -231,6 +235,21 @@ def _allow_only_their_layers(
                     "Resource": f"arn:aws:s3:::{bucket}/{prefix}*",
                 }
             )
+    if public:
+        statements += [
+            {
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:GetObject",
+                "Resource": f"arn:aws:s3:::{bucket}/*",
+            },
+            {
+                "Effect": "Allow",
+                "Principal": "*",
+                "Action": "s3:ListBucket",
+                "Resource": f"arn:aws:s3:::{bucket}",
+            },
+        ]
     policy = json.dumps({"Version": "2012-10-17", "Statement": statements})
     RemoteFiles(admin)._s3.put_bucket_policy(Bucket=bucket, Policy=policy)
 
@@ -378,6 +397,41 @@ def test_a_layers_key_denied_a_write_leaves_no_secret(
         )
     assert scoped.store.revisions() == [scoped.root], "no layer committed"
     assert _secrets(scoped.store) == {"datarecord_s3"}, "the layer's secret is gone"
+
+
+def test_a_workspace_without_a_key_reads_a_public_bucket_and_writes_with_a_layers(
+    bucket, credentials, monkeypatch
+):
+    """Anonymous reads reach a bucket open to anyone, and only the layer's key writes."""
+    admin = Workspace(credentials=credentials)
+    try:
+        store = admin.store(f"{bucket}/record")
+        root = store.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+        )
+        _allow_only_their_layers(
+            store, credentials, {"layer": store.claim(parent=root).id}, public=True
+        )
+    finally:
+        admin.close()
+    for name in ("AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"):
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
+    ws = Workspace()
+    try:
+        public = ws.store(store.uri)
+        with pytest.raises(PermissionError, match="AccessDenied"):
+            public.claim(parent=root)
+        (claim,) = public.claims()
+        child = claim.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long(value=2.0)}),
+            credentials=replace(credentials, key_id="layer", secret="layer"),
+        )
+        assert child.ancestry() == [root.id, child.id]
+        assert list(relation(child, "p_nom").df()["value"]) == [2.0]
+    finally:
+        ws.close()
 
 
 def test_a_workspace_on_a_callers_connection_keeps_its_unnamed_secret(bucket):

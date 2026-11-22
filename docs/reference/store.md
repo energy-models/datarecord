@@ -139,6 +139,9 @@ On S3 a denied read never counts as absent data, so `cleanup` deletes no layer a
 
 Without `credentials`, a workspace takes the S3 key and the endpoint from the AWS environment and config files.
 Where `AWS_ENDPOINT_URL` is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.
+Where boto3 finds no key in the AWS environment, the workspace reaches S3 anonymously: boto3 sends its requests unsigned, and DuckDB's secret holds no key, so DuckDB sends its requests unsigned too.
+You then read a bucket that grants reads to anyone, and a commit whose only key is [a key for its layer](#a-commit-with-a-key-for-its-layer) writes the layer with that key.
+A call that the bucket grants to no anonymous caller raises `PermissionError`, as above.
 
 A key that the process environment must not contain, such as a token from AWS Security Token Service (STS), goes to the workspace as `S3Credentials`:
 
@@ -175,7 +178,7 @@ Credentials do not cross a process boundary: a pickled store, revision or claim 
 DuckDB's secret is named `datarecord_s3` and has no scope, so on a connection shared with its caller it replaces none of the caller's secrets.
 Where the caller holds a secret for all of `s3://` too, DuckDB picks between the two by name: a caller's secret named before `datarecord_s3` in sort order, such as `aws`, is read in its place, and one named after it, or unnamed, is not read.
 `close()` drops `datarecord_s3` from a connection passed in.
-DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3.
+DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3, with a key or anonymously.
 The first `s3://` URI of a second one raises `duckdb.InvalidInputException`, and the first keeps its key; open the second on its own connection.
 
 #### A commit with a key for its layer
