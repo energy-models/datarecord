@@ -86,7 +86,7 @@ def fold_layer(
     refuse: UUID | None = None,
     keep: Callable[[DuckDBPyRelation], DuckDBPyRelation] = lambda rel: rel,
 ) -> DuckDBPyRelation | None:
-    """One layer's owner-map rows `own` folded onto `parent`, the map below it, both of attributes of one `shape`.
+    """One layer's owner-map rows `own` folded onto `parent` for attributes of a single `shape`.
 
     `schema` is the layer's own, which `parent` must already be extended to
     (`_widened`), and `shape` is under it. The parent rows naming a label
