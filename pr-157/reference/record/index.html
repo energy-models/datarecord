@@ -1927,13 +1927,8 @@ Where every row at a coordinate leaves NULL a dimension that another row there s
 A <a href="../data-model/#attributes">curve</a> is kept or dropped whole.</p>
 <h3 id="cases-for-a-port">Cases for a port<a class="headerlink" href="#cases-for-a-port" title="Permanent link">&para;</a></h3>
 <p>A case of <code>settle</code> is a set of rows and labels with the rows <code>settle</code> returns for them, or the error it raises.
-datarecord ships its cases as <code>src/datarecord/settle_cases.json</code>, so a reader that settles rows in its own SQL can run them against its port.
-Pin it by datarecord's version and read it from the installed package:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">json</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="kn">from</span><span class="w"> </span><span class="nn">importlib.resources</span><span class="w"> </span><span class="kn">import</span> <span class="n">files</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">cases</span> <span class="o">=</span> <span class="n">json</span><span class="o">.</span><span class="n">loads</span><span class="p">((</span><span class="n">files</span><span class="p">(</span><span class="s2">"datarecord"</span><span class="p">)</span> <span class="o">/</span> <span class="s2">"settle_cases.json"</span><span class="p">)</span><span class="o">.</span><span class="n">read_text</span><span class="p">())</span>
-</code></pre></div>
+datarecord keeps its cases in <a href="https://github.com/energy-models/datarecord/blob/main/tests/settle_cases.json"><code>tests/settle_cases.json</code></a>, so a reader that settles rows in its own SQL can run them against its port.
+The file is not part of the package: pin it by fetching it from the repository at the tag of a datarecord release.</p>
 <p>The file is a JSON list of cases, and each case is an object with these keys:</p>
 <table>
 <thead>

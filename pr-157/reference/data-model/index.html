@@ -1646,7 +1646,7 @@ You name it <code>subject.name</code>, such as <code>entity.carrier</code> or <c
 <p>A property's name belongs to its subject.
 <code>bus.x</code> and an attribute <code>x</code> are two names, and <code>carrier</code> may be a property of <code>entity</code>, a property of <code>bus</code> and a dimension at once.
 A multi-dimension's tuples are its labels, so a multi-dimension may have properties too.</p>
-<p>A property may refer to a dimension, declaring <code>refers</code> in place of <code>dtype</code>, and its values are then that dimension's labels.
+<p>A property may refer to a dimension with <code>one_of</code> in place of <code>dtype</code>, and its values are then that dimension's labels.
 A value that is not NULL must be a label the record has.
 <a href="../editing/#validation"><code>set</code> and <code>add</code></a> refuse a label the axis lacks, and <code>remove</code> refuses a label that is still a property's value.
 A NULL value refers to no label.
