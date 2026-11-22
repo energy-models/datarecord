@@ -20,7 +20,6 @@ own: the volume flags keep them small and plentiful. The credentials are
 `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` where set, and `datarecord`
 otherwise, which the server above is started with: SeaweedFS 4.52 refuses an
 unknown key. The key `denied` may read and list the bucket `elsewhere` only.
-`AWS_PROFILE` must be unset, or botocore reads that profile instead.
 
 Notes
 -----

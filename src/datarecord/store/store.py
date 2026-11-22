@@ -384,8 +384,6 @@ class Workspace:
 
         Raises
         ------
-        botocore.exceptions.ProfileNotFound
-            If `AWS_PROFILE` names a profile the AWS config files lack.
         duckdb.Error
             If DuckDB refuses the S3 secret, such as for `None` where its
             credential chain finds no key.

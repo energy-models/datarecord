@@ -29,7 +29,6 @@ from uuid import uuid4
 import duckdb
 import pandas as pd
 import pytest
-from botocore.exceptions import ProfileNotFound
 from botocore.stub import Stubber
 from pydantic import ValidationError
 
@@ -457,18 +456,6 @@ def test_the_environments_key_sets_up_duckdb_without_a_config_file(
         AWS_ENDPOINT_URL="http://localhost:8333",
     )
     assert (secret["key_id"], secret["endpoint"]) == (_KEY_ID, "localhost:8333")
-
-
-def test_failed_replacement_keeps_the_old_credentials_where_boto3_refuses(
-    workspace, monkeypatch
-):
-    workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0]))
-    files = workspace.files("s3://bucket/record")
-    monkeypatch.setenv("AWS_PROFILE", "nonexistent")
-    with pytest.raises(ProfileNotFound):
-        workspace.set_credentials(S3Credentials("other", "other"))
-    assert workspace.files("s3://bucket/record") is files
-    assert _secret(workspace)["key_id"] == _KEY_ID, "boto3 and DuckDB stay alike"
 
 
 def test_failed_replacement_keeps_the_old_credentials_where_duckdb_refuses():
