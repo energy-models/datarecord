@@ -42,6 +42,7 @@ from tests.fixtures import (
     scratch_tables,
     unpacked,
     write_attribute,
+    write_axis,
     write_component,
 )
 from tests.test_roundtrip import assert_networks_equal
@@ -2231,6 +2232,34 @@ class TestPyPSA:
         assert layer.attributes["p_nom"].df().empty != written
         child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
         assert child.c.Generator.static["p_nom"].tolist() == edited
+
+    @pytest.mark.parametrize("dim", ["snapshot", "scenario"])
+    def test_a_full_export_over_base_keeps_its_properties_of_a_bare_axis(
+        self, store, dim
+    ):
+        """A property `base` declares of an axis PyPSA holds as a bare index is written at `base`'s values.
+
+        Notes
+        -----
+        - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
+        """
+        n = _north()
+        n.set_scenarios(["a", "b"])
+        root = export_network(n, store)
+        schema = root.manifest.schema
+        properties = {**schema.properties, dim: {"cluster": PropertySpec(dtype="int")}}
+        tagged = empty_child(root, schema.model_copy(update={"properties": properties}))
+        axis = root.record.dims[dim].df()
+        axis["cluster"] = range(len(axis))
+        write_axis(tagged, dim, axis.to_dict("records"))
+        revision = tagged.commit()
+
+        n = PyPSA.build(revision.record)
+        n.add("Generator", "shed", bus="north")
+        layer = PyPSA.to_datarecord(n, revision.record.con, base=revision.record)
+        child = revision.store.commit(layer, parent=revision).record
+        held = child.properties[dim].df()
+        pd.testing.assert_frame_equal(held, axis, check_dtype=False)
 
     def test_link_internal_power_is_p_internal(self, single_revision, solved):
         """`Link.p` is power at no bus: an entity-level `p_internal`, no `bus`.

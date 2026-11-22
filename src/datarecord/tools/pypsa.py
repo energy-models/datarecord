@@ -321,6 +321,8 @@ _SQUEEZABLE = frozenset({PERIOD, SCENARIO})
 _TIME = frozenset({SNAPSHOT, TIMESTEP, PERIOD})
 #: The dims PyPSA holds a value over, which an attribute its registry declares no spec of may be over.
 _HELD = frozenset({ENTITY, CONNECTION, SCENARIO, SNAPSHOT, *_AXIS_TYPES.values()})
+#: The axes PyPSA holds as a bare index, with no room for a property.
+_BARE = (SNAPSHOT, TIMESTEP, PERIOD, SCENARIO)
 
 
 def _root(record: RecordLike) -> RecordLike:
@@ -2175,7 +2177,9 @@ class PyPSATool(Tool):
         and each shape the `shape_{type}` property of the label it outlines.
         Outputs are attributes like any other. A static value is left out
         where it repeats what the record resolves to without it: over `base`,
-        `base`'s value, else the default; over nothing, the default.
+        `base`'s value, else the default; over nothing, the default. Over
+        `base`, the properties it declares of `snapshot`, `timestep`, `period`
+        and `scenario` are kept at its values.
 
         With `results_only` the record is a thin layer over `base`: the
         outputs, at their default too, `base`'s output rows at the scenarios,
@@ -2641,8 +2645,21 @@ class _NetworkSource:
                     raise ValueError(msg)
 
     @cached_property
+    def _carried(self) -> dict[str, dict[str, PropertySpec]]:
+        """The properties `base` declares of each `_BARE` axis, which only `base` holds values of."""
+        if self.base is None:
+            return {}
+        declared = self.base.schema.properties
+        return {dim: dict(declared[dim]) for dim in _BARE if declared.get(dim)}
+
+    @property
+    def _base_properties(self) -> Relations:
+        """`base`'s properties, none where there is no `base`."""
+        return {} if self.base is None else self.base.properties
+
+    @cached_property
     def schema(self) -> RecordSchema:
-        """The registry's schema, widened by this network's shapes, custom columns, multi-period `snapshot` and `meta`.
+        """The registry's schema, widened by this network's shapes, custom columns, multi-period `snapshot`, `base`'s properties of a bare axis (`_carried`) and `meta`.
 
         A custom text property named like a dim refers to it.
 
@@ -2654,7 +2671,7 @@ class _NetworkSource:
         """
         base = _registry().schema
         dimensions = dict(base.dimensions)
-        properties = dict(base.properties)
+        properties = dict(base.properties) | self._carried
         if PERIOD in self._snapshots:
             dimensions[SNAPSHOT] = Dimension(
                 over=[PERIOD, TIMESTEP],
@@ -3257,14 +3274,17 @@ class _NetworkSource:
 
     @property
     def properties(self) -> LazyRelations:
-        """The keys and property columns of the entities, labelled axes and connections."""
-        axes = [*_AXIS_TYPES.values(), *self._shape_dims]
+        """The keys and property columns of the entities, labelled axes and connections, a bare axis's at `base`'s values (`_carried`)."""
+        axes = [*_AXIS_TYPES.values(), *self._shape_dims, *self._carried]
         labelled = [d for d in axes if len(self._axes[d])]
         subjects = (ENTITY, *labelled, CONNECTION)
 
         def frame(subject: str) -> DuckDBPyRelation:
             if subject == CONNECTION:
                 rel = self._connection_frame
+            elif subject in self._carried:
+                held = self._base_properties[subject]
+                rel = self.dims[subject].join(held, subject, how="left")
             elif subject == ENTITY:
                 rel = self.con.from_df(self._entity_frame)
             else:

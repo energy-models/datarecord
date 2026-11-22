@@ -285,6 +285,7 @@ It raises `UnsupportedRecordError` for two types with one name, and `ValueError`
 A value with `scenario` NULL is left out only where `base` resolves the same value at each scenario.
 An input at a port or a custom column placed as an attribute is written wherever `base` has no value for it.
 A value set back to its default over a `base` with another is written.
+The layer keeps the properties that `base` declares of `snapshot`, `timestep`, `period` and `scenario`, at `base`'s values: PyPSA holds these axes as an index with no room for a property.
 Values compare exactly, and NULL equals NULL.
 `to_datarecord` raises `ValueError` where `base` is a selection, has a dim of its own, or has other investment periods than the network.
 

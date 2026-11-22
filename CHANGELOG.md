@@ -257,6 +257,10 @@ All notable changes to datarecord are documented here. The format follows
   holding no snapshot, is refused. A network's results are written over the
   selection it was built from, `base=view`, and lifted back to the labels it
   squeezes.
+- A full PyPSA export over `base` keeps the properties `base` declares of
+  `snapshot`, `timestep`, `period` and `scenario`, at `base`'s values. PyPSA
+  holds these axes as a bare index, so the export could not state them, and
+  the store refused the commit for removing a property.
 
 ### Changed
 
