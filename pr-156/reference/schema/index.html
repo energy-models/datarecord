@@ -1909,7 +1909,11 @@ With <code>one_of</code>, the property <a href="../data-model/#properties">refer
 datarecord refuses a name in <code>partial</code> that the schema does not declare as a dimension.</p>
 <h2 id="meta"><code>meta</code><a class="headerlink" href="#meta" title="Permanent link">&para;</a></h2>
 <p><code>meta</code> is a dict of a framework's own data, such as network attributes or a coordinate reference system.
-datarecord stores it and never reads it.</p>
+datarecord stores it and never reads it.
+It is a JSON object as a <a href="../store/#store">revision's <code>meta</code></a> is, a float possibly <code>inf</code>, <code>-inf</code> or <code>nan</code>.
+An int, float, bool or None key becomes the string that <code>json.dumps</code> writes for it, so <code>{2030: 0.4}</code> is stored as <code>{"2030": 0.4}</code>, as PyPSA's own files store it.
+Any other value, such as a tuple, a set or a key of another type, raises a <code>TypeError</code> naming its path when the schema is made, as in <code>meta['co2_budget']</code>.
+Two keys that become the same string, such as <code>2030</code> and <code>"2030"</code>, raise a <code>TypeError</code> too.</p>
 <h2 id="unit-and-description"><code>unit</code> and <code>description</code><a class="headerlink" href="#unit-and-description" title="Permanent link">&para;</a></h2>
 <p>A <code>Dimension</code>, an <code>AttributeSpec</code> and a <code>PropertySpec</code> each take a <code>unit</code> and a <code>description</code>.
 datarecord stores both and reads neither, so it converts no unit.
