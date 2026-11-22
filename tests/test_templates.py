@@ -4,10 +4,12 @@
 
 """`templates`: a plan's read built once over its first call's relations, filled with each later call's text."""
 
+from collections.abc import Mapping
 from dataclasses import dataclass
 
 import pytest
 from duckdb import ColumnExpression as col
+from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
 from datarecord import Workspace
@@ -50,6 +52,17 @@ class Only:
         return slots[self.slot]
 
 
+@dataclass(frozen=True)
+class Stacked:
+    def build(
+        self, con: DuckDBPyConnection, *, parts: Mapping[str, DuckDBPyRelation]
+    ) -> DuckDBPyRelation:
+        stacked = con.sql("SELECT NULL::VARCHAR AS name, NULL::INTEGER AS k").limit(0)
+        for name, rel in parts.items():
+            stacked = stacked.union(rel.project(lit(name).alias("name"), col("k")))
+        return stacked.order("name, k")
+
+
 def test_one_template_serves_two_calls_of_the_same_types(workspace: Workspace):
     """A template built over one pair of relations fills with another pair of the same types, bound ahead or passed in the call."""
     con = workspace.con
@@ -88,3 +101,27 @@ def test_a_template_refuses_a_slot_read_nowhere_but_inside_another(
     read = workspace.templates.memoize(Only(slot))
     with pytest.raises(RuntimeError, match="nowhere in the template but inside"):
         read(left=left, right=within)
+
+
+@pytest.mark.parametrize(
+    ("calls", "kept"),
+    [
+        ([("a", "b"), ("b", "a")], 1),
+        ([("a", "b"), ("a",)], 2),
+        ([()], 1),
+    ],
+    ids=["keys reordered", "keys differ", "empty"],
+)
+def test_a_mapping_slot_keys_its_template_by_its_key_set(
+    workspace: Workspace, calls: list[tuple[str, ...]], kept: int
+):
+    """A mapping slot's template depends on which keys it holds, not their order."""
+    values = {"a": 1, "b": 2}
+    rels = {
+        n: workspace.con.sql(f"SELECT {v}::INTEGER AS k") for n, v in values.items()
+    }
+    read = workspace.templates.memoize(Stacked())
+    for keys in calls:
+        rows = read(parts={n: rels[n] for n in keys}).fetchall()
+        assert rows == sorted((n, values[n]) for n in keys), f"the read over {keys!r}"
+    assert len(workspace.templates._kept) == kept

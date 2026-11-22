@@ -124,9 +124,10 @@ class Templates:
                 (i for i, (a, b) in enumerate(zip(new, old, strict=False)) if a != b),
                 0,
             )
+            lo = max(at - 200, 0)
             assert new == old, (
-                f"template {plan!r} varies: {new[at - 200 : at + 200]!r} "
-                f"where the kept one reads {old[at - 200 : at + 200]!r}"
+                f"template {plan!r} varies: {new[lo : at + 200]!r} "
+                f"where the kept one reads {old[lo : at + 200]!r}"
             )
         return found.filled(parts)
 
@@ -270,9 +271,11 @@ def _built(
     named: Mapping[str, Slot],
     parts: Mapping[str, DuckDBPyRelation],
 ) -> DuckDBPyRelation:
-    """`plan.build` called with `named`, each slot `_slots` names given its relation in `parts`."""
+    """`plan.build` called with `named`, each slot `_slots` names given its relation in `parts`, a mapping's keys sorted."""
     rebuilt = {
-        n: {k: parts[f"{n}.{k}"] for k in v} if isinstance(v, Mapping) else parts[n]
+        n: {k: parts[f"{n}.{k}"] for k in sorted(v)}
+        if isinstance(v, Mapping)
+        else parts[n]
         for n, v in named.items()
     }
     return plan.build(con, **rebuilt)
