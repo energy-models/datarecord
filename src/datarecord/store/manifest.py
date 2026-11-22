@@ -17,8 +17,9 @@ Notes
 from __future__ import annotations
 
 import json
+import reprlib
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated, Self
+from typing import TYPE_CHECKING, Any, Self
 from uuid import UUID
 
 from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter, model_validator
@@ -30,25 +31,22 @@ from datarecord.schema.schema import Schema, schema_digest
 if TYPE_CHECKING:
     from datarecord.store.files import Files
 
-type MetaValue = (
-    str
-    | int
-    | Annotated[float, Field(allow_inf_nan=False)]
-    | bool
-    | list[MetaValue]
-    | dict[str, MetaValue]
-)
-"""A JSON value of `meta`: a string, integer, finite float, boolean, array or object.
+_CONFIG = ConfigDict(extra="forbid", ser_json_inf_nan="constants")
 
-A float is finite, since JSON has no NaN or infinity to store it as, and
-there is no null.
+type MetaValue = (
+    str | int | float | bool | None | list[MetaValue] | dict[str, MetaValue]
+)
+"""A JSON value of `meta`: a string, number, boolean, null, array or object.
+
+A float may be `inf`, `-inf` or `nan`, written as the bare `Infinity`,
+`-Infinity` and `NaN` that Python's `json` writes and reads.
 """
 
 Meta = dict[str, MetaValue]
 """A revision's own `meta`, set at its write and not inherited."""
 
 
-@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@dataclass(frozen=True, config=_CONFIG)
 class LayerFiles:
     """What a layer wrote, by declared name: `dimensions/<dim>.parquet`, `attributes/<attr>.parquet`.
 
@@ -71,7 +69,7 @@ class LayerFiles:
     owner_map_rows: tuple[int, ...] = ()
 
 
-@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@dataclass(frozen=True, config=_CONFIG)
 class Manifest:
     """A layer's `manifest.json`: written last and create-only, it makes the revision exist.
 
@@ -159,7 +157,7 @@ class Manifest:
         return _MANIFEST.validate_python({**raw, "schema": schemas[digest]})
 
 
-@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@dataclass(frozen=True, config=_CONFIG)
 class ClaimFile:
     """A layer's `claim.json`: written create-only when its id is handed out, and kept.
 
@@ -195,7 +193,6 @@ class ClaimFile:
 
 _MANIFEST = TypeAdapter(Manifest)
 _CLAIM = TypeAdapter(ClaimFile)
-_META = TypeAdapter(Meta)
 
 
 def _create[T](files: Files, uri: str, adapter: TypeAdapter[T], value: T) -> None:
@@ -208,14 +205,51 @@ def _read[T](files: Files, uri: str, adapter: TypeAdapter[T]) -> T | None:
 
 
 def validate_meta(meta: Meta | None) -> Meta:
-    """`meta` checked as a JSON object with string keys, no null and no non-finite float.
+    """`meta` checked as a JSON object with string keys, copied.
 
     Raises
     ------
-    pydantic.ValidationError
-        For any other value.
+    TypeError
+        Naming the path of the first value that is no JSON value, or of a
+        key that is no string.
+
+    Notes
+    -----
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
-    return _META.validate_python(meta or {}, strict=True)
+    meta = meta or {}
+    if not isinstance(meta, dict):
+        msg = f"meta is of type {type(meta).__name__}; meta is a dict"
+        raise TypeError(msg)
+    return _meta_object(meta, "meta")
+
+
+def _meta_object(value: dict[Any, Any], path: str) -> dict[str, MetaValue]:
+    """`value` with every key a string and every value checked by `_meta_value`."""
+    for key in value:
+        if not isinstance(key, str):
+            msg = (
+                f"{path} has the key {key!r} of type {type(key).__name__}; a meta "
+                f"key is a str"
+            )
+            raise TypeError(msg)
+    return {k: _meta_value(v, f"{path}[{k!r}]") for k, v in value.items()}
+
+
+def _meta_value(value: Any, path: str) -> MetaValue:
+    """`value` copied where it is a JSON value, raising at `path` on the first that is not."""
+    match value:
+        case None | str() | int() | float():
+            return value
+        case list():
+            return [_meta_value(v, f"{path}[{i}]") for i, v in enumerate(value)]
+        case dict():
+            return _meta_object(value, path)
+    msg = (
+        f"{path} is {reprlib.repr(value)} of type {type(value).__name__}; a meta value "
+        f"is a str, int, float, bool, None, list or dict"
+    )
+    raise TypeError(msg)
 
 
 def merge_meta(claimed: Meta, given: Meta) -> Meta:

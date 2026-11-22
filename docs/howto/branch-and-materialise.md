@@ -28,7 +28,7 @@ print(high.parent == low.parent == rev.id)
 True
 ```
 
-`high` and `low` are siblings, each a layer with one row over `rev`. A `meta` value is any JSON value but null: a string, a finite number, a boolean, an array or an object.
+`high` and `low` are siblings, each a layer with one row over `rev`. A `meta` value is any JSON value: a string, a number, a boolean, null, an array or an object.
 
 ## Find a revision
 

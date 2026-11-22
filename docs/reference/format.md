@@ -51,7 +51,7 @@ The writer writes it last and create-only, and the revision exists from that mom
 | `parent` | the parent's UUID, `null` for a root and for a standalone directory                                                                                                                   |
 | `schema` | the full [schema](schema.md) the layer was written under                                                                                                                              |
 | `files`  | `{"dimensions": [...], "attributes": [...], "owner_map_rows": [...]}`: the declared names of the files the layer wrote, and the `_shape` of each shape `owner_map_rows.parquet` holds |
-| `meta`   | the revision's own `meta`: an object of strings, integers, finite floats, booleans, arrays and objects, without null                                                                  |
+| `meta`   | the revision's own `meta`: an object of strings, numbers, booleans, null, arrays and objects, a float possibly `Infinity`, `-Infinity` or `NaN`                                       |
 
 ```json
 {"id": "4731e41b-…", "parent": "9716e2ef-…", "schema": {…}, "files": {"dimensions": ["entity"], "attributes": ["p_nom"], "owner_map_rows": []}, "meta": {"run": "a"}}

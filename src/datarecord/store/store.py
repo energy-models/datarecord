@@ -760,8 +760,8 @@ class Store:
         ------
         ValueError
             If `parent` is of another store, naming both locations.
-        pydantic.ValidationError
-            If `meta` holds a null or a non-finite float, or is no JSON object.
+        TypeError
+            If `meta` holds a value that is no JSON value, naming its path.
 
         Notes
         -----
@@ -1045,8 +1045,8 @@ class Store:
 
         Raises
         ------
-        pydantic.ValidationError
-            If `meta` holds a null or a non-finite float, or is no JSON object.
+        TypeError
+            If `meta` holds a value that is no JSON value, naming its path.
 
         Notes
         -----
@@ -1185,7 +1185,9 @@ class _OfStore(BaseModel):
     - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True, ser_json_inf_nan="constants"
+    )
 
     id: UUID
     store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
@@ -1317,8 +1319,8 @@ class Claim(_OfStore):
             `manifest.json`.
         duckdb.HTTPException
             If the server denies the layer's key a write of the layer's data.
-        pydantic.ValidationError
-            If `meta` holds a null or a non-finite float, or is no JSON object.
+        TypeError
+            If `meta` holds a value that is no JSON value, naming its path.
 
         Notes
         -----

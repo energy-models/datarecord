@@ -797,29 +797,67 @@ def test_revisions_filter_by_meta(metas, meta, found):
 
 
 @pytest.mark.parametrize(
-    ("meta", "match"),
+    ("value", "written"),
     [
-        ({"x": math.nan}, "finite"),
-        ({"x": {"y": math.nan}}, "finite"),
-        ({"x": None}, "input_value=None"),
-        ({"x": [None]}, "input_value=None"),
+        (None, "null"),
+        (math.inf, "Infinity"),
+        (-math.inf, "-Infinity"),
+        (math.nan, "NaN"),
     ],
-    ids=["nan", "nested-nan", "null", "nested-null"],
+    ids=["null", "inf", "-inf", "nan"],
 )
-def test_a_meta_value_is_finite_and_not_null(store, meta, match):
-    """JSON has no NaN or infinity, which would be read back as null, and null is refused.
+def test_a_meta_value_may_be_null_or_non_finite(store, value, written):
+    """Written as Python's `json` writes it, read back equal, and found by a lookup.
 
-    Refused at any depth, before the claim or the manifest is written.
+    A lookup compares JSON, so `NaN` finds `NaN` though the float equals nothing.
 
     Notes
     -----
-    - [the layers](https://energy-models.github.io/datarecord/reference/store/)
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
-    with pytest.raises(ValidationError, match=match):
+    meta = {"x": value, "nested": {"xs": [value]}}
+    claim = store.claim(parent=None, meta=meta)
+    done = claim.commit(_p_nom(), meta={"y": value})
+    raw = Path(store.layer_dir(done.id), "manifest.json").read_text()
+    assert f'"x":{written}' in raw.replace(" ", ""), "the manifest keeps the bare word"
+    fresh = Workspace()
+    try:
+        for reader in (store, fresh.store(store.uri)):
+            back = reader.revision(done.id).meta
+            assert json.dumps(back) == json.dumps({**meta, "y": value})
+            listed = [r.id for r in reader.revisions(meta={"nested": {"xs": [value]}})]
+            assert listed == [done.id]
+        again = fresh.store(store.uri).claim_from(claim.model_dump_json())
+        assert json.dumps(again.meta) == json.dumps(meta), "a claim crosses too"
+    finally:
+        fresh.close()
+
+
+@pytest.mark.parametrize(
+    ("meta", "match"),
+    [
+        ({"x": timedelta(1)}, r"meta\['x'\] is .* of type timedelta"),
+        (
+            {"x": {"y": [1, (2, 3)]}},
+            r"meta\['x'\]\['y'\]\[1\] is \(2, 3\) of type tuple",
+        ),
+        ({"x": {1: "a"}}, r"meta\['x'\] has the key 1 of type int"),
+        ([("x", 1)], "meta is of type list"),
+    ],
+    ids=["date", "nested-tuple", "int-key", "no-object"],
+)
+def test_a_meta_value_that_is_no_json_names_its_path(store, meta, match):
+    """Refused at any depth, before the claim or the manifest is written, with the path of the first one.
+
+    Notes
+    -----
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
+    """
+    with pytest.raises(TypeError, match=match):
         store.claim(parent=None, meta=meta)
     assert not Path(store.uri, "layers").exists(), "no claim is written"
     claim = store.claim(parent=None)
-    with pytest.raises(ValidationError, match=match):
+    with pytest.raises(TypeError, match=match):
         claim.commit(_p_nom(), meta=meta)
     assert _pending(store) == [str(claim.id)], "no manifest is written"
 

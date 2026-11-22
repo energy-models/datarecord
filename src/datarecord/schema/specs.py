@@ -35,7 +35,7 @@ Names = Annotated[
 class _Declared(BaseModel):
     """Base of the models `manifest.json` is parsed into: frozen, refusing undeclared keys."""
 
-    model_config = ConfigDict(extra="forbid", frozen=True)
+    model_config = ConfigDict(extra="forbid", frozen=True, ser_json_inf_nan="constants")
 
 
 class Dimension(_Declared):
