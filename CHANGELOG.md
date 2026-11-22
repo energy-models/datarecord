@@ -35,8 +35,9 @@ All notable changes to datarecord are documented here. The format follows
   returns the spec of a name, and `Schema.column_type` takes the property's
   subject. A property may share its name with an attribute, a dimension or a
   property of another subject.
-- A property declares exactly one of `dtype` and `refers: <dim>`, the dimension it
-  refers to, whose live labels are then its values. `set` and `add` check them, and the writer checks every layer.
+- A property declares exactly one of `dtype` and `one_of: <dim>`. A property
+  with `one_of` refers to that dimension, and its values are live labels
+  of that dimension. `set` and `add` check them, and the writer checks every layer.
   `remove(dim, labels)` fails while such a property still holds a label.
 - A property that refers to a dimension with `one_of`, on a subject in
   `partial`, a multi-dimension among them, categorizes the subject. Categories select labels in
@@ -111,7 +112,7 @@ All notable changes to datarecord are documented here. The format follows
   the layer holding each axis's deepest file in `resolved/dimension_owners.parquet`.
 - `WorkingRecord.set` checks that each label of an attribute row is on its
   dimension's axis as staged, a multi-dimension's tuple among them. `add` checks that each label of a tuple is on its axis
-  as staged, and that a value of a property with `refers` is a label of that
+  as staged, and that a value of a property with `one_of` is a label of that
   dimension as staged. `write_layer` checks every attribute row against the final
   axes of the layer, and every tuple of a multi-dimension against the final axes of
   the dimensions its fields draw on.
@@ -175,7 +176,7 @@ All notable changes to datarecord are documented here. The format follows
   pypsa-eur's `country`, is a dimension of its own whose labels are the shapes'
   `idx`. Such a dimension is no dimension of the record's own, and a network is built
   from no selection squeezing it. A custom text column named like a dimension
-  refers to it, so pypsa-eur's `bus.country` is `{refers: country}`. The CRS
+  refers to it, so pypsa-eur's `bus.country` is `{one_of: country}`. The CRS
   is `crs` in the schema's `meta`, and `build` restores `n.shapes` in that
   CRS.
   `to_datarecord` refuses a shape without a `component`, `idx` or `type`, two
@@ -294,9 +295,6 @@ All notable changes to datarecord are documented here. The format follows
   with its column `dim` now `dimension`, so a store written before does not
   read. `Store.dim_owners_uri` is `dimension_owners_uri`. An attribute still
   lists its dimensions under `dims`.
-- Breaking: a property names the dimension it refers to with `refers`, which was
-  `one_of`, so `one_of` is a dimension's list of labels alone.
-  `Schema.one_of_properties` is now `Schema.referring_properties`.
 - The pages, docstrings and error messages take mathspec's words. A named
   part of a multi-dimension's tuple, such as `bus` of `connection`, is a field. A
   coordinate is one label on each dimension of an attribute, such as `(gas, high)`,
@@ -559,8 +557,8 @@ All notable changes to datarecord are documented here. The format follows
 - `set` takes no expression. Compute the new values from `attributes[name]`
   and `set` the frame.
 - `Dimension.within` is gone. Every axis is keyed by its label alone, with
-  labels unique across the dimension. A nested dimension is a property with `refers` on
-  the parent dimension, such as `snapshot.period` with `refers: period`. `add`
+  labels unique across the dimension. A nested dimension is a property with `one_of` on
+  the parent dimension, such as `snapshot.period` with `one_of: period`. `add`
   takes no parent keys, and `Schema.axis_key` is gone.
 - Traits are gone: `Trait`, `Schema.traits`, `Schema.attributes_for` and
   `Schema.properties_for`.

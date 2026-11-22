@@ -36,7 +36,7 @@ def schema():
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(refers="ctype"),
+                "ctype": PropertySpec(one_of="ctype"),
                 "carrier": PropertySpec(dtype="str", default=""),
                 "sign": PropertySpec(
                     dtype="float",

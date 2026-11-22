@@ -702,7 +702,7 @@ def _over_units(module_store):
             },
             properties={
                 "unit": {
-                    "tech": PropertySpec(refers="tech"),
+                    "tech": PropertySpec(one_of="tech"),
                     "site": PropertySpec(dtype="str"),
                 }
             },

@@ -96,7 +96,7 @@ A property's name belongs to its subject.
 `bus.x` and an attribute `x` are two names, and `carrier` may be a property of `entity`, a property of `bus` and a dimension at once.
 A multi-dimension's tuples are its labels, so a multi-dimension may have properties too.
 
-A property may refer to a dimension, declaring `refers` in place of `dtype`, and its values are then that dimension's labels.
+A property may refer to a dimension with `one_of` in place of `dtype`, and its values are then that dimension's labels.
 A value that is not NULL must be a label the record has.
 [`set` and `add`](editing.md#validation) refuse a label the axis lacks, and `remove` refuses a label that is still a property's value.
 A NULL value refers to no label.

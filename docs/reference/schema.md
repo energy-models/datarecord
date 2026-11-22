@@ -36,8 +36,8 @@ schema = Schema(
     },
     properties={
         "entity": {
-            "ctype": PropertySpec(refers="ctype"),
-            "carrier": PropertySpec(refers="carrier"),
+            "ctype": PropertySpec(one_of="ctype"),
+            "carrier": PropertySpec(one_of="carrier"),
         },
     },
     partial={"entity", "bus", "connection"},
@@ -124,19 +124,19 @@ A property is indexed over its subject and the dimensions that the subject's fie
 | Key           | Value                                        | Default |
 | ------------- | -------------------------------------------- | ------- |
 | `dtype`       | `"float"`, `"int"`, `"bool"` or `"str"`      | `None`  |
-| `refers`      | the dimension the property refers to         | `None`  |
+| `one_of`      | the dimension the property refers to         | `None`  |
 | `default`     | the value for a label no layer wrote one for | `None`  |
 | `default_by`  | a default per category, as on an attribute   | `{}`    |
 | `unit`        | what the values measure                      | `None`  |
 | `description` | what the property is, in prose               | `None`  |
 
-A property declares exactly one of `dtype` and `refers`.
-With `refers`, the property [refers to that dimension](data-model.md#properties) and takes its type.
+A property declares exactly one of `dtype` and `one_of`.
+With `one_of`, the property [refers to that dimension](data-model.md#properties) and takes its type.
 `Schema.resolve("entity.carrier")` returns the subject and the spec, and `Schema.categorizing(dim)` lists the categorising properties of `dim`.
 
 datarecord refuses a property:
 
-- that declares both `dtype` and `refers`, or neither
+- that declares both `dtype` and `one_of`, or neither
 - of an undeclared subject, or of a dimension with `one_of`
 - that refers to an undeclared dimension or to a multi-dimension
 - named like its subject's column, or like a field of its multi-dimension
@@ -174,9 +174,9 @@ Each declaration maps to one DuckDB type:
 | dimension                      | `dtype: datetime`  | `TIMESTAMP` (no time zone)                          |
 | dimension                      | `one_of: [labels]` | `ENUM` of the labels                                |
 | multi-dimension                | `over: {...}`      | `STRUCT` of its fields, each typed as its dimension |
-| property                       | `refers: <dim>`    | that dimension's type                               |
+| property                       | `one_of: <dim>`    | that dimension's type                               |
 
-An attribute takes neither `one_of` nor `refers`, and no attribute or property is `datetime`.
+An attribute takes no `one_of`, and no attribute or property is `datetime`.
 A property whose values are times refers to a `datetime` dimension.
 The format fixes three more columns: `attribute VARCHAR`, `breakpoint DOUBLE` and `value`, typed as the attribute's `dtype`.
 
@@ -204,7 +204,7 @@ Labels are data, and these rules do not apply to them.
 | add a dimension to `partial`                              | yes        |
 | change a `default`, `default_by`, `unit` or `description` | yes        |
 | remove a dimension, an attribute or a property            | no         |
-| change a `dtype`, `one_of`, `refers` or `over`            | no         |
+| change a `dtype`, a `one_of` or an `over`                 | no         |
 | remove a dimension from an attribute's `dims`             | no         |
 | remove a dimension from `partial`                         | no         |
 

@@ -68,7 +68,7 @@ Core reads its dtypes from `mathspec.program`. The environment pins mathspec at 
 
 ### How does a property that refers to a dimension map onto mathspec?
 
-mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier }`, declared beside the dimensions. datarecord declares `refers: carrier` on a property of `generator`. Unifying the two is left for later.
+mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier }`, declared beside the dimensions. datarecord declares `one_of: carrier` on a property of `generator`. Unifying the two is left for later.
 
 ### Must a default name a live label?
 
@@ -174,7 +174,7 @@ It leaves the value out and reports it in `Requirements.ignored`, as it reports 
 
 ### May a multi-dimension in `partial` have categories?
 
-It may, by the rule a dimension follows. A property `connection.kind: {refers: kind}` categorises `connection` in `partial`, so a `default_by` keyed `connection.kind`, `flags(kind=...)` and the keyword `kind=` work as they do for `entity.ctype` ([the data model](data-model.md)).
+It may, by the rule a dimension follows. A property `connection.kind: {one_of: kind}` categorises `connection` in `partial`, so a `default_by` keyed `connection.kind`, `flags(kind=...)` and the keyword `kind=` work as they do for `entity.ctype` ([the data model](data-model.md)).
 
 ### What should a connection value staged without its `bus` mean?
 

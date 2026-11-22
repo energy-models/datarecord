@@ -34,7 +34,7 @@ def _schema(**overrides) -> Schema:
             "ctype": Dimension(one_of=["Generator", "Link"]),
             "connection": Dimension(over={"entity": "entity", "bus": "bus"}),
         },
-        "properties": {"entity": {"ctype": PropertySpec(refers="ctype")}},
+        "properties": {"entity": {"ctype": PropertySpec(one_of="ctype")}},
         "attributes": {
             "p_nom": AttributeSpec(dtype="float", dims={"entity"}),
             "p_max_pu": AttributeSpec(
@@ -168,7 +168,7 @@ def test_a_multi_dim_may_have_properties_and_categories():
         dimensions=_listing_dims(role=["in", "out"]),
         properties={
             **_schema().properties,
-            "connection": {"role": PropertySpec(refers="role")},
+            "connection": {"role": PropertySpec(one_of="role")},
         },
         partial=frozenset({"entity", "scenario", "connection"}),
     )
@@ -189,7 +189,7 @@ def test_a_default_by_keyed_by_a_multi_dims_category_loads():
         properties={
             **_schema().properties,
             "connection": {
-                "role": PropertySpec(refers="role"),
+                "role": PropertySpec(one_of="role"),
                 "loss": PropertySpec(
                     dtype="float",
                     default=0.0,
@@ -280,7 +280,7 @@ def test_a_property_refers_to_no_multi_dim():
     with pytest.raises(
         ValidationError, match="refers to the multi-dimension 'connection'"
     ):
-        _schema(properties={"entity": {"port": PropertySpec(refers="connection")}})
+        _schema(properties={"entity": {"port": PropertySpec(one_of="connection")}})
 
 
 def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
@@ -295,11 +295,11 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
         properties={
             "entity": {
                 **_schema().properties["entity"],
-                "carrier_kind": PropertySpec(refers="carrier_kind"),
+                "carrier_kind": PropertySpec(one_of="carrier_kind"),
                 "label": PropertySpec(dtype="str"),
-                "home": PropertySpec(refers="bus"),
+                "home": PropertySpec(one_of="bus"),
             },
-            "period": {"era": PropertySpec(refers="era")},
+            "period": {"era": PropertySpec(one_of="era")},
         },
     )
     assert s.categorizing("entity") == ("ctype", "carrier_kind"), (
@@ -451,7 +451,7 @@ def test_default_for_reads_a_labels_default_over_the_plain_one():
 
     plain = _schema(
         properties={
-            "entity": {"ctype": PropertySpec(refers="ctype", default="Generator")}
+            "entity": {"ctype": PropertySpec(one_of="ctype", default="Generator")}
         }
     )
     assert plain.default_for("entity.ctype") == "Generator", (
@@ -505,7 +505,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                 properties={
                     "entity": {
                         "ctype": PropertySpec(
-                            refers="ctype",
+                            one_of="ctype",
                             default="Generator",
                             default_by={"entity.ctype": {"Link": "Generator"}},
                         )
@@ -541,7 +541,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     dimensions=_listing_dims(era=["old", "new"]),
                     properties={
                         **_schema().properties,
-                        "period": {"era": PropertySpec(refers="era")},
+                        "period": {"era": PropertySpec(one_of="era")},
                     },
                     **kw,
                 ),
@@ -576,7 +576,7 @@ def _two_subjects(**overrides) -> Schema:
         "dimensions": _listing_dims(bus_type=["AC", "DC"]),
         "properties": {
             **_schema().properties,
-            "bus": {"bus_type": PropertySpec(refers="bus_type")},
+            "bus": {"bus_type": PropertySpec(one_of="bus_type")},
         },
         "attributes": {
             **_schema().attributes,
@@ -945,13 +945,13 @@ def test_a_plain_identifier_is_accepted(name):
             id="one-of-on-int-dim",
         ),
         pytest.param(
-            lambda: PropertySpec(dtype="str", refers="ctype"),
-            "exactly one of `dtype` and `refers`, not both",
+            lambda: PropertySpec(dtype="str", one_of="ctype"),
+            "exactly one of `dtype` and `one_of`, not both",
             id="property-both",
         ),
         pytest.param(
             lambda: PropertySpec(),
-            "exactly one of `dtype` and `refers`, not neither",
+            "exactly one of `dtype` and `one_of`, not neither",
             id="property-neither",
         ),
         pytest.param(
@@ -960,9 +960,9 @@ def test_a_plain_identifier_is_accepted(name):
             id="one-of-a-dim-name-on-a-dim",
         ),
         pytest.param(
-            lambda: PropertySpec.model_validate({"refers": ["lower", "upper"]}),
+            lambda: PropertySpec.model_validate({"one_of": ["lower", "upper"]}),
             "Input should be a valid string",
-            id="refers-a-list-on-a-property",
+            id="one-of-a-list-on-a-property",
         ),
     ],
 )

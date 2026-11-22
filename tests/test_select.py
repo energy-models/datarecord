@@ -70,9 +70,9 @@ def schema():
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(refers="ctype"),
-                "tech": PropertySpec(refers="tech"),
-                "carrier": PropertySpec(refers="carrier"),
+                "ctype": PropertySpec(one_of="ctype"),
+                "tech": PropertySpec(one_of="tech"),
+                "carrier": PropertySpec(one_of="carrier"),
                 "sign": PropertySpec(
                     dtype="float",
                     default=1.0,
@@ -81,11 +81,11 @@ def schema():
                 "note": PropertySpec(dtype="str"),
             },
             "bus": {
-                "carrier": PropertySpec(refers="carrier", default="AC"),
-                "state": PropertySpec(refers="state"),
+                "carrier": PropertySpec(one_of="carrier", default="AC"),
+                "state": PropertySpec(one_of="state"),
                 "note": PropertySpec(dtype="str"),
             },
-            "state": {"country": PropertySpec(refers="country")},
+            "state": {"country": PropertySpec(one_of="country")},
         },
         attributes={
             "capacity": AttributeSpec(dtype="float", dims={"entity"}),

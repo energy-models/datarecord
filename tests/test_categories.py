@@ -33,8 +33,8 @@ def categorized():
         },
         properties={
             "entity": {
-                "ctype": PropertySpec(refers="ctype"),
-                "carrier": PropertySpec(refers="carrier"),
+                "ctype": PropertySpec(one_of="ctype"),
+                "carrier": PropertySpec(one_of="carrier"),
             }
         },
         attributes={
@@ -95,7 +95,7 @@ def buses(module_store):
                 "bus": Dimension(dtype="str"),
                 "bus_type": Dimension(one_of=["AC", "DC"]),
             },
-            properties={"bus": {"bus_type": PropertySpec(refers="bus_type")}},
+            properties={"bus": {"bus_type": PropertySpec(one_of="bus_type")}},
             attributes={
                 "v_nom": AttributeSpec(dtype="float", dims={"bus"}),
                 "frequency": AttributeSpec(
@@ -153,11 +153,11 @@ def ports(module_store):
             },
             properties={
                 "entity": {
-                    "ctype": PropertySpec(refers="ctype"),
+                    "ctype": PropertySpec(one_of="ctype"),
                     "note": PropertySpec(dtype="str"),
                 },
                 "connection": {
-                    "role": PropertySpec(refers="role"),
+                    "role": PropertySpec(one_of="role"),
                     "note": PropertySpec(dtype="str"),
                 },
             },

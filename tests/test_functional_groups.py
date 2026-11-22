@@ -4,7 +4,7 @@
 
 """Classifications: a property that refers to a dim.
 
-`bus.state` `refers: state` says every bus is in at most one state: a
+`bus.state` `one_of: state` says every bus is in at most one state: a
 column of the bus axis whose values are labels of `state`, which keeps an axis
 file for its order and for its properties.
 
@@ -45,9 +45,9 @@ def _schema(**overrides) -> Schema:
             "bus_state": Dimension(over=["bus", "state"]),
         },
         "properties": {
-            "bus": {"state": PropertySpec(refers="state")},
-            "state": {"country": PropertySpec(refers="country")},
-            "bus_state": {"country": PropertySpec(refers="country")},
+            "bus": {"state": PropertySpec(one_of="state")},
+            "state": {"country": PropertySpec(one_of="country")},
+            "bus_state": {"country": PropertySpec(one_of="country")},
         },
         "partial": frozenset(),
     }
@@ -98,10 +98,10 @@ def test_the_over_list_form_is_sugar_for_the_dict():
     ("spec", "extra", "match"),
     [
         pytest.param(
-            {"refers": "nope"}, {}, "an undeclared dimension", id="undeclared"
+            {"one_of": "nope"}, {}, "an undeclared dimension", id="undeclared"
         ),
         pytest.param(
-            {"refers": "state"},
+            {"one_of": "state"},
             {
                 "attributes": {
                     "v": AttributeSpec(
