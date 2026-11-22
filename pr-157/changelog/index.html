@@ -1397,7 +1397,10 @@ SPDX-License-Identifier: CC-BY-4.0
 <ul>
 <li>A record finds its frozen layers' owner map once per thread rather than
   once per attribute read. So <code>register</code> asks DuckDB's catalog once rather
-  than twice per attribute.</li>
+  than twice per attribute. A record's first read in a workspace creates these
+  shared tables, so it raises <code>duckdb.TransactionException</code> inside an open
+  transaction on <code>ws.con</code>, whose rollback would drop them. <code>Record.prepare()</code>
+  creates them beforehand.</li>
 <li>A <code>WorkingRecord</code>'s <code>name.owner_map</code> view folds the staged layer onto the
   base's map once per shape rather than once per attribute. Its plan is a
   few folds instead of one per attribute, which DuckDB optimises in a
