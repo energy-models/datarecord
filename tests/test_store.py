@@ -19,7 +19,7 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from textwrap import dedent
@@ -394,14 +394,45 @@ def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypat
     assert "endpoint" not in secret and "session_token" not in secret
 
 
-def test_credentials_stay_out_of_duckdbs_query_log(workspace):
-    workspace.con.execute("SET enable_logging = true")
-    workspace.set_credentials(
-        S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1])
-    )
+def _connect(workspace: Workspace, credentials: S3Credentials) -> None:
+    workspace.set_credentials(credentials)
     workspace.files("s3://bucket/record")
+
+
+def _commit_with_a_key_for_its_layer(
+    workspace: Workspace, credentials: S3Credentials
+) -> None:
+    """Commit a claim on S3 with `credentials` for its layer, failing at its first S3 call."""
+    workspace.set_credentials(S3Credentials("reader", "reader"))
+    store = workspace.store("s3://bucket/record")
+    claim = Claim(
+        id=uuid4(), store=store, parent=None, meta={}, created=datetime.now(UTC)
+    )
+    with pytest.raises(ConnectionError, match="offline"):
+        claim.commit(_p_nom(), credentials=credentials)
+
+
+@pytest.mark.parametrize(
+    ("secret_by", "statement"),
+    [
+        (_connect, "CREATE OR REPLACE SECRET"),
+        (_commit_with_a_key_for_its_layer, "CREATE SECRET"),
+    ],
+)
+def test_credentials_stay_out_of_duckdbs_query_log(
+    workspace,
+    monkeypatch,
+    secret_by: Callable[[Workspace, S3Credentials], None],
+    statement: str,
+):
+    def offline(*_: object) -> bool:
+        raise ConnectionError("offline")
+
+    monkeypatch.setattr(RemoteFiles, "exists", offline)
+    workspace.con.execute("SET enable_logging = true")
+    secret_by(workspace, S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1]))
     logged = workspace.con.execute("SELECT message FROM duckdb_logs").fetchall()
-    assert any("CREATE OR REPLACE SECRET" in m for (m,) in logged), "the log is on"
+    assert any(statement in m for (m,) in logged), "the log holds the statement"
     leaked = [m for (m,) in logged for s in (_KEY_ID, *_SECRETS) if s in m]
     assert leaked == [], "credentials bind as parameters, out of the logged text"
 

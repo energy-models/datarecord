@@ -463,9 +463,12 @@ class Workspace:
             msg = f"{prefix} is local, so it takes no S3 credentials"
             raise ValueError(msg)
         files = RemoteFiles(credentials)
-        options = [*_config_options(credentials), f"SCOPE {lit(prefix)}"]
+        options, parameters = _config_options(credentials)
         with self._db.cursor() as setup:
-            setup.execute(f"CREATE SECRET {name} ({', '.join(options)})")
+            setup.execute(
+                f"CREATE SECRET {name} ({', '.join(options)}, SCOPE ?)",
+                [*parameters, prefix],
+            )
         try:
             yield files
         finally:
