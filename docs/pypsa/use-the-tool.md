@@ -241,7 +241,7 @@ print(sorted(attributes["p_max_pu"].dims), sorted(attributes["p_nom"].dims))
 ['entity', 'scenario', 'snapshot', 'weather_year'] ['entity', 'scenario']
 ```
 
-`p_max_pu` differs between the members, so it varies over `weather_year`. `p_nom` is the same in both and keeps the dims PyPSA declares.
+`p_max_pu` differs between the members, so it varies over `weather_year`. `p_nom` is the same in both and keeps the dims PyPSA declares. These members share the snapshots of 2030. Networks of real weather years hold snapshots of their own, and [Combine weather years into one record](export-a-workflow-network.md#combine-weather-years-into-one-record) shows their export.
 
 `PyPSA.build` refuses a record with a dim of its own. Build it with `PyPSACollection.build`, solve each member, and write the results over the record:
 

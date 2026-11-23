@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Design enhancement proposals
 
-A design enhancement proposal (DEP) is a page that argues for one change to the design of datarecord before the code makes it. A key of the schema, the format on disk, the `RecordLike` protocol, the fold and the API each change through a DEP. Its reader is a contributor who was not in the discussion.
+A design enhancement proposal (DEP) is a page that argues for one change to the design of datarecord before the code makes it. A key of the schema, the format on disk, the `RecordLike` protocol, the fold, the `Tool` protocol and the API of core `datarecord` each change through a DEP. A change inside one tool, such as the PyPSA tool, needs none. Its reader is a contributor who was not in the discussion.
 
 The [contributing guide](https://github.com/energy-models/datarecord/blob/main/CONTRIBUTING.md#design-enhancement-proposals) sets the process: how to number and write a DEP, its statuses, and what moves where when it lands. To start one, copy the [template](dep-NNNN-template.md).
 

@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Solve a record in a model workflow
 
-This guide shows how to solve an exported record in a model workflow, and commit its results and a scenario patch as revisions. It also shows how to solve the investment periods of a record one at a time, or one period alone. The steps come from the solve step of pypsa-eur. You need `datarecord[pypsa]` and a record directory, which [Export a model workflow's network](export-a-workflow-network.md) writes. [Use the PyPSA tool](use-the-tool.md) shows a build and a solve outside a workflow. The outputs on this page leave out PyPSA's own warnings.
+This guide shows how to solve an exported record in a model workflow, and commit its results and a scenario patch as revisions. It also shows how to solve the investment periods of a record one at a time, one period alone, or each weather year. The steps come from the solve step of pypsa-eur. You need `datarecord[pypsa]` and a record directory, which [Export a model workflow's network](export-a-workflow-network.md) writes. [Use the PyPSA tool](use-the-tool.md) shows a build and a solve outside a workflow. The outputs on this page leave out PyPSA's own warnings.
 
 ## Open the exported record as a store's root
 
@@ -202,4 +202,67 @@ print(gen.assign(period=gen.snapshot.str["period"])[["period", "value"]])
 
 ## Solve each weather year
 
-A record over a dim of its own, such as `weather_year`, is solved one member at a time with `PyPSACollection.build`, as [Solve a collection](use-the-tool.md#solve-a-collection) shows. Commit its results over the inputs as the `solve` function above does.
+A record of weather years that the export step wrote with `extend=["snapshot"]` holds each year's own snapshots, as [Combine weather years into one record](export-a-workflow-network.md#combine-weather-years-into-one-record) shows. Here two weather years differ in their wind:
+
+```python
+from datarecord.tools.pypsa import PyPSACollection
+
+
+def weather_year(year: int, wind: list[float]) -> pypsa.Network:
+    m = pypsa.Network(snapshots=pd.date_range(f"{year}-01-01", periods=2, freq="h"))
+    m.add("Carrier", ["wind", "gas"])
+    m.add("Bus", ["north", "south"])
+    m.add("Generator", "wind1", bus="north", carrier="wind", p_nom=50, p_max_pu=wind)
+    m.add("Generator", "gas1", bus="south", carrier="gas", p_nom=80, marginal_cost=50)
+    m.add("Load", "load1", bus="south", p_set=40)
+    m.add("Line", "line", bus0="north", bus1="south", x=0.1, s_nom=100)
+    return m
+
+
+members = {2012: weather_year(2012, [0.9, 0.4]), 2013: weather_year(2013, [0.3, 0.2])}
+collection = pypsa.NetworkCollection(pd.Series(members).rename_axis("weather_year"))
+record = PyPSACollection.to_datarecord(collection, ws.con, extend=["snapshot"])
+years = store.commit(record, parent=None, meta={"step": "weather years"})
+```
+
+Build the record with `PyPSACollection.build` and solve each member. `to_datarecord` refuses results written without the `extend` of the export:
+
+```python
+built = PyPSACollection.build(years.record)
+for member in built.networks:
+    member.optimize(solver_name="highs", log_to_console=False)
+try:
+    PyPSACollection.to_datarecord(built, ws.con, results_only=True, base=years.record)
+except ValueError as err:
+    print(err)
+```
+
+```text
+`base`'s `snapshot` holds `weather_year` as a coordinate: write results with `extend` ['snapshot'], as `base` was exported
+```
+
+Write the results with the same `extend`, and commit them over the inputs:
+
+```python
+results = PyPSACollection.to_datarecord(
+    built, ws.con, results_only=True, base=years.record, extend=["snapshot"]
+)
+solved_years = store.commit(results, parent=years, meta={"step": "solve"})
+gen = solved_years.record.attributes["p"].filter("connection.entity = 'gas1'").df()
+at = gen.snapshot.str
+print(
+    gen.assign(weather_year=at["weather_year"], timestep=at["timestep"])[
+        ["weather_year", "timestep", "value"]
+    ]
+)
+```
+
+```text
+   weather_year             timestep  value
+0          2012  2012-01-01 00:00:00   -0.0
+1          2012  2012-01-01 01:00:00   20.0
+2          2013  2013-01-01 00:00:00   25.0
+3          2013  2013-01-01 01:00:00   30.0
+```
+
+Each row of `gas1`'s output is at its own weather year's timestep. In the calm year 2013, gas covers what wind cannot at both timesteps.

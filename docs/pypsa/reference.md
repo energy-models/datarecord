@@ -285,11 +285,18 @@ An asset held again after a gap is refused.
 `to_datarecord` adds the dim to the schema and to `partial`.
 An attribute whose values agree across the members is written once, as declared, and one whose values differ varies over the dim.
 A later layer whose values differ widens the attribute's `dims` by the dim.
-Members must have the same snapshots, components, schema and custom columns.
-Members of other weather years hold other snapshots, so relabel each to one reference year before the export.
+Members must have the same snapshots, components, schema and custom columns, unless they extend `snapshot`.
 `to_datarecord` names how many snapshots a member lacks and holds beside the first member's, and the first of each.
 Their axes are one union in the first member's order, and a label's properties agree across them.
 `build` gives member `label` as `PyPSA.build(record.select(dim=label))`.
+
+With `extend=["snapshot"]`, members may hold different snapshots, such as one network per weather year.
+`to_datarecord` declares `snapshot` over `(period, dim, timestep)`, or `(dim, timestep)` for single-period members, and writes each member's snapshots at its label.
+A series row holds the label inside `snapshot`, and its attribute is not over the dim.
+The members must hold the same investment periods.
+They must also hold the same value of a series attribute at no snapshot, such as a static `p_max_pu`, or `to_datarecord` raises `ValueError`.
+Results over a record exported with `extend` are written with the same `extend`, and `to_datarecord` raises `ValueError` where it differs.
+`extend` takes `snapshot` alone.
 Results of a collection of fewer labels than `base` has are at each member's label, even where the members agree.
 They leave the other labels, the dim's axis and the SubNetworks to `base`.
 `to_datarecord` raises `ValueError` for a member's label that `base`'s axis of the dim lacks.

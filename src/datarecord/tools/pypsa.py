@@ -317,8 +317,6 @@ _ACTIVE_FALLBACK = {"build_year": 0, "lifetime": math.inf}
 _INVESTMENT_PERIOD = "investment_period"
 #: The dims a network is built from a selection squeezing, beside a record's own.
 _SQUEEZABLE = frozenset({PERIOD, SCENARIO})
-#: The keywords selecting snapshots, at all of which a results layer restates a series.
-_TIME = frozenset({SNAPSHOT, TIMESTEP, PERIOD})
 #: The dims PyPSA holds a value over, which an attribute its registry declares no spec of may be over.
 _HELD = frozenset({ENTITY, CONNECTION, SCENARIO, SNAPSHOT, *_AXIS_TYPES.values()})
 
@@ -404,11 +402,26 @@ def _detached(record: Selection) -> set[Any]:
 
 
 def _untimed(record: RecordLike) -> RecordLike:
-    """`record` at every snapshot of its base: a selection without its keywords selecting snapshots (`_TIME`)."""
+    """`record` at every snapshot of its base: a selection without its keywords selecting snapshots, `snapshot` and its coordinates.
+
+    A coordinate of the record's own, such as a weather year, is one too:
+    a results layer restates a series whole, so it carries the series at
+    every other label of the coordinate.
+    """
     if not isinstance(record, Selection):
         return record
-    rest = {k: v for k, v in record.labels.items() if k not in _TIME}
+    timed = {SNAPSHOT, *record.base.schema.over(SNAPSHOT).values()}
+    rest = {k: v for k, v in record.labels.items() if k not in timed}
     return select(record.base, **rest) if rest else record.base
+
+
+def _squeezed_coordinates(record: RecordLike) -> dict[str, Any]:
+    """The coordinates of `snapshot` a selection squeezes, each at its label; none for any other record."""
+    if not isinstance(record, Selection):
+        return {}
+    squeezed = _squeezed(record)
+    over = record.base.schema.over(SNAPSHOT)
+    return {f: record.labels[d] for f, d in over.items() if d in squeezed}
 
 
 def _equal_weighting(labels: Iterable[Any]) -> pd.DataFrame:
@@ -1525,11 +1538,22 @@ def _unshared(held: pd.Index, reference: pd.Index) -> str:
     return " and ".join(parts)
 
 
-def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
-    """Refuse a member holding other snapshots or components than the first: it would read their defaults."""
+def _alike(members: Mapping[Any, pypsa.Network], by: str, extended: bool) -> None:
+    """Refuse a member holding other snapshots or components than the first: it would read their defaults.
+
+    Members `extended` along `by` hold snapshots of their own, but the same
+    investment periods.
+    """
     (first, reference), *rest = members.items()
     for label, m in rest:
-        if not m.snapshots.equals(reference.snapshots):
+        if extended and not m.investment_periods.equals(reference.investment_periods):
+            msg = (
+                f"The network of {by} {label!r} holds other investment periods "
+                f"than that of {by} {first!r}: {list(m.investment_periods)}, not "
+                f"{list(reference.investment_periods)}"
+            )
+            raise ValueError(msg)
+        if not extended and not m.snapshots.equals(reference.snapshots):
             if reference.snapshots.symmetric_difference(m.snapshots).empty:
                 msg = (
                     f"The network of {by} {label!r} holds the snapshots of that "
@@ -1540,9 +1564,9 @@ def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
                 differs = _unshared(m.snapshots, reference.snapshots)
                 msg = (
                     f"The network of {by} {label!r} holds other snapshots than "
-                    f"that of {by} {first!r}: it {differs}; give every member the "
-                    "same snapshots, such as by relabelling each to one reference "
-                    "year"
+                    f"that of {by} {first!r}: it {differs}; pass "
+                    '`extend=["snapshot"]` to keep each member\'s own snapshots, '
+                    "or give every member the same snapshots"
                 )
             raise ValueError(msg)
         for c in reference.components:
@@ -1557,6 +1581,37 @@ def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
                     f"that of {by} {first!r}: {list(apart)}"
                 )
                 raise ValueError(msg)
+
+
+def _alike_statics(
+    members: Mapping[Any, pypsa.Network], by: str, con: DuckDBPyConnection
+) -> None:
+    """Refuse members extended along `by` holding different static values of a series attribute (`_agreed`).
+
+    Such a value is a row at no snapshot, so it has no label of `by` to
+    stand at. Only the static frames are compared, never a series, and a
+    column the members hold equal is not compared again within tolerance.
+
+    Raises
+    ------
+    ValueError
+        If two members hold values for one entity that do not agree.
+    """
+    reference = next(iter(members.values()))
+    for c in reference.components:
+        if c.name == "SubNetwork":
+            continue
+        statics = {label: _own_static(m.c[c.name]) for label, m in members.items()}
+        first = statics[next(iter(statics))]
+        for attr in [a for a in c.dynamic if a in first.columns]:
+            values = {label: static[attr] for label, static in statics.items()}
+            if all(v.equals(first[attr]) for v in values.values()):
+                continue
+            across = (
+                f"the members, as a series attribute's static value; set a series "
+                f"to vary it over `{by}`"
+            )
+            _agreed(c.name, attr, values, by, con, across)
 
 
 def _clash(rel: DuckDBPyRelation) -> Expression:
@@ -2273,7 +2328,9 @@ class PyPSATool(Tool):
         then over its record, each row at the labels it squeezes, one period
         squeezed writing at that period. Over the selection at one label of
         the record's dim of its own, the network is that member, written as
-        `PyPSACollection` writes a collection of it alone.
+        `PyPSACollection` writes a collection of it alone; where that dim is a
+        coordinate of `snapshot`, a series is written at the label inside the
+        struct, as at a squeezed period.
 
         Raises
         ------
@@ -2347,11 +2404,14 @@ class PyPSATool(Tool):
         con: DuckDBPyConnection,
         base: RecordLike | None,
         results_only: bool,
+        at: tuple[str, Any] | None = None,
     ) -> _NetworkSource:
         """`n` as a full export, over `base` where given, or as results over `base`, once it is checked writable.
 
         Results over a selection are written over it at every snapshot
-        (`_untimed`), at the period it squeezes.
+        (`_untimed`), at the coordinates of `snapshot` it squeezes. A full
+        export `at` a dim and label holds them as a coordinate of `snapshot`
+        (`_ExtendedSource`).
 
         Raises
         ------
@@ -2372,12 +2432,13 @@ class PyPSATool(Tool):
                     "built from, `record.select(scenario=label)`"
                 )
                 raise ValueError(msg)
-            period = None
-            if isinstance(base, Selection) and PERIOD in _squeezed(base):
-                period = base.labels[PERIOD]
-            source: _NetworkSource = _ResultsSource(n, con, _untimed(base), period)
-        else:
+            source: _NetworkSource = _ResultsSource(
+                n, con, _untimed(base), _squeezed_coordinates(base)
+            )
+        elif at is None:
             source = _NetworkSource(n, con, base)
+        else:
+            source = _ExtendedSource(n, con, base, *at)
         source.check()
         return source
 
@@ -3527,8 +3588,8 @@ class _ResultsSource(_NetworkSource):
 
     #: The record the network was built from, or a selection of it at every snapshot (`_untimed`).
     base: RecordLike
-    #: The period `base`'s selection squeezed, at which a single-period network is written.
-    period: Any = None
+    #: The coordinates of `snapshot` `base`'s selection squeezed, such as `period`, each at the label a single-period network is written at.
+    coordinates: Mapping[str, Any] = field(default_factory=dict)
 
     _LEAVES_OUT_REPEATS: ClassVar[bool] = False
 
@@ -3553,7 +3614,7 @@ class _ResultsSource(_NetworkSource):
         """
         if len(self.n.investment_periods) > 0:
             return list(self.n.investment_periods)
-        if self.period is None:
+        if PERIOD not in self.coordinates:
             msg = (
                 "A network written over a multi-period `base` carries investment "
                 "periods of it, or is written over the selection at one period "
@@ -3561,11 +3622,11 @@ class _ResultsSource(_NetworkSource):
                 "with `n.set_investment_periods`"
             )
             raise ValueError(msg)
-        return [self.period]
+        return [self.coordinates[PERIOD]]
 
     @cached_property
     def _snapshots(self) -> pd.DataFrame:
-        """`n.snapshots` a column per level of `base`'s `snapshot`: over a multi-period `base`, a single-period network's timesteps at its period (`_periods`).
+        """`n.snapshots` a column per coordinate of `base`'s `snapshot`: a single-period network's timesteps at each of `coordinates`, over a multi-period `base` at its period (`_periods`).
 
         Raises
         ------
@@ -3577,9 +3638,14 @@ class _ResultsSource(_NetworkSource):
         if levels and not _multiperiod(self.base):
             msg = "A multi-period network is written over a single-period `base`"
             raise ValueError(msg)
-        if levels or not _multiperiod(self.base):
+        if levels:
+            return snapshots.to_frame(index=False).assign(**self.coordinates)
+        if SNAPSHOT not in self.schema.multi_dims:
             return snapshots.to_frame(index=False)
-        return pd.DataFrame({PERIOD: self._periods[0], TIMESTEP: snapshots})
+        frame = pd.DataFrame({**self.coordinates, TIMESTEP: snapshots})
+        if _multiperiod(self.base):
+            frame[PERIOD] = self._periods[0]
+        return frame
 
     def check(self) -> None:
         """Refuse a network holding a snapshot, bus or entity `base` lacks, or first-stage results of fewer scenarios than the record, at the call rather than the write.
@@ -3801,6 +3867,49 @@ class _ResultsSource(_NetworkSource):
         return _null_or_in(rows, on, live, ENTITY)
 
 
+@dataclass(frozen=True)
+class _ExtendedSource(_NetworkSource):
+    """A collection member's full export, its label of the collection's dim a coordinate of `snapshot`, after `period`.
+
+    The coordinate is in `partial`, as a collection declares a dim of its
+    own, so the members' `snapshot` axes stack to one.
+
+    Notes
+    -----
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+    """
+
+    #: The collection's dim.
+    coordinate: str
+    #: The member's label of `coordinate`.
+    label: Any
+
+    @cached_property
+    def _snapshots(self) -> pd.DataFrame:
+        """`n.snapshots` a column per coordinate: `period` where multi-period, `coordinate` at `label`, and `timestep`."""
+        frame = self.n.snapshots.to_frame(index=False)
+        frame = frame.rename(columns={SNAPSHOT: TIMESTEP})
+        frame.insert(int(PERIOD in frame), self.coordinate, self.label)
+        return frame
+
+    @cached_property
+    def schema(self) -> RecordSchema:
+        """`_NetworkSource.schema` with `snapshot` over the columns of `_snapshots`, and `coordinate` declared from `label` and `partial`."""
+        declared = super().schema
+        added = Dimension(dtype=_column_dtype(pd.Series([self.label])))
+        snapshot = Dimension(
+            over=list(self._snapshots.columns),
+            description=f"A timestep at its {self.coordinate}.",
+        )
+        dimensions = {
+            self.coordinate: added,
+            **declared.dimensions,
+            SNAPSHOT: snapshot,
+        }
+        partial = (declared.partial or frozenset()) | {self.coordinate}
+        return _rebuilt(declared, dimensions=dimensions, partial=partial)
+
+
 def _null_or_in(
     rows: DuckDBPyRelation, on: Expression, among: DuckDBPyRelation, key: str
 ) -> DuckDBPyRelation:
@@ -3966,6 +4075,41 @@ def _labelled(
     return reduce(DuckDBPyRelation.union, (at(*item) for item in held.items()))
 
 
+def _coordinate_values(schema: RecordSchema, attr: str, dim: str) -> list[Expression]:
+    """`attr`'s label of `dim` in each multi-dim it is over that draws on `dim`, such as `snapshot`'s weather year; none where it is over no such multi-dim."""
+    return [
+        fn.struct_extract(col(d), lit(f))
+        for d in sorted(schema.attributes[attr].dims)
+        for f, over in schema.over(d).items()
+        if over == dim
+    ]
+
+
+def _located(
+    schema: RecordSchema, attr: str, held: Mapping[Any, DuckDBPyRelation], dim: str
+) -> DuckDBPyRelation:
+    """Each member's rows of `attr`, an attribute over a multi-dim with `dim` as a coordinate (`_coordinate_values`), as one, each member's rows read once.
+
+    The schema refuses such an attribute over `dim` too, so each member's
+    rows already carry their label. At a member's label its own rows are
+    kept, not those of `base` another member restates there. The rows at no
+    member's label, which each holds alike (`_alike_statics`, or `base`'s
+    restated), are the first member's.
+    """
+    label_type = schema.duck_type(schema.dimensions[dim])
+    values = _coordinate_values(schema, attr, dim)
+    labels = [lit(label).cast(label_type) for label in held]
+    elsewhere = reduce(operator.and_, (v.isnull() | ~v.isin(*labels) for v in values))
+
+    def own(label: Any) -> Expression:
+        return reduce(operator.or_, (v == lit(label).cast(label_type) for v in values))
+
+    (head, first), *rest = held.items()
+    rows = [first.filter(own(head) | elsewhere)]
+    rows += [rel.filter(own(label)) for label, rel in rest]
+    return reduce(DuckDBPyRelation.union, rows)
+
+
 @dataclass(frozen=True)
 class _StackedSource:
     """A `NetworkCollection`'s members, each presented on its own, as one record along a dim (`of`).
@@ -3994,7 +4138,9 @@ class _StackedSource:
         Their axes and properties are one union (`_axis_union`), checked
         before any attribute. An attribute whose rows differ across the
         members (`_differs`) is over `dim`, each member's rows at its
-        label; any other is held once. Over a `base` holding labels of `dim`
+        label; one over a multi-dim with `dim` as a coordinate, such as
+        `snapshot`, carries the label already (`_located`); any other is
+        held once. Over a `base` holding labels of `dim`
         the members lack, every attribute is at each member's label, the
         `dim` axis and the results naming a SubNetwork
         (`_sub_network_results`) left to `base`, since the members number
@@ -4052,10 +4198,13 @@ class _StackedSource:
         attributes = {label: m.attributes for label, m in members.items()}
         names = [a for a in _keys(attributes) if a not in left]
         held = {a: _held(attributes, a) for a in names}
+        located = {a for a in names if _coordinate_values(schema, a, dim)}
         if apart:
-            differing = set(names)
+            differing = set(names) - located
         else:
-            differing = {a for a in names if _differs(held[a], labels)}
+            differing = {
+                a for a in names if a not in located and _differs(held[a], labels)
+            }
         schema = _widened(schema, dim, labels, differing)
         if not apart:
             axis = con.from_df(pd.DataFrame({dim: labels}))
@@ -4063,6 +4212,8 @@ class _StackedSource:
         rows = {
             attr: _labelled(schema, attr, held[attr], dim)
             if attr in differing
+            else _located(schema, attr, held[attr], dim)
+            if attr in located
             else next(iter(held[attr].values()))
             for attr in names
         }
@@ -4354,6 +4505,7 @@ class PyPSACollectionTool(Tool):
         *,
         results_only: bool = False,
         base: RecordLike | None = None,
+        extend: Sequence[str] = (),
     ) -> RecordLike:
         """Present a `NetworkCollection` as the one `Record` `write_layer` persists, checked whole before this returns.
 
@@ -4367,9 +4519,22 @@ class PyPSACollectionTool(Tool):
         lacks, every result is at each member's label, and the dim's axis and
         the SubNetworks are left to `base`.
 
+        Parameters
+        ----------
+        extend
+            PyPSA's dims the collection's dim becomes a coordinate of, so the
+            members hold labels of their own: `snapshot` alone, over `(period,
+            dim, timestep)` where multi-period, else `(dim, timestep)`. A
+            series is written at each member's label inside `snapshot`. The
+            members still hold the same investment periods, and the same
+            value of a series attribute at no snapshot. Results are written
+            with it over a `base` exported with it.
+
         Raises
         ------
         ValueError
+            If `extend` names a dim other than `snapshot`, is given to a
+            `period` collection, or differs from how `base` was exported.
             If `base` is missing with `results_only`, or given without it. If
             the collection has more than one index level, its dim is one the
             PyPSA schema declares but `period` (`scenario` included) or one
@@ -4402,14 +4567,55 @@ class PyPSACollectionTool(Tool):
             return self.network.to_datarecord(
                 merged, con, results_only=results_only, base=base
             )
-        _alike(members, dim)
+        extended = _extended(extend, dim, base)
+        _alike(members, dim, extended)
+        if extended and not results_only:
+            _alike_statics(members, dim, con)
         sources = {
             label: self.network._source(
-                m, con, _member_base(base, dim, label), results_only
+                m,
+                con,
+                _member_base(base, dim, label),
+                results_only,
+                (dim, label) if extended and not results_only else None,
             )
             for label, m in members.items()
         }
         return _StackedSource.of(sources, dim, con, base)
+
+
+def _extended(extend: Sequence[str], dim: str, base: RecordLike | None) -> bool:
+    """Whether a collection over `dim` extends `snapshot` by it, checked against `base`'s `snapshot`.
+
+    Raises
+    ------
+    ValueError
+        If `extend` names a dim other than `snapshot`, `dim` is `period`, or
+        `base`'s `snapshot` holds `dim` as a coordinate where `extend` does
+        not name it, or the other way round.
+
+    Notes
+    -----
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+    """
+    unsupported = [d for d in extend if d != SNAPSHOT]
+    if unsupported:
+        msg = f"A collection extends `snapshot` alone, not {unsupported}"
+        raise ValueError(msg)
+    extended = SNAPSHOT in extend
+    if extended and dim == PERIOD:
+        msg = "A collection over `period` holds its periods in `snapshot` already"
+        raise ValueError(msg)
+    if base is not None:
+        held = dim in _root(base).schema.over(SNAPSHOT).values()
+        if held != extended:
+            msg = (
+                f"`base`'s `snapshot` {'holds' if held else 'lacks'} `{dim}` as a "
+                f"coordinate: write results with `extend` "
+                f"{[SNAPSHOT] if held else []}, as `base` was exported"
+            )
+            raise ValueError(msg)
+    return extended
 
 
 def _nested(record: RecordLike) -> Requirements:
