@@ -1329,6 +1329,14 @@ SPDX-License-Identifier: CC-BY-4.0
   from the selection at one label of the dim,
   <code>record.select(weather_year=2013)</code>, writes its results over that selection
   as that member.</li>
+<li><code>PyPSACollection.to_datarecord(networks, con, extend=["snapshot"])</code> writes
+  a collection whose members hold their own snapshots, such as one network
+  per weather year. <code>snapshot</code> is over <code>(period, weather_year, timestep)</code>, or
+  <code>(weather_year, timestep)</code> without periods, and each series row holds its
+  member's label inside <code>snapshot</code>. The members still hold the same
+  investment periods, and the same value of a series attribute at no
+  snapshot, such as a static <code>p_max_pu</code>. Results over such a record are
+  written with the same <code>extend</code>, each member's at its own label.</li>
 <li><code>PyPSA.build</code> and <code>PyPSA.verify</code> take a selection, <code>record.select(...)</code>, as
   any <code>RecordLike</code>. One label of <code>period</code>, <code>scenario</code> or a dim of the record's
   own squeezes the dim: a single-period network indexed by its timesteps

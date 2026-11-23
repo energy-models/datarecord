@@ -2445,9 +2445,16 @@ An asset held again after a gap is refused.
 <p><code>to_datarecord</code> adds the dim to the schema and to <code>partial</code>.
 An attribute whose values agree across the members is written once, as declared, and one whose values differ varies over the dim.
 A later layer whose values differ widens the attribute's <code>dims</code> by the dim.
-Members must have the same snapshots, components, schema and custom columns.
+Members must have the same snapshots, components, schema and custom columns, unless they extend <code>snapshot</code>.
 Their axes are one union in the first member's order, and a label's properties agree across them.
-<code>build</code> gives member <code>label</code> as <code>PyPSA.build(record.select(dim=label))</code>.
+<code>build</code> gives member <code>label</code> as <code>PyPSA.build(record.select(dim=label))</code>.</p>
+<p>With <code>extend=["snapshot"]</code>, members may hold different snapshots, such as one network per weather year.
+<code>to_datarecord</code> declares <code>snapshot</code> over <code>(period, dim, timestep)</code>, or <code>(dim, timestep)</code> for single-period members, and writes each member's snapshots at its label.
+A series row holds the label inside <code>snapshot</code>, and its attribute is not over the dim.
+The members must hold the same investment periods.
+They must also hold the same value of a series attribute at no snapshot, such as a static <code>p_max_pu</code>, or <code>to_datarecord</code> raises <code>ValueError</code>.
+Results over a record exported with <code>extend</code> are written with the same <code>extend</code>, and <code>to_datarecord</code> raises <code>ValueError</code> where it differs.
+<code>extend</code> takes <code>snapshot</code> alone.
 Results of a collection of fewer labels than <code>base</code> has are at each member's label, even where the members agree.
 They leave the other labels, the dim's axis and the SubNetworks to <code>base</code>.
 <code>to_datarecord</code> raises <code>ValueError</code> for a member's label that <code>base</code>'s axis of the dim lacks.</p>
