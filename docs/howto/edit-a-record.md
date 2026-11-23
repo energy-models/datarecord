@@ -146,6 +146,45 @@ print(rel.filter("entity = 'pv1'").df())
 
 `rel` returns the 45.0 that you staged after taking it.
 
+## Declare a name
+
+`declare` adds a dim, a property or an attribute to the schema, so that you can set it in the same revision. Name it, pass its spec, then add or set it as any other:
+
+```python
+from datarecord import AttributeSpec, Dimension, PropertySpec
+
+w.declare("scenario", Dimension(dtype="str"))
+w.declare("weight", AttributeSpec(dtype="float", dims={"scenario"}))
+w.declare("entity.note", PropertySpec(dtype="str"))
+w.add("scenario", ["low", "high"])
+w.set("weight", {"low": 0.3, "high": 0.7})
+w.set("entity.note", "new in this revision", entity="pv1")
+print(w.attributes["weight"].df())
+print(w.properties["entity"].df())
+```
+
+```text
+  scenario attribute  breakpoint  value
+0     high    weight         NaN    0.7
+1      low    weight         NaN    0.3
+  entity      ctype carrier                  note
+0  wind1  Generator    wind                   NaN
+1   gas1  Generator     gas                   NaN
+2    pv1  Generator   solar  new in this revision
+```
+
+`weight` has a value per scenario, and `note` is NULL on the entities you did not set. A declaration stays until you commit or roll back. To change one, declare the name again with the change. `declare` refuses a change that `compatible_with` refuses:
+
+```python
+w.declare("weight", AttributeSpec(dtype="int", dims={"scenario"}))
+```
+
+```text
+ValueError: `declare('weight', ...)` redeclares it incompatibly: attribute 'weight' dtype float -> int (https://energy-models.github.io/datarecord/reference/schema/#compatibility)
+```
+
+The message names the rule, and the schema is as it was. [Editing](../reference/editing.md#declare) lists what `declare` accepts and refuses.
+
 ## Commit the edits
 
 `store.commit(w)` writes the edits as a child of the revision `w` was made over. Close the `WorkingRecord` once you no longer read it:

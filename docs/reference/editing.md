@@ -9,6 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 A `WorkingRecord` is a record that stages edits over a base `Record` and reads back with the edits applied.
 An **edit** is a `set`, `add` or `remove` on a `WorkingRecord`, staged until `store.commit` writes the edits as a child [layer](layers.md).
 Nothing is written until then.
+`declare` widens the schema the edits are staged under.
 The examples edit `rev`, the revision of the running example's record that the [data model](data-model.md) reads.
 
 ```python
@@ -45,6 +46,58 @@ Each edit stages rows of one file of the [format](format.md):
 | `remove` labels or tuples | the dim's axis without them, and each multi-dim without the tuples that contain them | the dim's label             |
 
 A layer restates each axis it changes whole, whatever `partial` sets: every label the axis has, with the edits applied, in [axis order](data-model.md#dims-and-labels).
+
+## `declare`
+
+`declare(name, spec)` widens the schema that `w` reads and commits under, so that an edit of `name` follows in the same revision.
+`declare` reads the kind from the type of `spec`:
+
+| `spec`          | Declares                                  | `name`         |
+| --------------- | ----------------------------------------- | -------------- |
+| `Dimension`     | a dim, or a multi-dim where it has `over` | a plain name   |
+| `AttributeSpec` | an attribute                              | a plain name   |
+| `PropertySpec`  | a property of a dim or multi-dim          | `subject.name` |
+
+```python
+from datarecord import AttributeSpec, Dimension, PropertySpec
+
+w.declare("scenario", Dimension(dtype="str"))
+w.declare("weight", AttributeSpec(dtype="float", dims={"scenario"}))
+w.declare("connection.note", PropertySpec(dtype="str"))
+w.declare("p_nom", AttributeSpec(dtype="float", dims={"entity", "scenario"}))
+```
+
+`declare` builds the widened schema, `w.schema` with `spec` under `name`, through `Schema` validation.
+So it refuses what [the schema](schema.md) refuses in a manifest.
+Those include an undeclared subject or dim, a property of a dim with `one_of`, a name that cannot be a column and a malformed `default_by`.
+`declare` refuses a dotted name with a `Dimension` or an `AttributeSpec`, and a plain name with a `PropertySpec`.
+
+A name the schema declares already is redeclared.
+`declare` refuses a redeclaration that [`compatible_with`](schema.md#compatibility) refuses, a `spec` equal to the declaration, and a name declared as another kind.
+So an attribute's `dims` may gain a dim, and a `default`, `default_by`, `unit` or `description` may change.
+A `dtype`, a `one_of`, an `over` and a dim of `dims` stay as declared.
+`partial` stays as the base's, so a declared dim is outside it.
+
+`declare` stages nothing.
+After it, `w.schema` and `w.edits.schema` are the widened schema, and every read uses it.
+A new dim has no labels, a new attribute has no rows, and a new property is NULL on every label.
+An attribute widened over a dim reads its rows as before, broadcast along the dim.
+`set`, `add` and `remove` then take the name as any other, with the same checks.
+A `set` along a declared dim stages the key's other values as the record reads them, because the dim is outside `partial`.
+A `declare` after an edit of the same subject keeps the staged rows, with the new column NULL on them.
+`rollback()` clears the declarations with the staged rows, and a rollback that clears one is refused where `declare` is.
+
+`store.commit(w)` writes the layer under the widened schema.
+A declared name that no edit reaches is in the child's manifest and in no file.
+`declare` refuses a registered record ([registered views](format.md#registered-views)), because its views were created under the schema at `register`.
+Call `unregister`, `declare`, then `register` again:
+
+```text
+`declare('scenario', ...)` is refused: this record is registered as ['views'], whose views were created under its schema; `unregister` it first, and `register` it again after (https://energy-models.github.io/datarecord/reference/format/#registered-views)
+```
+
+It also refuses a closed record, as every edit does.
+It refuses a record that an open `WorkingRecord` is staged over, because that record reads the schema. Declare before staging over it.
 
 ## `set`
 
@@ -107,6 +160,19 @@ It casts a smaller integer to `BIGINT`, a number to `DOUBLE`, a timestamp of any
 `set("entity.carrier", value, ...)` changes one column of the subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with keywords that select the labels, or a scalar for every label.
 A categorising property is set the same way, and the label keeps its attribute values under its new category.
+
+A multi-dim's property takes a scalar for the tuples its coordinate keywords select, or a frame with a value per tuple.
+The frame has the multi-dim's coordinates as columns, or its struct column as `dims["connection"]` returns it, and the property's column:
+
+```python
+w.set("connection.note", frame)  # columns entity, bus and note, one row per connection
+```
+
+`set` patches the column on the tuples the frame lists and keeps their other properties.
+It ignores a column of another property, so a frame read from `properties["connection"]` sets back after a change to one column.
+It refuses a tuple the axis as staged lacks, a column the axis has no place for and a tuple listed twice.
+It also refuses a keyword beside the frame, which supplies its own tuples.
+
 `set` refuses a coordinate, such as `connection.bus`, because a coordinate is part of the key:
 
 ```text

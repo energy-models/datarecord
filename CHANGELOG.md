@@ -13,6 +13,19 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Added
 
+- `WorkingRecord.declare(name, spec)` widens a working record's schema by a
+  dim, a multi-dim, a property or an attribute. It also redeclares a name
+  within what `compatible_with` accepts. A `set` or `add` of the name then
+  follows in the same revision. `declare` reads the kind from the type of `spec`, and
+  `partial` stays the base's. `rollback()` restores the base's schema.
+  `store.commit` writes the layer under the widened one. A declared name that
+  no edit reaches is written as its declaration alone. `declare` refuses a
+  registered record, and one that an open `WorkingRecord` is staged over.
+- `set` of a multi-dim's property takes a frame with the multi-dim's
+  coordinates, or its struct column, and the property's column, one row per
+  tuple. It patches the column on those tuples and keeps their other
+  properties. It ignores a column of another property, so a frame read from
+  the axis sets back.
 - `select(record, **labels)`, exported beside `settle`, and `Record.select`
   return a `Selection`: a `RecordLike` holding any record at the labels named,
   as xarray's `sel` takes them. One label squeezes its dim out of the schema,
