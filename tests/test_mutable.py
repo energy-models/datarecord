@@ -299,8 +299,8 @@ _ENTITY = "does not fit 'entity' of dtype str"
             id="add-mixed-str",
         ),
         pytest.param(
-            lambda s: s.add("entity", ["zz"], carrier=5),
-            "does not fit 'carrier' of dtype str",
+            lambda s: s.add("entity", ["zz"], technology_group=5),
+            "does not fit 'technology_group' of dtype str",
             id="add-a-property-referring-to-a-dim",
         ),
         pytest.param(
@@ -502,7 +502,7 @@ def _rows(rel):
         (
             "properties",
             "entity",
-            lambda w: w.set("entity.carrier", {"Norway Gas": "wind"}),
+            lambda w: w.set("entity.technology_group", {"Norway Gas": "wind"}),
         ),
         ("dims", "entity", lambda w: w.add("entity", ["Solar"], ctype=GEN)),
         ("dims", "scenario", lambda w: w.add("scenario", ["high"])),

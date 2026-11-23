@@ -6,9 +6,9 @@
 
 The only module that knows PyPSA's network shape - that its axes are
 `snapshot`/`period`/`scenario`, that a stochastic network is indexed by
-`(scenario, name)`, that its buses and carriers are the `bus` and `carrier`
-axes, and how its static/series split maps onto the record's `dims/` +
-`attributes/` split.
+`(scenario, name)`, that its buses are the `bus` axis and its carriers the
+`carrier` and `technology_group` axes, and how its static/series split maps
+onto the record's `dims/` + `attributes/` split.
 
 Notes
 -----
@@ -85,6 +85,7 @@ TIMESTEP = "timestep"
 #: and a name holds one spec record-wide.
 SCENARIO_WEIGHT = "scenario_weight"
 ENTITY, BUS, CARRIER, CONNECTION = "entity", "bus", "carrier", "connection"
+TECHNOLOGY_GROUP = "technology_group"
 SUB_NETWORK = "sub_network"
 LINE_TYPE, TRANSFORMER_TYPE = "line_type", "transformer_type"
 GLOBAL_CONSTRAINT = "global_constraint"
@@ -93,16 +94,20 @@ CTYPE = "ctype"
 BY_CTYPE = f"{ENTITY}.{CTYPE}"
 #: The PyPSA types of catalog metadata, each a dim whose every column is a property.
 _CATALOG_TYPES = {"LineType": LINE_TYPE, "TransformerType": TRANSFORMER_TYPE}
-#: The PyPSA types whose members are labels of a dim of their own, not entities.
+#: The PyPSA types whose members are labels of a dim of their own, not entities,
+#: by the dim their attributes are over.
 _AXIS_TYPES = {
     "Bus": BUS,
-    "Carrier": CARRIER,
+    "Carrier": TECHNOLOGY_GROUP,
     "SubNetwork": SUB_NETWORK,
     "GlobalConstraint": GLOBAL_CONSTRAINT,
     **_CATALOG_TYPES,
 }
-#: The PyPSA type of each `_AXIS_TYPES` dim, the `component` a shape on it names.
-_TYPE_OF = {dim: ctype for ctype, dim in _AXIS_TYPES.items()}
+#: The dims whose labels are members of a PyPSA type beside its `_AXIS_TYPES`
+#: dim, holding properties it shares but none of its attributes.
+_SHARING_TYPES = {CARRIER: "Carrier"}
+#: The PyPSA type of each labelled dim, the `component` a shape on it names.
+_TYPE_OF = {dim: ctype for ctype, dim in _AXIS_TYPES.items()} | _SHARING_TYPES
 #: PyPSA's type whose members are no labels: each is a property of the label it outlines.
 _SHAPE = "Shape"
 #: What names a property as a shape's geometry, the shape's `type` after it.
@@ -114,16 +119,21 @@ _KEYS = frozenset({SNAPSHOT, TIMESTEP, PERIOD, SCENARIO, ENTITY, CONNECTION})
 #: `entity` has `ctype` as well, and a `_CATALOG_TYPES` dim has every registry
 #: input as a property.
 _PROPERTIES = {
-    ENTITY: ("carrier", "sign", "type"),
-    BUS: ("carrier", "type", "x", "y", "unit", "location"),
+    ENTITY: (TECHNOLOGY_GROUP, "sign", "type"),
+    BUS: (CARRIER, "type", "x", "y", "unit", "location"),
+    TECHNOLOGY_GROUP: ("color", "nice_name"),
     CARRIER: ("color", "nice_name"),
     SUB_NETWORK: (CARRIER,),
     GLOBAL_CONSTRAINT: ("type", BUS),
 }
+#: PyPSA's column of each entity property named otherwise.
+_COLUMN_OF = {TECHNOLOGY_GROUP: CARRIER}
+#: The entity property of each column `_COLUMN_OF` names.
+_PROPERTY_OF = {column: name for name, column in _COLUMN_OF.items()}
 #: The properties whose value is a label of the dim with the same name, so the
 #: tool declares each `one_of` that dim. PyPSA's `""` means no label, and the
 #: tool stores it as NULL.
-_NAMING = (CARRIER, BUS)
+_NAMING = (CARRIER, BUS, TECHNOLOGY_GROUP)
 #: How a SubNetwork's `carrier` is described, PyPSA registering it as an output.
 _SUB_NETWORK_CARRIER = "The carrier of a sub-network's buses."
 #: How a shape's geometry and a dim shapes make are described.
@@ -863,6 +873,62 @@ def _keyed_as_entity(rel: DuckDBPyRelation, dim: str) -> DuckDBPyRelation:
     return rel.project(
         *(col(c).alias(ENTITY) if c == dim else col(c) for c in rel.columns)
     )
+
+
+def _defaulted_labels(
+    record: RecordLike, dim: str, con: DuckDBPyConnection
+) -> DuckDBPyRelation | None:
+    """`dim`'s labels with their properties but shapes, defaults applied; `None` where `record` has none."""
+    frame = record.properties.get(dim)
+    if frame is None or not frame.limit(1).fetchall():
+        return None
+    schema = record.schema
+    outlines = _shape_properties(schema, dim)
+    names = [name for name in schema.properties[dim] if name not in outlines]
+    return with_defaults(schema, dim, frame, names, con)
+
+
+def _shared_members(
+    held: Mapping[str, DuckDBPyRelation], ctype: str, con: DuckDBPyConnection
+) -> DuckDBPyRelation:
+    """The labels of each dim in `held` as members of `ctype`, keyed `entity`: a label of several dims one member with the properties of each.
+
+    Raises
+    ------
+    ValueError
+        If a label of several dims holds different values of a property they share.
+
+    Notes
+    -----
+    - [carriers](https://energy-models.github.io/datarecord/reference/tools/#carriers-and-technology-groups)
+    """
+    keyed = [_keyed_as_entity(_empty_for_none(rel), dim) for dim, rel in held.items()]
+    if len(keyed) == 1:
+        return keyed[0]
+    frames = [rel.df() for rel in keyed]
+    merged = pd.concat(frames, ignore_index=True)
+    shared = sorted(set.intersection(*(set(f.columns) for f in frames)) - {ENTITY})
+    counts = merged.groupby(ENTITY, sort=False)[shared].nunique(dropna=False)
+    differing = {
+        label: [name for name in shared if row[name] > 1]
+        for label, row in counts[(counts > 1).any(axis=1)].iterrows()
+    }
+    if differing:
+        msg = (
+            f"Labels of {sorted(held)} differ in the properties they share, as "
+            f"{differing}: a label of several of them is one {ctype}, so its "
+            "values agree"
+        )
+        raise ValueError(msg)
+    return con.from_df(merged.groupby(ENTITY, sort=False).first().reset_index())
+
+
+def _named(frames: Iterable[pd.DataFrame], column: str) -> pd.Series:
+    """The distinct values of `column` across those of `frames` that have it, NULL left out, in order."""
+    held = [frame[column] for frame in frames if column in frame]
+    if not held:
+        return pd.Series([], dtype=object)
+    return pd.concat(held).dropna().drop_duplicates()
 
 
 def _none_for_empty(frame: pd.DataFrame) -> pd.DataFrame:
@@ -2162,17 +2228,18 @@ class PyPSATool(Tool):
         settled: Mapping[str, DuckDBPyRelation],
         con: DuckDBPyConnection,
     ) -> None:
-        """Add an `_AXIS_TYPES` type's members: its dim's labels with their properties, defaults applied, and the attributes over it, settled over its labels and `settled`."""
+        """Add an `_AXIS_TYPES` type's members: the labels of each of its dims (`_TYPE_OF`) with their properties, defaults applied, joined (`_shared_members`), and the attributes over its `_AXIS_TYPES` dim, settled over that dim's labels and `settled`."""
         dim = _AXIS_TYPES[ctype]
-        frame = record.properties.get(dim)
-        if frame is None or not frame.limit(1).fetchall():
+        held = {
+            d: labels
+            for d, of in _TYPE_OF.items()
+            if of == ctype and (labels := _defaulted_labels(record, d, con)) is not None
+        }
+        if not held:
             return
-        schema = record.schema
-        outlines = _shape_properties(schema, dim)
-        names = [name for name in schema.properties[dim] if name not in outlines]
-        labels = with_defaults(schema, dim, frame, names, con)
-        static = _keyed_as_entity(_empty_for_none(labels), dim).project(star(), _POS)
-        over = {**settled, dim: labels}
+        static = _shared_members(held, ctype, con).project(star(), _POS)
+        declared = record.schema.attributes
+        over = {**settled, **{d: held[d] for d in held.keys() & {dim}}}
         attributes = {
             attr: (
                 _keyed_as_entity(
@@ -2184,7 +2251,7 @@ class PyPSATool(Tool):
                 flags,
             )
             for attr, flags in flagged.items()
-            if attr in schema.attributes and dim in schema.attributes[attr].dims
+            if dim in held and attr in declared and dim in declared[attr].dims
         }
         _add_component_type(n, ctype, static, attributes, shape, con)
 
@@ -2442,7 +2509,9 @@ def _registry() -> _Registry:
     differing per type is `default_by`, and a per-port column collapses to
     its stem over `connection`. `Bus`, `Carrier`, `SubNetwork`,
     `GlobalConstraint`, `LineType` and `TransformerType` members are labels
-    of their own dim (`_AXIS_TYPES`). A `Shape` declares nothing here,
+    of their own dim (`_AXIS_TYPES`), a `Carrier` also of `carrier`
+    (`_SHARING_TYPES`). An entity's `carrier` is its `technology_group`
+    (`_COLUMN_OF`). A `Shape` declares nothing here,
     because it is a property of the label it outlines (`_outlined`).
 
     Notes
@@ -2491,7 +2560,7 @@ def _registry() -> _Registry:
                 else _attribute_spec(defaults.loc[attr], over=ENTITY),
             )
         if carried:
-            carries[c.name] = frozenset(carried)
+            carries[c.name] = frozenset(_PROPERTY_OF.get(s, s) for s in carried)
     attributes = _with_default_by(attributes, by_type)
     properties = {
         ENTITY: {
@@ -2499,7 +2568,7 @@ def _registry() -> _Registry:
                 one_of=CTYPE, description="What kind of entity an entity is."
             ),
             **{
-                name: _property(name, attributes.pop(name))
+                name: _property(name, attributes.pop(_COLUMN_OF.get(name, name)))
                 for name in _PROPERTIES[ENTITY]
             },
         }
@@ -2518,6 +2587,9 @@ def _registry() -> _Registry:
             else {name: _property(name, specs.pop(name)) for name in held}
         )
         attributes |= specs
+    for dim, ctype in _SHARING_TYPES.items():
+        shared = properties[_AXIS_TYPES[ctype]]
+        properties[dim] = {name: shared[name] for name in _PROPERTIES[dim]}
     inputs = frozenset(
         {*attributes, *(name for named in properties.values() for name in named)}
     )
@@ -2559,8 +2631,10 @@ def _registry() -> _Registry:
             ENTITY: Dimension(dtype="str", description="An entity."),
             CTYPE: Dimension(one_of=ctypes, description="A kind of entity."),
             BUS: Dimension(dtype="str", description="A node of the network."),
-            CARRIER: Dimension(
-                dtype="str", description="An energy carrier or technology."
+            CARRIER: Dimension(dtype="str", description="The energy carrier of a bus."),
+            TECHNOLOGY_GROUP: Dimension(
+                dtype="str",
+                description="A group of technologies, PyPSA's carrier of a component.",
             ),
             SUB_NETWORK: Dimension(
                 dtype="str",
@@ -2783,39 +2857,73 @@ class _NetworkSource:
         return self._labels("SubNetwork")
 
     @cached_property
-    def _axes(self) -> dict[str, pd.DataFrame]:
-        """Every labelled axis with its properties, by dim, in PyPSA's order; empty where the network has none.
+    def _carriers(self) -> dict[str, pd.DataFrame]:
+        """`n.carriers` as the `technology_group` and `carrier` axes, each in PyPSA's order, a label named but not listed added after those listed, its properties NULL.
 
-        A carrier named but not in `n.carriers` is added after those listed,
-        its properties NULL.
+        A carrier an entity names, or holding a value only a technology group
+        has a place for (`_holding_group_values`), is a technology group. One
+        a bus or sub-network names, or that is no technology group, is a
+        carrier. A carrier can be both.
+
+        Notes
+        -----
+        - [carriers](https://energy-models.github.io/datarecord/reference/tools/#carriers-and-technology-groups)
         """
+        listed = self._labels("Carrier")
+        labels = listed[TECHNOLOGY_GROUP]
+        groups = _named([self._entity_frame], TECHNOLOGY_GROUP)
+        carriers = _named([self._labels("Bus"), self._sub_networks], CARRIER)
+        grouped = labels.isin(groups) | self._holding_group_values(listed)
+
+        def axis(dim: str, rows: pd.Series, named: pd.Series) -> pd.DataFrame:
+            frame = listed[rows].rename(columns={TECHNOLOGY_GROUP: dim})
+            added = pd.DataFrame({dim: named[~named.isin(labels)].to_numpy()})
+            return pd.concat([frame, added], ignore_index=True)
+
+        return {
+            TECHNOLOGY_GROUP: axis(TECHNOLOGY_GROUP, grouped, groups),
+            CARRIER: axis(CARRIER, labels.isin(carriers) | ~grouped, carriers),
+        }
+
+    def _holding_group_values(self, listed: pd.DataFrame) -> pd.Series:
+        """Whether each label of `listed`, `n.carriers` with its shapes, holds a value off its default that `carrier` has no property for.
+
+        A registry column's default is PyPSA's, a custom column's or a
+        shape's NULL or `""`.
+        """
+        c = self.n.c["Carrier"]
+        static = self._own(c)
+        defaults = c.defaults["default"]
+        kept = set(self.schema.properties[CARRIER])
+        frames = [
+            static.set_axis(_names(static.index)),
+            listed.set_index(TECHNOLOGY_GROUP),
+        ]
+        off = [
+            ~(frame[name].isna() | (frame[name] == defaults.get(name, "")))
+            for frame in frames
+            for name in frame
+            if name not in kept
+        ]
+        holding = {label for values in off for label in values.index[values]}
+        return listed[TECHNOLOGY_GROUP].isin(holding)
+
+    @cached_property
+    def _axes(self) -> dict[str, pd.DataFrame]:
+        """Every labelled axis with its properties, by dim, in PyPSA's order; empty where the network has none."""
         snapshots = self._snapshots
         timesteps = (
             snapshots[[TIMESTEP]].drop_duplicates(ignore_index=True)
             if TIMESTEP in snapshots
             else pd.DataFrame(columns=[TIMESTEP])
         )
-        buses = self._labels("Bus")
-        listed = self._labels("Carrier")
-        named = [
-            frame[CARRIER]
-            for frame in (buses, self._sub_networks, self._entity_frame)
-            if CARRIER in frame
-        ]
-        unlisted = (
-            pd.concat(named).dropna().drop_duplicates()
-            if named
-            else pd.Series([], dtype=object)
-        )
-        unlisted = unlisted[~unlisted.isin(listed[CARRIER])]
-        added = pd.DataFrame({CARRIER: unlisted.to_numpy()})
         return {
             SNAPSHOT: snapshots,
             TIMESTEP: timesteps,
             PERIOD: self.n.investment_periods.to_frame(index=False),
             SCENARIO: self.n.scenario_weightings.index.to_frame(index=False),
-            BUS: buses,
-            CARRIER: pd.concat([listed, added], ignore_index=True),
+            BUS: self._labels("Bus"),
+            **self._carriers,
             SUB_NETWORK: self._sub_networks,
             GLOBAL_CONSTRAINT: self._labels("GlobalConstraint"),
             **{dim: self._labels(ctype) for ctype, dim in _CATALOG_TYPES.items()},
@@ -3308,7 +3416,7 @@ class _NetworkSource:
     @property
     def properties(self) -> LazyRelations:
         """The keys and property columns of the entities, labelled axes and connections."""
-        axes = [*_AXIS_TYPES.values(), *self._shape_dims]
+        axes = [*_TYPE_OF, *self._shape_dims]
         labelled = [d for d in axes if len(self._axes[d])]
         subjects = (ENTITY, *labelled, CONNECTION)
 
@@ -3348,7 +3456,11 @@ class _NetworkSource:
         - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
         """
         defaults = c.defaults
-        placed = self.schema.properties[_dim_of(c.name)]
+        dim = _dim_of(c.name)
+        placed = {
+            _COLUMN_OF.get(p, p) if dim == ENTITY else p
+            for p in self.schema.properties[dim]
+        }
         skipped = {"name", *_output_attributes(c), *placed}
         per_port = _port_stems(c)
         stems: list[str] = []
@@ -3368,8 +3480,8 @@ class _NetworkSource:
     # -- frames -------------------------------------------------------------
 
     def _static_frame(self, ctype: str) -> pd.DataFrame:
-        """Members of one type with the properties of `entity` it has columns for."""
-        static = self._own(self.n.c[ctype])
+        """Members of one type with the properties of `entity` it has columns for (`_COLUMN_OF`)."""
+        static = self._own(self.n.c[ctype]).rename(columns=_PROPERTY_OF)
         columns = [p for p in self.schema.properties[ENTITY] if p in static.columns]
         frame = static[columns].reset_index().rename(columns={"name": "entity"})
         return _unscoped(frame, [ENTITY], ctype, self.con)
@@ -4320,7 +4432,7 @@ def _components(record: RecordLike) -> list[str]:
 
 
 def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
-    """`ctype`'s members in axis order, with the properties it takes (`_taken`), defaults applied, `ctype` left out.
+    """`ctype`'s members in axis order, with the properties it takes (`_taken`) as PyPSA's columns (`_COLUMN_OF`), defaults applied, `ctype` left out.
 
     `None` where the record has no `ctype` property on its entity axis.
 
@@ -4337,7 +4449,10 @@ def _members(record: RecordLike, ctype: str) -> DuckDBPyRelation | None:
     held = [name for name in schema.properties[ENTITY] if name not in outlines]
     names = _taken(schema, ctype, held)
     defaulted = with_defaults(schema, ENTITY, rel, names, record.con)
-    return _empty_for_none(defaulted.project(star(exclude=[CTYPE])))
+    members = _empty_for_none(defaulted.project(star(exclude=[CTYPE])))
+    return members.project(
+        *(col(c).alias(_COLUMN_OF.get(c, c)) for c in members.columns)
+    )
 
 
 #: The tool, a module-level singleton.

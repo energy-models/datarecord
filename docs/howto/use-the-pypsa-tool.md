@@ -51,7 +51,7 @@ print(root.record.properties["connection"].df())
 4   {'entity': 'line', 'bus': 'south'}    output
 ```
 
-Each component is a label of `entity` with its type in `entity.ctype`, and each of its ports is a `connection` tuple with a `role`. Buses and carriers are labels of the dims `bus` and `carrier`. `to_datarecord` raises `UnsupportedRecordError` for a network in which two components of different types share a name.
+Each component is a label of `entity` with its type in `entity.ctype`, and each of its ports is a `connection` tuple with a `role`. Buses are labels of `bus`. A bus's carrier is a label of `carrier`, and a component's carrier a label of `technology_group`. `to_datarecord` raises `UnsupportedRecordError` for a network in which two components of different types share a name.
 
 ## Check a record before a build
 
@@ -88,7 +88,7 @@ Stage edits with PyPSA's names. A property is named by its subject, so `bus.x` i
 
 ```python
 w.rollback()
-w.set("p_max_pu", 0.95, ctype="Generator", carrier="gas")
+w.set("p_max_pu", 0.95, ctype="Generator", technology_group="gas")
 w.set("bus.x", 10.2, bus="north")
 inputs = store.commit(w)
 ```

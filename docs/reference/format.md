@@ -65,7 +65,7 @@ An axis file contains every label of one dim at the layer's revision, in axis or
 Its first column is the key, named for the dim, and each further column is one [property](data-model.md) of the dim.
 
 ```text
-dims/entity.parquet       entity | ctype | carrier | sign | type
+dims/entity.parquet       entity | ctype | technology_group | sign | type
 dims/connection.parquet   connection STRUCT(entity, bus) | role
 ```
 

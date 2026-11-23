@@ -90,7 +90,7 @@ A [`WorkingRecord`](editing.md) stages the rest of the series for you: `set("p_m
 - Only a property of a dim in `partial` can be categorising ([the data model](data-model.md)).
 - The fold reads each layer under the schema in its own manifest, so a child may add a dim to `partial` ([a wider schema](resolution.md#a-wider-schema)).
 
-Under the PyPSA schema's `partial`, a layer overrides one bus's `v_nom` and restates every carrier's `co2_emissions`, because `carrier` is not in `partial`.
+Under the PyPSA schema's `partial`, a layer overrides one bus's `v_nom` and restates every technology group's `co2_emissions`, because `technology_group` is not in `partial`.
 
 !!! info "See also"
 

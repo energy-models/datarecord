@@ -738,7 +738,10 @@ class TestPyPSA:
     def test_buses_and_carriers_are_labels_of_their_dims(
         self, single_revision, built, ac_dc
     ):
-        """`n.buses` and `n.carriers` are the `bus` and `carrier` axes, under PyPSA's names.
+        """`n.buses` is the `bus` axis and `n.carriers` the `technology_group` and `carrier` axes.
+
+        A carrier holding a value only a technology group has a place for
+        (`battery`) is one, though nothing names it.
 
         Notes
         -----
@@ -758,16 +761,29 @@ class TestPyPSA:
             "location",
             "country",
         ]
-        assert record.properties["carrier"].columns == [
-            "carrier",
+        assert record.properties["technology_group"].columns == [
+            "technology_group",
             "color",
             "nice_name",
             "marginal_cost",
             "efficiency",
             "capital_cost",
         ]
+        assert record.properties["carrier"].columns == ["carrier", "color", "nice_name"]
+        assert record.dims["technology_group"].df()["technology_group"].tolist() == [
+            "gas",
+            "wind",
+            "battery",
+            "load",
+            "AC",
+            "DC",
+        ]
+        assert record.dims["carrier"].df()["carrier"].tolist() == ["AC", "DC"]
         assert record.schema.attributes["v_nom"].dims == {"bus", "scenario"}
-        assert record.schema.attributes["co2_emissions"].dims == {"carrier", "scenario"}
+        assert record.schema.attributes["co2_emissions"].dims == {
+            "technology_group",
+            "scenario",
+        }
 
         for ctype in ("Bus", "Carrier"):
             original = ac_dc.c[ctype].static
@@ -778,31 +794,71 @@ class TestPyPSA:
                 check_index_type=False,
             )
 
-    def test_an_unlisted_carrier_is_added_and_an_empty_one_is_none(self, store):
-        """A carrier named but not in `n.carriers` becomes a label; `""` names none.
+    def test_a_carrier_a_component_names_is_a_technology_group(self, store):
+        """A carrier a generator names is a technology group, one a bus names a carrier, one both name both.
+
+        Nothing names `spare`, so it is a carrier, and `coal` holds an
+        emission factor, so it is a technology group. A carrier named but
+        not listed is added, and `""` names none.
 
         Notes
         -----
-        - [properties](https://energy-models.github.io/datarecord/reference/data-model/#properties)
+        - [carriers](https://energy-models.github.io/datarecord/reference/tools/#carriers-and-technology-groups)
         """
         n = _north()
-        n.add("Carrier", "AC", color="black")
+        n.add("Carrier", ["AC", "solar", "spare"], color=["black", "gold", "grey"])
+        n.add("Carrier", "coal", co2_emissions=0.3)
         n.add("Generator", "wind", bus="north", carrier="wind")
+        n.add("Generator", "pv", bus="north", carrier="solar")
+        n.add("Load", "demand", bus="north", carrier="AC")
 
         record = export_network(n, store).record
-        assert record.dims["carrier"].df()["carrier"].tolist() == ["AC", "wind"]
-        carriers = record.properties["entity"].df()
-        assert carriers.set_index("entity")["carrier"].isna().to_dict() == {
-            "gen": True,
-            "wind": False,
+        assert record.dims["technology_group"].df()["technology_group"].tolist() == [
+            "AC",
+            "solar",
+            "coal",
+            "wind",
+        ]
+        assert record.dims["carrier"].df()["carrier"].tolist() == ["AC", "spare"]
+        entities = record.properties["entity"].df().set_index("entity")
+        assert entities["technology_group"].dropna().to_dict() == {
+            "wind": "wind",
+            "pv": "solar",
+            "demand": "AC",
         }, "an empty carrier is stored as NULL"
+        assert record.properties["bus"].df()["carrier"].tolist() == ["AC"]
 
         built = PyPSA.build(record)
-        assert built.c.Carrier.static.index.to_list() == ["AC", "wind"]
+        assert built.c.Carrier.static["color"].to_dict() == {
+            "AC": "black",
+            "solar": "gold",
+            "coal": "",
+            "wind": "",
+            "spare": "grey",
+        }
+        assert built.c.Carrier.static.at["coal", "co2_emissions"] == 0.3
         assert built.c.Generator.static["carrier"].to_dict() == {
             "gen": "",
             "wind": "wind",
+            "pv": "solar",
         }
+        assert built.c.Load.static.at["demand", "carrier"] == "AC"
+
+    def test_a_label_of_both_dims_holds_one_value_of_each_property(
+        self, single_revision
+    ):
+        """`AC` is one row of `n.carriers`, so its colour as a carrier and as a technology group agree.
+
+        Notes
+        -----
+        - [carriers](https://energy-models.github.io/datarecord/reference/tools/#carriers-and-technology-groups)
+        """
+        from datarecord.mutable import WorkingRecord
+
+        w = WorkingRecord(single_revision.record)
+        w.set("carrier.color", "red", carrier="AC")
+        with pytest.raises(ValueError, match=r"\{'AC': \['color'\]\}"):
+            PyPSA.build(w)
 
     def test_a_property_is_addressed_by_its_subject(self, single_revision):
         """`x` is a line's reactance and `bus.x` a bus's coordinate; `carrier` alone is neither.
@@ -823,11 +879,11 @@ class TestPyPSA:
         assert "London" not in x.index, "`x` reaches no bus"
         buses = w.properties["bus"].df().set_index("bus")
         assert buses.at["London", "x"] == 10.2
-        with pytest.raises(KeyError, match=r"`bus\.carrier` or `entity\.carrier`"):
+        with pytest.raises(KeyError, match=r"`bus\.carrier` or `sub_network\.carrier`"):
             w.set("carrier", "AC")
 
-    def test_a_carrier_is_a_live_label(self, single_revision):
-        """`entity.carrier` names a label, and a label named is not removed.
+    def test_a_technology_group_is_a_live_label(self, single_revision):
+        """`entity.technology_group` names a label, and a label named is not removed.
 
         Notes
         -----
@@ -837,9 +893,9 @@ class TestPyPSA:
 
         w = WorkingRecord(single_revision.record)
         with pytest.raises(KeyError, match="coal"):
-            w.set("entity.carrier", "coal", entity="Manchester Gas")
-        with pytest.raises(ValueError, match="entity.carrier"):
-            w.remove("carrier", ["gas"])
+            w.set("entity.technology_group", "coal", entity="Manchester Gas")
+        with pytest.raises(ValueError, match="entity.technology_group"):
+            w.remove("technology_group", ["gas"])
 
     @pytest.mark.slow
     def test_a_value_its_type_does_not_take_is_reported_and_left_out(self, store):
@@ -1379,7 +1435,7 @@ class TestPyPSA:
 
         record = export_network(n, store).record
         for ctype, (name, _) in columns.items():
-            dim = {"Bus": "bus", "Carrier": "carrier"}.get(ctype, "entity")
+            dim = {"Bus": "bus", "Carrier": "technology_group"}.get(ctype, "entity")
             as_property = name in record.schema.properties[dim]
             assert as_property == (kind == "property"), f"{name} is a {kind} of {dim}"
             if kind == "attribute":
@@ -3346,7 +3402,7 @@ class TestPyPSA:
                 id="bus",
             ),
             pytest.param(
-                {"carrier": ["AC", "wind", "load"]},
+                {"carrier": ["AC"], "technology_group": ["AC", "wind", "load"]},
                 {
                     "Bus": [
                         "London",
@@ -3373,7 +3429,7 @@ class TestPyPSA:
     def test_a_selection_drops_every_label_referring_to_a_dropped_one(
         self, single_revision, select, expected
     ):
-        """A bus or entity of another carrier goes, and an entity attached to a dropped bus with it.
+        """A bus of another carrier or entity of another technology group goes, and an entity attached to a dropped bus with it.
 
         Notes
         -----
@@ -3449,7 +3505,7 @@ class TestPyPSA:
 
     @pytest.mark.slow
     def test_dims_selected_together_combine(self, store, multiperiod):
-        """One period, one scenario and two carriers: a deterministic single-period network of the AC buses and their wind generators.
+        """One period, one scenario, a carrier and two technology groups: a deterministic single-period network of the AC buses and their wind generators.
 
         Notes
         -----
@@ -3458,7 +3514,12 @@ class TestPyPSA:
         n = multiperiod.copy()
         n.set_scenarios({"lo": 0.2, "hi": 0.8})
         record = export_network(n, store).record
-        view = record.select(period=2030, scenario="hi", carrier=["AC", "wind"])
+        view = record.select(
+            period=2030,
+            scenario="hi",
+            carrier=["AC"],
+            technology_group=["AC", "wind"],
+        )
 
         assert not PyPSA.verify(view)
         built = PyPSA.build(view)
@@ -3495,12 +3556,12 @@ class TestPyPSA:
         }
         assert held == {"lo": True, "hi": False}, "built in 2040 at `hi`"
 
-    def test_a_null_carrier_refers_to_no_dropped_carrier(self, store, ac_dc):
-        """PyPSA's `""` carrier is NULL, so a load without one stays under any carrier selected."""
+    def test_a_null_technology_group_refers_to_no_dropped_one(self, store, ac_dc):
+        """PyPSA's `""` carrier is a NULL technology group, so a load without one stays under any technology group selected."""
         n = ac_dc.copy()
         n.c.Load.static.loc["London", "carrier"] = ""
         record = export_network(n, store).record
-        built = PyPSA.build(record.select(carrier=["AC"]))
+        built = PyPSA.build(record.select(technology_group=["AC"]))
         assert built.c.Load.static.index.tolist() == ["London"]
 
     def test_a_global_constraint_goes_with_its_bus(self, store):
@@ -3816,6 +3877,7 @@ class TestPyPSA:
             {"bus": "London"},
             {"entity": "Manchester Wind"},
             {"carrier": "AC"},
+            {"technology_group": "wind"},
             {"ctype": "Generator"},
         ],
         ids=lambda labels: next(iter(labels)),

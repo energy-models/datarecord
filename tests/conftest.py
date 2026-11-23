@@ -93,7 +93,8 @@ def ac_dc():
 
     Its loads keep their buses' names, a bus being a label of `bus` rather
     than an entity. Its own `Bus.country` and carriers' `efficiency`,
-    `marginal_cost` and `capital_cost` are properties of `bus` and `carrier`.
+    `marginal_cost` and `capital_cost` are properties of `bus` and
+    `technology_group`.
 
     Notes
     -----

@@ -48,7 +48,7 @@ A `WorkingRecord` may sit over another `WorkingRecord`, and its reads include th
 
 ### May a property referring to a dim without `one_of` categorise a `partial` dim?
 
-`entity.carrier` refers to `carrier`, and a `default_by` keyed on it would make a vocabulary of data: a category that a layer adds and removes. Today a category is a label of a dim with `one_of` ([the schema](../reference/schema.md)).
+`entity.technology_group` refers to `technology_group`, and a `default_by` keyed on it would make a vocabulary of data: a category that a layer adds and removes. Today a category is a label of a dim with `one_of` ([the schema](../reference/schema.md)).
 
 ### May a dim with `one_of` grow in a layer?
 

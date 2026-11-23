@@ -45,7 +45,7 @@ Check it:
 0 2030-01-01 00:00:00
 1 2030-01-01 01:00:00
 2 2030-01-01 02:00:00
-['ctype', 'carrier', 'sign', 'type']
+['ctype', 'technology_group', 'sign', 'type']
 ```
 
 The root has the three snapshots, and every entity takes the four properties that PyPSA keeps on a component.
@@ -58,9 +58,15 @@ A component is a label of `entity`, its type is its `ctype`, and each of its por
 from datarecord import WorkingRecord
 
 w = WorkingRecord(root.record)
-w.add("carrier", ["AC", "wind", "gas"])
+w.add("carrier", ["AC"])
+w.add("technology_group", ["wind", "gas"])
 w.add("bus", ["north"])
-w.add("entity", ["wind1", "gas1"], ctype="Generator", carrier=["wind", "gas"])
+w.add(
+    "entity",
+    ["wind1", "gas1"],
+    ctype="Generator",
+    technology_group=["wind", "gas"],
+)
 w.add("entity", ["load1"], ctype="Load")
 w.add(
     "connection",
@@ -80,7 +86,7 @@ Check it:
 nothing
 ```
 
-`verify` reports what a record lacks for a PyPSA build, and here it lacks nothing. `AC` is there because a bus's `carrier` defaults to it.
+`verify` reports what a record lacks for a PyPSA build, and here it lacks nothing. `AC` is a label of `carrier` because a bus's `carrier` defaults to it. `wind` and `gas` are labels of `technology_group`, which is what PyPSA calls a component's carrier.
 
 ## The network
 
@@ -105,7 +111,7 @@ snapshot
 2030-01-01 02:00:00    0.1
 ```
 
-`build` turned each connection into its generator's `bus`, and `wind1` takes the default `marginal_cost`.
+`build` turned each connection into its generator's `bus` and each `technology_group` into its `carrier`, and `wind1` takes the default `marginal_cost`.
 
 ## A solve
 

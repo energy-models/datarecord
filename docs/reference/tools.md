@@ -95,7 +95,8 @@ Their `schema` is empty, because the record's names are PyPSA's.
 | -------------------------------- | --------------------------------------------------------------------- |
 | `entity`                         | a component of any type but `Shape` and those with a dim of their own |
 | `ctype`                          | a dim with `one_of`: the component types                              |
-| `bus`, `carrier`, `sub_network`  | a bus, a carrier, a SubNetwork as PyPSA numbers it                    |
+| `bus`, `sub_network`             | a bus, a SubNetwork as PyPSA numbers it                               |
+| `carrier`, `technology_group`    | a bus's energy carrier, a component's group of technologies           |
 | `global_constraint`              | a constraint on the whole network                                     |
 | `line_type`, `transformer_type`  | a standard type                                                       |
 | `connection`                     | a multi-dim over `(entity, bus)`: one port of a component             |
@@ -105,9 +106,9 @@ Their `schema` is empty, because the record's names are PyPSA's.
 
 | Subject                         | Properties                                      |
 | ------------------------------- | ----------------------------------------------- |
-| `entity`                        | `ctype`, `carrier`, `sign`, `type`              |
+| `entity`                        | `ctype`, `technology_group`, `sign`, `type`     |
 | `bus`                           | `carrier`, `type`, `x`, `y`, `unit`, `location` |
-| `carrier`                       | `color`, `nice_name`                            |
+| `carrier`, `technology_group`   | `color`, `nice_name`                            |
 | `sub_network`                   | `carrier`                                       |
 | `global_constraint`             | `type`, `bus`                                   |
 | `line_type`, `transformer_type` | every registry input of the type                |
@@ -142,25 +143,44 @@ It raises `ValueError` for a selection that `build` refuses.
 A default that differs per type, such as `sign` or `p_set`, is a [`default_by`](schema.md#default_by) on `entity.ctype`.
 A row with `entity` NULL applies to each member of the type `build` builds.
 
-### Buses and carriers
+### Buses
 
-A bus is a label of `bus`, and a carrier is a label of `carrier`:
+A bus is a label of `bus`:
 
-| PyPSA                                                        | Record                                      |
-| ------------------------------------------------------------ | ------------------------------------------- |
-| `Bus.type`, `carrier`, `x`, `y`, `unit`, `location`          | properties of `bus`                         |
-| `Bus.v_nom`, `v_mag_pu_min`, `v_mag_pu_max`, `v_mag_pu_set`  | attributes over `bus`                       |
-| `Bus.marginal_price`, `v_mag_pu`, `v_ang`                    | result attributes over `bus`                |
-| `Bus.p`, `q`, `control`, `generator`, `sub_network`          | not written                                 |
-| `Line.v_nom`, `ShuntImpedance.v_nom`                         | not written                                 |
-| `SubNetwork.obj`                                             | not written                                 |
-| `Carrier.color`, `nice_name`                                 | properties of `carrier`                     |
-| `Carrier.co2_emissions`, `max_growth`, `max_relative_growth` | attributes over `carrier`                   |
-| a component's `carrier`                                      | `entity.carrier`, which refers to `carrier` |
-| a custom column                                              | see [custom columns](#custom-columns)       |
+| PyPSA                                                       | Record                                |
+| ----------------------------------------------------------- | ------------------------------------- |
+| `Bus.type`, `carrier`, `x`, `y`, `unit`, `location`         | properties of `bus`                   |
+| `Bus.v_nom`, `v_mag_pu_min`, `v_mag_pu_max`, `v_mag_pu_set` | attributes over `bus`                 |
+| `Bus.marginal_price`, `v_mag_pu`, `v_ang`                   | result attributes over `bus`          |
+| `Bus.p`, `q`, `control`, `generator`, `sub_network`         | not written                           |
+| `Line.v_nom`, `ShuntImpedance.v_nom`                        | not written                           |
+| `SubNetwork.obj`                                            | not written                           |
+| a custom column                                             | see [custom columns](#custom-columns) |
 
 `bus.x` is a bus's x position, and `x` a line's reactance.
-`bus.carrier` defaults to `AC`.
+`bus.carrier` defaults to `AC`, and `bus.carrier` and `sub_network.carrier` refer to `carrier`.
+
+### Carriers and technology groups
+
+PyPSA's `n.carriers` lists two kinds of label in one table.
+A bus's carrier is a label of `carrier`, and a component's carrier is a label of `technology_group`:
+
+| PyPSA                                                        | Record                                                        |
+| ------------------------------------------------------------ | ------------------------------------------------------------- |
+| a component's `carrier`                                      | `entity.technology_group`, which refers to `technology_group` |
+| `Carrier.color`, `nice_name`                                 | properties of `technology_group` and of `carrier`             |
+| `Carrier.co2_emissions`, `max_growth`, `max_relative_growth` | attributes over `technology_group`                            |
+| a custom `Carrier` column                                    | a property of, or attribute over, `technology_group`          |
+
+`to_datarecord` places each row of `n.carriers` by what names it:
+
+- a row a component names is a label of `technology_group`
+- a row a bus or SubNetwork names is a label of `carrier`
+- a row both name, such as `AC` for an AC bus and its lines, is a label of both
+- a row nothing names is a label of `carrier`, unless it has a value only `technology_group` holds, such as `co2_emissions`; then it is a label of `technology_group`
+
+`build` writes each label of either dim as one row of `n.carriers`, and a component's `carrier` from `entity.technology_group`.
+A label of both dims is one row, so `build` raises `ValueError` where its `color` or `nice_name` differ between the two.
 
 ### Standard types
 
@@ -286,7 +306,7 @@ Over fewer periods, it raises where `build_year`, `lifetime` or `investment_peri
 ### Writing results
 
 `to_datarecord(n, con)` writes the whole network, its frames in PyPSA's order.
-It adds each carrier that `n.carriers` lacks, writes PyPSA's `""` carrier as NULL, and writes a value shared by every scenario with `scenario` NULL.
+It adds each carrier that `n.carriers` lacks ([carriers and technology groups](#carriers-and-technology-groups)), writes PyPSA's `""` carrier as NULL, and writes a value shared by every scenario with `scenario` NULL.
 It leaves out a static value at its default, so an unsolved network has no result.
 It writes each input at a port, at its default too, and each custom column placed as an attribute.
 It raises `UnsupportedRecordError` for two types with one name, and `ValueError` for a property that differs between scenarios.

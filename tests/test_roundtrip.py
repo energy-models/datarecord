@@ -40,16 +40,22 @@ def assert_networks_equal(got, expected):
         if exp_c.static.empty:
             continue
         got_c = got.c[ctype]
+        got_static = got_c.static
+        if ctype == "Carrier":
+            assert set(got_static.index) == set(exp_c.static.index), (
+                "`n.carriers` keeps its rows, not their order across two dims"
+            )
+            got_static = got_static.reindex(exp_c.static.index)
         pd.testing.assert_index_equal(
-            got_c.static.index, exp_c.static.index, check_names=False
+            got_static.index, exp_c.static.index, check_names=False
         )
         # No junk columns (join artifacts, `deleted`, ...) may leak through.
-        assert not set(got_c.static.columns) - set(exp_c.static.columns)
+        assert not set(got_static.columns) - set(exp_c.static.columns)
         for col in exp_c.static.columns:
             if col == "obj":
                 continue
             pd.testing.assert_series_equal(
-                got_c.static[col],
+                got_static[col],
                 exp_c.static[col],
                 check_dtype=False,
                 check_names=False,

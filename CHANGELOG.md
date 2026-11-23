@@ -284,6 +284,17 @@ All notable changes to datarecord are documented here. The format follows
   `investment_period`, `carrier_attribute`, `sense`, `constant` and the result
   `mu` are over `global_constraint`. A constraint may share its name with an
   entity, and `ctype` no longer lists `GlobalConstraint`.
+- Breaking: the PyPSA tool writes a component's `carrier` as the property
+  `entity.technology_group`, naming a label of the new dim `technology_group`,
+  not as `entity.carrier`. `carrier` keeps the carriers of buses and
+  sub-networks. `to_datarecord` places a row of `n.carriers` a component names
+  in `technology_group`, one a bus or sub-network names in `carrier`, one both
+  name in both, and one nothing names in `carrier` unless it has a value only
+  `technology_group` holds. `co2_emissions`, `max_growth`,
+  `max_relative_growth` and custom `Carrier` columns are over
+  `technology_group`, and both dims have `color` and `nice_name`. `build`
+  writes the labels of both as `n.carriers`, one row for a label of both, and
+  raises `ValueError` where their `color` or `nice_name` differ.
 
 - A workspace validates each distinct schema once. Revisions sharing a schema
   hand out one `Schema` object, so reading a long lineage no longer re-runs the
