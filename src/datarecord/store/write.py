@@ -47,7 +47,7 @@ from datarecord.settle import unsettled
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -68,6 +68,36 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     if isinstance(source, LayerData):
         return source
     return _RecordLikeAsLayerData(source, con)
+
+
+def joined_by_label(
+    axis: DuckDBPyRelation,
+    values: DuckDBPyRelation,
+    dim: str,
+    columns: Sequence[str],
+    con: DuckDBPyConnection,
+) -> DuckDBPyRelation:
+    """`axis` with `columns` of `values` joined on the label `dim`, in `axis`'s row order.
+
+    A label `values` lacks has NULL in each of `columns`. The row is numbered
+    on `axis` alone, and the `ORDER BY` on it is the outermost clause, since a
+    join defines no order.
+    """
+    if not columns:
+        return axis
+    _dr_joined = (
+        axis.project(star(), fn.row_number().over().alias("_row"))
+        .set_alias("a")
+        .join(values.set_alias("p"), null_safe("a", "p", (dim,)), how="left")
+        .project(
+            col("a", "_row"),
+            *(col("a", c) for c in axis.columns),
+            *(col("p", c) for c in columns),
+        )
+    )
+    return anchored(
+        con.sql("SELECT * EXCLUDE (_row) FROM _dr_joined ORDER BY _row"), _dr_joined
+    )
 
 
 def write_layer(
@@ -647,11 +677,7 @@ class _RecordLikeAsLayerData:
         raise ValueError(msg)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.
-
-        The row is numbered on `dims[dim]` alone, and the `ORDER BY` on it is
-        the outermost clause, since a join defines no order.
-        """
+        """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order."""
         axis = self._read(self._dims, dim)
         if axis is None or dim not in self._properties:
             return axis
@@ -659,26 +685,7 @@ class _RecordLikeAsLayerData:
         if props is None:
             return axis
         values = [c for c in props.columns if c not in axis.columns]
-        if not values:
-            return axis
-        _dr_joined = (
-            axis.project(star(), fn.row_number().over().alias("_row"))
-            .set_alias("a")
-            .join(
-                props.set_alias("p"),
-                null_safe("a", "p", (dim,)),
-                how="left",
-            )
-            .project(
-                col("a", "_row"),
-                *(col("a", c) for c in axis.columns),
-                *(col("p", c) for c in values),
-            )
-        )
-        return anchored(
-            self._con.sql("SELECT * EXCLUDE (_row) FROM _dr_joined ORDER BY _row"),
-            _dr_joined,
-        )
+        return joined_by_label(axis, props, dim, values, self._con)
 
     def attributes(self) -> set[str]:
         return set(self._attributes)

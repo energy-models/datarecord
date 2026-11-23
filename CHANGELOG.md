@@ -13,6 +13,12 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Added
 
+- `keep_properties=True` on `Store.commit` and `Claim.commit` keeps each
+  property the parent declares and the source's schema omits, on the
+  dimensions the source declares. The child's manifest declares it, and each
+  axis file the layer writes takes the parent's values by label, NULL on a new
+  label. A `WorkingRecord` with the flag raises `TypeError`, and a root
+  ignores it.
 - `select(record, **labels)`, exported beside `settle`, and `Record.select`
   return a `Selection`: a `RecordLike` holding any record at the labels named,
   as xarray's `sel` takes them. One label squeezes its dimension out of the schema,
