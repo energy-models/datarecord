@@ -572,7 +572,8 @@ All notable changes to datarecord are documented here. The format follows
   a shape-made dim names no label of it: a shape for each label, or NULL.
   `PyPSACollection.to_datarecord` names how many snapshots a member lacks and
   holds beside the first member's, and the first of each, where members hold
-  other snapshots, and says to relabel them to one reference year.
+  other snapshots, and says to pass `extend=["snapshot"]` or give every
+  member the same snapshots.
 - `PyPSA.build` refuses a record whose rows of an attribute name several
   labels of a dim PyPSA's registry declares it without, such as a generator's
   `marginal_cost` over `period` in a multi-period record, rather than keeping

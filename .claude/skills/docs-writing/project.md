@@ -179,7 +179,7 @@ discussion.
 
 A change inside one tool, such as `datarecord/tools/pypsa.py`, needs no DEP,
 even where it adds an argument to that tool's API. Its pull request carries
-the argument, and the tool's section of the tools reference carries the
+the argument, and the tool's reference page, such as `docs/pypsa/reference.md`, carries the
 behaviour.
 
 ### Where a DEP lives

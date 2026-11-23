@@ -165,7 +165,7 @@ Each bus has its region in `bus.shape_onshore`, and `DE` is a label of `country`
 
 ## Combine weather years into one record
 
-Write one network per weather year as a `pypsa.NetworkCollection` whose index names a dim of its own, such as `weather_year`. [Over a dim of its own](reference.md#over-a-dim-of-its-own) lists what the members must share. Networks of two weather years have snapshots in two years, so `PyPSACollection.to_datarecord` refuses them:
+Write one network per weather year as a `pypsa.NetworkCollection` whose index names a dim of its own, such as `weather_year`. Networks of two weather years hold snapshots in two years. So pass `extend=["snapshot"]`, and `PyPSACollection.to_datarecord` writes each year's snapshots at its own label of `weather_year`. [Over a dim of its own](reference.md#over-a-dim-of-its-own) lists what the members must still share. Here the members differ in their components, so `to_datarecord` refuses them:
 
 ```python
 from datarecord.tools.pypsa import PyPSACollection
@@ -177,32 +177,9 @@ members = [network(2012, [0.9, 0.4, 0.1]), calm]
 for m in members:
     prepare(m)
 index = pd.Index([2012, 2013], name="weather_year")
+collection = pypsa.NetworkCollection(members, index=index)
 try:
-    PyPSACollection.to_datarecord(pypsa.NetworkCollection(members, index=index), ws.con)
-except ValueError as err:
-    print(err)
-```
-
-```text
-The network of weather_year 2013 holds other snapshots than that of weather_year 2012: it lacks 3 of them, first 2012-01-01 00:00:00 and holds 3 more, first 2013-01-01 00:00:00; give every member the same snapshots, such as by relabelling each to one reference year
-```
-
-Relabel each member's timesteps to the year of the first member. `set_snapshots` reindexes the series and the weightings, so keep them and put them back on the new labels:
-
-```python
-def relabel(n: pypsa.Network, year: int) -> None:
-    new = n.snapshots.map(lambda t: t.replace(year=year))
-    series = {(c.name, a): df for c in n.components for a, df in c.dynamic.items()}
-    weightings = n.snapshot_weightings
-    n.set_snapshots(new)
-    n.snapshot_weightings = weightings.set_axis(new)
-    for (c, a), df in series.items():
-        n.c[c].dynamic[a] = df.set_axis(new)
-
-
-relabel(calm, 2012)
-try:
-    PyPSACollection.to_datarecord(pypsa.NetworkCollection(members, index=index), ws.con)
+    PyPSACollection.to_datarecord(collection, ws.con, extend=["snapshot"])
 except ValueError as err:
     print(err)
 ```
@@ -210,8 +187,6 @@ except ValueError as err:
 ```text
 The network of weather_year 2013 holds other Carrier than that of weather_year 2012: ['solar']
 ```
-
-The snapshots now agree, and the members still differ in their components. A member's timesteps must all exist in the first member's year, so drop leap days before you relabel.
 
 Add each component that a member lacks at zero capacity and not extendable, so that it cannot change a solve of that member. Then order every member's components as the first member orders them:
 
@@ -233,23 +208,29 @@ def pad(members: list[pypsa.Network]) -> None:
 
 pad(members)
 collection = pypsa.NetworkCollection(members, index=index)
-years = PyPSACollection.to_datarecord(collection, ws.con)
+years = PyPSACollection.to_datarecord(collection, ws.con, extend=["snapshot"])
 p_max_pu = years.attributes["p_max_pu"].df()
+at = p_max_pu.snapshot.str
 print(
-    p_max_pu.pivot(index="snapshot", columns=["entity", "weather_year"], values="value")
+    p_max_pu.assign(weather_year=at["weather_year"], timestep=at["timestep"])[
+        ["entity", "weather_year", "timestep", "value"]
+    ]
 )
 ```
 
 ```text
-entity              wind1
-weather_year         2012 2013
-snapshot
-2012-01-01 00:00:00   0.9  0.3
-2012-01-01 01:00:00   0.4  0.2
-2012-01-01 02:00:00   0.1  0.1
+  entity  weather_year             timestep  value
+0  wind1          2012  2012-01-01 00:00:00    0.9
+1  wind1          2012  2012-01-01 01:00:00    0.4
+2  wind1          2012  2012-01-01 02:00:00    0.1
+3  wind1          2013  2013-01-01 00:00:00    0.3
+4  wind1          2013  2013-01-01 01:00:00    0.2
+5  wind1          2013  2013-01-01 02:00:00    0.1
 ```
 
-`wind1` keeps the series of each weather year, now at the timesteps of 2012. Without the last line of `pad`, `to_datarecord` refuses `calm`, because it orders `carrier` as `wind, gas, solar, shedding` and the first member as `wind, gas, shedding, solar`.
+`wind1` keeps the series of each weather year at that year's own timesteps. Without the last line of `pad`, `to_datarecord` refuses `calm`, because it orders `carrier` as `wind, gas, solar, shedding` and the first member as `wind, gas, shedding, solar`.
+
+`extend` keeps each year's dates. Where your workflow needs every year on one shared set of timesteps instead, relabel each member's snapshots to one reference year before the export, and leave out `extend`.
 
 ## Write the record to a directory
 
