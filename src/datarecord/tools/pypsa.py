@@ -22,6 +22,7 @@ import math
 import operator
 import re
 import warnings
+from collections import Counter
 from collections.abc import Callable, Container, Iterable, Mapping, Sequence
 from contextlib import ExitStack
 from dataclasses import dataclass, field
@@ -964,11 +965,12 @@ class _Custom:
         Raises
         ------
         ValueError
-            If types of one dim carry a custom property with different dtypes,
-            a custom column is named like a shape's geometry (`shape_`) or a
-            dim keying the record's rows (`_KEYS`), or a Shape carries one.
+            If types of one dim carry a custom column with different dtypes, a
+            custom column is named like a shape's geometry (`shape_`) or a dim keying the record's
+            rows (`_KEYS`), or a Shape carries one.
         """
         columns: dict[str, dict[str, str]] = {}
+        empty: dict[str, set[str]] = {}
         for c in n.components:
             if not (_exported(c) and (names := _custom_names(c))):
                 continue
@@ -991,43 +993,48 @@ class _Custom:
                 raise ValueError(msg)
             static = _own_static(c)
             columns[c.name] = {name: _column_dtype(static[name]) for name in names}
-        declared = _registry().schema.attributes
-        dims: dict[str, set[str]] = {}
-        for ctype, typed in columns.items():
-            for name in typed:
-                dims.setdefault(name, set()).add(_dim_of(ctype))
-        placed = {
-            (_dim_of(ctype), name)
-            for ctype, typed in columns.items()
-            for name, dtype in typed.items()
-            if dtype == "str"
-            or ctype in _CATALOG_TYPES
-            or len(dims[name]) > 1
-            or (
-                name in declared
-                and declared[name].dims != _static_dims(name, _dim_of(ctype))
-            )
-        }
+            empty[c.name] = {name for name in names if static[name].isna().all()}
         carried: dict[tuple[str, str], dict[str, str]] = {}
-        attributes: dict[str, AttributeSpec] = {}
         for ctype, typed in columns.items():
-            dim = _dim_of(ctype)
             for name, dtype in typed.items():
-                if (dim, name) in placed:
-                    carried.setdefault((dim, name), {})[ctype] = dtype
-                else:
-                    attributes.setdefault(
-                        name, AttributeSpec(dtype=dtype, dims=_static_dims(name, dim))
-                    )
-        properties: dict[str, dict[str, str]] = {}
+                carried.setdefault((_dim_of(ctype), name), {})[ctype] = dtype
+        held: dict[tuple[str, str], dict[str, str]] = {}
         for (dim, name), by_type in carried.items():
-            if len(set(by_type.values())) > 1:
+            valued = {t: d for t, d in by_type.items() if name not in empty[t]}
+            texts = {t: d for t, d in by_type.items() if d == "str"}
+            held[dim, name] = valued or texts or by_type
+        declared = _registry().schema.attributes
+        names_on = Counter(name for _, name in carried)
+        placed = {
+            (dim, name)
+            for (dim, name), by_type in carried.items()
+            if "str" in held[dim, name].values()
+            or any(ctype in _CATALOG_TYPES for ctype in by_type)
+            or names_on[name] > 1
+            or (name in declared and declared[name].dims != _static_dims(name, dim))
+        }
+        properties: dict[str, dict[str, str]] = {}
+        attributes: dict[str, AttributeSpec] = {}
+        for (dim, name), by_type in held.items():
+            as_property = (dim, name) in placed
+            dtypes = set(by_type.values())
+            if len(dtypes) > 1:
+                placement = "a property of" if as_property else "an attribute over"
                 msg = (
-                    f"The custom column `{name}` is a property of `{dim}` with "
-                    f"one dtype, but its types carry it as {by_type}"
+                    f"The custom column `{name}` is {placement} `{dim}` with one "
+                    f"dtype, but its types carry it as {by_type}: write values of "
+                    "one dtype in each type's column, or leave a column NULL"
                 )
                 raise ValueError(msg)
-            properties.setdefault(dim, {})[name] = next(iter(by_type.values()))
+            (dtype,) = dtypes
+            for ctype in carried[dim, name]:
+                columns[ctype][name] = dtype
+            if as_property:
+                properties.setdefault(dim, {})[name] = dtype
+            else:
+                attributes[name] = AttributeSpec(
+                    dtype=dtype, dims=_static_dims(name, dim)
+                )
         return cls(columns, properties, attributes)
 
 
@@ -1499,17 +1506,44 @@ def _member_base(base: RecordLike | None, dim: str, label: Any) -> RecordLike | 
     return select(base, **{dim: label})
 
 
+def _stamp(snapshot: Any) -> str:
+    """`snapshot` for a message: a timestamp, or a period and a timestamp."""
+    if isinstance(snapshot, tuple):
+        return f"({', '.join(map(str, snapshot))})"
+    return str(snapshot)
+
+
+def _unshared(held: pd.Index, reference: pd.Index) -> str:
+    """The snapshots `reference` holds and `held` lacks, and those `held` holds beside, each as its count and first, for a message."""
+    parts = []
+    missing = reference.difference(held)
+    if len(missing) > 0:
+        parts.append(f"lacks {len(missing)} of them, first {_stamp(missing[0])}")
+    extra = held.difference(reference)
+    if len(extra) > 0:
+        parts.append(f"holds {len(extra)} more, first {_stamp(extra[0])}")
+    return " and ".join(parts)
+
+
 def _alike(members: Mapping[Any, pypsa.Network], by: str) -> None:
     """Refuse a member holding other snapshots or components than the first: it would read their defaults."""
     (first, reference), *rest = members.items()
     for label, m in rest:
         if not m.snapshots.equals(reference.snapshots):
-            apart = reference.snapshots.symmetric_difference(m.snapshots)
-            held = list(apart[:3]) if len(apart) else "the same, reordered"
-            msg = (
-                f"The network of {by} {label!r} holds other snapshots than that "
-                f"of {by} {first!r}: {held}"
-            )
+            if reference.snapshots.symmetric_difference(m.snapshots).empty:
+                msg = (
+                    f"The network of {by} {label!r} holds the snapshots of that "
+                    f"of {by} {first!r} in another order: give every member its "
+                    "snapshots in one order"
+                )
+            else:
+                differs = _unshared(m.snapshots, reference.snapshots)
+                msg = (
+                    f"The network of {by} {label!r} holds other snapshots than "
+                    f"that of {by} {first!r}: it {differs}; give every member the "
+                    "same snapshots, such as by relabelling each to one reference "
+                    "year"
+                )
             raise ValueError(msg)
         for c in reference.components:
             if c.name == "SubNetwork":
@@ -2704,9 +2738,15 @@ class _NetworkSource:
                 )
                 unknown = sorted(set(values.dropna()) - set(labels))
                 if unknown:
+                    added = (
+                        f"a `{dim}` shape for each"
+                        if dim in self._shape_dims
+                        else f"each as a label of `{dim}`"
+                    )
                     msg = (
                         f"`{subject}.{name}` names {unknown}, no label of `{dim}`: "
-                        "a custom text column named like a dim refers to it"
+                        "a custom text column named like a dim refers to it, so "
+                        f"add {added}, or set the value to NULL"
                     )
                     raise ValueError(msg)
 
@@ -3425,7 +3465,10 @@ class _NetworkSource:
         columns = list(self.schema.long_columns_for(attribute))
         rel = _union_all(rels)
         if rel is not None:
-            return rel.select(*map(col, columns))
+            rel = rel.select(*map(col, columns))
+            if attribute in self.custom.attributes:
+                return cast_declared(self.schema, rel, None, attribute)
+            return rel
         return empty_relation(
             self.con,
             **{c: self.schema.column_type(c) or sqltypes.VARCHAR for c in columns},

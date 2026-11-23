@@ -554,6 +554,17 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- The PyPSA tool refuses a custom attribute, as it refuses a custom property,
+  that types of one dim carry with different dtypes, naming each type's dtype.
+  A Generator's `tag` of bools beside a Load's of floats no longer passes
+  `to_datarecord` to fail at the write. A type whose custom column is all NULL
+  takes the dtype the other types give it, its rows NULL, so a Line's bool
+  `underground` beside a Link's NULL one is `bool`, not `float` or `str`.
+- `to_datarecord` says what to write instead where a custom column named like
+  a shape-made dim names no label of it: a shape for each label, or NULL.
+  `PyPSACollection.to_datarecord` names how many snapshots a member lacks and
+  holds beside the first member's, and the first of each, where members hold
+  other snapshots, and says to relabel them to one reference year.
 - `PyPSA.build` refuses a record whose rows of an attribute name several
   labels of a dim PyPSA's registry declares it without, such as a generator's
   `marginal_cost` over `period` in a multi-period record, rather than keeping

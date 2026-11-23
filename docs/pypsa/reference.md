@@ -136,11 +136,14 @@ A custom column is a static column that PyPSA's registry lacks, placed on its ty
 | a column that types of two dims have, or that the registry declares over other dims | a property                |
 | any other column, such as `Bus.nom_max_onwind_2050`                                 | an attribute over the dim |
 
-A custom property takes its dtype from its values, and has no default.
+A custom column takes its dtype from its values, and a custom property has no default.
+A type whose column is all NULL takes the dtype that the other types of its dim give the column, and its rows are NULL.
+So a Line's `underground` of `True` and NULL, beside a Link's `underground` of NULL alone, is the `bool` attribute `underground`.
+Where every type's column is all NULL, the column is `str` if any type's column has dtype `object`.
 A text property named like a dim refers to that dim.
 `meta["custom_columns"]` lists each entity type's custom columns.
-`to_datarecord` raises `ValueError` for a custom property that two types of one dim have with two dtypes.
-It also raises for a value of a referring property that names no label.
+`to_datarecord` raises `ValueError` for a custom property or attribute that two types of one dim have with two dtypes.
+It also raises for a value of a referring property that names no label, so a shape-made dim needs a shape for each label that a value names, any other dim the label added, or the value set to NULL.
 It raises for a custom column on a Shape, or named `shape_…`, `snapshot`, `timestep`, `period`, `scenario`, `entity` or `connection`.
 
 ## A value its type does not take
@@ -175,6 +178,7 @@ So Germany's offshore waters are `country.shape_offshore` at label `DE`.
 
 `to_datarecord` raises `ValueError` for a shape without a `component`, an `idx` or a `type`, and for two shapes with one `(component, idx, type)`.
 It also raises for an `idx` that names no label its type writes, and for a `component` that names a dim of the PyPSA schema.
+A custom `Bus.country` that names `NL` needs a `country` shape with `idx` `NL`, or NULL in its place.
 `meta["crs"]` is the network's coordinate reference system, such as `EPSG:3035`.
 `to_datarecord` does not write PyPSA's `srid`.
 `build` sets the CRS before it adds a component, and uses `EPSG:4326` where `meta` has no `crs`.
@@ -282,6 +286,8 @@ An asset held again after a gap is refused.
 An attribute whose values agree across the members is written once, as declared, and one whose values differ varies over the dim.
 A later layer whose values differ widens the attribute's `dims` by the dim.
 Members must have the same snapshots, components, schema and custom columns.
+Members of other weather years hold other snapshots, so relabel each to one reference year before the export.
+`to_datarecord` names how many snapshots a member lacks and holds beside the first member's, and the first of each.
 Their axes are one union in the first member's order, and a label's properties agree across them.
 `build` gives member `label` as `PyPSA.build(record.select(dim=label))`.
 Results of a collection of fewer labels than `base` has are at each member's label, even where the members agree.
