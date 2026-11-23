@@ -1,0 +1,116 @@
+<!--
+SPDX-FileCopyrightText: datarecord contributors
+SPDX-License-Identifier: CC-BY-4.0
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 260" width="780" height="260" style="max-width: 100%; height: auto" role="img" aria-labelledby="rx-t rx-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
+  <title id="rx-t">A read drops a row with a removed label on a dim outside partial</title>
+  <desc id="rx-d">With partial entity alone, the root writes p_max_pu for wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and the snapshot axis 0, 1, 2. The child restates the snapshot axis as 0 and 1, which removes snapshot 2, and writes no p_max_pu file. snapshot is in no key, so the owner map assigns wind to the root. The read returns the root's rows at snapshots 0 and 1 and drops the row at snapshot 2.</desc>
+  <defs>
+    <marker id="rx-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
+    </marker>
+    <pattern id="rx-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <line x1="0" y1="0" x2="0" y2="8" stroke="#D55E00" stroke-opacity="0.65" stroke-width="3.5"/>
+    </pattern>
+  </defs>
+  <g stroke="none">
+    <path d="M16,54 V35 A3,3 0 0 1 19,32 H213 A3,3 0 0 1 216,35 V54 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,54 H216 V72 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,72 H216 V90 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H216 V105 A3,3 0 0 1 213,108 H19 A3,3 0 0 1 16,105 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,90 H216 V105 A3,3 0 0 1 213,108 H19 A3,3 0 0 1 16,105 Z" fill="url(#rx-hatch)"/>
+    <path d="M560,54 V35 A3,3 0 0 1 563,32 H757 A3,3 0 0 1 760,35 V54 Z" fill="#009E73" fill-opacity="0.2"/>
+    <path d="M560,54 H760 V72 H560 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M560,72 H760 V87 A3,3 0 0 1 757,90 H563 A3,3 0 0 1 560,87 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,172 V153 A3,3 0 0 1 19,150 H105 A3,3 0 0 1 108,153 V172 Z" fill="#0072B2" fill-opacity="0.2"/>
+    <path d="M16,172 H108 V190 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,190 H108 V208 H16 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,208 H108 V223 A3,3 0 0 1 105,226 H19 A3,3 0 0 1 16,223 Z" fill="#0072B2" fill-opacity="0.08"/>
+    <path d="M16,208 H108 V223 A3,3 0 0 1 105,226 H19 A3,3 0 0 1 16,223 Z" fill="url(#rx-hatch)"/>
+    <path d="M290,172 V153 A3,3 0 0 1 293,150 H379 A3,3 0 0 1 382,153 V172 Z" fill="#E69F00" fill-opacity="0.2"/>
+    <path d="M290,172 H382 V190 H290 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <path d="M290,190 H382 V205 A3,3 0 0 1 379,208 H293 A3,3 0 0 1 290,205 Z" fill="#E69F00" fill-opacity="0.08"/>
+    <rect x="560" y="150" width="14" height="14" fill="#0072B2" fill-opacity="0.2"/>
+    <rect x="560" y="174" width="14" height="14" fill="#E69F00" fill-opacity="0.2"/>
+    <rect x="560" y="198" width="14" height="14" fill="#009E73" fill-opacity="0.2"/>
+    <rect x="560" y="222" width="14" height="14" fill="url(#rx-hatch)"/>
+  </g>
+  <g fill="currentColor">
+    <text x="16" y="22" font-weight="bold">root layer</text>
+    <text x="110" y="22" fill-opacity="0.75">p_max_pu</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="24" y="47" font-weight="bold">entity</text>
+    <text x="88" y="47" font-weight="bold">snapshot</text>
+    <text x="166" y="47" font-weight="bold">value</text>
+    <text x="24" y="67">wind</text>
+    <text x="88" y="67">0</text>
+    <text x="166" y="67">0.3</text>
+    <text x="24" y="85">wind</text>
+    <text x="88" y="85">1</text>
+    <text x="166" y="85">0.8</text>
+    <text x="24" y="103">wind</text>
+    <text x="88" y="103">2</text>
+    <text x="166" y="103">0.5</text>
+    </g>
+    <text x="560" y="22" font-weight="bold">read</text>
+    <text x="600" y="22" fill-opacity="0.75">p_max_pu</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="568" y="47" font-weight="bold">entity</text>
+    <text x="632" y="47" font-weight="bold">snapshot</text>
+    <text x="710" y="47" font-weight="bold">value</text>
+    <text x="568" y="67">wind</text>
+    <text x="632" y="67">0</text>
+    <text x="710" y="67">0.3</text>
+    <text x="568" y="85">wind</text>
+    <text x="632" y="85">1</text>
+    <text x="710" y="85">0.8</text>
+    </g>
+    <text x="16" y="140" font-weight="bold">root layer</text>
+    <text x="110" y="140" fill-opacity="0.75">snapshot axis</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="24" y="165" font-weight="bold">snapshot</text>
+    <text x="24" y="185">0</text>
+    <text x="24" y="203">1</text>
+    <text x="24" y="221">2</text>
+    </g>
+    <text x="290" y="140" font-weight="bold">child layer</text>
+    <text x="384" y="140" fill-opacity="0.75">snapshot axis</text>
+    <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
+    <text x="298" y="165" font-weight="bold">snapshot</text>
+    <text x="298" y="185">0</text>
+    <text x="298" y="203">1</text>
+    </g>
+  </g>
+  <g fill="none" stroke="currentColor" stroke-width="1">
+    <rect x="16" y="32" width="200" height="76" rx="3"/>
+    <line x1="16" y1="54" x2="216" y2="54"/>
+    <rect x="560" y="32" width="200" height="58" rx="3"/>
+    <line x1="560" y1="54" x2="760" y2="54"/>
+    <rect x="16" y="150" width="92" height="76" rx="3"/>
+    <line x1="16" y1="172" x2="108" y2="172"/>
+    <rect x="290" y="150" width="92" height="58" rx="3"/>
+    <line x1="290" y1="172" x2="382" y2="172"/>
+    <rect x="560" y="150" width="14" height="14"/>
+    <rect x="560" y="174" width="14" height="14"/>
+    <rect x="560" y="198" width="14" height="14"/>
+    <rect x="560" y="222" width="14" height="14"/>
+    <rect x="290" y="222" width="150" height="22" rx="3" stroke-dasharray="4 3"/>
+    <path d="M382,181 H500 V72"/>
+  </g>
+  <g stroke="currentColor" fill="none" stroke-width="1.2" marker-end="url(#rx-arrow)">
+    <path d="M216,72 H552"/>
+    <path d="M108,190 H282"/>
+  </g>
+  <g fill="currentColor">
+    <text x="240" y="30" font-size="12" font-weight="bold">read</text>
+    <text x="240" y="46" font-size="12" fill-opacity="0.75">keeps the root's rows,</text>
+    <text x="240" y="62" font-size="12" fill-opacity="0.75">drops snapshot 2</text>
+    <text x="124" y="166" font-size="12" font-weight="bold">restate</text>
+    <text x="124" y="182" font-size="12" fill-opacity="0.75">without 2</text>
+    <text x="298" y="237" font-size="12">no p_max_pu file</text>
+    <text x="580" y="161" font-size="12">root layer</text>
+    <text x="580" y="185" font-size="12">child layer</text>
+    <text x="580" y="209" font-size="12">read</text>
+    <text x="580" y="233" font-size="12">removed label, dropped row</text>
+  </g>
+</svg>
