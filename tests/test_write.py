@@ -1709,7 +1709,7 @@ def test_a_kept_property_naming_a_removed_label_is_refused(store, restated):
     """
     homed = _declaring(
         _SCHEMA,
-        entity={**_SCHEMA.properties["entity"], "home": PropertySpec(refers="bus")},
+        entity={**_SCHEMA.properties["entity"], "home": PropertySpec(one_of="bus")},
     )
     entities = pd.DataFrame({"entity": ["a", "b"], "home": ["b0", "b1"]})
     root = store.commit(

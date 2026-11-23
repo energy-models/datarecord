@@ -66,7 +66,7 @@ def test_keeping_properties_takes_at_most_twice_stating_them(store):
     for _ in range(3):
         for way, schema, keep_props in (
             ("own", declaring, False),
-            ("keep_props", omitting, True),
+            ("keep", omitting, True),
         ):
             source = _entities(child, schema)
             start = perf_counter()
