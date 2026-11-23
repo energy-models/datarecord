@@ -220,5 +220,5 @@ You have built a store with two revisions. The root is empty, and its child cont
 ## Where to next
 
 - [A scenario on a branch](scenario.md) branches this record and overrides one value.
-- [Solve a record with PyPSA](pypsa.md) hands a record to PyPSA.
+- [Solve a record with PyPSA](../pypsa/tutorial.md) hands a record to PyPSA.
 - [Read a record](../howto/read-a-record.md) lists the other ways to read one.

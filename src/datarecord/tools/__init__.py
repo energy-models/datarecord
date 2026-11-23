@@ -12,6 +12,6 @@ tool.
 Notes
 -----
 - [tools](https://energy-models.github.io/datarecord/reference/tools/)
-- [the PyPSA tool](https://energy-models.github.io/datarecord/reference/tools/#the-pypsa-tool)
+- [the PyPSA tool](https://energy-models.github.io/datarecord/pypsa/reference/)
 - [the package](https://energy-models.github.io/datarecord/development/package/)
 """

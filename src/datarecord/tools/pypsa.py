@@ -294,8 +294,8 @@ def _own_dims(schema: RecordSchema) -> list[str]:
 
     Notes
     -----
-    - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
-    - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+    - [geometry](https://energy-models.github.io/datarecord/pypsa/reference/#geometry)
     """
     declared = _registry().schema.dimensions
     return [
@@ -351,7 +351,7 @@ def _narrowed(record: RecordLike) -> RecordLike:
 
     Notes
     -----
-    - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
+    - [selecting before a build](https://energy-models.github.io/datarecord/pypsa/reference/#selecting-before-a-build)
     """
     if not isinstance(record, Selection):
         return record
@@ -528,7 +528,7 @@ def _unheld(record: RecordLike, flags: Mapping[str, Flags]) -> dict[str, list[st
 
     Notes
     -----
-    - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
+    - [selecting before a build](https://energy-models.github.io/datarecord/pypsa/reference/#selecting-before-a-build)
     """
     specs = _registry().schema.attributes
     own = set(_own_dims(record.schema))
@@ -745,7 +745,7 @@ def _own_static(c: pypsa.Components) -> pd.DataFrame:
 
     Notes
     -----
-    - [standard types](https://energy-models.github.io/datarecord/reference/tools/#standard-types)
+    - [standard types](https://energy-models.github.io/datarecord/pypsa/reference/#standard-types)
     """
     library = c.standard_types
     static = c.static
@@ -947,7 +947,7 @@ class _Custom:
 
     Notes
     -----
-    - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
+    - [custom columns](https://energy-models.github.io/datarecord/pypsa/reference/#custom-columns)
     """
 
     #: Exported type -> its custom columns and their dtypes.
@@ -1046,7 +1046,7 @@ def _outlined(n: pypsa.Network, con: DuckDBPyConnection) -> dict[str, pd.DataFra
 
     Notes
     -----
-    - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
+    - [geometry](https://energy-models.github.io/datarecord/pypsa/reference/#geometry)
     """
     static = _own_static(n.c[_SHAPE])
     keys = ["component", "idx", "type"]
@@ -1326,7 +1326,7 @@ def _add_shapes(n: pypsa.Network, record: RecordLike) -> None:
 
     Notes
     -----
-    - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
+    - [geometry](https://energy-models.github.io/datarecord/pypsa/reference/#geometry)
     """
     schema = record.schema
     shapes = []
@@ -1405,9 +1405,9 @@ def _result_attributes(c: pypsa.Components, inputs: Container[str]) -> dict[str,
 
     Notes
     -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
-    - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
-    - [results on connections](https://energy-models.github.io/datarecord/reference/tools/#results-on-connections)
+    - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
+    - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
+    - [results on connections](https://energy-models.github.io/datarecord/pypsa/reference/#results-on-connections)
     """
     per_port = _port_stems(c)
     derived = _DERIVED.get(c.name, frozenset())
@@ -1437,7 +1437,7 @@ def _collection_members(
 
     Notes
     -----
-    - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
     """
     if model.index.nlevels != 1:
         msg = (
@@ -1629,7 +1629,7 @@ def _merge(
 
     Notes
     -----
-    - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
     """
     for c in merged.components:
         if not _exported(c) or c.name == "SubNetwork":
@@ -1692,7 +1692,7 @@ def _over_periods(
 
     Notes
     -----
-    - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
     """
     import pypsa
 
@@ -1789,7 +1789,7 @@ class _PortTable:
 
     Notes
     -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+    - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
     """
 
     #: The type's attribute names in PyPSA's bare registry.
@@ -1865,7 +1865,7 @@ def _per_port_stems() -> frozenset[str]:
 
     Notes
     -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+    - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
     """
     from pypsa.components.types import all_components
 
@@ -1980,7 +1980,7 @@ class PyPSATool(Tool):
         -----
         - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
         - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
-        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/pypsa/reference/#selecting-before-a-build)
         """
         return self._verify(_narrowed(record))[0]
 
@@ -2071,7 +2071,7 @@ class PyPSATool(Tool):
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
         """
         return set(_own_dims(record.schema))
 
@@ -2100,7 +2100,7 @@ class PyPSATool(Tool):
         -----
         - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         - [the broadcast rule](https://energy-models.github.io/datarecord/reference/data-model/#the-broadcast-rule)
-        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
+        - [selecting before a build](https://energy-models.github.io/datarecord/pypsa/reference/#selecting-before-a-build)
         """
         record = _narrowed(record)
         flagged = record.flags()
@@ -2266,11 +2266,11 @@ class PyPSATool(Tool):
 
         Notes
         -----
-        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
         - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
         - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
-        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
-        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+        - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
         """
         _require_base(results_only, base)
         if not results_only and isinstance(base, Selection):
@@ -2454,8 +2454,8 @@ def _registry() -> _Registry:
     -----
     - [where a value lives](https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)
     - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
-    - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
-    - [results on connections](https://energy-models.github.io/datarecord/reference/tools/#results-on-connections)
+    - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
+    - [results on connections](https://energy-models.github.io/datarecord/pypsa/reference/#results-on-connections)
     """
     import pypsa
 
@@ -2599,7 +2599,7 @@ def _taken(schema: RecordSchema, ctype: str, names: Iterable[str]) -> list[str]:
 
     Notes
     -----
-    - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/#a-value-its-type-does-not-take)
+    - [consuming a record](https://energy-models.github.io/datarecord/pypsa/reference/#a-value-its-type-does-not-take)
     """
     custom = schema.meta.get(_CUSTOM) or {}
     claimed = {
@@ -2686,7 +2686,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
+        - [custom columns](https://energy-models.github.io/datarecord/pypsa/reference/#custom-columns)
         """
         _ = self._axes, self._entity_frame  # forced, so `_members` refuses at the call
         schema = self.schema
@@ -2719,8 +2719,8 @@ class _NetworkSource:
         Notes
         -----
         - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
-        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
-        - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
+        - [custom columns](https://energy-models.github.io/datarecord/pypsa/reference/#custom-columns)
+        - [geometry](https://energy-models.github.io/datarecord/pypsa/reference/#geometry)
         """
         base = _registry().schema
         dimensions = dict(base.dimensions)
@@ -2896,7 +2896,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
         """
         frames = []
         for ctype, members in self._members.items():
@@ -3056,7 +3056,7 @@ class _NetworkSource:
         Notes
         -----
         - [partial](https://energy-models.github.io/datarecord/reference/layers/#partial)
-        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
         """
         steps, width = values.shape
         on = [k for k in keys.columns if k != "_col"]
@@ -3141,7 +3141,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
         """
         keep = pd.Series(rows.index.isin(undeclared), index=rows.index)
         static = held.static(dim)
@@ -3258,7 +3258,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
         """
         return {
             attr: rel
@@ -3316,7 +3316,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
         """
         defaults = c.defaults
         placed = self.schema.properties[_dim_of(c.name)]
@@ -3353,7 +3353,7 @@ class _NetworkSource:
 
         Notes
         -----
-        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
         """
         compared = self._LEAVES_OUT_REPEATS
         rel = self._as_long_rel(
@@ -3478,7 +3478,7 @@ class _ResultsSource(_NetworkSource):
 
     Notes
     -----
-    - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+    - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
     - [lifting rows back](https://energy-models.github.io/datarecord/reference/selecting/#lift)
     """
 
@@ -3929,7 +3929,7 @@ class _StackedSource:
 
     Notes
     -----
-    - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
     """
 
     schema: RecordSchema
@@ -4104,7 +4104,7 @@ class _TypeMembers:
 
         Notes
         -----
-        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
         - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
         """
         if self.connections is None:
@@ -4132,7 +4132,7 @@ def _collapse_connections(
 
     Notes
     -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+    - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
     """
     if connections is None:
         return static
@@ -4175,7 +4175,7 @@ def _port_columns(
 
     Notes
     -----
-    - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+    - [ports](https://energy-models.github.io/datarecord/pypsa/reference/#ports)
     """
     if connections is None:
         return {}
@@ -4240,7 +4240,7 @@ class PyPSACollectionTool(Tool):
 
     Notes
     -----
-    - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+    - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
     """
 
     name = "pypsa-collection"
@@ -4267,7 +4267,7 @@ class PyPSACollectionTool(Tool):
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
         """
         if refused := _nested(record):
             return refused
@@ -4292,8 +4292,8 @@ class PyPSACollectionTool(Tool):
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
-        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+        - [selecting before a build](https://energy-models.github.io/datarecord/pypsa/reference/#selecting-before-a-build)
         """
         import pypsa
 
@@ -4342,8 +4342,8 @@ class PyPSACollectionTool(Tool):
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
-        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+        - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
         """
         _require_base(results_only, base)
         if base is not None and not results_only:

@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Solve a record with PyPSA
 
-In this tutorial you build a record of a bus, two generators and a load, solve it with PyPSA and commit the results. It takes about 20 minutes, and it follows [Your first record](first-record.md).
+In this tutorial you build a record of a bus, two generators and a load, solve it with PyPSA and commit the results. It takes about 20 minutes, and it follows [Your first record](../tutorials/first-record.md).
 
 You need the PyPSA tool, which comes with PyPSA and the HiGHS solver:
 
@@ -175,6 +175,6 @@ You have built a record that the PyPSA tool accepts and solved it. Its results a
 
 ## Where to next
 
-- [Use the PyPSA tool](../howto/use-the-pypsa-tool.md) exports an existing network and checks it with `verify`.
-- [Tools](../reference/tools.md) lists what the PyPSA tool reads from a record and writes back.
+- [Use the PyPSA tool](use-the-tool.md) exports an existing network and checks it with `verify`.
+- [Reference](reference.md) lists what the PyPSA tool reads from a record and writes back.
 - [Present a framework object](../howto/present-a-framework-object.md) is for writing a tool of your own.

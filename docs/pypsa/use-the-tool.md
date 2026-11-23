@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Use the PyPSA tool
 
-This guide shows how to export a PyPSA network as a record, check and edit it, solve it, and commit the results. It also shows how to build from a selection, write an edited network over its parent and solve a collection. You need `datarecord[pypsa]`. The [tools](../reference/tools.md) page lists what the PyPSA tool reads from a record and writes back.
+This guide shows how to export a PyPSA network as a record, check and edit it, solve it, and commit the results. It also shows how to build from a selection, write an edited network over its parent and solve a collection. You need `datarecord[pypsa]`. The [reference](reference.md) lists what the PyPSA tool reads from a record and writes back.
 
 ## Export a network
 
@@ -196,7 +196,7 @@ print(solved_2030.record.attributes["marginal_price"].df()[["snapshot", "value"]
 1  {'period': 2030, 'timestep': 2030-01-01 01:00:00}   50.0
 ```
 
-The prices are at the snapshots of period 2030, and 2040 has none. [Selecting before a build](../reference/tools.md#selecting-before-a-build) lists what `build` drops on top of the selection.
+The prices are at the snapshots of period 2030, and 2040 has none. [Selecting before a build](reference.md#selecting-before-a-build) lists what `build` drops on top of the selection.
 
 ## Write an edited network over its parent
 
@@ -271,4 +271,4 @@ snapshot
 2030-01-01 02:00:00  50.0  50.0
 ```
 
-In the calm year 2013, gas runs at every snapshot, so the price at `south` is gas's marginal cost of 50 throughout. A collection over `period` is a myopic solve, one network per investment period, and [a collection](../reference/tools.md#a-collection) lists the rules of both kinds.
+In the calm year 2013, gas runs at every snapshot, so the price at `south` is gas's marginal cost of 50 throughout. A collection over `period` is a myopic solve, one network per investment period, and [a collection](reference.md#a-collection) lists the rules of both kinds.

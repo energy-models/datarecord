@@ -60,7 +60,7 @@ The cost is a declaration that can be wrong. datarecord does not derive whether 
 
 A solve's results are attributes like any other, with the same spec, file layout and fold. A child layer inherits its parent's results as it inherits its inputs.
 
-The rejected alternative keeps results apart, in a second mapping, a separate directory or behind a flag on the spec. A result already has an input's spec and file shape. A split would add a branch to every reader in return for one rule about inheritance. Which attributes a solve fills is the framework's vocabulary, which the PyPSA tool reads from PyPSA's registry ([tools](../reference/tools.md)).
+The rejected alternative keeps results apart, in a second mapping, a separate directory or behind a flag on the spec. A result already has an input's spec and file shape. A split would add a branch to every reader in return for one rule about inheritance. Which attributes a solve fills is the framework's vocabulary, which the PyPSA tool reads from PyPSA's registry ([the PyPSA tool](../pypsa/reference.md#the-schema)).
 
 datarecord runs every check on results that it runs on inputs, so a reader that joins a result to `dims["entity"]` never finds an orphan.
 

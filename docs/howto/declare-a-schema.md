@@ -145,7 +145,7 @@ pydantic_core._pydantic_core.ValidationError: 1 validation error for Schema
 
 List in `partial` the dims along which a child layer overrides one label's value. Leave out a dim whose values change together, such as `snapshot` for a time series. [Layers](../reference/layers.md) states the rule.
 
-`PyPSA.verify` reports `snapshot` in `partial`, and `PyPSA.build` raises for it ([tools](../reference/tools.md)).
+`PyPSA.verify` reports `snapshot` in `partial`, and `PyPSA.build` raises for it ([the PyPSA tool](../pypsa/reference.md#verify)).
 
 ## Check a changed schema against the old one
 
