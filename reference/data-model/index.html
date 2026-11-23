@@ -1636,7 +1636,7 @@ For a multi-dim with no tuples, <code>record.dims</code> returns an empty relati
 <h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">&para;</a></h2>
 <p>A <strong>property</strong> is a value per label of its subject dim, declared by a <code>PropertySpec</code> under <code>properties</code>.
 It is stored as a column of that dim's axis file, so it has no <code>dims</code> of its own.
-You name it <code>subject.name</code>, such as <code>entity.carrier</code> or <code>connection.role</code>, and a plain name always means an attribute.
+You name it <code>subject.name</code>, such as <code>entity.carrier</code> or <code>bus.carrier</code>, and a plain name always means an attribute.
 <code>record.properties[subject]</code> returns the subject's key and every property declared for it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
 </code></pre></div>
