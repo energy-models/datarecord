@@ -209,7 +209,27 @@
          <lastmod>2026-11-23</lastmod>
     </url>
     <url>
-         <loc>https://energy-models.github.io/datarecord/pr-167/howto/use-the-pypsa-tool/</loc>
+         <loc>https://energy-models.github.io/datarecord/pr-167/pypsa/</loc>
+         <lastmod>2026-11-23</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-167/pypsa/export-a-workflow-network/</loc>
+         <lastmod>2026-11-23</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-167/pypsa/reference/</loc>
+         <lastmod>2026-11-23</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-167/pypsa/solve-in-a-workflow/</loc>
+         <lastmod>2026-11-23</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-167/pypsa/tutorial/</loc>
+         <lastmod>2026-11-23</lastmod>
+    </url>
+    <url>
+         <loc>https://energy-models.github.io/datarecord/pr-167/pypsa/use-the-tool/</loc>
          <lastmod>2026-11-23</lastmod>
     </url>
     <url>
@@ -290,10 +310,6 @@
     </url>
     <url>
          <loc>https://energy-models.github.io/datarecord/pr-167/tutorials/first-record/</loc>
-         <lastmod>2026-11-23</lastmod>
-    </url>
-    <url>
-         <loc>https://energy-models.github.io/datarecord/pr-167/tutorials/pypsa/</loc>
          <lastmod>2026-11-23</lastmod>
     </url>
     <url>

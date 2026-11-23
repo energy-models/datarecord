@@ -327,6 +327,28 @@
   
   
   
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../pypsa/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  PyPSA tool
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
     
   
   
@@ -510,8 +532,6 @@
       
         
       
-        
-      
     
     
     
@@ -567,8 +587,6 @@
       
         
           
-        
-      
         
       
         
@@ -714,6 +732,73 @@
       
   
   
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="../../pypsa/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PyPSA tool
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
     
   
   
@@ -751,7 +836,7 @@
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_6" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_7" checked>
         
           
           <div class="md-nav__link md-nav__container">
@@ -773,14 +858,14 @@
             </a>
             
               
-              <label class="md-nav__link " for="__nav_6" id="__nav_6_label" tabindex="">
+              <label class="md-nav__link " for="__nav_7" id="__nav_7_label" tabindex="">
                 <span class="md-nav__icon md-icon"></span>
               </label>
             
           </div>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="true">
-          <label class="md-nav__title" for="__nav_6">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_7">
             <span class="md-nav__icon md-icon"></span>
             
   
@@ -1288,7 +1373,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>The cost is a declaration that can be wrong. datarecord does not derive whether a bus's <code>x</code> is metadata or data, and moving a name between sections is an incompatible schema change.</p>
 <h2 id="why-results-are-attributes">Why results are attributes<a class="headerlink" href="#why-results-are-attributes" title="Permanent link">&para;</a></h2>
 <p>A solve's results are attributes like any other, with the same spec, file layout and fold. A child layer inherits its parent's results as it inherits its inputs.</p>
-<p>The rejected alternative keeps results apart, in a second mapping, a separate directory or behind a flag on the spec. A result already has an input's spec and file shape. A split would add a branch to every reader in return for one rule about inheritance. Which attributes a solve fills is the framework's vocabulary, which the PyPSA tool reads from PyPSA's registry (<a href="../../reference/tools/">tools</a>).</p>
+<p>The rejected alternative keeps results apart, in a second mapping, a separate directory or behind a flag on the spec. A result already has an input's spec and file shape. A split would add a branch to every reader in return for one rule about inheritance. Which attributes a solve fills is the framework's vocabulary, which the PyPSA tool reads from PyPSA's registry (<a href="../../pypsa/reference/#the-schema">the PyPSA tool</a>).</p>
 <p>datarecord runs every check on results that it runs on inputs, so a reader that joins a result to <code>dims["entity"]</code> never finds an orphan.</p>
 <p>The cost is staleness. A child that edits an input keeps results computed from its parent's inputs, which describe a record that no longer exists. datarecord keeps both and leaves their coherence to you (<a href="../open-questions/">open questions</a>).</p>
 <h2 id="what-you-can-now-judge">What you can now judge<a class="headerlink" href="#what-you-can-now-judge" title="Permanent link">&para;</a></h2>

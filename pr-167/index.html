@@ -331,6 +331,28 @@
     
     
       <li class="md-tabs__item">
+        <a href="pypsa/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  PyPSA tool
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
         <a href="about/" class="md-tabs__link">
           
   
@@ -599,8 +621,6 @@
       
         
       
-        
-      
     
     
     
@@ -656,8 +676,6 @@
       
         
           
-        
-      
         
       
         
@@ -781,6 +799,73 @@
     
   
     Reference
+  
+
+    
+  </span>
+  
+  
+
+      
+        <span class="md-nav__icon md-icon"></span>
+      
+    </a>
+  
+
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+    
+    
+      
+        
+        
+      
+    
+    <li class="md-nav__item md-nav__item--pruned md-nav__item--nested">
+      
+        
+  
+  
+  
+    <a href="pypsa/" class="md-nav__link">
+      
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    PyPSA tool
   
 
     
@@ -1175,7 +1260,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>You build a scenario by editing a parent revision (one saved version in the store) and committing the edits. <code>store.commit</code> writes the edits as a new layer under that parent. When you read the scenario, datarecord combines its layers from the base down. Where two layers set the same row, the value from the layer nearer the scenario is the one you read. If many reads start from one revision, you can <a href="https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions">materialise</a> it, so that later reads do not combine the layers below it again.</p>
 <p>Each record has a schema, which lists the dims (the labels that values vary along) and the properties of each label. It also lists the attributes, with their dtypes and units. datarecord checks every edit against the schema and refuses it before it writes anything. For example, if the schema declares <code>p_nom</code> over <code>entity</code>, datarecord refuses a value of <code>p_nom</code> per <code>snapshot</code>. An attribute that the schema does not list raises <code>KeyError</code>. So every record you read from disk has the shape that its schema declares.</p>
 <p>On disk, each layer is a directory of parquet files (a common columnar file format). You can open these files with any parquet library, such as pandas or polars, without datarecord installed. However, to read a scenario combined across its layers, you need datarecord. In Python, every read returns a DuckDB relation (a query that has not run yet). DuckDB reads the files only when you call <code>.df()</code>, <code>.pl()</code> or <code>.to_arrow_table()</code>. The calls are the same whether the store is on a local disk or on S3.</p>
-<p>datarecord does not depend on any modelling framework. It needs only <code>duckdb</code>, <code>pydantic</code> and <code>mathspec</code>. A framework such as PyPSA reads a record through the <a href="https://energy-models.github.io/datarecord/reference/record/"><code>RecordLike</code></a> protocol, and a workflow engine writes one. So neither needs to know how the other works. The <a href="https://energy-models.github.io/datarecord/howto/use-the-pypsa-tool/">PyPSA tool</a>, which translates between a record and a PyPSA network, installs as an extra.</p>
+<p>datarecord does not depend on any modelling framework. It needs only <code>duckdb</code>, <code>pydantic</code> and <code>mathspec</code>. A framework such as PyPSA reads a record through the <a href="https://energy-models.github.io/datarecord/reference/record/"><code>RecordLike</code></a> protocol, and a workflow engine writes one. So neither needs to know how the other works. The <a href="https://energy-models.github.io/datarecord/pypsa/use-the-tool/">PyPSA tool</a>, which translates between a record and a PyPSA network, installs as an extra.</p>
 <h2 id="example">Example<a class="headerlink" href="#example" title="Permanent link">&para;</a></h2>
 <p>This example branches a scenario <code>high</code> off a committed revision <code>base</code>, raises the capacity of <code>wind1</code> from 100 to 150 and reads both back:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">WorkingRecord</span>
@@ -1218,6 +1303,11 @@ SPDX-License-Identifier: CC-BY-4.0
 <li><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 21.5c-1.35-.85-3.8-1.5-5.5-1.5-1.65 0-3.35.3-4.75 1.05-.1.05-.15.05-.25.05-.25 0-.5-.25-.5-.5V6c.6-.45 1.25-.75 2-1 1.11-.35 2.33-.5 3.5-.5 1.95 0 4.05.4 5.5 1.5 1.45-1.1 3.55-1.5 5.5-1.5 1.17 0 2.39.15 3.5.5.75.25 1.4.55 2 1v14.6c0 .25-.25.5-.5.5-.1 0-.15 0-.25-.05-1.4-.75-3.1-1.05-4.75-1.05-1.7 0-4.15.65-5.5 1.5M12 8v11.5c1.35-.85 3.8-1.5 5.5-1.5 1.2 0 2.4.15 3.5.5V7c-1.1-.35-2.3-.5-3.5-.5-1.7 0-4.15.65-5.5 1.5m1 3.5c1.11-.68 2.6-1 4.5-1 .91 0 1.76.09 2.5.28V9.23c-.87-.15-1.71-.23-2.5-.23q-2.655 0-4.5.84zm4.5.17c-1.71 0-3.21.26-4.5.79v1.69c1.11-.65 2.6-.99 4.5-.99 1.04 0 1.88.08 2.5.24v-1.5c-.87-.16-1.71-.23-2.5-.23m2.5 2.9c-.87-.16-1.71-.24-2.5-.24-1.83 0-3.33.27-4.5.8v1.69c1.11-.66 2.6-.99 4.5-.99 1.04 0 1.88.08 2.5.24z"/></svg></span> <strong><a href="reference/">Reference</a></strong></li>
 </ul>
 <p>What datarecord accepts, returns and refuses, and the format on disk.</p>
+<ul>
+<li><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m8.28 5.45-1.78-.9L7.76 2h8.47l1.27 2.55-1.78.89L15 4H9zM18.62 8h-4.53l-.79-3h-2.6l-.79 3H5.38L4.1 10.55l1.79.89.73-1.44h10.76l.72 1.45 1.79-.89zm-.85 14H15.7l-.24-.9L12 15.9l-3.47 5.2-.23.9H6.23l2.89-11h2.07l-.36 1.35L12 14.1l1.16-1.75-.35-1.35h2.07zm-6.37-7-.9-1.35-1.18 4.48zm3.28 3.12-1.18-4.48-.9 1.36z"/></svg></span> <strong><a href="pypsa/">PyPSA tool</a></strong></li>
+</ul>
+<p>Solve a record with PyPSA and commit the results, alone or in a model
+  workflow.</p>
 <ul>
 <li><span class="twemoji"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11h3v2h-3zM1 11h3v2H1zM13 1v3h-2V1zM4.92 3.5l2.13 2.14-1.42 1.41L3.5 4.93zm12.03 2.13 2.12-2.13 1.43 1.43-2.13 2.12zM12 6a6 6 0 0 1 6 6c0 2.22-1.21 4.16-3 5.2V19a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-1.8c-1.79-1.04-3-2.98-3-5.2a6 6 0 0 1 6-6m2 15v1a1 1 0 0 1-1 1h-2a1 1 0 0 1-1-1v-1zm-3-3h2v-2.13c1.73-.44 3-2.01 3-3.87a4 4 0 0 0-4-4 4 4 0 0 0-4 4c0 1.86 1.27 3.43 3 3.87z"/></svg></span> <strong><a href="about/">About</a></strong></li>
 </ul>
