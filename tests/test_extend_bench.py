@@ -54,7 +54,7 @@ def test_extending_snapshot_is_at_most_20_percent_slower_than_relabelling(
         label: _network(y, seed) for seed, (label, y) in enumerate(YEARS.items())
     }
     relabelled = {label: _network(2013, seed) for seed, label in enumerate(YEARS)}
-    timings = {"extend": [], "relabel": []}
+    timings: dict[str, list[float]] = {"extend": [], "relabel": []}
     for i in range(3):
         timings["extend"].append(
             _written(

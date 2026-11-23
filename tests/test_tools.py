@@ -3450,7 +3450,7 @@ class TestPyPSA:
             pytest.param(
                 _with_a_moved_snapshot,
                 "sensitivity",
-                r"it lacks 1 of them, first .* and holds 1 more, first .*; give",
+                r"it lacks 1 of them, first .* and holds 1 more, first .*; pass",
                 id="moved-snapshot",
             ),
             pytest.param(
