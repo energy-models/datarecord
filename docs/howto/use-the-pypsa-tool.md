@@ -43,15 +43,15 @@ print(root.record.properties["connection"].df())
 ```
 
 ```text
-                            connection      role
-0  {'entity': 'wind1', 'bus': 'north'}  attached
-1   {'entity': 'gas1', 'bus': 'south'}  attached
-2  {'entity': 'load1', 'bus': 'south'}  attached
-3   {'entity': 'line', 'bus': 'north'}     input
-4   {'entity': 'line', 'bus': 'south'}    output
+                       connection    bus
+0  {'entity': 'wind1', 'port': 0}  north
+1   {'entity': 'gas1', 'port': 0}  south
+2  {'entity': 'load1', 'port': 0}  south
+3   {'entity': 'line', 'port': 0}  north
+4   {'entity': 'line', 'port': 1}  south
 ```
 
-Each component is a label of `entity` with its type in `entity.ctype`, and each of its ports is a `connection` tuple with a `role`. Buses and carriers are labels of the dims `bus` and `carrier`. `to_datarecord` raises `UnsupportedRecordError` for a network in which two components of different types share a name.
+Each component is a label of `entity` with its type in `entity.ctype`. Each of its ports is a `connection` tuple of the entity and PyPSA's port number, and `connection.bus` is the bus the port attaches to. Buses and carriers are labels of the dims `bus` and `carrier`. `to_datarecord` raises `UnsupportedRecordError` for a network in which two components of different types share a name.
 
 ## Check a record before a build
 
@@ -68,19 +68,21 @@ print(bool(report), sorted(report.ignored))
 False [('Line', 'p_max_pu'), ('Load', 'p_max_pu')]
 ```
 
-The value with no `entity` applies to every entity, and `PyPSA.build` passes it only to the types that take it, here the generators. A missing input makes the report truthy, and `report.describe()` lists it:
+The value with no `entity` applies to every entity, and `PyPSA.build` passes it only to the types that take it, here the generators. A missing input makes the report truthy, and `report.describe()` lists it. `remove` refuses a bus that a connection is still at, so remove those connections first:
 
 ```python
 w.rollback()
+at_north = w.properties["connection"].filter("bus = 'north'")
+w.remove("connection", at_north.project("connection"))
 w.remove("bus", ["north"])
 print(PyPSA.verify(w).describe())
 ```
 
 ```text
-attributes [('Generator', 'bus'), ('Line', 'bus1')]
+attributes [('Generator', 'bus'), ('Line', 'bus0')]
 ```
 
-`wind1` and `line` lost their connections at `north`, so each lacks a port's bus. `PyPSA.build` raises `UnsupportedRecordError` with the same list for such a record.
+`wind1` and `line` lost their connections at `north`, so each lacks a port's bus: `bus` of `wind1` and `bus0` of `line`. `PyPSA.build` raises `UnsupportedRecordError` with the same list for such a record.
 
 ## Edit the inputs
 

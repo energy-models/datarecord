@@ -1603,8 +1603,8 @@ def test_to_datarecord_lists_without_unpivoting(store, ac_dc):
     assert "efficiency2" not in source.attributes
 
 
-def test_ports_round_trip_through_connections_with_a_role_per_type(store):
-    """Each port is a connection row with a role, and comes back as its own column.
+def test_ports_round_trip_through_connections_keyed_by_port(store):
+    """Each port is a connection row at its number, and comes back as its own column.
 
     Notes
     -----
@@ -1626,13 +1626,13 @@ def test_ports_round_trip_through_connections_with_a_role_per_type(store):
     )
     back = PyPSA.build(revision.record)
 
-    for ctype, roles, ports in (
-        ("Link", {"input", "output"}, ("bus0", "bus1")),
-        ("Generator", {"attached"}, ("bus",)),
+    for ctype, numbers, ports in (
+        ("Link", {0, 1}, ("bus0", "bus1")),
+        ("Generator", {0}, ("bus",)),
     ):
         original = n.c[ctype].static
         mine = rows[rows["entity"].isin(original.index)]
-        assert set(mine["role"]) == roles, f"{ctype} roles follow PyPSA's sign"
+        assert set(mine["port"]) == numbers, f"{ctype} ports follow PyPSA's numbers"
         for port in ports:
             assert set(mine["bus"]) >= set(original[port]), f"{ctype}.{port} stored"
             assert list(back.c[ctype].static[port]) == list(original[port]), (

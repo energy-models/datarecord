@@ -78,6 +78,10 @@ mathspec spells it as a relation, `carrier_of: { key: generator, values: carrier
 
 PyPSA's `partial` includes `bus` so that a layer can patch one bus's `v_nom`, and every read scans every `partial` dim in the fold key ([layers](layers.md)). Measuring it on a record the size of PyPSA-Eur would settle it.
 
+### Should removing a bus remove the connections at it?
+
+The PyPSA tool keeps a port's bus in the property `connection.bus`, so `remove` refuses a bus while a connection is at it ([layers](../reference/layers.md#removing-labels)). You remove those connections first ([tools](../reference/tools.md#ports)). A removal that cascades through a property referring to the dim would do both in one call, as a removed label already takes the tuples that contain it.
+
 ### May `partial` name a coordinate of a multi-dim?
 
 `partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a coordinate in `partial`, `p` would be keyed by `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider fold key on every read of every attribute over `snapshot`.
@@ -170,7 +174,7 @@ It leaves the value out and reports it in `Requirements.ignored`, as it reports 
 
 ### May a multi-dim in `partial` have categories?
 
-It may, by the rule a dim follows. `connection.role: {one_of: role}` categorises `connection` in `partial`, so a `default_by` keyed `connection.role`, `flags(role=...)` and the keyword `role=` work as they do for `entity.ctype` ([the data model](data-model.md)).
+It may, by the rule a dim follows. A property `connection.kind: {one_of: kind}` categorises `connection` in `partial`, so a `default_by` keyed `connection.kind`, `flags(kind=...)` and the keyword `kind=` work as they do for `entity.ctype` ([the data model](data-model.md)).
 
 ### What should a connection value staged without its `bus` mean?
 

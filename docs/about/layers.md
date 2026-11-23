@@ -26,15 +26,15 @@ The reason lies in how a framework reads a series. A framework that stores a con
 
 `partial` and an attribute's `dims` set different things. `dims` states which dims an attribute varies over, so `p_nom_opt`, a capacity an optimiser fixes before the scenario is known, is declared over `entity` alone. `partial` states how finely a layer may patch. A flag on the dim alone would make every attribute vary per scenario, the first-stage decision included. Keeping the two apart lets the writer refuse a `p_nom_opt` row that sets a scenario.
 
-The rejected alternatives are `partial` per attribute, and every dim in `partial`. Per attribute, the fold's key would vary by attribute, where the fold needs one fixed key. Each dim in `partial` widens that key, and every read of every attribute scans the wider key. A dim left out adds work once per edit, bounded by the length of its axis. The PyPSA tool puts `entity`, `bus`, `scenario` and `connection` in `partial`, and leaves `snapshot` and `carrier` out.
+The rejected alternatives are `partial` per attribute, and every dim in `partial`. Per attribute, the fold's key would vary by attribute, where the fold needs one fixed key. Each dim in `partial` widens that key, and every read of every attribute scans the wider key. A dim left out adds work once per edit, bounded by the length of its axis. The PyPSA tool puts `entity`, `bus`, `port`, `scenario` and `connection` in `partial`, and leaves `snapshot` and `carrier` out.
 
 ## Why a layer restates an axis whole
 
 A layer that changes an axis writes its file whole: every label, with its properties, in order. A revision's axis is the deepest file for that dim on its path from the root.
 
-The rejected alternative patches an axis label by label, with a tombstone row for each removed label. No single file then states which labels an axis has, or in which order. The order matters, because the PyPSA tool numbers a component's ports by the order of its connections. Every cache and staged fold would derive that order from the history, and a patched axis would need an owner map of its own.
+The rejected alternative patches an axis label by label, with a tombstone row for each removed label. No single file then states which labels an axis has, or in which order. The order matters, because a tool builds its framework's index in axis order, such as the PyPSA tool's snapshots and buses. Every cache and staged fold would derive that order from the history, and a patched axis would need an owner map of its own.
 
-With one file per axis, a cache or a staged fold always lists the same labels, in the same order, as a full fold. The writer refuses a restatement that reorders its parent's labels, so an edit renumbers no port.
+With one file per axis, a cache or a staged fold always lists the same labels, in the same order, as a full fold. The writer refuses a restatement that reorders its parent's labels, so an edit reorders no index.
 
 The cost is storage that grows with the axis and not with the edit. On a record of 60,000 entities and 150,000 connections, a one-entity property edit wrote 0.30 MB where a label patch wrote 0.8 kB. An axis is small beside the series over it, so the cost stays small beside a solve's results.
 
