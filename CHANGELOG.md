@@ -244,6 +244,14 @@ All notable changes to datarecord are documented here. The format follows
   from the selection at one label of the dim,
   `record.select(weather_year=2013)`, writes its results over that selection
   as that member.
+- `PyPSACollection.to_datarecord(networks, con, extend=["snapshot"])` writes
+  a collection whose members hold their own snapshots, such as one network
+  per weather year. `snapshot` is over `(period, weather_year, timestep)`, or
+  `(weather_year, timestep)` without periods, and each series row holds its
+  member's label inside `snapshot`. The members still hold the same
+  investment periods, and the same value of a series attribute at no
+  snapshot, such as a static `p_max_pu`. Results over such a record are
+  written with the same `extend`, each member's at its own label.
 - `PyPSA.build` and `PyPSA.verify` take a selection, `record.select(...)`, as
   any `RecordLike`. One label of `period`, `scenario` or a dim of the record's
   own squeezes the dim: a single-period network indexed by its timesteps

@@ -95,16 +95,16 @@ def exported(single_revision, workspace, tmp_path) -> HandBuilt:
     return layer
 
 
-def _results_over(revision, n, **labels):
-    """`n`'s results, a network's or a collection's, written as a thin layer over `revision`, over its selection at `labels` where given."""
+def _results_over(revision, n, extend=(), **labels):
+    """`n`'s results, a network's or a collection's extending `extend`, written as a thin layer over `revision`, over its selection at `labels` where given."""
     record = revision.record
-    tool = PyPSACollection if isinstance(n, pypsa.NetworkCollection) else PyPSA
-    layer = tool.to_datarecord(
-        n,
-        record.con,
-        results_only=True,
-        base=record.select(**labels) if labels else record,
-    )
+    base = record.select(**labels) if labels else record
+    if isinstance(n, pypsa.NetworkCollection):
+        layer = PyPSACollection.to_datarecord(
+            n, record.con, results_only=True, base=base, extend=extend
+        )
+    else:
+        layer = PyPSA.to_datarecord(n, record.con, results_only=True, base=base)
     return revision.store.commit(layer, parent=revision)
 
 
@@ -197,70 +197,38 @@ def _redeclared_over(store, n, attr: str, dim: str, rows: list[dict]) -> Revisio
     return layer.commit()
 
 
-def _weather_years(store, shifts: dict[str, int]) -> Revision:
-    """A small network over two periods, written as a root of `store` whose `snapshot` is over `(period, weather_year, timestep)`.
+def _weather_year_networks(years: dict[str, int], periods=(2030, 2040)) -> dict:
+    """A small network per weather year of `years`, at three days from 28 February of its calendar year, 29 February dropped.
 
-    Each weather year of `shifts` holds the network's timestamps shifted by
-    its number of years, and `g`'s `p_max_pu` halved but in the last, so
-    each solves to another `p_nom_opt`. `weather_year` is in `partial`, as
-    a collection declares a dim of its own.
+    `g`'s `p_max_pu` is halved but in the last weather year, so each solves
+    to another `p_nom_opt`. Over `periods` where given, else single-period.
     """
-    n = pypsa.Network()
-    n.set_snapshots(pd.date_range("2013-01-01", periods=3, freq="h"))
-    n.set_investment_periods([2030, 2040])
-    n.add("Bus", "b")
-    n.add("Load", "d", bus="b", p_set=1.0)
-    n.add("Generator", "g", bus="b", p_nom_extendable=True, capital_cost=1.0)
-    n.add("Generator", "backup", bus="b", p_nom=2.0, marginal_cost=100.0)
-    n.c.Generator.dynamic["p_max_pu"]["g"] = [0.8, 0.9, 1.0] * 2
-    exported = export_network(n, store)
-    declared = exported.manifest.schema
-    over = {"period": "period", "weather_year": "weather_year", "timestep": "timestep"}
-    snapshot = Dimension(over=over)
-    dims = {"weather_year": Dimension(dtype="str"), "snapshot": snapshot}
-    update = {
-        "dimensions": {**declared.dimensions, **dims},
-        "partial": (declared.partial or frozenset()) | {"weather_year"},
-    }
-    layer = empty_root(store, declared.model_copy(update=update))
-    for kind in ("dims", "attributes"):
-        shutil.copytree(Path(store.layer_dir(exported.id)) / kind, layer.dir / kind)
-    last = list(shifts)[-1]
-    con = duckdb.connect()
-    con.register(
-        "y",
-        pd.DataFrame(
-            {
-                "weather_year": list(shifts),
-                "shift": list(shifts.values()),
-                "scale": [1.0 if y == last else 0.5 for y in shifts],
-            }
-        ),
+    last = list(years)[-1]
+    members = {}
+    for label, year in years.items():
+        days = pd.date_range(f"{year}-02-28", f"{year}-03-02", freq="D")
+        n = pypsa.Network()
+        n.set_snapshots(days[~((days.month == 2) & (days.day == 29))])
+        if periods:
+            n.set_investment_periods(list(periods))
+        n.add("Bus", "b")
+        n.add("Load", "d", bus="b", p_set=1.0)
+        n.add("Generator", "g", bus="b", p_nom_extendable=True, capital_cost=1.0)
+        n.add("Generator", "backup", bus="b", p_nom=2.0, marginal_cost=100.0)
+        scale = 1.0 if label == last else 0.5
+        p_max_pu = [scale * v for v in (0.8, 0.9, 1.0)] * max(1, len(periods))
+        n.c.Generator.dynamic["p_max_pu"]["g"] = p_max_pu
+        members[label] = n
+    return members
+
+
+def _weather_years(store, members: dict) -> Revision:
+    """`members` exported as one root of `store` whose `snapshot` holds `weather_year`."""
+    collection = _over(members, "weather_year")
+    layer = PyPSACollection.to_datarecord(
+        collection, store.workspace.con, extend=["snapshot"]
     )
-    struct = (
-        "CASE WHEN t.snapshot IS NOT NULL THEN {'period': t.snapshot.period, "
-        "'weather_year': y.weather_year, "
-        "'timestep': t.snapshot.timestep + to_years(y.shift)} END AS snapshot"
-    )
-    scaled = "CASE WHEN t.attribute = 'p_max_pu' THEN t.value * y.scale ELSE t.value END AS value"
-    for path in sorted(layer.dir.glob("*/*.parquet")):
-        held = con.read_parquet(str(path)).columns
-        if "snapshot" not in held:
-            continue
-        columns = [
-            struct if c == "snapshot" else scaled if c == "value" else f"t.{c}"
-            for c in held
-        ]
-        read = f"read_parquet('{path}') t"
-        query = f"SELECT DISTINCT {', '.join(columns)} FROM {read}, y ORDER BY ALL"
-        con.from_arrow(con.execute(query).to_arrow_table()).write_parquet(str(path))
-    for name in ("weather_year", "timestep"):
-        con.execute(
-            f"COPY (SELECT DISTINCT snapshot.{name} AS {name} FROM "
-            f"read_parquet('{layer.dir}/dims/snapshot.parquet') ORDER BY 1) "
-            f"TO '{layer.dir}/dims/{name}.parquet'"
-        )
-    return layer.commit()
+    return store.commit(layer, parent=None)
 
 
 def _ctypes_written(revision) -> pd.Series:
@@ -3476,7 +3444,7 @@ class TestPyPSA:
                 _without_a_snapshot,
                 "sensitivity",
                 r"'hi' holds other snapshots than that of sensitivity 'lo': it "
-                r"lacks 1 of them, first .*; give every member the same snapshots",
+                r"lacks 1 of them, first .*; pass `extend=\[\"snapshot\"\]`",
                 id="snapshots",
             ),
             pytest.param(
@@ -3932,14 +3900,18 @@ class TestPyPSA:
             )
 
     @pytest.mark.parametrize(
-        ("shifts", "tool"),
+        ("years", "tool"),
         [
-            pytest.param({"wy2010": -3, "wy2013": 0}, PyPSA, id="network"),
-            pytest.param({"wy2013": 0, "wy2010": -3}, PyPSA, id="network-reversed"),
-            pytest.param({"wy2010": 0, "wy2013": 0}, PyPSACollection, id="collection"),
+            pytest.param({"wy2010": 2010, "wy2013": 2013}, PyPSA, id="network"),
+            pytest.param(
+                {"wy2013": 2013, "wy2010": 2010}, PyPSA, id="network-reversed"
+            ),
+            pytest.param(
+                {"wy2010": 2010, "wy2013": 2013}, PyPSACollection, id="collection"
+            ),
         ],
     )
-    def test_results_land_at_a_weather_year_of_the_snapshot(self, store, shifts, tool):
+    def test_results_land_at_a_weather_year_of_the_snapshot(self, store, years, tool):
         """Results of a weather year, a coordinate of `snapshot` of the record's own, land at it alone.
 
         A network built at each weather year is written over its selection,
@@ -3949,14 +3921,14 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a collection](https://energy-models.github.io/datarecord/reference/tools/#a-collection)
-        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+        - [writing results](https://energy-models.github.io/datarecord/pypsa/reference/#writing-results)
         """
-        root = _weather_years(store, shifts)
+        root = _weather_years(store, _weather_year_networks(years))
         revision = root
         if tool is PyPSA:
             solved = {}
-            for year in shifts:
+            for year in years:
                 solved[year] = _solve(
                     PyPSA.build(root.record.select(weather_year=year))
                 )
@@ -3966,7 +3938,7 @@ class TestPyPSA:
             for n in collection.networks:
                 _solve(n)
             solved = dict(zip(collection.index, collection.networks, strict=True))
-            revision = _results_over(revision, collection)
+            revision = _results_over(revision, collection, extend=["snapshot"])
         record = revision.record
         assert "weather_year" in record.schema.attributes["p_nom_opt"].dims
         assert "weather_year" not in record.schema.attributes["p"].dims
@@ -3987,6 +3959,92 @@ class TestPyPSA:
         assert nom["wy2010"] != nom["wy2013"], "each weather year solves apart"
         for year, n in solved.items():
             _assert_results_equal(PyPSA.build(record.select(weather_year=year)), n)
+
+    @pytest.mark.parametrize(
+        "periods",
+        [pytest.param((2030, 2040), id="periods"), pytest.param((), id="no-periods")],
+    )
+    @pytest.mark.parametrize(
+        "years",
+        [
+            pytest.param({"wy2010": 2010, "wy2013": 2013}, id="2010-2013"),
+            pytest.param({"wy2012": 2012, "wy2013": 2013}, id="leap-day-dropped"),
+        ],
+    )
+    def test_a_collection_extends_snapshot_by_its_dim(self, store, years, periods):
+        """A collection whose members hold their own snapshots and series is one record whose `snapshot` holds the collection's dim.
+
+        `snapshot` is over `(period, weather_year, timestep)`, or
+        `(weather_year, timestep)` without periods. The collection the record
+        builds holds each member's own snapshots and series, and its results,
+        written back, build again as solved.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+        """
+        members = _weather_year_networks(years, periods)
+        root = _weather_years(store, members)
+        over = ["weather_year", "timestep"]
+        expected = ["period", *over] if periods else over
+        assert list(root.record.schema.over("snapshot")) == expected
+        assert "weather_year" in (root.record.schema.partial or ())
+        assert "weather_year" not in root.record.schema.attributes["p_max_pu"].dims
+        built = PyPSACollection.build(root.record)
+        assert list(built.index) == list(years)
+        for label, n in zip(built.index, built.networks, strict=True):
+            assert n.snapshots.equals(members[label].snapshots), "its own snapshots"
+            pd.testing.assert_frame_equal(
+                n.c.Generator.dynamic["p_max_pu"],
+                members[label].c.Generator.dynamic["p_max_pu"],
+                check_names=False,
+                check_column_type=False,
+                check_freq=False,
+            )
+            _solve(n)
+        record = _results_over(root, built, extend=["snapshot"]).record
+        for label, n in zip(built.index, built.networks, strict=True):
+            _assert_results_equal(PyPSA.build(record.select(weather_year=label)), n)
+
+    @pytest.mark.parametrize(
+        ("extend", "edit", "match"),
+        [
+            pytest.param(["bus"], None, "extends `snapshot` alone", id="other-dim"),
+            pytest.param(
+                ["snapshot"],
+                lambda m: m["wy2013"].c.Generator.static.__setitem__("p_max_pu", 0.5),
+                "has `p_max_pu` .* series attribute's static value",
+                id="static-of-a-series",
+            ),
+            pytest.param(
+                ["snapshot"],
+                lambda m: m.update(
+                    _weather_year_networks({"wy2013": 2013}, (2030, 2050))
+                ),
+                "holds other investment periods",
+                id="periods",
+            ),
+            pytest.param([], None, "holds other snapshots", id="not-extended"),
+        ],
+    )
+    def test_an_extended_collection_refuses(self, store, extend, edit, match):
+        """A collection extends `snapshot` alone, by members over the same periods holding a series attribute's static value alike."""
+        members = _weather_year_networks({"wy2010": 2010, "wy2013": 2013})
+        if edit is not None:
+            edit(members)
+        with pytest.raises(ValueError, match=match):
+            PyPSACollection.to_datarecord(
+                _over(members, "weather_year"), store.workspace.con, extend=extend
+            )
+
+    def test_results_extend_as_their_base_was_exported(self, store):
+        """Results of an extended record are written with `extend`, as it was exported."""
+        root = _weather_years(
+            store, _weather_year_networks({"wy2010": 2010, "wy2013": 2013})
+        )
+        built = PyPSACollection.build(root.record)
+        with pytest.raises(ValueError, match="write results with `extend`"):
+            _results_over(root, built)
 
     @pytest.mark.parametrize(("nudge", "agreed"), [(1e-9, True), (1e-3, False)])
     def test_members_agree_on_a_float_within_tolerance(self, workspace, nudge, agreed):
