@@ -191,7 +191,10 @@ The tuple `{dc, south}` keeps 0.9, and the three other tuples take 1.0 from the 
 
 The dims a multi-dim draws on broadcast on their own.
 A coordinate stays inside its struct, so `bus` inside `connection` is a field, and an attribute over the dim `bus` has a separate `bus` column.
-An attribute's `dims` may not list a multi-dim beside a dim with the name of one of its coordinates. A keyword such as `bus=` would then address both.
+An attribute's `dims` may not list a multi-dim beside a dim with the name of a coordinate that draws on another dim. A keyword such as `bus=` would then address two dims.
+A coordinate that draws on the dim of its own name is one coordinate with that dim's column.
+For example, a static `p_max_pu` row with a NULL `snapshot` over `(weather_year, timestep)` holds its weather year in the `weather_year` column.
+`select(weather_year=...)` squeezes the column and the field alike.
 
 ## Wide and long rows
 

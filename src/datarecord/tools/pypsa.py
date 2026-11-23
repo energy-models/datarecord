@@ -1583,35 +1583,26 @@ def _alike(members: Mapping[Any, pypsa.Network], by: str, extended: bool) -> Non
                 raise ValueError(msg)
 
 
-def _alike_statics(
-    members: Mapping[Any, pypsa.Network], by: str, con: DuckDBPyConnection
-) -> None:
-    """Refuse members extended along `by` holding different static values of a series attribute (`_agreed`).
+def _unalike_statics(members: Mapping[Any, pypsa.Network]) -> frozenset[str]:
+    """The series attributes, by their names in the record, whose static values not every member holds equal, for `_spread` to check within tolerance.
 
-    Such a value is a row at no snapshot, so it has no label of `by` to
-    stand at. Only the static frames are compared, never a series, and a
-    column the members hold equal is not compared again within tolerance.
-
-    Raises
-    ------
-    ValueError
-        If two members hold values for one entity that do not agree.
+    Compared on the static frames alone, so the long rows of every series
+    are scanned only for these.
     """
     reference = next(iter(members.values()))
+    unalike = set()
     for c in reference.components:
         if c.name == "SubNetwork":
             continue
-        statics = {label: _own_static(m.c[c.name]) for label, m in members.items()}
-        first = statics[next(iter(statics))]
-        for attr in [a for a in c.dynamic if a in first.columns]:
-            values = {label: static[attr] for label, static in statics.items()}
-            if all(v.equals(first[attr]) for v in values.values()):
-                continue
-            across = (
-                f"the members, as a series attribute's static value; set a series "
-                f"to vary it over `{by}`"
-            )
-            _agreed(c.name, attr, values, by, con, across)
+        statics = [_own_static(m.c[c.name]) for m in members.values()]
+        per_port = _port_stems(c)
+        unalike |= {
+            per_port.get(attr, attr)
+            for attr in c.dynamic
+            if attr in statics[0].columns
+            and not all(s[attr].equals(statics[0][attr]) for s in statics)
+        }
+    return frozenset(unalike)
 
 
 def _clash(rel: DuckDBPyRelation) -> Expression:
@@ -4086,15 +4077,19 @@ def _coordinate_values(schema: RecordSchema, attr: str, dim: str) -> list[Expres
 
 
 def _located(
-    schema: RecordSchema, attr: str, held: Mapping[Any, DuckDBPyRelation], dim: str
+    schema: RecordSchema,
+    attr: str,
+    held: Mapping[Any, DuckDBPyRelation],
+    dim: str,
+    spread: DuckDBPyRelation | None,
 ) -> DuckDBPyRelation:
     """Each member's rows of `attr`, an attribute over a multi-dim with `dim` as a coordinate (`_coordinate_values`), as one, each member's rows read once.
 
-    The schema refuses such an attribute over `dim` too, so each member's
-    rows already carry their label. At a member's label its own rows are
-    kept, not those of `base` another member restates there. The rows at no
-    member's label, which each holds alike (`_alike_statics`, or `base`'s
-    restated), are the first member's.
+    Each member's rows carry their label inside the struct. At a member's
+    label its own rows are kept, not those of `base` another member restates
+    there. The rows at no member's label, which each holds alike, are the
+    first member's, unless they differ and `spread` holds them over `dim`
+    (`_spread`).
     """
     label_type = schema.duck_type(schema.dimensions[dim])
     values = _coordinate_values(schema, attr, dim)
@@ -4105,9 +4100,72 @@ def _located(
         return reduce(operator.or_, (v == lit(label).cast(label_type) for v in values))
 
     (head, first), *rest = held.items()
-    rows = [first.filter(own(head) | elsewhere)]
-    rows += [rel.filter(own(label)) for label, rel in rest]
-    return reduce(DuckDBPyRelation.union, rows)
+    if spread is None:
+        rows = [first.filter(own(head) | elsewhere)]
+        rows += [rel.filter(own(label)) for label, rel in rest]
+        return reduce(DuckDBPyRelation.union, rows)
+    columns = schema.long_columns_for(attr)
+    unlabelled = lit(None).cast(label_type).alias(dim)
+    rows = [
+        rel.filter(own(label)).select(
+            *(unlabelled if c == dim else col(c) for c in columns)
+        )
+        for label, rel in held.items()
+    ]
+    rows.append(spread.select(*map(col, columns)))
+    return cast_declared(schema, reduce(DuckDBPyRelation.union, rows), attribute=attr)
+
+
+def _spread(
+    schema: RecordSchema,
+    attr: str,
+    held: Mapping[Any, DuckDBPyRelation],
+    dim: str,
+    labels: Sequence[Any],
+) -> DuckDBPyRelation | None:
+    """The rows of `attr` at no tuple of its multi-dim with `dim` as a coordinate, such as `p_max_pu` at no snapshot, over `dim`; None where every member holds each alike.
+
+    Such a row has no label of `dim` inside its struct, so where the
+    members' values of one key differ (`_clash`, or a member lacks it), each
+    member's row is at its label as a column of `dim`; a key they hold alike
+    is one row at no label, the first member's value.
+    """
+    label_type = schema.duck_type(schema.dimensions[dim])
+    static = reduce(
+        operator.and_, (v.isnull() for v in _coordinate_values(schema, attr, dim))
+    )
+    stacked = reduce(
+        DuckDBPyRelation.union,
+        (
+            rel.filter(static).select(
+                *(col(c) for c in rel.columns if c != "value"),
+                lit(label).cast(label_type).alias(dim),
+                col("value"),
+            )
+            for label, rel in held.items()
+        ),
+    )
+    keys = [c for c in stacked.columns if c not in (dim, "value")]
+    first = lit(labels[0]).cast(label_type)
+    grouped = stacked.group_by(*map(col, keys)).agg(
+        ((fn.count() < lit(len(labels))) | _clash(stacked)).alias("_apart"),
+        fn.list(fn.struct_pack(**{dim: col(dim), "value": col("value")})).alias(
+            "_held"
+        ),
+        fn.arg_min(col("value"), col(dim) != first).alias("value"),
+    )
+    if not grouped.filter(col("_apart")).limit(1).fetchall():
+        return None
+    alike = grouped.filter(~col("_apart")).select(
+        *map(col, keys), lit(None).cast(label_type).alias(dim), col("value")
+    )
+    unnested = grouped.filter(col("_apart")).select(
+        *map(col, keys), fn.unnest(col("_held")).alias("_h")
+    )
+    apart = unnested.select(
+        *map(col, keys), col("_h")[dim].alias(dim), col("_h")["value"].alias("value")
+    )
+    return alike.union(apart)
 
 
 @dataclass(frozen=True)
@@ -4132,6 +4190,7 @@ class _StackedSource:
         dim: str,
         con: DuckDBPyConnection,
         base: RecordLike | None,
+        unalike: Container[str] = frozenset(),
     ) -> _StackedSource:
         """`members`, each source by its label of `dim`, as one record over `base`, checked whole.
 
@@ -4139,7 +4198,9 @@ class _StackedSource:
         before any attribute. An attribute whose rows differ across the
         members (`_differs`) is over `dim`, each member's rows at its
         label; one over a multi-dim with `dim` as a coordinate, such as
-        `snapshot`, carries the label already (`_located`); any other is
+        `snapshot`, carries the label already (`_located`), but its rows at
+        no tuple the members hold apart are over `dim` (`_spread`), checked
+        only for the attributes `unalike` names; any other is
         held once. Over a `base` holding labels of `dim`
         the members lack, every attribute is at each member's label, the
         `dim` axis and the results naming a SubNetwork
@@ -4201,18 +4262,25 @@ class _StackedSource:
         located = {a for a in names if _coordinate_values(schema, a, dim)}
         if apart:
             differing = set(names) - located
+            spread = {}
         else:
             differing = {
                 a for a in names if a not in located and _differs(held[a], labels)
             }
-        schema = _widened(schema, dim, labels, differing)
+            spread = {
+                a: statics
+                for a in located
+                if a in unalike
+                and (statics := _spread(schema, a, held[a], dim, labels)) is not None
+            }
+        schema = _widened(schema, dim, labels, differing | spread.keys())
         if not apart:
             axis = con.from_df(pd.DataFrame({dim: labels}))
             dims[dim] = cast_declared(schema, axis, dim)
         rows = {
             attr: _labelled(schema, attr, held[attr], dim)
             if attr in differing
-            else _located(schema, attr, held[attr], dim)
+            else _located(schema, attr, held[attr], dim, spread.get(attr))
             if attr in located
             else next(iter(held[attr].values()))
             for attr in names
@@ -4525,10 +4593,10 @@ class PyPSACollectionTool(Tool):
             PyPSA's dims the collection's dim becomes a coordinate of, so the
             members hold labels of their own: `snapshot` alone, over `(period,
             dim, timestep)` where multi-period, else `(dim, timestep)`. A
-            series is written at each member's label inside `snapshot`. The
-            members still hold the same investment periods, and the same
-            value of a series attribute at no snapshot. Results are written
-            with it over a `base` exported with it.
+            series is written at each member's label inside `snapshot`, and
+            its value at no snapshot the members hold apart over the dim. The
+            members still hold the same investment periods. Results are
+            written with it over a `base` exported with it.
 
         Raises
         ------
@@ -4569,8 +4637,6 @@ class PyPSACollectionTool(Tool):
             )
         extended = _extended(extend, dim, base)
         _alike(members, dim, extended)
-        if extended and not results_only:
-            _alike_statics(members, dim, con)
         sources = {
             label: self.network._source(
                 m,
@@ -4581,7 +4647,10 @@ class PyPSACollectionTool(Tool):
             )
             for label, m in members.items()
         }
-        return _StackedSource.of(sources, dim, con, base)
+        unalike = (
+            _unalike_statics(members) if extended and not results_only else frozenset()
+        )
+        return _StackedSource.of(sources, dim, con, base, unalike)
 
 
 def _extended(extend: Sequence[str], dim: str, base: RecordLike | None) -> bool:

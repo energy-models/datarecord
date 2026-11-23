@@ -4012,12 +4012,6 @@ class TestPyPSA:
             pytest.param(["bus"], None, "extends `snapshot` alone", id="other-dim"),
             pytest.param(
                 ["snapshot"],
-                lambda m: m["wy2013"].c.Generator.static.__setitem__("p_max_pu", 0.5),
-                "has `p_max_pu` .* series attribute's static value",
-                id="static-of-a-series",
-            ),
-            pytest.param(
-                ["snapshot"],
                 lambda m: m.update(
                     _weather_year_networks({"wy2013": 2013}, (2030, 2050))
                 ),
@@ -4028,7 +4022,7 @@ class TestPyPSA:
         ],
     )
     def test_an_extended_collection_refuses(self, store, extend, edit, match):
-        """A collection extends `snapshot` alone, by members over the same periods holding a series attribute's static value alike."""
+        """A collection extends `snapshot` alone, by members over the same periods."""
         members = _weather_year_networks({"wy2010": 2010, "wy2013": 2013})
         if edit is not None:
             edit(members)
@@ -4036,6 +4030,43 @@ class TestPyPSA:
             PyPSACollection.to_datarecord(
                 _over(members, "weather_year"), store.workspace.con, extend=extend
             )
+
+    def test_members_hold_their_own_static_value_of_a_series(self, store):
+        """A series attribute's static value the members hold apart is at each one's weather year, and one they hold alike is one row at none.
+
+        `backup`'s `p_max_pu` differs by weather year and `alike`'s does not.
+        Each member builds back its own static value and no series, and its
+        results land at its weather year.
+
+        Notes
+        -----
+        - [a collection](https://energy-models.github.io/datarecord/pypsa/reference/#a-collection)
+        """
+        members = _weather_year_networks({"wy2010": 2010, "wy2013": 2013})
+        for n, backup in zip(members.values(), (0.8, 0.6), strict=True):
+            n.add("Generator", "alike", bus="b", p_nom=1.0, p_max_pu=0.9)
+            n.c.Generator.static.loc["backup", "p_max_pu"] = backup
+        root = _weather_years(store, members)
+        static = root.record.attributes["p_max_pu"].filter("snapshot IS NULL")
+        rows = static.project("entity, weather_year, value").order("ALL").fetchall()
+        assert rows == [
+            ("alike", None, 0.9),
+            ("backup", "wy2010", 0.8),
+            ("backup", "wy2013", 0.6),
+        ]
+        built = PyPSACollection.build(root.record)
+        for label, n in zip(built.index, built.networks, strict=True):
+            one = PyPSA.build(root.record.select(weather_year=label))
+            expected = members[label].c.Generator.static["p_max_pu"]
+            for got in (n, one):
+                pd.testing.assert_series_equal(
+                    got.c.Generator.static["p_max_pu"], expected, check_names=False
+                )
+                assert list(got.c.Generator.dynamic["p_max_pu"].columns) == ["g"]
+            _solve(n)
+        record = _results_over(root, built, extend=["snapshot"]).record
+        for label, n in zip(built.index, built.networks, strict=True):
+            _assert_results_equal(PyPSA.build(record.select(weather_year=label)), n)
 
     def test_results_extend_as_their_base_was_exported(self, store):
         """Results of an extended record are written with `extend`, as it was exported."""

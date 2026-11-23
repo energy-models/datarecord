@@ -249,9 +249,16 @@ All notable changes to datarecord are documented here. The format follows
   per weather year. `snapshot` is over `(period, weather_year, timestep)`, or
   `(weather_year, timestep)` without periods, and each series row holds its
   member's label inside `snapshot`. The members still hold the same
-  investment periods, and the same value of a series attribute at no
-  snapshot, such as a static `p_max_pu`. Results over such a record are
-  written with the same `extend`, each member's at its own label.
+  investment periods. A series attribute's value at no snapshot, such as a
+  static `p_max_pu`, that the members hold apart is over `weather_year`, each
+  member's row at its label; one they hold alike is one row at no label.
+  Results over such a record are written with the same `extend`, each
+  member's at its own label.
+- An attribute's `dims` may list a multi-dim beside a dim named like one of
+  its coordinates where that coordinate draws on the dim of its name, such
+  as `snapshot` and `weather_year` with `snapshot` over `(weather_year,
+timestep)`. A row holds the label in the dim's column where its struct is
+  NULL. A coordinate named for another dim still raises `ValueError`.
 - `PyPSA.build` and `PyPSA.verify` take a selection, `record.select(...)`, as
   any `RecordLike`. One label of `period`, `scenario` or a dim of the record's
   own squeezes the dim: a single-period network indexed by its timesteps

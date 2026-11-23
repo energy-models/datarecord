@@ -486,7 +486,10 @@ def _validate_frame(rel: DuckDBPyRelation, kind: str, key: str, schema: Schema) 
             )
             raise ValueError(msg)
         schema.check_multi_dim_columns(
-            schema.multi_dims_of(key), rel, carrier=f"attributes/{key}.parquet"
+            schema.multi_dims_of(key),
+            rel,
+            carrier=f"attributes/{key}.parquet",
+            own=schema.attributes[key].dims,
         )
         return
 
