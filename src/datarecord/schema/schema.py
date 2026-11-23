@@ -268,7 +268,11 @@ class Schema(_Declared):
                 msg = f"attribute {attr!r} is addressed by undeclared dims {unknown}"
                 raise ValueError(msg)
             for multi in self.multi_dims_of(attr):
-                twice = sorted(set(self.over(multi)) & attr_spec.dims)
+                twice = sorted(
+                    c
+                    for c, d in self.over(multi).items()
+                    if c in attr_spec.dims and c != d
+                )
                 if twice:
                     msg = (
                         f"attribute {attr!r} is addressed by the multi-dim "
@@ -604,6 +608,7 @@ class Schema(_Declared):
         rel: DuckDBPyRelation,
         *,
         carrier: str,
+        own: Container[str] = frozenset(),
     ) -> None:
         """Reject each of `multi_dims` carried other than as one struct column of exactly its coordinates.
 
@@ -614,6 +619,9 @@ class Schema(_Declared):
         ----------
         carrier
             What carries the columns, named in the message.
+        own
+            The dims the carrier holds as columns of their own, beside a
+            coordinate of their name inside a struct.
 
         Raises
         ------
@@ -629,7 +637,7 @@ class Schema(_Declared):
         types = dict(zip(rel.columns, rel.types, strict=True))
         for multi in multi_dims:
             key = list(self.over(multi))
-            flat = [c for c in key if c in types]
+            flat = [c for c in key if c in types and c not in own]
             dtype = types.get(multi)
             fields = (
                 key

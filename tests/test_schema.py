@@ -122,6 +122,33 @@ def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
     assert s.addresses(attribute, "entity") is addresses
 
 
+@pytest.mark.parametrize(
+    ("draws_on", "refused"), [("bus", False), ("node", True)], ids=["own", "other"]
+)
+def test_a_coordinate_beside_a_dim_of_its_name_draws_on_that_dim(draws_on, refused):
+    """A coordinate `bus` drawing on `bus` is one coordinate with the `bus` column; drawing on `node`, `bus=` would address two dims.
+
+    Notes
+    -----
+    - [a multi-dim's column](https://energy-models.github.io/datarecord/reference/data-model/#a-multi-dims-column)
+    """
+    dim = Dimension(dtype="str")
+    declared = {
+        "dimensions": {
+            "entity": dim,
+            "bus": dim,
+            "node": dim,
+            "connection": Dimension(over={"entity": "entity", "bus": draws_on}),
+        },
+        "attributes": {"x": AttributeSpec(dtype="float", dims={"connection", "bus"})},
+    }
+    if refused:
+        with pytest.raises(ValueError, match="share a name"):
+            Schema(**declared)
+    else:
+        assert Schema(**declared).coordinates_of("x") == ("connection", "bus")
+
+
 def _with_entity_property(name: str, spec: PropertySpec) -> dict:
     """`_schema`'s properties with `name` added to `entity`'s."""
     return {"entity": {**_schema().properties["entity"], name: spec}}

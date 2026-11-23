@@ -294,7 +294,9 @@ With `extend=["snapshot"]`, members may hold different snapshots, such as one ne
 `to_datarecord` declares `snapshot` over `(period, dim, timestep)`, or `(dim, timestep)` for single-period members, and writes each member's snapshots at its label.
 A series row holds the label inside `snapshot`, and its attribute is not over the dim.
 The members must hold the same investment periods.
-They must also hold the same value of a series attribute at no snapshot, such as a static `p_max_pu`, or `to_datarecord` raises `ValueError`.
+A series attribute's value at no snapshot, such as a static `p_max_pu`, that the members hold apart is over the dim, each member's row at its label, as `p_nom` is.
+One the members hold alike is one row at no label, and the attribute is not over the dim where every value is alike.
+`build` of a member gives its own static value and no series.
 Results over a record exported with `extend` are written with the same `extend`, and `to_datarecord` raises `ValueError` where it differs.
 `extend` takes `snapshot` alone.
 Results of a collection of fewer labels than `base` has are at each member's label, even where the members agree.
