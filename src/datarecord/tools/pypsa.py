@@ -317,8 +317,6 @@ _ACTIVE_FALLBACK = {"build_year": 0, "lifetime": math.inf}
 _INVESTMENT_PERIOD = "investment_period"
 #: The dims a network is built from a selection squeezing, beside a record's own.
 _SQUEEZABLE = frozenset({PERIOD, SCENARIO})
-#: The keywords selecting snapshots, at all of which a results layer restates a series.
-_TIME = frozenset({SNAPSHOT, TIMESTEP, PERIOD})
 #: The dims PyPSA holds a value over, which an attribute its registry declares no spec of may be over.
 _HELD = frozenset({ENTITY, CONNECTION, SCENARIO, SNAPSHOT, *_AXIS_TYPES.values()})
 
@@ -404,11 +402,26 @@ def _detached(record: Selection) -> set[Any]:
 
 
 def _untimed(record: RecordLike) -> RecordLike:
-    """`record` at every snapshot of its base: a selection without its keywords selecting snapshots (`_TIME`)."""
+    """`record` at every snapshot of its base: a selection without its keywords selecting snapshots, `snapshot` and its coordinates.
+
+    A coordinate of the record's own, such as a weather year, is one too:
+    a results layer restates a series whole, so it carries the series at
+    every other label of the coordinate.
+    """
     if not isinstance(record, Selection):
         return record
-    rest = {k: v for k, v in record.labels.items() if k not in _TIME}
+    timed = {SNAPSHOT, *record.base.schema.over(SNAPSHOT).values()}
+    rest = {k: v for k, v in record.labels.items() if k not in timed}
     return select(record.base, **rest) if rest else record.base
+
+
+def _squeezed_coordinates(record: RecordLike) -> dict[str, Any]:
+    """The coordinates of `snapshot` a selection squeezes, each at its label; none for any other record."""
+    if not isinstance(record, Selection):
+        return {}
+    squeezed = _squeezed(record)
+    over = record.base.schema.over(SNAPSHOT)
+    return {f: record.labels[d] for f, d in over.items() if d in squeezed}
 
 
 def _equal_weighting(labels: Iterable[Any]) -> pd.DataFrame:
@@ -2273,7 +2286,9 @@ class PyPSATool(Tool):
         then over its record, each row at the labels it squeezes, one period
         squeezed writing at that period. Over the selection at one label of
         the record's dim of its own, the network is that member, written as
-        `PyPSACollection` writes a collection of it alone.
+        `PyPSACollection` writes a collection of it alone; where that dim is a
+        coordinate of `snapshot`, a series is written at the label inside the
+        struct, as at a squeezed period.
 
         Raises
         ------
@@ -2351,7 +2366,7 @@ class PyPSATool(Tool):
         """`n` as a full export, over `base` where given, or as results over `base`, once it is checked writable.
 
         Results over a selection are written over it at every snapshot
-        (`_untimed`), at the period it squeezes.
+        (`_untimed`), at the coordinates of `snapshot` it squeezes.
 
         Raises
         ------
@@ -2372,10 +2387,9 @@ class PyPSATool(Tool):
                     "built from, `record.select(scenario=label)`"
                 )
                 raise ValueError(msg)
-            period = None
-            if isinstance(base, Selection) and PERIOD in _squeezed(base):
-                period = base.labels[PERIOD]
-            source: _NetworkSource = _ResultsSource(n, con, _untimed(base), period)
+            source: _NetworkSource = _ResultsSource(
+                n, con, _untimed(base), _squeezed_coordinates(base)
+            )
         else:
             source = _NetworkSource(n, con, base)
         source.check()
@@ -3527,8 +3541,8 @@ class _ResultsSource(_NetworkSource):
 
     #: The record the network was built from, or a selection of it at every snapshot (`_untimed`).
     base: RecordLike
-    #: The period `base`'s selection squeezed, at which a single-period network is written.
-    period: Any = None
+    #: The coordinates of `snapshot` `base`'s selection squeezed, such as `period`, each at the label a single-period network is written at.
+    coordinates: Mapping[str, Any] = field(default_factory=dict)
 
     _LEAVES_OUT_REPEATS: ClassVar[bool] = False
 
@@ -3553,7 +3567,7 @@ class _ResultsSource(_NetworkSource):
         """
         if len(self.n.investment_periods) > 0:
             return list(self.n.investment_periods)
-        if self.period is None:
+        if PERIOD not in self.coordinates:
             msg = (
                 "A network written over a multi-period `base` carries investment "
                 "periods of it, or is written over the selection at one period "
@@ -3561,11 +3575,11 @@ class _ResultsSource(_NetworkSource):
                 "with `n.set_investment_periods`"
             )
             raise ValueError(msg)
-        return [self.period]
+        return [self.coordinates[PERIOD]]
 
     @cached_property
     def _snapshots(self) -> pd.DataFrame:
-        """`n.snapshots` a column per level of `base`'s `snapshot`: over a multi-period `base`, a single-period network's timesteps at its period (`_periods`).
+        """`n.snapshots` a column per coordinate of `base`'s `snapshot`: a single-period network's timesteps at each of `coordinates`, over a multi-period `base` at its period (`_periods`).
 
         Raises
         ------
@@ -3577,9 +3591,14 @@ class _ResultsSource(_NetworkSource):
         if levels and not _multiperiod(self.base):
             msg = "A multi-period network is written over a single-period `base`"
             raise ValueError(msg)
-        if levels or not _multiperiod(self.base):
+        if levels:
+            return snapshots.to_frame(index=False).assign(**self.coordinates)
+        if SNAPSHOT not in self.schema.multi_dims:
             return snapshots.to_frame(index=False)
-        return pd.DataFrame({PERIOD: self._periods[0], TIMESTEP: snapshots})
+        frame = pd.DataFrame({**self.coordinates, TIMESTEP: snapshots})
+        if _multiperiod(self.base):
+            frame[PERIOD] = self._periods[0]
+        return frame
 
     def check(self) -> None:
         """Refuse a network holding a snapshot, bus or entity `base` lacks, or first-stage results of fewer scenarios than the record, at the call rather than the write.
@@ -3966,6 +3985,42 @@ def _labelled(
     return reduce(DuckDBPyRelation.union, (at(*item) for item in held.items()))
 
 
+def _fields_of(schema: RecordSchema, attr: str, dim: str) -> list[tuple[str, str]]:
+    """Each `(multi-dim, field)` of `attr` whose field draws on `dim`, such as `snapshot`'s weather year."""
+    return [
+        (d, f)
+        for d in sorted(schema.attributes[attr].dims)
+        for f, over in schema.over(d).items()
+        if over == dim
+    ]
+
+
+def _located(
+    schema: RecordSchema, attr: str, held: Mapping[Any, DuckDBPyRelation], dim: str
+) -> DuckDBPyRelation:
+    """Each member's rows of `attr`, an attribute over a multi-dim with `dim` as a coordinate (`_fields_of`), as one.
+
+    The schema refuses such an attribute over `dim` too, so each member's
+    rows already carry their label. At a member's label its own rows are
+    kept, not those of `base` another member restates there; the rows at
+    no member's label, which each restates alike, are kept once.
+    """
+    label_type = schema.duck_type(schema.dimensions[dim])
+    values = [
+        fn.struct_extract(col(m), lit(f)) for m, f in _fields_of(schema, attr, dim)
+    ]
+
+    def at(label: Any, rel: DuckDBPyRelation) -> DuckDBPyRelation:
+        others = [lit(o).cast(label_type) for o in held if o != label]
+        if not others:
+            return rel
+        apart = (v.isnull() | ~v.isin(*others) for v in values)
+        return rel.filter(reduce(operator.and_, apart))
+
+    rows = (at(*item) for item in held.items())
+    return reduce(DuckDBPyRelation.union, rows).distinct()
+
+
 @dataclass(frozen=True)
 class _StackedSource:
     """A `NetworkCollection`'s members, each presented on its own, as one record along a dim (`of`).
@@ -3994,7 +4049,9 @@ class _StackedSource:
         Their axes and properties are one union (`_axis_union`), checked
         before any attribute. An attribute whose rows differ across the
         members (`_differs`) is over `dim`, each member's rows at its
-        label; any other is held once. Over a `base` holding labels of `dim`
+        label; one over a multi-dim with `dim` as a coordinate, such as
+        `snapshot`, carries the label already (`_located`); any other is
+        held once. Over a `base` holding labels of `dim`
         the members lack, every attribute is at each member's label, the
         `dim` axis and the results naming a SubNetwork
         (`_sub_network_results`) left to `base`, since the members number
@@ -4052,10 +4109,13 @@ class _StackedSource:
         attributes = {label: m.attributes for label, m in members.items()}
         names = [a for a in _keys(attributes) if a not in left]
         held = {a: _held(attributes, a) for a in names}
+        located = {a for a in names if _fields_of(schema, a, dim)}
         if apart:
-            differing = set(names)
+            differing = set(names) - located
         else:
-            differing = {a for a in names if _differs(held[a], labels)}
+            differing = {
+                a for a in names if a not in located and _differs(held[a], labels)
+            }
         schema = _widened(schema, dim, labels, differing)
         if not apart:
             axis = con.from_df(pd.DataFrame({dim: labels}))
@@ -4063,6 +4123,8 @@ class _StackedSource:
         rows = {
             attr: _labelled(schema, attr, held[attr], dim)
             if attr in differing
+            else _located(schema, attr, held[attr], dim)
+            if attr in located
             else next(iter(held[attr].values()))
             for attr in names
         }

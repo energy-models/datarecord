@@ -172,9 +172,15 @@ Edit the source, not the page.
 
 A design enhancement proposal (DEP) is a page that argues for one change to
 the design of datarecord: a key of the schema, the format on disk, the
-`RecordLike` protocol, the fold or the API. Every such change starts as a
-DEP, so that the argument is written down before the code. Its reader is a
-contributor who was not in the discussion.
+`RecordLike` protocol, the fold, the `Tool` protocol or the API of core
+`datarecord`. Every such change starts as a DEP, so that the argument is
+written down before the code. Its reader is a contributor who was not in the
+discussion.
+
+A change inside one tool, such as `datarecord/tools/pypsa.py`, needs no DEP,
+even where it adds an argument to that tool's API. Its pull request carries
+the argument, and the tool's section of the tools reference carries the
+behaviour.
 
 ### Where a DEP lives
 
