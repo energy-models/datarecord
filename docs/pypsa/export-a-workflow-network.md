@@ -63,14 +63,28 @@ print(record.properties["entity"].df()[["entity", "ctype", "carrier"]])
 
 The record has the generator `shed`, which `prepare` added. A constraint that your workflow adds only when the solver runs, through PyPSA's `extra_functionality`, is not part of the network. So the record lacks it, and a solve of the record uses PyPSA's own constraints and the record's `GlobalConstraint` entities alone.
 
-## Make custom columns writable
+## Write custom columns of one dtype
 
-A flag column read from a network file often holds `True`, `False` or an empty value as objects. `to_datarecord` gives each [custom column](reference.md#custom-columns) its dtype from the values it has, and an empty column gets `str`. So two types of one dim that have the same flag, one with values and one empty, are refused:
+A flag column read from a network file often has `True`, `False` or an empty value as objects. `to_datarecord` gives each [custom column](reference.md#custom-columns) one dtype from its values. A type whose column is all empty takes the dtype of the other types' columns, so a line with the flag and a link without it are written together:
 
 ```python
 n.add("Link", "dc", bus0="north", bus1="south", p_nom=20)
 n.c.Line.static["underground"] = pd.Series([True], index=n.lines.index, dtype=object)
 n.c.Link.static["underground"] = None
+record = PyPSA.to_datarecord(n, ws.con)
+print(record.attributes["underground"].df()[["entity", "value"]])
+```
+
+```text
+  entity  value
+0     dc   <NA>
+1   line   True
+```
+
+`underground` is an attribute over `entity` of dtype `bool`, with NULL for the link. Two types whose columns have values of two dtypes are refused:
+
+```python
+n.c.Link.static["underground"] = 1.0
 try:
     PyPSA.to_datarecord(n, ws.con)
 except ValueError as err:
@@ -78,25 +92,22 @@ except ValueError as err:
 ```
 
 ```text
-The custom column `underground` is a property of `entity` with one dtype, but its types carry it as {'Link': 'str', 'Line': 'bool'}
+The custom column `underground` is an attribute over `entity` with one dtype, but its types carry it as {'Link': 'float', 'Line': 'bool'}: write values of one dtype in each type's column, or leave a column NULL
 ```
 
-Fill the empty values and cast the column to `bool` on each type that has it:
+Cast the column to one dtype on each type that has it:
 
 ```python
-for c in n.components[["Line", "Link"]]:
-    c.static["underground"] = c.static["underground"].fillna(False).astype(bool)
+n.c.Link.static["underground"] = n.c.Link.static["underground"].astype(bool)
 record = PyPSA.to_datarecord(n, ws.con)
 print(record.attributes["underground"].df()[["entity", "value"]])
 ```
 
 ```text
   entity  value
-0     dc  False
+0     dc   True
 1   line   True
 ```
-
-`underground` is now an attribute over `entity` of dtype `bool`, with a value for the line and the link.
 
 ## Add region and country shapes
 
@@ -129,7 +140,7 @@ except ValueError as err:
 ```
 
 ```text
-`bus.country` names ['NL'], no label of `country`: a custom text column named like a dim refers to it
+`bus.country` names ['NL'], no label of `country`: a custom text column named like a dim refers to it, so add a `country` shape for each, or set the value to NULL
 ```
 
 If the country should stay on the bus, add a shape for it. Otherwise set the bus's country to NULL:
@@ -173,7 +184,7 @@ except ValueError as err:
 ```
 
 ```text
-The network of weather_year 2013 holds other snapshots than that of weather_year 2012: [Timestamp('2012-01-01 00:00:00'), Timestamp('2012-01-01 01:00:00'), Timestamp('2012-01-01 02:00:00')]
+The network of weather_year 2013 holds other snapshots than that of weather_year 2012: it lacks 3 of them, first 2012-01-01 00:00:00 and holds 3 more, first 2013-01-01 00:00:00; give every member the same snapshots, such as by relabelling each to one reference year
 ```
 
 Relabel each member's timesteps to the year of the first member. `set_snapshots` reindexes the series and the weightings, so keep them and put them back on the new labels:

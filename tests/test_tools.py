@@ -571,6 +571,18 @@ def _without_a_snapshot(members):
     return members
 
 
+def _with_a_moved_snapshot(members):
+    snapshots = members["hi"].snapshots
+    moved = snapshots[1] + pd.Timedelta("30min")
+    members["hi"].set_snapshots(snapshots.delete(1).insert(1, moved))
+    return members
+
+
+def _with_reversed_snapshots(members):
+    members["hi"].set_snapshots(members["hi"].snapshots[::-1])
+    return members
+
+
 def _with_region_shapes(members):
     for n in members.values():
         _add_shape(n, idx="north", component="region", type="area")
@@ -1383,15 +1395,116 @@ class TestPyPSA:
                 assert record.schema.attributes[name].dims == {dim, "scenario"}
         assert_networks_equal(PyPSA.build(record), n)
 
-    def test_a_custom_property_carried_with_two_dtypes_is_refused(self, workspace):
-        """One property of `entity` is one dtype, whichever types carry it."""
+    @pytest.mark.parametrize(
+        ("name", "generator", "load", "match"),
+        [
+            pytest.param(
+                "country",
+                "DE",
+                1.0,
+                r"`country` is a property of `entity` with one dtype, but its "
+                r"types carry it as \{'Generator': 'str', 'Load': 'float'\}",
+                id="property",
+            ),
+            pytest.param(
+                "tag",
+                True,
+                0.5,
+                r"`tag` is an attribute over `entity` with one dtype, but its "
+                r"types carry it as \{'Generator': 'bool', 'Load': 'float'\}",
+                id="attribute",
+            ),
+        ],
+    )
+    def test_a_custom_column_carried_with_two_dtypes_is_refused(
+        self, workspace, name, generator, load, match
+    ):
+        """A custom property or attribute of `entity` is one dtype, whichever types carry it.
+
+        Notes
+        -----
+        - [custom columns](https://energy-models.github.io/datarecord/pypsa/reference/#custom-columns)
+        """
         n = _north()
         n.add("Load", "demand", bus="north")
-        n.c.Generator.static["country"] = "DE"
-        n.c.Load.static["country"] = 1.0
+        n.c.Generator.static[name] = generator
+        n.c.Load.static[name] = load
 
-        with pytest.raises(ValueError, match="`country` is a property of `entity`"):
+        with pytest.raises(ValueError, match=match):
             PyPSA.to_datarecord(n, workspace.con)
+
+    @pytest.mark.parametrize(
+        ("line", "link", "bus", "placement", "dtype", "kept"),
+        [
+            pytest.param(
+                [np.nan, True],
+                np.nan,
+                None,
+                "attribute",
+                "bool",
+                [None, True],
+                id="float",
+            ),
+            pytest.param(
+                [np.nan, True],
+                None,
+                None,
+                "attribute",
+                "bool",
+                [None, True],
+                id="object",
+            ),
+            pytest.param(
+                [np.nan, True],
+                np.nan,
+                False,
+                "property",
+                "bool",
+                [None, True],
+                id="bool-property",
+            ),
+            pytest.param(
+                [np.nan, "cable"],
+                np.nan,
+                None,
+                "property",
+                "str",
+                [None, "cable"],
+                id="text",
+            ),
+        ],
+    )
+    def test_a_null_custom_column_takes_the_dtype_of_the_others(
+        self, store, line, link, bus, placement, dtype, kept
+    ):
+        """A type whose custom column is all NULL takes the dtype the other types give it, as an attribute or a property, its rows NULL.
+
+        Notes
+        -----
+        - [custom columns](https://energy-models.github.io/datarecord/pypsa/reference/#custom-columns)
+        """
+        n = _north()
+        n.add("Bus", "south")
+        n.add("Line", ["l1", "l2"], bus0="north", bus1="south", x=0.1)
+        n.add("Link", "k", bus0="north", bus1="south")
+        static = n.c.Line.static
+        static["underground"] = pd.Series(line, index=static.index, dtype=object)
+        n.c.Link.static["underground"] = link
+        if bus is not None:
+            n.c.Bus.static["underground"] = bus
+
+        record = export_network(n, store).record
+        if placement == "property":
+            declared = record.schema.properties["entity"]["underground"].dtype
+            rows = record.properties["entity"].df().set_index("entity")
+            values = rows["underground"].loc[["k", "l1", "l2"]]
+        else:
+            declared = record.schema.attributes["underground"].dtype
+            rows = record.attributes["underground"].df().set_index("entity")
+            values = rows["value"].reindex(["k", "l1", "l2"])
+        assert declared == dtype
+        held = [None if pd.isna(value) else value for value in values]
+        assert held == [None, *kept], "the link's rows are NULL"
 
     @pytest.mark.parametrize("name", ["scenario", "period", "entity"])
     def test_a_custom_column_named_like_a_key_is_refused(self, workspace, name):
@@ -1548,8 +1661,15 @@ class TestPyPSA:
             ),
             pytest.param(
                 lambda n: _with_bus_column(n, "country", ["DE", "XX"]),
-                r"names \['XX'\], no label of `country`",
+                r"names \['XX'\], no label of `country`: .* so add a `country` "
+                "shape for each, or set the value to NULL",
                 id="unknown-country",
+            ),
+            pytest.param(
+                lambda n: n.add("Carrier", "gas", bus="XX"),
+                r"names \['XX'\], no label of `bus`: .* so add each as a label of "
+                "`bus`, or set the value to NULL",
+                id="unknown-bus",
             ),
         ],
     )
@@ -3289,8 +3409,21 @@ class TestPyPSA:
             pytest.param(
                 _without_a_snapshot,
                 "sensitivity",
-                "'hi' holds other snapshots",
+                r"'hi' holds other snapshots than that of sensitivity 'lo': it "
+                r"lacks 1 of them, first .*; give every member the same snapshots",
                 id="snapshots",
+            ),
+            pytest.param(
+                _with_a_moved_snapshot,
+                "sensitivity",
+                r"it lacks 1 of them, first .* and holds 1 more, first .*; give",
+                id="moved-snapshot",
+            ),
+            pytest.param(
+                _with_reversed_snapshots,
+                "sensitivity",
+                "'hi' holds the snapshots of that of sensitivity 'lo' in another order",
+                id="snapshot-order",
             ),
         ],
     )
