@@ -46,6 +46,11 @@ The [scenario tutorial](tutorials/scenario.md) builds this from an empty store i
 
   What datarecord accepts, returns and refuses, and the format on disk.
 
+- :material-transmission-tower: **[PyPSA tool](pypsa/index.md)**
+
+  Solve a record with PyPSA and commit the results, alone or in a model
+  workflow.
+
 - :material-lightbulb-on-outline: **[About](about/index.md)**
 
   Why the design is the way it is, what it rejected, and what it leaves open.

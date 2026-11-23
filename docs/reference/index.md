@@ -31,6 +31,7 @@ How revisions stack, how a read combines them, and what is on disk.
 
 The tools that hand a record to a framework, and where to look up a word or a signature.
 
-- [Tools](tools.md): the tool's schema and the PyPSA tool.
+- [Tools](tools.md): the `Tool` protocol, `Requirements` and the tool's schema.
+- [The PyPSA tool](../pypsa/reference.md): what the PyPSA tool reads from a record and writes back, in the PyPSA tool section.
 - [Glossary](glossary.md): each project word and the page that defines it.
 - [Python API](api/index.md): every public name, rendered from its docstring.

@@ -20,7 +20,7 @@ A result is an attribute and is inherited, so a child that edits an input keeps 
 
 ### How can datarecord detect intermediate results that no longer fit their inputs?
 
-A results layer of the PyPSA tool replaces the SubNetworks of its base. A child that edits the topology keeps its parent's until the next solve ([tools](../reference/tools.md)). Marking them stale needs a list of the inputs that each came from.
+A results layer of the PyPSA tool replaces the SubNetworks of its base. A child that edits the topology keeps its parent's until the next solve ([the PyPSA tool](../pypsa/reference.md#writing-results)). Marking them stale needs a list of the inputs that each came from.
 
 ### Can a property's value name a label as the dim's own keyword?
 
@@ -80,11 +80,11 @@ PyPSA's `partial` includes `bus` so that a layer can patch one bus's `v_nom`, an
 
 ### Should removing a bus remove the connections at it?
 
-The PyPSA tool keeps a port's bus in the property `connection.bus`, so `remove` refuses a bus while a connection is at it ([layers](../reference/layers.md#removing-labels)). You remove those connections first ([tools](../reference/tools.md#ports)). A removal that cascades through a property referring to the dim would do both in one call, as a removed label already takes the tuples that contain it.
+The PyPSA tool keeps a port's bus in the property `connection.bus`, so `remove` refuses a bus while a connection is at it ([layers](../reference/layers.md#removing-labels)). You remove those connections first ([the PyPSA tool](../pypsa/reference.md#ports)). A removal that cascades through a property referring to the dim would do both in one call, as a removed label already takes the tuples that contain it.
 
 ### May `partial` name a coordinate of a multi-dim?
 
-`partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([tools](../reference/tools.md#writing-results)). With a coordinate in `partial`, `p` would be keyed by `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider fold key on every read of every attribute over `snapshot`.
+`partial` may name a multi-dim whole. A layer overrides an attribute one value per label along each dim in both its `dims` and `partial` ([layers](../reference/layers.md#partial)). So `period` in `partial` does not apply to a series over `snapshot`, the multi-dim over `(period, timestep)`. A per-period, myopic re-solve then restates the whole series, every other period's values included ([the PyPSA tool](../pypsa/reference.md#writing-results)). With a coordinate in `partial`, `p` would be keyed by `(attribute, connection, period)`, and the re-solve would restate its own period's series alone. The cost is a wider fold key on every read of every attribute over `snapshot`.
 
 ### Do selector keywords need a qualified form?
 
@@ -104,7 +104,7 @@ Schema versioning refuses it ([the schema](../reference/schema.md)). To allow it
 
 ### What does PyPSA#1474 land as?
 
-Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none. The PyPSA tool adds the first and stores the second as NULL today ([tools](../reference/tools.md)).
+Upstream making buses and carriers indices may turn an unlisted carrier into an error, or stop `""` meaning none. The PyPSA tool adds the first and stores the second as NULL today ([the PyPSA tool](../pypsa/reference.md#buses-and-carriers)).
 
 ### Can the checks at `set` and at write take the fold's fixed plan?
 
@@ -170,7 +170,7 @@ Every tuple, as a NULL on a dim means every label ([the data model](../reference
 
 ### What does `build` do with a value its type does not take?
 
-It leaves the value out and reports it in `Requirements.ignored`, as it reports an unknown type, and does not raise ([tools](../reference/tools.md)).
+It leaves the value out and reports it in `Requirements.ignored`, as it reports an unknown type, and does not raise ([the PyPSA tool](../pypsa/reference.md#a-value-its-type-does-not-take)).
 
 ### May a multi-dim in `partial` have categories?
 

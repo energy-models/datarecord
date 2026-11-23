@@ -29,7 +29,7 @@ Each record has a schema, which lists the dims (the labels that values vary alon
 
 On disk, each layer is a directory of parquet files (a common columnar file format). You can open these files with any parquet library, such as pandas or polars, without datarecord installed. However, to read a scenario combined across its layers, you need datarecord. In Python, every read returns a DuckDB relation (a query that has not run yet). DuckDB reads the files only when you call `.df()`, `.pl()` or `.to_arrow_table()`. The calls are the same whether the store is on a local disk or on S3.
 
-datarecord does not depend on any modelling framework. It needs only `duckdb`, `pydantic` and `mathspec`. A framework such as PyPSA reads a record through the [`RecordLike`](https://energy-models.github.io/datarecord/reference/record/) protocol, and a workflow engine writes one. So neither needs to know how the other works. The [PyPSA tool](https://energy-models.github.io/datarecord/howto/use-the-pypsa-tool/), which translates between a record and a PyPSA network, installs as an extra.
+datarecord does not depend on any modelling framework. It needs only `duckdb`, `pydantic` and `mathspec`. A framework such as PyPSA reads a record through the [`RecordLike`](https://energy-models.github.io/datarecord/reference/record/) protocol, and a workflow engine writes one. So neither needs to know how the other works. The [PyPSA tool](https://energy-models.github.io/datarecord/pypsa/use-the-tool/), which translates between a record and a PyPSA network, installs as an extra.
 
 <!-- --8<-- [end:docs-intro] -->
 

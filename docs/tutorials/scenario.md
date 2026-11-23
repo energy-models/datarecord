@@ -205,6 +205,6 @@ You have built a scenario as a child revision that contains one row, read it thr
 
 ## Where to next
 
-- [Solve a record with PyPSA](pypsa.md) writes a solve's results as a child revision.
+- [Solve a record with PyPSA](../pypsa/tutorial.md) writes a solve's results as a child revision.
 - [Branch and materialise](../howto/branch-and-materialise.md) covers siblings, navigating the tree and claims.
 - [Layers](../reference/layers.md) and [the fold](../reference/resolution.md) describe what a layer may contain and how rows of two layers combine.

@@ -14,16 +14,19 @@ this file.
 Each section does one job for the modeller who uses datarecord from Python.
 
 - **Tutorials** take the modeller from nothing to a record they can read back.
-  One builds a record from a schema, commits it to a store and reads it back.
-  One branches a scenario, and one solves a record with the PyPSA tool.
+  One builds a record from a schema, commits it to a store and reads it back,
+  and one branches a scenario.
 - **How-to guides** each finish one task: declare a schema, read a record,
-  select labels, edit, branch and materialise, store a record, use the PyPSA
-  tool, and present a framework's object as a record. The last is the tool
-  author's page.
+  select labels, edit, branch and materialise, store a record, and present a
+  framework's object as a record. The last is the tool author's page.
 - **Reference** describes what datarecord does: the data model, the schema's
   keys, the `RecordLike` protocol, `select`, `WorkingRecord`, layers, the
-  fold, the format on disk, `Workspace` and `Store`, and the tools. The
-  glossary lists each project word with a link to the page that defines it.
+  fold, the format on disk, `Workspace` and `Store`, and the `Tool` protocol.
+  The glossary lists each project word with a link to the page that defines
+  it.
+- **PyPSA tool** groups the PyPSA tool's tutorial, how-to guides and
+  reference in `docs/pypsa/`, so that they can move with the tool. Each page
+  keeps the shape of its kind, and `docs/pypsa/index.md` lists them.
 - **About** argues for the design: one interface over a directory and a tree,
   the data model's choices, write-once layers and `partial`, and the storage.
   Its open questions page lists what the design leaves unsettled.

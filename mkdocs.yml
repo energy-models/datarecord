@@ -30,7 +30,6 @@ nav:
       - tutorials/index.md
       - tutorials/first-record.md
       - tutorials/scenario.md
-      - tutorials/pypsa.md
   - How-to guides:
       - howto/index.md
       - howto/declare-a-schema.md
@@ -39,7 +38,6 @@ nav:
       - howto/edit-a-record.md
       - howto/branch-and-materialise.md
       - howto/store-a-record.md
-      - howto/use-the-pypsa-tool.md
       - howto/present-a-framework-object.md
   - Reference:
       - reference/index.md
@@ -61,6 +59,13 @@ nav:
           - reference/api/mutable.md
           - reference/api/store.md
           - reference/api/tools.md
+  - PyPSA tool:
+      - pypsa/index.md
+      - pypsa/tutorial.md
+      - pypsa/use-the-tool.md
+      - pypsa/export-a-workflow-network.md
+      - pypsa/solve-in-a-workflow.md
+      - Reference: pypsa/reference.md
   - About:
       - about/index.md
       - about/one-record.md
@@ -169,7 +174,7 @@ plugins:
         usage/editing.md: howto/edit-a-record.md
         usage/layers.md: howto/branch-and-materialise.md
         usage/storage.md: howto/store-a-record.md
-        usage/tools.md: howto/use-the-pypsa-tool.md
+        usage/tools.md: pypsa/use-the-tool.md
         design/index.md: about/index.md
         design/model/dims.md: reference/data-model.md
         design/model/multi-dims.md: reference/data-model.md
@@ -188,7 +193,7 @@ plugins:
         design/storage/store.md: reference/store.md
         design/storage/concurrency.md: reference/store.md
         design/tools/index.md: reference/tools.md
-        design/tools/pypsa.md: reference/tools.md
+        design/tools/pypsa.md: pypsa/reference.md
         design/package.md: development/package.md
         design/open-questions.md: about/open-questions.md
         design/proposals/dep-0001-dims-groups-traits.md: development/proposals/dep-0001-dims-groups-traits.md
@@ -239,6 +244,8 @@ plugins:
         design/module-layout.md: development/package.md
         usage/writing.md: howto/branch-and-materialise.md
         design/model/groups.md: reference/data-model.md
+        tutorials/pypsa.md: pypsa/tutorial.md
+        howto/use-the-pypsa-tool.md: pypsa/use-the-tool.md
   - mkdocstrings:
       handlers:
         python:
