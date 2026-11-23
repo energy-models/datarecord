@@ -1423,7 +1423,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
+        - [custom columns](https://energy-models.github.io/datarecord/pypsa/reference/#custom-columns)
         """
         n = _north()
         n.add("Load", "demand", bus="north")
@@ -1481,7 +1481,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
+        - [custom columns](https://energy-models.github.io/datarecord/pypsa/reference/#custom-columns)
         """
         n = _north()
         n.add("Bus", "south")
