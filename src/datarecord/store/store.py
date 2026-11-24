@@ -62,10 +62,16 @@ from datarecord.store.manifest import (
     merge_meta,
 )
 from datarecord.store.materialise import materialise, sources_to_read
-from datarecord.store.write import joined_by_label, layer_data, write_layer
+from datarecord.store.write import carrying, layer_data, write_layer
 from datarecord.templates import Templates
 
 logger = logging.getLogger(__name__)
+
+#: Why a `WorkingRecord`, or its edits, refuses `keep_properties`.
+_KEEPS_EVERY_PROPERTY = (
+    "a `WorkingRecord` keeps every property it does not edit, so it takes no "
+    "`keep_properties`"
+)
 
 #: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
 _SECRET = "datarecord_s3"
@@ -879,6 +885,8 @@ class Store:
                     "over, so it takes no `parent`"
                 )
                 raise TypeError(msg)
+            if keep_properties:
+                raise TypeError(_KEEPS_EVERY_PROPERTY)
             parent = self._base_of(source)
         elif parent is _Base.OF_WORKING_RECORD:
             msg = "`commit` needs a `parent=`, `None` for a new root"
@@ -1362,11 +1370,7 @@ class Claim(_OfStore):
             source = source.edits
         staged = source if isinstance(source, StagedSource) else None
         if keep_properties and staged is not None:
-            msg = (
-                "a `WorkingRecord` keeps every property it does not edit, so it "
-                "takes no `keep_properties`"
-            )
-            raise TypeError(msg)
+            raise TypeError(_KEEPS_EVERY_PROPERTY)
         if staged is not None and staged.base != self.parent:
             msg = (
                 f"these edits were staged over revision {staged.base}, so they "
@@ -1404,12 +1408,18 @@ class Claim(_OfStore):
         parent = None if self.parent is None else store.revision(self.parent)
         data = layer_data(source, store.workspace.con)
         schema = data.schema
+        kept: dict[str, list[str]] = {}
         if parent is not None and keep_properties:
             schema = _keeping_properties(schema, parent.manifest.schema)
-            for name in _kept(schema, data.schema):
-                logger.info(
-                    "revision %s keeps property %s of its parent", self.id, name
-                )
+            kept = _kept(schema, data.schema)
+            for dim, names in kept.items():
+                for name in names:
+                    logger.info(
+                        "revision %s keeps property %s.%s of its parent",
+                        self.id,
+                        dim,
+                        name,
+                    )
         if parent is not None:
             problems = schema.compatible_with(parent.manifest.schema)
             if problems:
@@ -1419,8 +1429,8 @@ class Claim(_OfStore):
                 )
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
-            if base is not None and keep_properties:
-                data = _Carrying(data, schema, base, store.workspace.con)
+            if base is not None and kept:
+                data = carrying(data, schema, kept, base, store.workspace.con)
             written = write_layer(
                 data,
                 store.layer_dir(self.id),
@@ -1450,44 +1460,13 @@ def _keeping_properties(schema: Schema, parent: Schema) -> Schema:
     return schema.model_validate({**schema.model_dump(), "properties": properties})
 
 
-def _kept(schema: Schema, own: Schema) -> list[str]:
-    """The properties `schema` declares and `own` does not, each as `dim.name`."""
-    return [
-        f"{dim}.{name}"
+def _kept(schema: Schema, own: Schema) -> dict[str, list[str]]:
+    """The properties `schema` declares and `own` does not, by subject."""
+    kept = {
+        dim: [name for name in props if name not in own.properties.get(dim, {})]
         for dim, props in schema.properties.items()
-        for name in props
-        if name not in own.properties.get(dim, {})
-    ]
-
-
-class _Carrying:
-    """`data` under `schema`, each axis with the parent's value of a property it lacks, by label."""
-
-    def __init__(
-        self, data: LayerData, schema: Schema, parent: Record, con: DuckDBPyConnection
-    ) -> None:
-        self._data = data
-        self.schema = schema
-        self._parent = parent
-        self._con = con
-
-    def axes(self) -> set[str]:
-        return self._data.axes()
-
-    def attributes(self) -> set[str]:
-        return self._data.attributes()
-
-    def attribute(self, name: str) -> DuckDBPyRelation | None:
-        return self._data.attribute(name)
-
-    def axis(self, dim: str) -> DuckDBPyRelation | None:
-        axis = self._data.axis(dim)
-        kept = self._parent.properties.get(dim)
-        if axis is None or kept is None:
-            return axis
-        declared = self.schema.properties.get(dim, {})
-        carried = [c for c in kept.columns if c in declared and c not in axis.columns]
-        return joined_by_label(axis, kept, dim, carried, self._con)
+    }
+    return {dim: names for dim, names in kept.items() if names}
 
 
 _MANIFESTS = """

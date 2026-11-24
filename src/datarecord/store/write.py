@@ -47,7 +47,7 @@ from datarecord.settle import unsettled
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Mapping, Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -70,7 +70,29 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     return _RecordLikeAsLayerData(source, con)
 
 
-def joined_by_label(
+def carrying(
+    data: LayerData,
+    schema: Schema,
+    kept: Mapping[str, Sequence[str]],
+    parent: RecordLike,
+    con: DuckDBPyConnection,
+) -> LayerData:
+    """Return `data` under `schema`, each axis it writes with `parent`'s values of `kept`.
+
+    Parameters
+    ----------
+    kept
+        The properties to keep, by subject: those `parent` declares and
+        `data`'s schema omits. A label `parent` lacks reads NULL in each.
+
+    Notes
+    -----
+    - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#keep_properties)
+    """
+    return _Carrying(data, schema, kept, parent, con)
+
+
+def _joined_by_label(
     axis: DuckDBPyRelation,
     values: DuckDBPyRelation,
     dim: str,
@@ -685,10 +707,45 @@ class _RecordLikeAsLayerData:
         if props is None:
             return axis
         values = [c for c in props.columns if c not in axis.columns]
-        return joined_by_label(axis, props, dim, values, self._con)
+        return _joined_by_label(axis, props, dim, values, self._con)
 
     def attributes(self) -> set[str]:
         return set(self._attributes)
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         return self._read(self._attributes, name)
+
+
+class _Carrying:
+    """`data` under `schema`, each axis with `parent`'s values of the `kept` properties."""
+
+    def __init__(
+        self,
+        data: LayerData,
+        schema: Schema,
+        kept: Mapping[str, Sequence[str]],
+        parent: RecordLike,
+        con: DuckDBPyConnection,
+    ) -> None:
+        self._data = data
+        self.schema = schema
+        self._kept = kept
+        self._parent = parent
+        self._con = con
+
+    def axes(self) -> set[str]:
+        return self._data.axes()
+
+    def attributes(self) -> set[str]:
+        return self._data.attributes()
+
+    def attribute(self, name: str) -> DuckDBPyRelation | None:
+        return self._data.attribute(name)
+
+    def axis(self, dim: str) -> DuckDBPyRelation | None:
+        axis = self._data.axis(dim)
+        parents = self._parent.properties.get(dim)
+        if axis is None or parents is None:
+            return axis
+        carried = [c for c in self._kept.get(dim, ()) if c not in axis.columns]
+        return _joined_by_label(axis, parents, dim, carried, self._con)
