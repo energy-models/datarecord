@@ -128,7 +128,7 @@ def fold_layer(
     if own is None:
         return kept
     own = keep(own)
-    kept = keep(_uncovered_by(kept, own, schema))
+    kept = keep(_uncovered_by(kept, own, schema, frozen=refuse is not None))
     crossing = pattern(schema.partial_dimensions, shape).bit_count() >= 2
     if refuse is not None:
         within = _meeting(kept, own, schema, shape, _not_within)
@@ -201,7 +201,7 @@ def _expanded(
 
 
 def _uncovered_by(
-    kept: DuckDBPyRelation, own: DuckDBPyRelation, schema: Schema
+    kept: DuckDBPyRelation, own: DuckDBPyRelation, schema: Schema, *, frozen: bool
 ) -> DuckDBPyRelation:
     """`kept` without each row a row of `own` covers naming no `partial` dimension it leaves NULL.
 
@@ -214,12 +214,28 @@ def _uncovered_by(
     `kept` is read once, on the left, and the window is partitioned by the
     index, so a filter on `attribute` or a dimension reaches every scan of
     `kept`, which the right side of a semi- or anti-join would not carry.
+
+    Parameters
+    ----------
+    frozen
+        Whether `own` is a frozen layer's rows, folded once: its copies are
+        then only the subsets some own row names, and the whole set. A read
+        folding a staged layer keeps every subset, a plan that aggregates no
+        own row first.
     """
     dims = schema.partial_dimensions
     columns = kept.columns
-    probe = _expanded(
-        kept, schema, sql("list_filter(range(_p + 1), lambda x: (x & _p) = x)")
-    )
+    if frozen:
+        named = own.project(null_pattern(dims).alias("_q")).aggregate(
+            [sql("coalesce(list(DISTINCT _q), []) AS _named")]
+        )
+        choices = "list_filter(_named, lambda x: (x & _p) = x AND x <> _p)"
+        probe = _expanded(kept.cross(named), schema, sql(f"list_append({choices}, _p)"))
+        probe = probe.project(star(exclude=["_named"]))
+    else:
+        probe = _expanded(
+            kept, schema, sql("list_filter(range(_p + 1), lambda x: (x & _p) = x)")
+        )
     keys = own.project(
         col("attribute").alias("_o_attribute"),
         null_pattern(dims).alias("_o__p"),
@@ -643,6 +659,11 @@ def _fold_map(
     cast and keyed by that node's schema, and only the sources above it are
     folded on top.
 
+    Where `made` is given, the attributes are folded in groups by the
+    sources holding them (`_by_holders`), so a source folds onto the rows of
+    the attributes it holds alone, and the rows of an attribute no source
+    holds past the first are read once, never copied.
+
     Notes
     -----
     - [one fold for every axis](https://energy-models.github.io/datarecord/reference/resolution/#axes)
@@ -657,7 +678,35 @@ def _fold_map(
         keyed, dead = base.axes.schema, base.axes.dead
         maps = _by_shape(cast_declared(keyed, base.owner_map), keyed)
         held = {name: base.axes.get(name) for name in _pruned(schema)}
-    return _fold_onto(maps, restated(above, held, dead), con, keyed=keyed, made=made)
+    restates = restated(above, held, dead)
+    if made is None:
+        return _fold_onto(maps, restates, con, keyed=keyed)
+    folded: dict[Shape, list[DuckDBPyRelation]] = {}
+    for names in _by_holders([r.source for r in restates], schema.attributes):
+        seed = _of(maps, keyed, names)
+        rels = _fold_onto(seed, restates, con, keyed=keyed, made=made, attributes=names)
+        for shape, rel in rels.items():
+            folded.setdefault(shape, []).append(rel)
+    return {shape: union_all_by_name(rels) for shape, rels in folded.items()}
+
+
+def _by_holders(
+    sources: Sequence[LayerSource], attributes: Iterable[str]
+) -> list[list[str]]:
+    """`attributes` grouped by which of `sources` hold each."""
+    held = [source.attributes() for source in sources]
+    groups: dict[tuple[bool, ...], list[str]] = {}
+    for a in attributes:
+        groups.setdefault(tuple(a in h for h in held), []).append(a)
+    return list(groups.values())
+
+
+def _of(
+    maps: Mapping[Shape, DuckDBPyRelation], schema: Schema, names: Iterable[str]
+) -> dict[Shape, DuckDBPyRelation]:
+    """The map `maps`, one relation per shape under `schema`, of the attributes `names` alone."""
+    grouped = shapes(schema, (a for a in names if a in schema.attributes))
+    return {s: maps[s].filter(_isin(n)) for s, n in grouped.items() if s in maps}
 
 
 def _fold_at_hand(source: LayerSource) -> Fold | None:
@@ -667,7 +716,7 @@ def _fold_at_hand(source: LayerSource) -> Fold | None:
 
 @contextmanager
 def _checkpointed(sources: Sequence[LayerSource]) -> Iterator[DuckDBPyRelation]:
-    """`_fold_map` with each source's fold but the last kept in a temporary table per shape, every one dropped on exit, `_stamped`.
+    """`_fold_map` with the pieces of each source's fold read more than once kept in temporary tables, every one dropped on exit, `_stamped`.
 
     The relation entered reads those tables, so it is read once, before exit.
     """
@@ -691,22 +740,6 @@ def _checkpoint(
     name = temp_table(con, rel, "fold")
     made[name] = con.table(name)
     return made[name]
-
-
-def _drop_unread(
-    made: dict[str, DuckDBPyRelation],
-    read: Iterable[DuckDBPyRelation],
-    con: DuckDBPyConnection,
-) -> None:
-    """Drop each table `made` records whose relation is none of `read`, the rest staying recorded there.
-
-    Matched by identity rather than alias, which a projection inherits from
-    the table it reads; `made` holding each relation keeps its identity its own.
-    """
-    read_ids = {id(rel) for rel in read}
-    for name in [n for n, rel in made.items() if id(rel) not in read_ids]:
-        con.execute(f"DROP TABLE {name}")
-        del made[name]
 
 
 def _pruned(schema: Schema) -> tuple[str, ...]:
@@ -810,10 +843,10 @@ def _fold_onto(
     source's schema, and each shape folds on its own (`fold_layer`). Each
     source drops the labels its restatements remove (`restated`).
 
-    Where `made` is given, each source's fold but the last is kept in a table
-    per shape before the next folds onto it, and so are the labels it removes
-    and the pieces of its fold read more than once (`fold_layer`); a relation
-    already a table is not copied. The tables the map is read from are left
+    Where `made` is given, the labels each source removes and the pieces of
+    its fold read more than once are kept in tables (`fold_layer`); a
+    relation already a table is not copied. A source's fold is read once, by
+    the next, so it stays a relation over those tables. The tables are left
     recorded in `made`, for the caller to drop once it has read the map
     (`_checkpointed`).
 
@@ -859,9 +892,6 @@ def _fold_onto(
             )
             if rel is not None:
                 folded[shape] = rel
-        if made is not None and source is not layers[-1]:
-            folded = {shape: keep(rel) for shape, rel in folded.items()}
-            _drop_unread(made, folded.values(), con)
         maps = folded
     return maps
 
