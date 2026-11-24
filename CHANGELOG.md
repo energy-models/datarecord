@@ -9,7 +9,7 @@ SPDX-License-Identifier: CC-BY-4.0
 All notable changes to datarecord are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## v0.1.0a2 (2026-11-24)
 
 ### Added
 
@@ -321,6 +321,8 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Changed
 
+- datarecord depends on the released mathspec 0.5.0a1 from PyPI, in place of
+  a pinned git commit.
 - Breaking: the PyPSA tool keys `connection` by `(entity, port)`, where the
   port is PyPSA's number in `bus0`, `bus1`, ... and a one-port type's `bus` is
   port 0. The bus is the property `connection.bus`, and the dimension `role` and the

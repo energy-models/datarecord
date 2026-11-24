@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status   | Implemented (2026-11-04)                                                                                                                                                       |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md), [DEP 23](dep-0023-multi-dims.md), [DEP 24](dep-0024-categories-are-enum-dimensions.md) |
 | Created  | 2026-11-02                                                                                                                                                                     |
-| Version  | Unreleased                                                                                                                                                                     |
+| Version  | v0.1.0a2                                                                                                                                                                       |
 
 The design landed in [selecting](../../reference/selecting.md), [select a view](../../howto/select-a-view.md) and [open questions](../../about/open-questions.md). Where they and this DEP differ, follow those pages.
 
