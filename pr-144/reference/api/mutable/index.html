@@ -2026,12 +2026,12 @@ reaches - <code>ctype="Generator"</code>, or a list of values - and selects
 the labels of that dimension matching it on the record as staged, the
 keywords combining as an intersection; <code>set</code> writes one row per label,
 and stores nothing of the filter, so a label added later is not reached.
-A property of a multi-dimension <code>name</code> is over - <code>role="output"</code> -
-selects its tuples the same way, narrowed by any keyword naming one of
-its fields. On a multi-dimension's property, the keywords select its
-tuples as on an attribute over it: <code>set("connection.note", v,
-role="output")</code> patches the output connections, and <code>ctype="Link"</code>
-the connections of links.</p>
+A property of a multi-dimension <code>name</code> is over - <code>bus="north"</code> for a
+<code>connection.bus</code> - selects its tuples the same way, narrowed by any
+keyword naming one of its fields. On a multi-dimension's property, the
+keywords select its tuples as on an attribute over it:
+<code>set("connection.note", v, bus="north")</code> patches the connections at
+<code>north</code>, and <code>ctype="Link"</code> the connections of links.</p>
 
 
 <p><span class="doc-section-title">Parameters:</span></p>
@@ -2323,12 +2323,12 @@ does not fit its dtype, timestamps with a time zone among them.</p>
 <a id="__codelineno-0-917" name="__codelineno-0-917"></a><span class="sd">    the labels of that dimension matching it on the record as staged, the</span>
 <a id="__codelineno-0-918" name="__codelineno-0-918"></a><span class="sd">    keywords combining as an intersection; `set` writes one row per label,</span>
 <a id="__codelineno-0-919" name="__codelineno-0-919"></a><span class="sd">    and stores nothing of the filter, so a label added later is not reached.</span>
-<a id="__codelineno-0-920" name="__codelineno-0-920"></a><span class="sd">    A property of a multi-dimension `name` is over - `role="output"` -</span>
-<a id="__codelineno-0-921" name="__codelineno-0-921"></a><span class="sd">    selects its tuples the same way, narrowed by any keyword naming one of</span>
-<a id="__codelineno-0-922" name="__codelineno-0-922"></a><span class="sd">    its fields. On a multi-dimension's property, the keywords select its</span>
-<a id="__codelineno-0-923" name="__codelineno-0-923"></a><span class="sd">    tuples as on an attribute over it: `set("connection.note", v,</span>
-<a id="__codelineno-0-924" name="__codelineno-0-924"></a><span class="sd">    role="output")` patches the output connections, and `ctype="Link"`</span>
-<a id="__codelineno-0-925" name="__codelineno-0-925"></a><span class="sd">    the connections of links.</span>
+<a id="__codelineno-0-920" name="__codelineno-0-920"></a><span class="sd">    A property of a multi-dimension `name` is over - `bus="north"` for a</span>
+<a id="__codelineno-0-921" name="__codelineno-0-921"></a><span class="sd">    `connection.bus` - selects its tuples the same way, narrowed by any</span>
+<a id="__codelineno-0-922" name="__codelineno-0-922"></a><span class="sd">    keyword naming one of its fields. On a multi-dimension's property, the</span>
+<a id="__codelineno-0-923" name="__codelineno-0-923"></a><span class="sd">    keywords select its tuples as on an attribute over it:</span>
+<a id="__codelineno-0-924" name="__codelineno-0-924"></a><span class="sd">    `set("connection.note", v, bus="north")` patches the connections at</span>
+<a id="__codelineno-0-925" name="__codelineno-0-925"></a><span class="sd">    `north`, and `ctype="Link"` the connections of links.</span>
 <a id="__codelineno-0-926" name="__codelineno-0-926"></a>
 <a id="__codelineno-0-927" name="__codelineno-0-927"></a><span class="sd">    Parameters</span>
 <a id="__codelineno-0-928" name="__codelineno-0-928"></a><span class="sd">    ----------</span>
