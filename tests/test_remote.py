@@ -8,14 +8,17 @@ Skipped unless `DATARECORD_TEST_S3_ENDPOINT` names an S3 endpoint honouring
 conditional writes atomically - SeaweedFS 4.18 or later, which Manta deploys.
 A mock would pass exactly the tests the headers exist for. To run them::
 
-    docker run --rm -p 8333:8333 -e AWS_ACCESS_KEY_ID=datarecord \
+    docker run --rm --name seaweedfs -p 8333:8333 -e AWS_ACCESS_KEY_ID=datarecord \
         -e AWS_SECRET_ACCESS_KEY=datarecord chrislusf/seaweedfs:4.18 server -s3
+    echo "s3.configure -user=denied -access_key=denied -secret_key=denied \
+        -actions=Read,List -buckets=elsewhere -apply" | docker exec -i seaweedfs weed shell
     DATARECORD_TEST_S3_ENDPOINT=http://localhost:8333 pixi run pytest tests/test_remote.py
 
 Each test creates its own bucket. The credentials are `AWS_ACCESS_KEY_ID` and
 `AWS_SECRET_ACCESS_KEY` where set, and `datarecord` otherwise, which the server
-above is started with: SeaweedFS 4.18 refuses an unknown key. `AWS_PROFILE`
-must be unset, or botocore reads that profile instead.
+above is started with: SeaweedFS 4.18 refuses an unknown key. The key `denied`
+may read and list the bucket `elsewhere` only. `AWS_PROFILE` must be unset, or
+botocore reads that profile instead.
 
 Notes
 -----
@@ -24,7 +27,9 @@ Notes
 """
 
 import os
+import re
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from uuid import UUID, uuid4
@@ -33,7 +38,7 @@ import duckdb
 import pandas as pd
 import pytest
 
-from datarecord import Workspace
+from datarecord import Store, Workspace
 from datarecord.store.files import PreconditionFailedError, RemoteFiles
 from tests.fixtures import relation, widened
 from tests.test_write import _SCHEMA, _long, _Source
@@ -165,3 +170,39 @@ def test_a_standalone_write_to_a_non_empty_uri_is_refused(workspace, bucket):
     with pytest.raises(FileExistsError, match="does not exist yet"):
         workspace.write(_Source(_SCHEMA, attributes={"p_nom": _long()}), out)
     assert files.list(out) == ["stray.txt"], "refused before anything was written"
+
+
+@pytest.mark.parametrize(
+    "call",
+    [
+        lambda store, ids: store.revision(ids[0]),
+        lambda store, ids: store.revisions(),
+        lambda store, ids: store.claims(),
+        lambda store, ids: store.cleanup(ids=ids[1:]),
+        lambda store, ids: store.cleanup(older_than=timedelta(0)),
+    ],
+    ids=["revision", "revisions", "claims", "cleanup-ids", "cleanup-older"],
+)
+def test_a_denied_read_raises_and_deletes_nothing(
+    workspace, bucket, monkeypatch, call: Callable[[Store, list[UUID]], object]
+):
+    """A token scoped to another bucket meets a 403, never what looks like absent data."""
+    store = workspace.store(f"{bucket}/record")
+    root = store.commit(_Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None)
+    pending = store.claim(parent=root)
+    layers = sorted(store.files.list(f"{store.uri}/layers/"))
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "denied")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "denied")
+    monkeypatch.setattr("boto3.DEFAULT_SESSION", None)
+    elsewhere = Workspace()
+    try:
+        denied = re.escape(store.uri) + ".*AccessDenied"
+        with pytest.raises(PermissionError, match=denied):
+            call(elsewhere.store(store.uri), [root.id, pending.id])
+    finally:
+        elsewhere.close()
+
+    assert sorted(store.files.list(f"{store.uri}/layers/")) == layers
+    assert store.files.exists(store.manifest_uri(root.id)), "the revision stays"
+    assert store.files.exists(store.claim_uri(pending.id)), "and so does the claim"

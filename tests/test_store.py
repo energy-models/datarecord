@@ -13,7 +13,9 @@ Notes
 import json
 import math
 import pickle
+import re
 from collections import Counter
+from collections.abc import Callable, Iterator
 from datetime import timedelta
 from functools import partial
 from pathlib import Path
@@ -22,13 +24,14 @@ from uuid import uuid4
 import duckdb
 import pandas as pd
 import pytest
+from botocore.stub import Stubber
 from pydantic import ValidationError
 
 from datarecord import Claim, Revision, Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.specs import Dimension
 from datarecord.store import write
-from datarecord.store.files import LocalFiles, PreconditionFailedError
+from datarecord.store.files import LocalFiles, PreconditionFailedError, RemoteFiles
 from tests.fixtures import (
     broadcast,
     empty_child,
@@ -187,6 +190,98 @@ def test_a_second_claim_of_an_id_fails(store, committed):
     uri = store.claim_uri(claim.id)
     with pytest.raises(PreconditionFailedError):
         store._read_claim(claim.id).write(store.files, uri)
+
+
+_KEY = "s3://bucket/record/layers/x/manifest.json"
+
+
+@pytest.fixture
+def s3(monkeypatch) -> Iterator[tuple[RemoteFiles, Stubber]]:
+    """`RemoteFiles` whose S3 client answers only what the test stubs."""
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "stub")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "stub")
+    files = RemoteFiles()
+    with Stubber(files._s3) as stub:
+        yield files, stub
+        stub.assert_no_pending_responses()
+
+
+def test_an_absent_s3_key_is_a_miss(s3):
+    """S3 answers 404 for a key it does not hold, to a caller with ListBucket.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    stub.add_client_error("get_object", "NoSuchKey", http_status_code=404)
+    stub.add_client_error("head_object", "404", http_status_code=404)
+    stub.add_response("list_objects_v2", {"KeyCount": 0})
+    assert files.read_text(_KEY) is None
+    assert not files.exists(_KEY), "a 404 on HEAD falls back to a listing"
+
+
+@pytest.mark.parametrize(
+    ("operations", "call"),
+    [
+        (["get_object"], lambda files: files.read_text(_KEY)),
+        (["put_object"], lambda files: files.create(_KEY, "{}")),
+        (["list_objects_v2"], lambda files: files.list(_KEY)),
+        (["head_object"], lambda files: files.exists(_KEY)),
+        (["head_object", "list_objects_v2"], lambda files: files.exists(_KEY)),
+        (["list_objects_v2"], lambda files: files.delete(f"{_KEY}/")),
+    ],
+    ids=["read_text", "create", "list", "exists", "exists-listing", "delete"],
+)
+def test_a_denied_s3_call_raises_naming_the_uri(
+    s3, operations: list[str], call: Callable[[RemoteFiles], object]
+):
+    """A 403 is no miss: a token scoped elsewhere fails loudly.
+
+    Every operation but the last answers 404, the last 403.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    *missed, denied = operations
+    for operation in missed:
+        stub.add_client_error(operation, "404", http_status_code=404)
+    stub.add_client_error(denied, "AccessDenied", http_status_code=403)
+    with pytest.raises(PermissionError, match=re.escape(_KEY)):
+        call(files)
+
+
+@pytest.mark.parametrize(
+    ("codes", "raised"),
+    [
+        (["AccessDenied", "AccessDenied"], PermissionError),
+        (["AccessDenied", "InternalError"], OSError),
+    ],
+    ids=["denied", "failed"],
+)
+def test_an_s3_delete_refused_key_by_key_raises(
+    s3, codes: list[str], raised: type[OSError]
+):
+    """S3 answers a batch delete with 200 and an error per key it refused.
+
+    Only where every refusal is `AccessDenied` is the delete denied.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    keys = [f"record/layers/x/{i}" for i in range(len(codes))]
+    stub.add_response("list_objects_v2", {"Contents": [{"Key": k} for k in keys]})
+    errors = [{"Key": k, "Code": c} for k, c in zip(keys, codes, strict=True)]
+    stub.add_response("delete_objects", {"Errors": errors})
+    with pytest.raises(raised, match=re.escape("s3://bucket/record/layers/x/")) as e:
+        files.delete("s3://bucket/record/layers/x/")
+    assert type(e.value) is raised, "a mixed refusal is no PermissionError"
 
 
 def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
