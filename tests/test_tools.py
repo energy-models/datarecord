@@ -667,7 +667,7 @@ _SNAPSHOT_SELECTIONS = pytest.mark.parametrize(
 
 
 class _SnapshotCluster:
-    """A layer over `record` declaring `snapshot.cluster`, each run of three snapshots one cluster."""
+    """`record` with `snapshot.cluster`, one cluster per three snapshots."""
 
     def __init__(self, record):
         snapshot = record.schema.properties.get("snapshot", {})
@@ -2274,7 +2274,7 @@ class TestPyPSA:
         assert child.c.Generator.static.at[entity, attr] == expected
 
     def test_a_full_export_over_base_keeps_a_property_base_declares(self, exported):
-        """A snapshot property `base` declares and the network lacks is declared and filled from `base`.
+        """Issue #164.
 
         Notes
         -----

@@ -71,9 +71,7 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
 
 
 def carrying(data: LayerData, parent: RecordLike, con: DuckDBPyConnection) -> LayerData:
-    """Return `data`, each axis it writes with `parent`'s values of the declared property columns it lacks.
-
-    The columns are joined by label, and a label `parent` lacks reads NULL.
+    """Return `data` with each axis filling its missing declared property columns from `parent`.
 
     Notes
     -----
@@ -89,11 +87,9 @@ def _joined_by_label(
     columns: Sequence[str],
     con: DuckDBPyConnection,
 ) -> DuckDBPyRelation:
-    """`axis` with `columns` of `values` joined on the label `dim`, in `axis`'s row order.
+    """`axis` with `columns` of `values` left-joined on `dim`, in `axis`'s row order.
 
-    A label `values` lacks has NULL in each of `columns`. The row is numbered
-    on `axis` alone, and the `ORDER BY` on it is the outermost clause, since a
-    join defines no order.
+    The `ORDER BY` is the outermost clause, since a join defines no order.
     """
     if not columns:
         return axis
@@ -707,7 +703,7 @@ class _RecordLikeAsLayerData:
 
 
 class _Carrying:
-    """`data`, each axis with `parent`'s values of the declared property columns it lacks."""
+    """`carrying`'s result."""
 
     def __init__(
         self, data: LayerData, parent: RecordLike, con: DuckDBPyConnection

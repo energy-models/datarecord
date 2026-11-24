@@ -844,8 +844,7 @@ class Store:
         A `WorkingRecord` brings its parent, the revision it was built over,
         and is written as its edits, a delta against that revision. Any other
         source names its `parent`, `None` for a new root, and is written
-        whole, each axis file taking `parent`'s values of a declared property
-        whose column it lacks.
+        whole.
 
         Raises
         ------
@@ -1297,9 +1296,8 @@ class Claim(_OfStore):
         The data goes straight into the layer directory; the manifest, written
         create-only and last, lists its files, its full schema, the claim's
         parent and the claim's `meta` with `meta` added. A `WorkingRecord` is
-        written as its edits. Under a parent, each axis file the layer writes
-        without the column of a property the schema declares takes the
-        parent's values of it by label, NULL on a new label.
+        written as its edits. A declared property column an axis file lacks
+        takes the parent's values.
 
         Parameters
         ----------

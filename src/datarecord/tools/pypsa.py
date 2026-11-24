@@ -2712,10 +2712,7 @@ class _NetworkSource:
     def schema(self) -> RecordSchema:
         """The registry's schema, widened by this network's shapes, custom columns, multi-period `snapshot` and `meta`, then by `base`'s properties.
 
-        A custom text property named like a dimension refers to it. A
-        property `base` declares on a dimension of the export, and the export
-        does not, is declared with `base`'s spec, so the store fills its
-        column from `base`.
+        A custom text property named like a dimension refers to it.
 
         Notes
         -----
