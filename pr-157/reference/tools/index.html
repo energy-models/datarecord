@@ -1990,12 +1990,12 @@ Their <code>schema</code> is empty, because the record's names are PyPSA's.</p>
 <td>a standard type</td>
 </tr>
 <tr>
-<td><code>connection</code></td>
-<td>a multi-dimension over <code>(entity, bus)</code>: one port of a component</td>
+<td><code>port</code></td>
+<td>a port's number, as in PyPSA's <code>bus0</code>, <code>bus1</code>, …</td>
 </tr>
 <tr>
-<td><code>role</code></td>
-<td>a dimension with <code>one_of</code>: <code>input</code>, <code>output</code> and <code>attached</code></td>
+<td><code>connection</code></td>
+<td>a multi-dimension over <code>(entity, port)</code>: one port of a component</td>
 </tr>
 <tr>
 <td><code>snapshot</code></td>
@@ -2037,12 +2037,14 @@ Their <code>schema</code> is empty, because the record's names are PyPSA's.</p>
 </tr>
 <tr>
 <td><code>connection</code></td>
-<td><code>role</code></td>
+<td><code>bus</code></td>
 </tr>
 </tbody>
 </table>
-<p><code>partial</code> is <code>{"entity", "bus", "scenario", "connection"}</code>.
-<code>to_datarecord</code> writes no axis of <code>ctype</code> or <code>role</code>, since a dimension with <code>one_of</code> lists its labels.
+<p><code>partial</code> is <code>{"entity", "bus", "port", "scenario", "connection"}</code>.
+<code>to_datarecord</code> writes no axis of <code>ctype</code>, since a dimension with <code>one_of</code> lists its labels.
+Its <code>port</code> axis lists ports 0 and 1, which PyPSA's registry declares, and any further port a connection has, in ascending order.
+So you can add a component's connections at ports 0 and 1 without adding a port first.
 Every other registry input is an attribute, <code>p_nom</code> among them.
 Every component attribute is over <code>scenario</code>, except those PyPSA keeps the same in every scenario.
 These are <code>active</code>, <code>build_year</code>, <code>committable</code>, <code>lifetime</code>, <code>weight</code>, <code>*_nom_extendable</code>, <code>*_nom_mod</code> and the results <code>*_nom_opt</code>.</p>
@@ -2078,7 +2080,7 @@ These are <code>active</code>, <code>build_year</code>, <code>committable</code>
 </tr>
 <tr>
 <td><code>unsupported_values</code></td>
-<td>each attribute stored as a curve, or varying along a dimension PyPSA holds it without</td>
+<td>each attribute stored as a curve, or varying along a dimension PyPSA holds it without, such as a <code>bus</code> at a port its type lacks, a one-port type's at a port but 0</td>
 </tr>
 <tr>
 <td><code>ignored</code></td>
@@ -2153,7 +2155,9 @@ Every registry column of a type is a property of its dimension, so <code>transfo
 <code>to_datarecord</code> writes only the types that PyPSA's library lacks, and <code>build</code> adds them to the new network's library.
 A library type has the library's values in the built network.</p>
 <h3 id="ports">Ports<a class="headerlink" href="#ports" title="Permanent link">&para;</a></h3>
-<p>Each port of a component is a <code>connection</code> tuple <code>(entity, bus)</code>, and a per-port input or result is an attribute over <code>connection</code>.
+<p>Each port of a component is a <code>connection</code> tuple <code>(entity, port)</code>, and the property <code>connection.bus</code> is the bus the port attaches to.
+The port is PyPSA's number in <code>bus0</code>, <code>bus1</code>, …, and a one-port component has its <code>bus</code> at port 0.
+A per-port input or result is an attribute over <code>connection</code>.
 <code>build</code> turns the tuples of a component back into PyPSA's numbered columns:</p>
 <figure class="diagram">
 <!--
@@ -2161,8 +2165,8 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 210" width="780" height="210" style="max-width: 100%; height: auto" role="img" aria-labelledby="tp-t tp-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="tp-t">build places a component's ports by connection order</title>
-  <desc id="tp-d">The record contains the connection tuples link1 north, with role input, and link1 south, with role output, and efficiency 0.9 on link1 south. build writes n.links with bus0 north, bus1 south and efficiency 0.9.</desc>
+  <title id="tp-t">build places a component's ports by their number</title>
+  <desc id="tp-d">The record contains the connection tuples link1 0, at bus north, and link1 1, at bus south, and efficiency 0.9 on link1 1. build writes n.links with bus0 north, bus1 south and efficiency 0.9.</desc>
   <defs>
     <marker id="tp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -2184,16 +2188,16 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="16" y="22" font-weight="bold">record</text>
     <text x="78" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/connection</text>
     <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
-    <text x="164" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">role</text>
-    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, north)</text>
-    <text x="164" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">input</text>
-    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, south)</text>
-    <text x="164" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">output</text>
+    <text x="164" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">bus</text>
+    <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 0)</text>
+    <text x="164" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">north</text>
+    <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 1)</text>
+    <text x="164" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">south</text>
     <text x="16" y="120" font-weight="bold"></text>
     <text x="16" y="120" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">attributes/efficiency</text>
     <text x="24" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
     <text x="164" y="145" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">value</text>
-    <text x="24" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, south)</text>
+    <text x="24" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(link1, 1)</text>
     <text x="164" y="166" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
     <text x="470" y="22" font-weight="bold">n.links</text>
     <text x="478" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">name</text>
@@ -2205,8 +2209,8 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="598" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">south</text>
     <text x="658" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">0.9</text>
     <text x="310" y="56" font-weight="bold" font-size="12">build</text>
-    <text x="310" y="82" fill-opacity="0.7" font-size="12">the input first,</text>
-    <text x="310" y="97" fill-opacity="0.7" font-size="12">then connection order</text>
+    <text x="310" y="82" fill-opacity="0.7" font-size="12">port 0 to bus0,</text>
+    <text x="310" y="97" fill-opacity="0.7" font-size="12">port 1 to bus1</text>
   </g>
   <g fill="none" stroke="currentColor" stroke-width="1">
     <rect x="16" y="32" width="206" height="62" rx="3"/>
@@ -2224,12 +2228,12 @@ SPDX-License-Identifier: CC-BY-4.0
 
 </figure>
 
-<p><code>bus0</code> is the connection with role <code>input</code>, and the other ports follow in <a href="../data-model/#dimensions-and-labels">axis order</a>.
-The <code>efficiency</code> row at the second port is PyPSA's <code>efficiency</code>, and at a third port it is <code>efficiency2</code>.
+<p><code>build</code> names a column by the component type: port 0 of a Generator is <code>bus</code>, and port 2 of a Link is <code>bus2</code>.
+Two ports at one bus are two tuples, so a Link from <code>north</code> to <code>north</code> keeps both ports.
+The <code>efficiency</code> row at port 1 is PyPSA's <code>efficiency</code>, and at port 2 it is <code>efficiency2</code>.
 A Process's <code>rate0</code>, <code>rate1</code>, … are the one attribute <code>rate</code>.
 <code>rate</code> declares no default, and a port with no row keeps PyPSA's default for that port.
-<code>delay</code> and <code>cyclic_delay</code> are over <code>connection</code>.
-A one-port component's connection has the role <code>attached</code>.</p>
+<code>delay</code> and <code>cyclic_delay</code> are over <code>connection</code>.</p>
 <h3 id="results-on-connections">Results on connections<a class="headerlink" href="#results-on-connections" title="Permanent link">&para;</a></h3>
 <p><code>p0</code>, <code>p1</code>, … of a Line, Transformer, Link or Process are the attribute <code>p</code> over <code>connection</code>.
 So is the one-port <code>p</code> of a Generator, Load, Store, StorageUnit or ShuntImpedance.
