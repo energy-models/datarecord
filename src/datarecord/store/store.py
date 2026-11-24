@@ -67,12 +67,6 @@ from datarecord.templates import Templates
 
 logger = logging.getLogger(__name__)
 
-#: Why a `WorkingRecord`, or its edits, refuses `keep_properties`.
-_KEEPS_EVERY_PROPERTY = (
-    "a `WorkingRecord` keeps every property it does not edit, so it takes no "
-    "`keep_properties`"
-)
-
 #: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
 _SECRET = "datarecord_s3"
 
@@ -839,7 +833,6 @@ class Store:
         *,
         parent: Revision | None,
         meta: Meta | None = None,
-        keep_properties: bool = False,
     ) -> Revision: ...
 
     def commit(
@@ -848,26 +841,20 @@ class Store:
         *,
         parent: Revision | None | _Base = _Base.OF_WORKING_RECORD,
         meta: Meta | None = None,
-        keep_properties: bool = False,
     ) -> Revision:
         """Write `source` as a new revision under `parent`: a claim and its commit in one.
 
         A `WorkingRecord` brings its parent, the revision it was built over,
         and is written as its edits, a delta against that revision. Any other
         source names its `parent`, `None` for a new root, and is written
-        whole.
-
-        Parameters
-        ----------
-        keep_properties
-            Keep each property `parent` declares and the source's schema
-            omits, on the dimensions the source declares. A root ignores it.
+        whole, keeping each property `parent` declares and the source's
+        schema omits.
 
         Raises
         ------
         TypeError
-            If a `WorkingRecord` comes with a `parent` or with
-            `keep_properties=True`, or any other source without a `parent`.
+            If a `WorkingRecord` comes with a `parent`, or any other source
+            without one.
         ValueError
             If `w`'s base is no revision of this store, such as a standalone
             directory; as `claim` and `Claim.commit` do.
@@ -876,7 +863,7 @@ class Store:
         -----
         - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
         - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
-        - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#keep_properties)
+        - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
         """
         if isinstance(source, WorkingRecord):
             if parent is not _Base.OF_WORKING_RECORD:
@@ -885,14 +872,11 @@ class Store:
                     "over, so it takes no `parent`"
                 )
                 raise TypeError(msg)
-            if keep_properties:
-                raise TypeError(_KEEPS_EVERY_PROPERTY)
             parent = self._base_of(source)
         elif parent is _Base.OF_WORKING_RECORD:
             msg = "`commit` needs a `parent=`, `None` for a new root"
             raise TypeError(msg)
-        claim = self.claim(parent=parent, meta=meta)
-        return claim.commit(source, keep_properties=keep_properties)
+        return self.claim(parent=parent, meta=meta).commit(source)
 
     def _base_of(self, w: WorkingRecord) -> Revision:
         """The revision of this store `w` was built over.
@@ -1310,14 +1294,16 @@ class Claim(_OfStore):
         *,
         meta: Meta | None = None,
         credentials: S3Credentials | None = None,
-        keep_properties: bool = False,
     ) -> Revision:
         """Write `source` as this claim's layer, then its manifest, which makes it a revision.
 
         The data goes straight into the layer directory; the manifest, written
         create-only and last, lists its files, its full schema, the claim's
         parent and the claim's `meta` with `meta` added. A `WorkingRecord` is
-        written as its edits.
+        written as its edits. Under a parent, the layer keeps each property the
+        parent declares and the source's schema omits, on the dimensions the
+        source declares: the manifest declares it, and each axis file the
+        layer writes takes the parent's values by label, NULL on a new label.
 
         Parameters
         ----------
@@ -1325,17 +1311,9 @@ class Claim(_OfStore):
             A key for this layer alone, which reaches every file under its
             layer directory during the commit, while everything else, such
             as the parent's layers, is read with the workspace's key.
-        keep_properties
-            Keep each property the claim's parent declares and the source's
-            schema omits, on the dimensions the source declares: the manifest
-            declares it, and each axis file the layer writes takes the
-            parent's values by label, NULL on a new label. A root ignores it.
 
         Raises
         ------
-        TypeError
-            If `source` is a `WorkingRecord` or its edits and
-            `keep_properties` is True.
         ValueError
             If `meta` changes a key the claim set, `source` is edits staged
             over another revision than the claim's parent, the source's schema
@@ -1363,14 +1341,12 @@ class Claim(_OfStore):
         -----
         - [a revision exists only by its file](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
         - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
-        - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#keep_properties)
+        - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
         """
         meta = merge_meta(self.meta, validate_meta(meta))
         if isinstance(source, WorkingRecord):
             source = source.edits
         staged = source if isinstance(source, StagedSource) else None
-        if keep_properties and staged is not None:
-            raise TypeError(_KEEPS_EVERY_PROPERTY)
         if staged is not None and staged.base != self.parent:
             msg = (
                 f"these edits were staged over revision {staged.base}, so they "
@@ -1380,19 +1356,15 @@ class Claim(_OfStore):
             raise ValueError(msg)
         store = self.store
         if credentials is None:
-            return self._commit(source, meta, store.files, keep_properties)
+            return self._commit(source, meta, store.files)
         name = f"datarecord_claim_{self.id.hex}_{uuid4().hex}"
         with store.workspace._scoped(
             store.layer_dir(self.id), credentials, name
         ) as files:
-            return self._commit(source, meta, files, keep_properties)
+            return self._commit(source, meta, files)
 
     def _commit(
-        self,
-        source: LayerData | RecordLike,
-        meta: Meta,
-        files: Files,
-        keep_properties: bool,
+        self, source: LayerData | RecordLike, meta: Meta, files: Files
     ) -> Revision:
         """`commit` with `files` reaching the layer directory.
 
@@ -1409,7 +1381,7 @@ class Claim(_OfStore):
         data = layer_data(source, store.workspace.con)
         schema = data.schema
         kept: dict[str, list[str]] = {}
-        if parent is not None and keep_properties:
+        if parent is not None:
             schema = _keeping_properties(schema, parent.manifest.schema)
             kept = _kept(schema, data.schema)
             for dim, names in kept.items():
@@ -1420,7 +1392,6 @@ class Claim(_OfStore):
                         dim,
                         name,
                     )
-        if parent is not None:
             problems = schema.compatible_with(parent.manifest.schema)
             if problems:
                 msg = (

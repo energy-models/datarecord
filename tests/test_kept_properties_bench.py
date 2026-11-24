@@ -8,7 +8,7 @@ The child removes every hundredth label and appends one per cent new ones.
 
 Notes
 -----
-- [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#keep_properties)
+- [properties a source omits](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
 """
 
 from time import perf_counter
@@ -64,13 +64,10 @@ def test_keeping_properties_takes_at_most_twice_stating_them(store):
 
     timings: dict[str, list[float]] = {"own": [], "keep": []}
     for _ in range(3):
-        for way, schema, keep_props in (
-            ("own", declaring, False),
-            ("keep", omitting, True),
-        ):
+        for way, schema in (("own", declaring), ("keep", omitting)):
             source = _entities(child, schema)
             start = perf_counter()
-            kept = store.commit(source, parent=root, keep_properties=keep_props)
+            kept = store.commit(source, parent=root)
             timings[way].append(perf_counter() - start)
 
     own, keep = min(timings["own"]), min(timings["keep"])

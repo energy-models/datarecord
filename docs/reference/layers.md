@@ -188,19 +188,13 @@ So where an ancestor left such a reference, the writer refuses the next layer th
     [Edit a record](../howto/edit-a-record.md) shows `add` and `remove`.
     [Layers and `partial`](../about/layers.md) argues for removal as restatement.
 
-## `keep_properties`
+## Properties a source omits
 
-`keep_properties=True` on `Store.commit` or `Claim.commit` keeps each property that the parent declares and the source's schema omits, on the dimensions the source's schema declares.
-By default the commit refuses such a source, because its schema removes the property:
-
-```text
-ValueError: this layer's schema is incompatible with its parent's: property 'agg_3h' of 'snapshot' removed (https://energy-models.github.io/datarecord/reference/schema/#compatibility)
-```
-
+A commit of a whole record under a parent keeps each property that the parent declares and the source's schema omits, on the dimensions the source's schema declares.
 Here the parent's `snapshot` axis has a property `agg_3h`, the three-hour block of each snapshot, and `source` restates the axis without it:
 
 ```python
-child = store.commit(source, parent=root, keep_properties=True)
+child = store.commit(source, parent=root)
 ```
 
 <figure class="diagram">
@@ -212,11 +206,11 @@ Snapshot 1 has no row, so its value goes with it.
 
 - The manifest's schema is the source's schema plus each kept property. Where both declare a property, the source's declaration applies, and [`compatible_with`](schema.md#compatibility) against the parent still refuses one declared differently.
 - Where the layer writes an axis file without the column of a kept property, the commit joins the parent's values onto it by label. It writes them into that file in the layer's row order.
+- A property the source declares is the source's alone. Where the source leaves its column out of an axis file, the column is NULL.
 - An axis the layer does not write has no file, and the fold reads the parent's axis, its properties included.
-- The writer checks a carried value as it checks any column of the file. It refuses a carried property that refers to a dimension while its value is a label the layer removes, as in [removing labels](#removing-labels).
+- The writer checks a kept value as it checks any column of the file. It refuses a kept property that refers to a dimension while its value is a label the layer removes, as in [removing labels](#removing-labels).
 - Only properties are kept. The commit still refuses a source whose schema omits a dimension or an attribute that the parent declares.
-- A root commit, `parent=None`, ignores `keep_properties`.
-- A `WorkingRecord` keeps every property it does not edit, so a commit of one with `keep_properties=True` raises `TypeError`.
+- A commit of a `WorkingRecord` keeps no property this way, because its edits declare every property of the revision it was built over.
 
 The commit logs each kept property at `INFO`, as `revision <id> keeps property snapshot.agg_3h of its parent`.
 

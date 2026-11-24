@@ -266,18 +266,18 @@ After it, you can read the record on any thread inside a transaction that you ro
 
 ## `Store`
 
-| Member                                                        | Does                                                                             |
-| ------------------------------------------------------------- | -------------------------------------------------------------------------------- |
-| `uri`                                                         | the absolute location                                                            |
-| `claim(*, parent, meta=None)`                                 | hands out a new layer id under `parent` and returns a `Claim`                    |
-| `commit(source, *, parent, meta=None, keep_properties=False)` | claims and commits in one call, and returns the `Revision`                       |
-| `commit(w, *, meta=None)`                                     | writes a `WorkingRecord`'s edits as a child of the revision it was built over    |
-| `revision(id)`                                                | returns one revision, and raises `KeyError` for an id with no manifest           |
-| `revisions(*, meta=None)`                                     | returns every revision, unordered, or those whose `meta` contains the given meta |
-| `claims()`                                                    | returns the pending layers, oldest first                                         |
-| `claim_from(payload)`                                         | rebuilds a serialised `Claim` on this store                                      |
-| `cleanup(*, ids=None, older_than=None)`                       | deletes pending layers and returns their ids                                     |
-| `layer(id)`                                                   | reads one layer alone as a `Record`                                              |
+| Member                                  | Does                                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------------- |
+| `uri`                                   | the absolute location                                                            |
+| `claim(*, parent, meta=None)`           | hands out a new layer id under `parent` and returns a `Claim`                    |
+| `commit(source, *, parent, meta=None)`  | claims and commits in one call, and returns the `Revision`                       |
+| `commit(w, *, meta=None)`               | writes a `WorkingRecord`'s edits as a child of the revision it was built over    |
+| `revision(id)`                          | returns one revision, and raises `KeyError` for an id with no manifest           |
+| `revisions(*, meta=None)`               | returns every revision, unordered, or those whose `meta` contains the given meta |
+| `claims()`                              | returns the pending layers, oldest first                                         |
+| `claim_from(payload)`                   | rebuilds a serialised `Claim` on this store                                      |
+| `cleanup(*, ids=None, older_than=None)` | deletes pending layers and returns their ids                                     |
+| `layer(id)`                             | reads one layer alone as a `Record`                                              |
 
 `parent` is a required keyword, so a new root is `parent=None`.
 A revision's `meta` is a JSON object whose values are strings, numbers, booleans, null, and arrays and objects of these.
@@ -309,7 +309,7 @@ A commit that fails leaves its layer pending with the files it wrote, and a retr
 
 Before it writes data, a commit checks three things and refuses the layer otherwise:
 
-- The layer's schema passes [`compatible_with`](schema.md) against the parent's manifest's schema. With `keep_properties=True`, the layer's schema first takes each property the parent declares and the source omits ([`keep_properties`](layers.md#keep_properties)).
+- The layer's schema passes [`compatible_with`](schema.md) against the parent's manifest's schema, once it [keeps each property](layers.md#properties-a-source-omits) that the parent declares and the source omits.
 - Its `meta` has every key of the claim's `meta` with the same value, and may add keys. Values compare as JSON, so `1`, `1.0` and `True` differ, and an object differs once any key inside it does.
 - Its parent, the claim's `parent`, is a revision of this store.
 
@@ -321,8 +321,8 @@ Over a base that is no revision of this store, such as a standalone directory, i
 ### `Claim`
 
 A `Claim` is a revision id that a store reserves before the layer is written.
-It has `id`, `store`, `parent`, `meta` and `created`, and `claim.commit(source, *, meta=None, credentials=None, keep_properties=False)` writes the layer and returns the `Revision`.
-`credentials` are a [key for the layer alone](#a-commit-with-a-key-for-its-layer), and `keep_properties` [keeps the parent's properties](layers.md#keep_properties) that the source omits.
+It has `id`, `store`, `parent`, `meta` and `created`, and `claim.commit(source, *, meta=None, credentials=None)` writes the layer and returns the `Revision`.
+`credentials` are a [key for the layer alone](#a-commit-with-a-key-for-its-layer).
 
 A claim serialises as all five fields, with its store's location for `store`, and pickles the same way:
 

@@ -1590,7 +1590,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     )
 
 
-# -- keeping a parent's properties (https://energy-models.github.io/datarecord/reference/layers/#keep_properties) ----------------------
+# -- properties a source omits (https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits) -----------------
 
 
 def _declaring(base: Schema, **properties: dict[str, PropertySpec]) -> Schema:
@@ -1611,12 +1611,12 @@ def _scenarios_with(schema: Schema, order: list[str], **properties: list) -> _So
     )
 
 
-def _by_store(store, source, parent, **kwargs):
-    return store.commit(source, parent=parent, **kwargs)
+def _by_store(store, source, parent):
+    return store.commit(source, parent=parent)
 
 
-def _by_claim(store, source, parent, **kwargs):
-    return store.claim(parent=parent).commit(source, **kwargs)
+def _by_claim(store, source, parent):
+    return store.claim(parent=parent).commit(source)
 
 
 def _agg_root(store, schema: Schema = _AGG):
@@ -1629,23 +1629,18 @@ def _aggs(revision) -> list[tuple]:
     return revision.record.properties["scenario"].project("scenario, agg").fetchall()
 
 
-def test_a_source_omitting_its_parents_property_is_refused(store):
-    with pytest.raises(ValueError, match="property 'agg' of 'scenario' removed"):
-        store.commit(_scenarios_with(_SCHEMA, ["x"]), parent=_agg_root(store))
-
-
 @pytest.mark.parametrize("commit", [_by_store, _by_claim])
-def test_keep_properties_writes_the_parents_values_by_label(store, caplog, commit):
+def test_a_commit_keeps_the_parents_property_by_label(store, caplog, commit):
     """The child's restated axis has `agg` where it keeps a label, NULL on a new one.
 
     Notes
     -----
-    - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#keep_properties)
+    - [properties a source omits](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
     """
     root = _agg_root(store)
     source = _scenarios_with(_SCHEMA, ["x", "new", "z"])
     caplog.set_level(logging.INFO, logger="datarecord.store.store")
-    child = commit(store, source, root, keep_properties=True)
+    child = commit(store, source, root)
 
     assert child.manifest.schema.properties["scenario"] == _AGG.properties["scenario"]
     assert _aggs(child) == [("x", 1), ("new", None), ("z", 3)], (
@@ -1662,13 +1657,15 @@ def test_keep_properties_writes_the_parents_values_by_label(store, caplog, commi
     [({"agg": [10, 30]}, [("x", 10), ("z", 30)]), ({}, [("x", None), ("z", None)])],
     ids=["written", "column-omitted"],
 )
-def test_keep_properties_takes_the_sources_own_values(store, properties, expected):
+def test_a_source_declaring_the_property_writes_its_own_values(
+    store, properties, expected
+):
     source = _scenarios_with(_AGG, ["x", "z"], **properties)
-    child = store.commit(source, parent=_agg_root(store), keep_properties=True)
+    child = store.commit(source, parent=_agg_root(store))
     assert _aggs(child) == expected, "the source declares `agg`, so its values apply"
 
 
-def test_keep_properties_keeps_only_what_the_source_omits(store, caplog):
+def test_a_commit_keeps_only_what_the_source_omits(store, caplog):
     both = _declaring(
         _SCHEMA,
         scenario={"agg": PropertySpec(dtype="int"), "w": PropertySpec(dtype="int")},
@@ -1678,7 +1675,7 @@ def test_keep_properties_keeps_only_what_the_source_omits(store, caplog):
     )
     source = _scenarios_with(_AGG, ["x", "new"], agg=[10, 20])
     caplog.set_level(logging.INFO, logger="datarecord.store.store")
-    child = store.commit(source, parent=root, keep_properties=True)
+    child = store.commit(source, parent=root)
     rows = child.record.properties["scenario"].project("scenario, agg, w")
     assert rows.fetchall() == [("x", 10, 5), ("new", 20, None)], (
         "the source's `agg`, the parent's `w`"
@@ -1688,16 +1685,10 @@ def test_keep_properties_keeps_only_what_the_source_omits(store, caplog):
     ]
 
 
-def test_keep_properties_reaches_through_a_layer_without_the_axis(store):
+def test_a_kept_property_reaches_through_a_layer_without_the_axis(store):
     root = _agg_root(store)
-    middle = store.commit(
-        _Source(_SCHEMA, attributes={"p_nom": _long()}),
-        parent=root,
-        keep_properties=True,
-    )
-    leaf = store.commit(
-        _scenarios_with(_SCHEMA, ["y", "new"]), parent=middle, keep_properties=True
-    )
+    middle = store.commit(_Source(_SCHEMA, attributes={"p_nom": _long()}), parent=root)
+    leaf = store.commit(_scenarios_with(_SCHEMA, ["y", "new"]), parent=middle)
     assert _aggs(leaf) == [("y", 2), ("new", None)], "the root's values, by label"
 
 
@@ -1720,17 +1711,15 @@ def _with_region(base: Schema) -> Schema:
     ],
     ids=["property-redeclared", "attribute-omitted", "dimension-omitted"],
 )
-def test_keep_properties_still_refuses_any_other_incompatibility(
-    store, parent, source, match
-):
+def test_a_commit_still_refuses_any_other_incompatibility(store, parent, source, match):
     root = _agg_root(store, parent)
     with pytest.raises(ValueError, match=match):
-        store.commit(_scenarios_with(source, ["x"]), parent=root, keep_properties=True)
+        store.commit(_scenarios_with(source, ["x"]), parent=root)
 
 
 def test_an_axis_the_layer_does_not_write_reads_the_parents_properties(store):
     source = _Source(_SCHEMA, attributes={"p_nom": _long()})
-    child = store.commit(source, parent=_agg_root(store), keep_properties=True)
+    child = store.commit(source, parent=_agg_root(store))
     assert "scenario" not in child.manifest.files.dimensions
     assert _aggs(child) == [("x", 1), ("y", 2), ("z", 3)], (
         "the fold reads the parent's axis, its properties included"
@@ -1765,45 +1754,29 @@ def test_a_kept_property_naming_a_removed_label_is_refused(store, restated):
     if restated:
         dims["entity"] = entities[["entity"]]
     with pytest.raises(ValueError, match="removing a label removes"):
-        store.commit(_Source(_SCHEMA, dims=dims), parent=root, keep_properties=True)
-
-
-@pytest.mark.parametrize("commit", [_by_store, _by_claim])
-def test_a_root_ignores_keep_properties(store, commit):
-    root = commit(store, _scenarios_with(_SCHEMA, ["x"]), None, keep_properties=True)
-    assert root.manifest.schema == _SCHEMA
+        store.commit(_Source(_SCHEMA, dims=dims), parent=root)
 
 
 @pytest.mark.parametrize(
-    ("commit", "claims"),
+    "commit",
     [
-        (lambda root, w: root.store.commit(w, keep_properties=True), 0),
-        (
-            lambda root, w: root.store.claim(parent=root).commit(
-                w, keep_properties=True
-            ),
-            1,
-        ),
-        (
-            lambda root, w: root.store.claim(parent=root).commit(
-                w.edits, keep_properties=True
-            ),
-            1,
-        ),
+        lambda root, w: root.store.commit(w),
+        lambda root, w: root.store.claim(parent=root).commit(w.edits),
     ],
-    ids=["store", "claim", "edits"],
+    ids=["working-record", "edits"],
 )
-def test_a_working_record_takes_no_keep_properties(store, commit, claims):
+def test_edits_keep_the_parent_property_without_carrying_it(store, caplog, commit):
     root = _agg_root(store)
     w = WorkingRecord(root.record)
     w.add("scenario", ["new"])
-    with pytest.raises(TypeError, match="takes no `keep_properties`"):
-        commit(root, w)
-    assert [r.id for r in store.revisions()] == [root.id]
-    assert len(store.claims()) == claims, "only the caller's own claim is pending"
+    caplog.set_level(logging.INFO, logger="datarecord.store.store")
+    child = commit(root, w)
+    assert child.manifest.schema == _AGG
+    assert _aggs(child) == [("x", 1), ("y", 2), ("z", 3), ("new", None)]
+    assert caplog.messages == [], "edits declare every property, so none is carried"
 
 
-def test_keep_properties_keeps_a_multi_dims_property_by_label(store):
+def test_a_commit_keeps_a_multi_dims_property_by_label(store):
     length = _declaring(_SCHEMA, connection={"length": PropertySpec(dtype="float")})
     ab, bb, cb = (
         {"entity": "a", "bus": "b0"},
@@ -1825,7 +1798,7 @@ def test_keep_properties_keeps_a_multi_dims_property_by_label(store):
     source = _Source(
         _SCHEMA, connections={"connection": pd.DataFrame({"connection": [ab, cb]})}
     )
-    child = store.commit(source, parent=root, keep_properties=True)
+    child = store.commit(source, parent=root)
     rows = child.record.properties["connection"].project("connection, length")
     assert rows.fetchall() == [(ab, 1.0), (cb, None)], (
         "a tuple the child keeps has the parent's length, a new one NULL"

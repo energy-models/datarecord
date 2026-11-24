@@ -87,7 +87,7 @@ def carrying(
 
     Notes
     -----
-    - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#keep_properties)
+    - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
     """
     return _Carrying(data, schema, kept, parent, con)
 
