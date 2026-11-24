@@ -90,7 +90,7 @@ def exported(single_revision, workspace, tmp_path) -> HandBuilt:
     store = workspace.store(str(tmp_path / "ac_dc"))
     layer = empty_root(store, single_revision.manifest.schema)
     source = Path(single_revision.store.layer_dir(single_revision.id))
-    for kind in ("dims", "attributes"):
+    for kind in ("dimensions", "attributes"):
         shutil.copytree(source / kind, layer.dir / kind)
     return layer
 
@@ -114,7 +114,7 @@ def _over(members, dim) -> pypsa.NetworkCollection:
 
 
 def _sub_networks(revision) -> list[str]:
-    return _sub_networks_of(revision.record.dims["sub_network"])
+    return _sub_networks_of(revision.record.dimensions["sub_network"])
 
 
 def _sub_networks_of(axis) -> list[str]:
@@ -182,7 +182,7 @@ def _with_schema(layer: HandBuilt, **kwargs) -> Revision:
 def _redeclared_over(store, n, attr: str, dim: str, rows: list[dict]) -> Revision:
     """`n` written as a root of `store` declaring `attr` static and over `dim` too, its rows `rows`.
 
-    Static, since an attribute over `snapshot` is over its coordinate `period` already.
+    Static, since an attribute over `snapshot` is over its field `period` already.
     """
     revision = export_network(n, store)
     declared = revision.manifest.schema
@@ -191,7 +191,7 @@ def _redeclared_over(store, n, attr: str, dim: str, rows: list[dict]) -> Revisio
     attributes = {**declared.attributes, attr: over}
     layer = empty_root(store, declared.model_copy(update={"attributes": attributes}))
     source = Path(store.layer_dir(revision.id))
-    for kind in ("dims", "attributes"):
+    for kind in ("dimensions", "attributes"):
         shutil.copytree(source / kind, layer.dir / kind)
     write_attribute(layer, attr, rows)
     return layer.commit()
@@ -447,7 +447,7 @@ def _ordered(record) -> dict[str, pd.DataFrame]:
     return {
         f"{kind}/{name}": rels[name].order("ALL").df()
         for kind, rels in (
-            ("dims", record.dims),
+            ("dimensions", record.dimensions),
             ("properties", record.properties),
             ("attributes", record.attributes),
         )
@@ -694,15 +694,15 @@ class TestPyPSA:
 
         Notes
         -----
-        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dim-with-one_of)
+        - [a dim with one_of](https://energy-models.github.io/datarecord/reference/data-model/#a-dimension-with-one_of)
         """
         dim = "ctype"
         record = single_revision.record
         layer = Path(single_revision.store.layer_dir(single_revision.id))
-        assert not (layer / "dims" / f"{dim}.parquet").exists()
+        assert not (layer / "dimensions" / f"{dim}.parquet").exists()
         one_of = record.schema.dimensions[dim].one_of
         assert one_of is not None
-        assert record.dims[dim].df()[dim].tolist() == list(one_of), (
+        assert record.dimensions[dim].df()[dim].tolist() == list(one_of), (
             "every label of `one_of`, those the network leaves unused included"
         )
 
@@ -761,7 +761,7 @@ class TestPyPSA:
         n.add("Generator", "wind", bus="north", carrier="wind")
 
         record = export_network(n, store).record
-        assert record.dims["carrier"].df()["carrier"].tolist() == ["AC", "wind"]
+        assert record.dimensions["carrier"].df()["carrier"].tolist() == ["AC", "wind"]
         carriers = record.properties["entity"].df()
         assert carriers.set_index("entity")["carrier"].isna().to_dict() == {
             "gen": True,
@@ -987,7 +987,7 @@ class TestPyPSA:
     def test_requires_reports_the_records_own_types(self, single_revision):
         """`requires` is record-dependent: PyPSA's axes plus this record's types."""
         req = PyPSA.requires(single_revision.record)
-        assert {"snapshot", "period", "scenario"} <= req.dims
+        assert {"snapshot", "period", "scenario"} <= req.dimensions
         assert "Generator" in req.categories
         # Required attributes come from PyPSA's registry, not a list we maintain.
         assert ("Generator", "bus") in req.attributes
@@ -1006,7 +1006,7 @@ class TestPyPSA:
 
         missing = PyPSA.verify(revision.record)
         assert missing
-        assert missing.dims == {"period", "scenario"}
+        assert missing.dimensions == {"period", "scenario"}
         # A build refuses rather than failing deep inside PyPSA.
         with pytest.raises(UnsupportedRecordError, match="scenario"):
             PyPSA.build(revision.record)
@@ -1022,7 +1022,7 @@ class TestPyPSA:
 
         Notes
         -----
-        - [entity types](https://energy-models.github.io/datarecord/reference/data-model/#categories)
+        - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         """
         # Declared alongside PyPSA's own types, since the `one_of` labels pin the
@@ -1054,8 +1054,8 @@ class TestPyPSA:
         with pytest.raises(UnsupportedRecordError, match="Widget"):
             PyPSA.build(revision.record)
 
-    def test_verify_reports_a_snapshot_key(self, exported):
-        """`snapshot` as a key is reported, not crashed on.
+    def test_verify_reports_snapshot_in_partial(self, exported):
+        """`snapshot` in `partial` is reported, not crashed on.
 
         A limit of this tool's *representation*, not of the layer format: PyPSA's
         static/series split needs a component's whole series for an attribute to
@@ -1071,7 +1071,7 @@ class TestPyPSA:
         revision = _with_schema(exported, partial={"scenario", "snapshot"})
 
         missing = PyPSA.verify(revision.record)
-        assert ("owner_map_key", "snapshot") in missing.unsupported_keys
+        assert "snapshot" in missing.unsupported_partial
         assert "snapshot" in missing.describe()
         with pytest.raises(UnsupportedRecordError, match="snapshot"):
             PyPSA.build(revision.record)
@@ -1087,7 +1087,7 @@ class TestPyPSA:
         write_component(exported, "Generator", [{"entity": "g1"}])
         # One file across every type, so the Generators' rows are dropped from it
         # rather than a per-type file being unlinked.
-        path = exported.dir / "dims" / "connection.parquet"
+        path = exported.dir / "dimensions" / "connection.parquet"
         rows = pd.read_parquet(path)
         generators = set(ac_dc.c["Generator"].static.index) | {"g1"}
         entities = rows["connection"].map(lambda c: c["entity"])
@@ -1266,7 +1266,7 @@ class TestPyPSA:
 
         root = export_network(n, store)
         record = root.record
-        assert record.dims[dim].df()[dim].tolist() == ["own type"], (
+        assert record.dimensions[dim].df()[dim].tolist() == ["own type"], (
             "only the type the library lacks is written"
         )
         assert set(record.schema.properties[dim]) == set(n.c[ctype].static), (
@@ -1285,7 +1285,7 @@ class TestPyPSA:
         )
 
         child = _results_over(root, built)
-        layer = Path(store.layer_dir(child.id)) / "dims"
+        layer = Path(store.layer_dir(child.id)) / "dimensions"
         assert not (layer / "entity.parquet").exists()
         assert not (layer / f"{dim}.parquet").exists(), "a results layer writes no type"
 
@@ -1296,11 +1296,11 @@ class TestPyPSA:
         -----
         - [standard types](https://energy-models.github.io/datarecord/reference/tools/#standard-types)
         """
-        held = set(single_revision.manifest.files.dims)
+        held = set(single_revision.manifest.files.dimensions)
         assert not held & {"line_type", "transformer_type"}
 
     def test_to_datarecord_rejects_a_cross_type_name_collision(self, workspace):
-        """PyPSA scopes names per type; a record scopes them across every entity type.
+        """PyPSA scopes names per type; a record scopes them across every component type.
 
         Reported rather than repaired: renaming to `Generator:north` would hand back
         a network whose components PyPSA can no longer find by their own names, so
@@ -1327,8 +1327,8 @@ class TestPyPSA:
         n.add("Generator", "north", bus="north")
 
         record = export_network(n, store).record
-        assert record.dims["bus"].df()["bus"].tolist() == ["north"]
-        assert "north" in record.dims["entity"].df()["entity"].tolist()
+        assert record.dimensions["bus"].df()["bus"].tolist() == ["north"]
+        assert "north" in record.dimensions["entity"].df()["entity"].tolist()
         assert_networks_equal(PyPSA.build(record), n)
 
     @pytest.mark.parametrize(
@@ -1394,8 +1394,8 @@ class TestPyPSA:
             PyPSA.to_datarecord(n, workspace.con)
 
     @pytest.mark.parametrize("name", ["scenario", "period", "entity"])
-    def test_a_custom_column_named_like_a_key_is_refused(self, workspace, name):
-        """A key of the record's rows names no property or attribute, text or not.
+    def test_a_custom_column_named_like_a_row_dim_is_refused(self, workspace, name):
+        """A dim of the record's rows names no property or attribute, text or not.
 
         Notes
         -----
@@ -1403,7 +1403,7 @@ class TestPyPSA:
         """
         n = _north()
         _with_bus_column(n, name, "x")
-        with pytest.raises(ValueError, match="key a record's rows"):
+        with pytest.raises(ValueError, match="are dimensions of a record's rows"):
             PyPSA.to_datarecord(n, workspace.con)
 
     @pytest.mark.parametrize(
@@ -1461,7 +1461,7 @@ class TestPyPSA:
         assert schema.meta["crs"] == "EPSG:3035"
         assert "geometry" not in schema.attributes
         assert "Shape" not in set(_ctypes_written(revision)), "a shape is no entity"
-        assert record.dims["country"].df()["country"].tolist() == ["DE", "FR"], (
+        assert record.dimensions["country"].df()["country"].tolist() == ["DE", "FR"], (
             "a shape-made dim's labels are the shapes' `idx` in network order"
         )
         assert schema.properties["bus"]["country"].one_of == "country"
@@ -1481,7 +1481,7 @@ class TestPyPSA:
         assert_geodataframe_equal(_shapes(built), expected, check_like=True)
 
         child = _results_over(revision, built)
-        layer = Path(store.layer_dir(child.id)) / "dims"
+        layer = Path(store.layer_dir(child.id)) / "dimensions"
         assert not (layer / "country.parquet").exists(), (
             "a results layer writes no shape"
         )
@@ -1538,7 +1538,7 @@ class TestPyPSA:
             ),
             pytest.param(
                 lambda n: _add_shape(n, idx="north", component="bus", type="onshore"),
-                "a dim PyPSA's schema declares",
+                "a dimension PyPSA's schema declares",
                 id="pypsa-dim",
             ),
             pytest.param(
@@ -1642,7 +1642,7 @@ class TestPyPSA:
             "a `sub_network` value names a `sub_network` label"
         )
         carriers = record.properties["sub_network"].df()["carrier"]
-        assert set(carriers) <= set(record.dims["carrier"].df()["carrier"])
+        assert set(carriers) <= set(record.dimensions["carrier"].df()["carrier"])
 
         built = PyPSA.build(record)
         assert sorted(built.c["SubNetwork"].static.index) == names
@@ -1731,7 +1731,7 @@ class TestPyPSA:
         n = solved
 
         p = _flat(PyPSA.to_datarecord(n, single_revision.record.con).attributes["p"])
-        connections = unpacked(single_revision.record.dims["connection"])
+        connections = unpacked(single_revision.record.dimensions["connection"])
         per_connection = p.groupby(["entity", "port"]).size()
         assert set(per_connection.index) == set(
             zip(connections["entity"], connections["port"])
@@ -1808,8 +1808,8 @@ class TestPyPSA:
         """
         *kept, dropped = sorted(solved.c["SubNetwork"].static.index)
         assert _sub_networks(results) == sorted([*kept, dropped])
-        entities = results.record.dims["entity"].df()
-        assert entities.equals(single_revision.record.dims["entity"].df()), (
+        entities = results.record.dimensions["entity"].df()
+        assert entities.equals(single_revision.record.dimensions["entity"].df()), (
             "a results layer leaves the entity axis alone"
         )
 
@@ -1844,8 +1844,8 @@ class TestPyPSA:
         )
         revision = _results_over(base, n)
         record = revision.record
-        assert _sub_networks_of(record.dims["sub_network"]) == []
-        assert ("sub_network" in revision.manifest.files.dims) == over_solved, (
+        assert _sub_networks_of(record.dimensions["sub_network"]) == []
+        assert ("sub_network" in revision.manifest.files.dimensions) == over_solved, (
             "the axis is restated only where `base` has one"
         )
         assert "marginal_price" in record.attributes, "the results are written"
@@ -2311,7 +2311,7 @@ class TestPyPSA:
             )
 
         record = PyPSA.to_datarecord(n, workspace.con)
-        assert record.dims["port"].df()["port"].tolist() == [0, 1, 2], (
+        assert record.dimensions["port"].df()["port"].tolist() == [0, 1, 2], (
             "the registry's ports 0 and 1, and the link's port 2"
         )
         results = record.attributes
@@ -2557,12 +2557,12 @@ class TestPyPSA:
         n.add("Link", "split", bus0="a", bus1="b", bus2="c", delay=3, delay2=4)
 
         record = PyPSA.to_datarecord(n, workspace.con)
-        members = set(record.dims["entity"].columns)
+        members = set(record.dimensions["entity"].columns)
         assert not {"delay", "delay0", "delay2", "cyclic_delay1"} & members, (
             "no positional names on the members"
         )
         assert set(record.properties["connection"].columns) == {"connection", "bus"}, (
-            "a connection row carries its key and its property"
+            "a connection row carries its column and its property"
         )
         rows = unpacked(record.attributes["delay"])
         delay = rows.set_index(["entity", "port"])["value"].dropna().to_dict()
@@ -2602,7 +2602,7 @@ class TestPyPSA:
     def test_a_name_is_never_an_identifier_between_long_and_wide(self, store):
         """Each name is stored and comes back as its own series.
 
-        `wind "north"` would end a quoted identifier, `snapshot` names a key
+        `wind "north"` would end a quoted identifier, `snapshot` names a dim's
         column, and `Gen` and `gen` one case-insensitive identifier.
 
         Notes
@@ -2639,21 +2639,21 @@ class TestPyPSA:
         )
 
     def test_schema_dims_stay_generic(self, exported):
-        """`Coords` carries a dim PyPSA knows nothing about; axis names live in the tool, which reports it as a dim of the record's own.
+        """`Axes` carries a dim PyPSA knows nothing about; axis names live in the tool, which reports it as a dim of the record's own.
 
         Declared but not `partial`, so the record's files need no column for it.
-        Keying it would be a different matter, reported by the tool against the
-        real record - see `test_verify_reports_a_snapshot_key`.
+        Putting it in `partial` would be a different matter, reported by the tool
+        against the real record - see `test_verify_reports_snapshot_in_partial`.
         """
         revision = _with_schema(exported, dims={**_DIMS, "vintage": "str"})
         record = revision.record
-        assert "vintage" in record.schema.dims
-        assert record.dims["vintage"].fetchall() == [], "no axis rows anywhere"
+        assert "vintage" in record.schema.dimensions
+        assert record.dimensions["vintage"].fetchall() == [], "no axis rows anywhere"
         missing = PyPSA.verify(revision.record)
-        assert missing.unsupported_dims == {"vintage"}, (
+        assert missing.unsupported_dimensions == {"vintage"}, (
             "a collection's, not a network's"
         )
-        assert not missing.dims, "PyPSA's own dims are satisfied"
+        assert not missing.dimensions, "PyPSA's own dims are satisfied"
         assert "vintage" in record.schema.long_columns
 
     def test_a_null_scenario_weight_reaches_every_scenario_its_own_row_does_not(self):
@@ -2662,7 +2662,7 @@ class TestPyPSA:
         index = pd.Index(["low", "mid", "high"], name="scenario")
         record = SimpleNamespace(
             schema=_registry().schema,
-            dims={"scenario": con.from_df(index.to_frame(index=False))},
+            dimensions={"scenario": con.from_df(index.to_frame(index=False))},
             attributes={"scenario_weight": con.from_df(rows)},
         )
         equal = pd.DataFrame({"weight": 1 / 3}, index=index)
@@ -2678,18 +2678,18 @@ class TestPyPSA:
 
         Notes
         -----
-        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+        - [multi-dims](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
         - [snapshots and weightings](https://energy-models.github.io/datarecord/reference/tools/#snapshots-and-weightings)
         """
         schema = multiperiod_revision.record.schema
         timesteps = multiperiod.snapshots.get_level_values("timestep")
-        labels = multiperiod_revision.record.dims["snapshot"].df()["snapshot"]
+        labels = multiperiod_revision.record.dimensions["snapshot"].df()["snapshot"]
         assert [(s["period"], s["timestep"]) for s in labels] == list(
             multiperiod.snapshots
         ), "PyPSA's index, in its order"
         assert schema.over("snapshot") == {"period": "period", "timestep": "timestep"}
         assert "snapshot" not in schema.properties
-        steps = multiperiod_revision.record.dims["timestep"].df()["timestep"]
+        steps = multiperiod_revision.record.dimensions["timestep"].df()["timestep"]
         assert steps.tolist() == list(timesteps.unique()), "each timestep once"
         assert schema.attributes["p_max_pu"].dims == {
             "entity",
@@ -2729,7 +2729,7 @@ class TestPyPSA:
         from datarecord.mutable import WorkingRecord
 
         record = multiperiod_revision.record
-        snapshots = record.dims["snapshot"]
+        snapshots = record.dimensions["snapshot"]
         first = snapshots.limit(1).fetchall()[0][0]
         in_2040 = snapshots.filter("snapshot.period = 2040").project(
             "snapshot, 0.5 AS value"
@@ -2772,7 +2772,7 @@ class TestPyPSA:
             "attributes/p_nom_opt",
             "attributes/mu",
             "attributes/marginal_price",
-            "dims/sub_network",
+            "dimensions/sub_network",
         } <= expected.keys(), "the solve has series and static results and SubNetworks"
         assert actual.keys() == expected.keys()
         for name, frame in expected.items():
@@ -3178,7 +3178,9 @@ class TestPyPSA:
     def test_a_collection_is_built_over_a_dim_of_its_own_or_period(
         self, single_revision, method
     ):
-        with pytest.raises(ValueError, match="with a dim of its own, one network"):
+        with pytest.raises(
+            ValueError, match="with a dimension of its own, one network"
+        ):
             getattr(PyPSACollection, method)(single_revision.record)
 
     @pytest.mark.slow
@@ -3261,7 +3263,7 @@ class TestPyPSA:
         ("edit", "dim", "match"),
         [
             pytest.param(_two_levels, ["case", "run"], "one index level", id="levels"),
-            pytest.param(dict, "bus", "a dim the PyPSA schema", id="pypsa-dim"),
+            pytest.param(dict, "bus", "a dimension the PyPSA schema", id="pypsa-dim"),
             pytest.param(dict, "scenario", "holds its scenarios itself", id="scenario"),
             pytest.param(_moved_bus, "sensitivity", "'London' has `x`", id="property"),
             pytest.param(_reordered_buses, "sensitivity", "orders `bus`", id="order"),
@@ -3277,7 +3279,7 @@ class TestPyPSA:
             pytest.param(
                 _with_region_shapes,
                 "region",
-                "a dim the members' shapes make",
+                "a dimension the members' shapes make",
                 id="shape-made-dim",
             ),
             pytest.param(
@@ -3335,8 +3337,8 @@ class TestPyPSA:
             schema=was.model_copy(update={"dimensions": {**was.dimensions, **own}}),
         ).commit()
         missing = PyPSACollection.verify(revision.record)
-        assert missing.unsupported_dims == set(own)
-        with pytest.raises(UnsupportedRecordError, match="unsupported dims"):
+        assert missing.unsupported_dimensions == set(own)
+        with pytest.raises(UnsupportedRecordError, match="unsupported dimensions"):
             PyPSACollection.build(revision.record)
 
     @pytest.mark.parametrize(
@@ -3726,7 +3728,7 @@ class TestPyPSA:
         years = {2012: sweep["lo"], 2013: sweep["hi"]}
         record = _collection(years, store, None, "weather_year", results_only=False)
         with pytest.raises(
-            ValueError, match=r"with a dim of its own, \['weather_year'\]"
+            ValueError, match=r"with a dimension of its own, \['weather_year'\]"
         ):
             PyPSA.to_datarecord(
                 sweep["lo"], store.workspace.con, results_only=results_only, base=record
@@ -3778,9 +3780,9 @@ class TestPyPSA:
             schema.model_copy(update={"properties": properties}),
         )
         source = Path(swept.store.layer_dir(swept.id))
-        for kind in ("dims", "attributes"):
+        for kind in ("dimensions", "attributes"):
             shutil.copytree(source / kind, layer.dir / kind)
-        path = layer.dir / "dims" / "entity.parquet"
+        path = layer.dir / "dimensions" / "entity.parquet"
         frame = pd.read_parquet(path)
         frame["weather_year"] = frame["entity"].map({"only2019": 2019}).astype("Int64")
         frame.to_parquet(path, index=False)

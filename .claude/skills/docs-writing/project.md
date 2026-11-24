@@ -49,12 +49,12 @@ the design enhancement proposals (see
 
 ## The running example
 
-Its dims are `entity`, `bus`, `carrier`, `snapshot` and `ctype`, with `ctype` a
-dim with `one_of`. Its multi-dim is `connection` over `(entity, bus)`, and its
+Its dimensions are `entity`, `bus`, `carrier`, `snapshot` and `ctype`, with `ctype` a
+dimension with `one_of`. Its multi-dimension is `connection` over `(entity, bus)`, and its
 attributes are `p_nom` and `p_max_pu`. Where a page needs more, add the fewest
 names you can and say so in the PR.
 
-A schema with two dims and one attribute is the smallest example that
+A schema with two dimensions and one attribute is the smallest example that
 teaches. Show a schema next to the files it leads to, as a call sits next to
 the frame it returns. A quoted message ends with the rewrite and the page that
 defines the rule, so a truncated quote drops the half that teaches.
@@ -63,7 +63,7 @@ defines the rule, so a truncated quote drops the half that teaches.
 
 These restate examples from SKILL.md in this project's terms.
 
-- Openings: "A dim is a set of unique labels that values vary along", "A
+- Openings: "A dimension is a set of unique labels that values vary along", "A
   layer's data is written once", "This page describes every key a schema
   accepts".
 - How-to headings: "Branch a scenario", "Choose between a property and an
@@ -73,11 +73,11 @@ These restate examples from SKILL.md in this project's terms.
 - Other headings: "Crossing rows", "Where a row applies". "Labels outside
   the key", not "The fold cannot see a label outside the key". "Concurrent
   writers", not "Writers never share a file".
-- A list item that skims: "A NULL coordinate means every label of its dim. A
-  `p_max_pu` row with `snapshot` NULL applies at every snapshot."
-- A reference entry for `settle`: "Expands each NULL coordinate over the
-  labels passed, and keeps the most specific row at each point." "A
-  coordinate left out of `labels` stays as written." "`flags` sets how much
+- A list item that skims: "A NULL in a dimension's column means every label of its
+  dimension. A `p_max_pu` row with `snapshot` NULL applies at every snapshot."
+- A reference entry for `settle`: "Expands each NULL in a dimension's column over
+  the labels passed, and keeps the most specific row at each coordinate." "A
+  dimension left out of `labels` stays as written." "`flags` sets how much
   work the query does."
 - Structure gate: a section about refused schemas under "Categories" is
   misfiled, and a table of `select`'s keywords inside an about page is
@@ -88,7 +88,7 @@ These restate examples from SKILL.md in this project's terms.
 A section of a reference or about page that states what datarecord does to the
 rows of an attribute, or to an axis across layers, has a figure. That covers
 the fold of a child layer onto its parent, two rows that cross, an override
-along a dim in `partial`, the broadcast rule, removing a label, a multi-dim's
+along a dimension in `partial`, the broadcast rule, removing a label, a multi-dimension's
 tuples, and the squeeze and `lift` of `select`. A figure about structure or
 flow, such as the tree of revisions or the path of a read, may use labelled
 boxes and arrows.
@@ -96,9 +96,9 @@ boxes and arrows.
 `docs/static/resolution-fold.svg` is the model. Copy its structure.
 
 - Every attribute or axis is a table, one row per row of its file. This is a
-  table view, not a grid of dims. The note where no row exists reads like "no
+  table view, not a grid of dimensions. The note where no row exists reads like "no
   row: `coal` is removed".
-- A second dim is a second key column, such as `scenario` beside `entity` in a
+- A second dimension is a second column, such as `scenario` beside `entity` in a
   crossing.
 - A table's header band has the tint of its kind. In a result table where
   the owner map is the point, each body row has the tint of the layer the

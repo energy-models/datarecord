@@ -39,7 +39,7 @@ class LayerSource(Protocol):
 
     "The layer as it would be written", not "the rows as stored": a source
     hands over what `write_layer` would persist, so however a staging area
-    reaches one row per key happens behind it and the fold never learns about it.
+    reaches one row per coordinate happens behind it and the fold never learns about it.
     `None` means this layer wrote nothing of that kind.
 
     Rows only. Everything the fold does to them - padding to the long schema,
@@ -103,26 +103,26 @@ class LayerSource(Protocol):
         """This layer's resolved `Fold` if it is materialised, else `None`.
 
         A filesystem fact, distinct from `frozen`: `frozen` says the rows cannot
-        change under a reader, `materialised` says a `resolved/` cache exists on
-        disk. The deepest materialised source in a fold's list is its base - the
+        change under a reader, `materialised` says the layer's `resolved/` files exist
+        on disk. The deepest materialised source in a fold's list is its base - the
         prior fold it starts from rather than re-folds. Only a `ParquetLayer`
-        ever answers non-`None`; a directory or a staging area has no cache.
+        ever answers non-`None`; a directory or a staging area has no `resolved/`.
         """
         ...
 
     def axes(self) -> set[str]:
-        """Which dims this layer has an axis file for.
+        """Which dimensions this layer has an axis file for.
 
-        Asked once per source rather than probed per declared dim:
-        `Coords.resolve` folds only the dims some source holds.
+        Asked once per source rather than probed per declared dimension:
+        `Axes.resolve` folds only the dimensions some source holds.
         """
         ...
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        """`dims/<dim>.parquet` - one axis's full row, not the key alone.
+        """`dimensions/<dim>.parquet` - one axis's full row, not its column alone.
 
         Its properties ride along as columns. A file restates the axis whole,
-        in order; a multi-dim's is keyed by its struct column.
+        in order; a multi-dimension's column is its struct column.
         """
         ...
 
@@ -158,9 +158,9 @@ class LayerSource(Protocol):
     def all_attributes(self) -> DuckDBPyRelation | None:
         """Every `attributes/*.parquet` unioned by name, unprojected.
 
-        Only attributes have one: they share `owner_map_key`, so a single scan
+        Only attributes have one: they share `owner_map_index`, so a single scan
         answers the ownership `GROUP BY` for every attribute at once. An axis
-        folds on a key of its own, so a union across them would have
+        folds on its own column, so a union across them would have
         nothing to fold on.
         """
         ...
@@ -169,7 +169,7 @@ class LayerSource(Protocol):
 class _FileLayer:
     """The layer layout over a URI, shared by every file-backed source.
 
-    Each member is one file, addressed by what keys it, and opened only where
+    Each member is one file, addressed by the dimension or attribute it holds, and opened only where
     the layer's manifest lists it: a file it does not list is no part of the
     layer. A subclass supplies where the layer root is (`uri`), the workspace
     to read it through, and the manifest, and inherits every accessor
@@ -215,13 +215,13 @@ class _FileLayer:
         return self.workspace.con.read_parquet(uris, union_by_name=True)
 
     def axes(self) -> set[str]:
-        return set(self.files.dims)
+        return set(self.files.dimensions)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        if dim not in self.files.dims:
+        if dim not in self.files.dimensions:
             return None
-        rel = self._read("dims", [dim])
-        file = f"dims/{dim}.parquet"
+        rel = self._read("dimensions", [dim])
+        file = f"dimensions/{dim}.parquet"
         refuse_foreign_columns(set(rel.columns), {dim}, self.schema, dim, file)
         return rel
 
@@ -242,7 +242,7 @@ class _FileLayer:
         return self._read("attributes", list(self.files.attributes))
 
     def materialised(self) -> Fold | None:
-        """No cache by default: only a `ParquetLayer` has a revision to key one by."""
+        """Not materialised by default: only a `ParquetLayer` has a revision to materialise."""
         return None
 
 
@@ -251,8 +251,8 @@ def refuse_foreign_columns(
 ) -> None:
     """Refuse a column of an axis file beyond `structural` and `subject`'s properties.
 
-    `structural` is the key, and at write an explicit order key, which the
-    write drops.
+    `structural` is the dimension's column, and at write an explicit `order_key`,
+    which the write drops.
 
     Raises
     ------
@@ -277,7 +277,7 @@ def refuse_foreign_columns(
     )
     msg = (
         f"{file} carries columns {extra} the schema does not declare as "
-        f"properties of {subject!r}; the file holds only its key and those "
+        f"properties of {subject!r}; the file holds only its column {subject!r} and those "
         f"properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)"
     )
     raise ValueError(msg)
@@ -311,7 +311,7 @@ class ParquetLayer(_FileLayer):
         return self.store.layer_dir(self.layer_id) + path
 
     def materialised(self) -> Fold | None:
-        """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
+        """This node's resolved `Fold` if its `resolved/` files exist, else `None`."""
         return Fold.read(self)
 
     def sibling(self, layer_id: UUID) -> ParquetLayer:

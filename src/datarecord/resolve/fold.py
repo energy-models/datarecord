@@ -13,14 +13,14 @@ same shape either tense.
 
 A `Fold` is held as a base, never one of the `sources` folded on top of it.
 The folding that builds
-a live `Fold` stays in `coords.py` and `owner_map.py`, where the DuckDB
+a live `Fold` stays in `axes.py` and `owner_map.py`, where the DuckDB
 expression machinery lives; `Fold.read` reads a materialised one back, and the
 map reads gated by the fold (`owners`, `flags`) are here, on the
 object that holds the map.
 
 Notes
 -----
-- [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+- [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
 - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
 """
 
@@ -38,14 +38,14 @@ from duckdb import DuckDBPyRelation, Expression
 
 from datarecord.duck import FOLD, fn, tables_in, union_all_by_name
 from datarecord.protocols import Flags
-from datarecord.resolve.coords import Coords, _fold_name
-from datarecord.resolve.owner_keys import _empty_relation, owner_keys
+from datarecord.resolve.axes import Axes, _fold_name
+from datarecord.resolve.owner_map_rows import owner_map_rows
 from datarecord.schema.categories import (
     categorized_dim,
     matching,
     selected,
 )
-from datarecord.schema.schema import LAYER_COLUMN
+from datarecord.schema.schema import LAYER_COLUMN, empty_declared
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
@@ -60,7 +60,6 @@ if TYPE_CHECKING:
 
 def flags_from_rows(
     schema: Schema,
-    dims: tuple[str, ...],
     rows: Iterable[tuple[str, Mapping[str, Any], Mapping[str, Any], Any]],
 ) -> dict[str, Flags]:
     """Fold `(attribute, varies, broadcast, breakpoints)` rows into `Flags`.
@@ -69,30 +68,26 @@ def flags_from_rows(
     is about the *schema*, not about the map: it is the same cut whatever
     ownership decided, and keeping it out of the SQL is what makes it readable.
 
-    Both sets are cut to the attribute's own coordinates. The relation aggregated
-    over covers every attribute, so a dim one attribute is addressed by reads
+    Both sets are cut to the attribute's own dimensions. The relation aggregated
+    over covers every attribute, so a dimension one attribute is addressed by reads
     NULL for the rows of one that is not, and reporting that NULL as "every row
     broadcasts over it" would tell a consumer to build a container along an axis
     the attribute has no values on.
 
     Parameters
     ----------
-    dims
-        The broadcast dims the two mappings have an entry per.
+    rows
+        One row per attribute, whose two mappings are keyed by dimension name
+        and have an entry for every dimension the schema declares.
 
     Notes
     -----
     - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
-
-    def scope(attribute: str) -> tuple[str, ...]:
-        own = schema.coordinates_of(attribute)
-        return tuple(d for d in dims if d in own)
-
     return {
         attribute: Flags(
-            frozenset(d for d in scope(attribute) if varies[d]),
-            frozenset(d for d in scope(attribute) if broadcast[d]),
+            frozenset(d for d in schema.dimensions_of(attribute) if varies[d]),
+            frozenset(d for d in schema.dimensions_of(attribute) if broadcast[d]),
             bool(breakpoints),
         )
         for attribute, varies, broadcast, breakpoints in rows
@@ -104,26 +99,26 @@ class Fold:
     """A node's resolved view, and the map reads over it.
 
     Each member is folded over the node's ancestry: `read` builds one from a
-    `resolved/` cache, and `Record._fold` builds one live over sources. Either way
+    node's `resolved/` files, and `Record._fold` builds one live over sources. Either way
     it is the same shape, which is what lets a live fold start from a read one as
     its base.
 
     Attributes
     ----------
-    coords
+    axes
         The folded axes, their owners and dead labels, under the schema the
-        record is read under, which says which broadcast dims the flags carry.
+        record is read under, which says which dimensions the flags carry.
     owner_map
-        The resolved owner map: `(owner_map_key, layer_uuid, varies,
-        broadcast, breakpoints)`, one row per key as its layer wrote it,
-        expanded along a dim only where a deeper layer crossed it there.
+        The resolved owner map: `(owner_map_index, layer_uuid, varies,
+        broadcast, breakpoints)`, one map row as its layer wrote it,
+        expanded along a dimension only where a deeper layer crossed it there.
     """
 
-    coords: Coords
+    axes: Axes
     owner_map: DuckDBPyRelation
 
     def owners(self, attribute: str) -> DuckDBPyRelation:
-        """The owner-map rows for one attribute - which layer owns each of its keys.
+        """The owner-map rows for one attribute - which layer owns each of its map rows.
 
         Notes
         -----
@@ -132,58 +127,55 @@ class Fold:
         return self.owner_map.filter(col("attribute") == lit(attribute))
 
     def flags(self, **categories: str | Sequence[str]) -> dict[str, Flags]:
-        """Per attribute, which dims its rows use, across the record or one category.
+        """Per attribute, which dimensions its rows use, across the record or one category.
 
-        A dim in both sets is the instruction to use both containers, each
+        A dimension in both sets is the instruction to use both containers, each
         taking the rows it matches.
 
         Parameters
         ----------
         categories
-            Categorizing properties of one dim, each one category or several:
+            Categorizing properties of one dimension, each one category or several:
             only rows reaching a matching label count. None given, every row
             counts.
 
         Raises
         ------
         ValueError
-            If the keywords categorize no dim or several.
+            If the keywords categorize no dimension or several.
 
         Notes
         -----
         - [Flags](https://energy-models.github.io/datarecord/reference/record/#flags)
         - [categories](https://energy-models.github.io/datarecord/reference/data-model/#categories)
         """
-        schema = self.coords.schema
-        dims = schema.broadcast_dims
+        schema = self.axes.schema
         if not categories:
-            # The structs come back as dicts keyed by dim, so each set is a filter
-            # by name rather than a positional slice.
-            return flags_from_rows(schema, dims, self._flag_rows(self.owner_map, dims))
+            return flags_from_rows(schema, self._flag_rows(self.owner_map))
         dim = categorized_dim(schema, categories)
         chosen = selected(schema, dim, categories)
-        axis = self.coords.axes.get(dim)
+        axis = self.axes.get(dim)
         if axis is None:
             return {}
         rows = self._owned_reaching(dim, matching(axis, chosen).project(col(dim)))
-        return flags_from_rows(schema, dims, self._flag_rows(rows, dims))
+        return flags_from_rows(schema, self._flag_rows(rows))
 
     def _owned_reaching(self, dim: str, labels: DuckDBPyRelation) -> DuckDBPyRelation:
-        """The owner-map rows reaching one of `labels`, on `dim` or a multi-dim's coordinate over it.
+        """The owner-map rows reaching one of `labels`, on `dim` or a multi-dimension's field over it.
 
-        A row names a label, or leaves the coordinate NULL for an attribute
-        over it, which reaches every label the coordinate holds: such a row
-        counts where `labels` holds a label of `dim`, or the multi-dim a tuple
-        whose coordinate names one. One semi-join per path, unioned rather than
+        A row names a label, or leaves the dimension NULL for an attribute
+        over it, which covers every label the dimension holds: such a row
+        counts where `labels` holds a label of `dim`, or the multi-dimension a tuple
+        whose field names one. One semi-join per path, unioned rather than
         OR-ed into one condition, which would be a nested loop; a row matched
         twice changes no flag.
         """
-        schema = self.coords.schema
+        schema = self.axes.schema
         om = self.owner_map.set_alias("o")
         named = labels.set_alias("l")
         paths: list[tuple[str, str | None]] = [(dim, None)]
         paths += [
-            (m, f) for m in schema.multi_dims if (f := schema.coordinate_over(m, dim))
+            (m, f) for m in schema.multi_dimensions if (f := schema.field_over(m, dim))
         ]
         reached = []
         for column, field in paths:
@@ -193,12 +185,12 @@ class Fold:
             reached.append(om.join(named, on, how="semi"))
             if field is None:
                 hit = labels
-            elif (held := self.coords.axes.get(column)) is not None:
+            elif (held := self.axes.get(column)) is not None:
                 on = _path("g", column, field) == col("l", dim)
                 hit = held.set_alias("g").join(named, on, how="semi")
             else:
                 continue
-            over = [a for a in schema.attributes if column in schema.coordinates_of(a)]
+            over = [a for a in schema.attributes if column in schema.dimensions_of(a)]
             if over and hit.limit(1).fetchall():
                 reached.append(
                     om.filter(
@@ -210,12 +202,11 @@ class Fold:
             return om.filter(lit(False))  # noqa: FBT003
         return reduce(DuckDBPyRelation.union, reached)
 
-    def _flag_rows(
-        self, rel: DuckDBPyRelation, dims: tuple[str, ...]
-    ) -> list[tuple[Any, ...]]:
-        """`rel`'s flag columns, aggregated per attribute."""
+    def _flag_rows(self, rel: DuckDBPyRelation) -> list[tuple[Any, ...]]:
+        """`rel`'s flag columns, aggregated per attribute and dimension."""
+        dimensions = self.axes.schema.dimensions
         flag = {
-            c: fn.struct_pack(**{d: fn.bool_or(col(c)[d]) for d in dims}).alias(c)
+            c: fn.struct_pack(**{d: fn.bool_or(col(c)[d]) for d in dimensions}).alias(c)
             for c in ("varies", "broadcast")
         }
         return rel.aggregate(
@@ -235,7 +226,7 @@ class Fold:
         that is no `Record`, a tool presenting a framework object among them,
         can answer them. The owner map is collected once, so each `flags` call
         aggregates it alone. A layered `Record` passed here is flattened: the
-        keys each of its layers wrote are lost.
+        map rows each of its layers wrote are lost.
 
         Notes
         -----
@@ -244,55 +235,55 @@ class Fold:
         """
         schema, attributes, con = record.schema, record.attributes, record.con
         layer = uuid4()
-        owned = [owner_keys(attributes[a], schema, layer, (a,)) for a in attributes]
+        owned = [owner_map_rows(attributes[a], schema, layer, (a,)) for a in attributes]
         owner_map = (
             union_all_by_name(owned)
             if owned
-            else _empty_relation(schema, con, *schema.owner_map_columns)
+            else empty_declared(schema, con, *schema.owner_map_columns)
         )
-        coords = Coords(schema, dict(record.properties), {})
-        return cls(coords, owner_map.materialize())
+        axes = Axes(schema, dict(record.properties), {})
+        return cls(axes, owner_map.materialize())
 
     @classmethod
     def read(cls, layer: ParquetLayer) -> Fold | None:
         """`layer`'s node's `Fold` under its own schema, `None` if it is not materialised.
 
         The owner map is the presence marker: the map is written last
-        (`cache.materialise`), so if it is absent the node reads as having no
-        cache at all. Each axis is read from the layer `dim_owners.parquet`
-        names for it, and a dim's dead labels only where it says the dim has
+        (`materialise.materialise`), so if it is absent the node reads as not
+        materialised at all. Each axis is read from the layer `dimension_owners.parquet`
+        names for it, and a dimension's dead labels only where it says the dimension has
         any.
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         revision_id, store, con = layer.layer_id, layer.store, layer.workspace.con
         owner_map = read_owner_map(revision_id, con, store)
         if owner_map is None:
             return None
         dead = f"{store.resolved_dir(revision_id)}dead/"
-        coords = Coords.from_rows(
+        axes = Axes.from_rows(
             layer.schema,
-            read_dim_owners(revision_id, con, store),
+            read_dimension_owners(revision_id, con, store),
             lambda dim, owner: con.read_parquet(store.axis_uri(owner, dim)),
             lambda dim: con.read_parquet(f"{dead}{dim}.parquet"),
         )
-        return cls(coords, owner_map)
+        return cls(axes, owner_map)
 
     @classmethod
     def held(cls, source: LayerSource) -> Fold | None:
         """`source`'s node's `Fold` from the workspace's shared tables, `None` where they lack it.
 
-        The coords and the owner map are tabled independently, so each is
-        looked up (`Coords.held`).
+        The axes and the owner map are tabled independently, so each is
+        looked up (`Axes.held`).
         """
         rid, ws = source.layer_id, source.workspace
         if "owner_map" not in tables_in(ws.con, ws.name, FOLD, rid):
             return None
         owner_map = ws.con.table(_fold_name(ws, rid, "owner_map"))
-        coords = Coords.held(source)
-        return None if coords is None else cls(coords, owner_map)
+        axes = Axes.held(source)
+        return None if axes is None else cls(axes, owner_map)
 
 
 def _path(alias: str, column: str, field: str | None) -> Expression:
@@ -308,28 +299,28 @@ def read_owner_map(
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
     """
     uri = store.owner_map_uri(revision_id)
     return con.read_parquet(uri) if store.files.exists(uri) else None
 
 
-def read_dim_owners(
+def read_dimension_owners(
     revision_id: UUID, con: DuckDBPyConnection, store: Store
 ) -> list[tuple[str, UUID, bool]]:
-    """`revision_id`'s materialised `(dim, layer_uuid, has_dead)` rows (`Coords.owners`).
+    """`revision_id`'s materialised `(dimension, layer_uuid, has_dead)` rows (`Axes.owners`).
 
-    A dim absent has no axis.
+    A dimension absent has no axis.
 
     Raises
     ------
     duckdb.IOException
-        If the node holds no `dim_owners.parquet`.
+        If the node holds no `dimension_owners.parquet`.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
-    rel = con.read_parquet(store.dim_owners_uri(revision_id))
-    return rel.project(col("dim"), col(LAYER_COLUMN), col("has_dead")).fetchall()
+    rel = con.read_parquet(store.dimension_owners_uri(revision_id))
+    return rel.project(col("dimension"), col(LAYER_COLUMN), col("has_dead")).fetchall()

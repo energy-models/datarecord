@@ -12,10 +12,10 @@ Every value is a DuckDB relation, a query plan that DuckDB runs only when you ca
 
 ## Read labels and properties
 
-`dims[dim]` returns a dim's axis in axis order, and `properties[dim]` returns its labels with every property, one row per label. To read one category, filter on the property:
+`dimensions[dim]` returns a dimension's axis in axis order, and `properties[dim]` returns its labels with every property, one row per label. To read one category, filter on the property:
 
 ```python
-print(record.dims["snapshot"].df())
+print(record.dimensions["snapshot"].df())
 print(record.properties["entity"].filter("ctype = 'Generator'").df())
 ```
 
@@ -29,11 +29,11 @@ print(record.properties["entity"].filter("ctype = 'Generator'").df())
 1   gas1  Generator     gas
 ```
 
-The axis lists the three snapshots in order, and the filter keeps both generators. A multi-dim's axis is one struct column, such as `connection`, with a field per coordinate.
+The axis lists the three snapshots in order, and the filter keeps both generators. A multi-dimension's axis is one struct column, such as `connection`, with its fields.
 
 ## Read attributes long
 
-`attributes[name]` returns the stored rows, one per value, in no promised order. A row has the attribute's own coordinates, then `attribute`, `breakpoint` and `value`:
+`attributes[name]` returns the stored rows, one per value, in no promised order. A row has a column per dimension of the attribute, then `attribute`, `breakpoint` and `value`:
 
 ```python
 print(record.attributes["p_max_pu"].filter("entity = 'wind1'").df())
@@ -46,11 +46,11 @@ print(record.attributes["p_max_pu"].filter("entity = 'wind1'").df())
 2  wind1         0  p_max_pu         NaN    0.3
 ```
 
-Each row is one value of `wind1`'s series. A NULL coordinate means every label of its dim ([the broadcast rule](../reference/data-model.md)). An attribute row has no property column, so join `properties` on the key to filter by category.
+Each row is one value of `wind1`'s series. A NULL in a dimension's column means every label of its dimension ([the broadcast rule](../reference/data-model.md)). An attribute row has no property column, so join `properties` on the dimension's column to filter by category.
 
 ## Plan a read with `flags`
 
-`flags(**categories)` returns, per attribute, the dims some row sets (`varies`) and the dims some row leaves NULL (`broadcast`), counting only rows for the category:
+`flags(**categories)` returns, per attribute, the dimensions some row sets (`varies`) and the dimensions some row leaves NULL (`broadcast`), counting only rows for the category:
 
 ```python
 flags = record.flags(ctype="Generator")
@@ -61,17 +61,17 @@ print(flags["p_max_pu"])
 Flags(varies=frozenset({'entity', 'snapshot'}), broadcast=frozenset({'snapshot'}), breakpoints=False)
 ```
 
-`snapshot` is in both sets, so some generators have a series and others a constant. A dim in `varies` alone has a label in every row.
+`snapshot` is in both sets, so some generators have a series and others a constant. A dimension in `varies` alone has a label in every row.
 
 ## Apply the broadcast rule
 
-To get one row per label at each point, pass `settle` the rows, the labels of each coordinate to expand, and the attribute's flags:
+To get one row per label at each coordinate, pass `settle` the rows, the labels of each dimension to expand, and the attribute's flags:
 
 ```python
 from datarecord import settle
 
 gens = record.properties["entity"].filter("ctype = 'Generator'").select("entity")
-labels = {"entity": gens, "snapshot": record.dims["snapshot"]}
+labels = {"entity": gens, "snapshot": record.dimensions["snapshot"]}
 print(settle(record.attributes["p_max_pu"], labels, flags["p_max_pu"]).df())
 ```
 
@@ -85,9 +85,9 @@ print(settle(record.attributes["p_max_pu"], labels, flags["p_max_pu"]).df())
 5  wind1         2  p_max_pu         NaN    0.5
 ```
 
-`settle` expands `gas1`'s NULL `snapshot` over the three snapshots and drops rows of labels you did not pass. A coordinate you leave out of `labels` stays as written. [The record reference](../reference/record.md) lists what each flag costs.
+`settle` expands `gas1`'s NULL `snapshot` over the three snapshots and drops rows of labels you did not pass. A dimension you leave out of `labels` stays as written. [The record reference](../reference/record.md) lists what each flag costs.
 
-A point that no row covers takes the attribute's default. `Schema.default_for` gives it per category:
+A coordinate that no row covers takes the attribute's default. `Schema.default_for` gives it per category:
 
 ```python
 print(record.schema.default_for("p_max_pu", ctype="Generator"))
@@ -113,7 +113,7 @@ print(ws.at(uri).attributes["p_nom"].df())
 ```
 
 ```text
-['attributes', 'dims', 'manifest.json']
+['attributes', 'dimensions', 'manifest.json']
   entity attribute  breakpoint  value
 0  wind1     p_nom         NaN  100.0
 1   gas1     p_nom         NaN   50.0
@@ -123,7 +123,7 @@ The directory contains a manifest and a folder per kind of file, and `ws.at` ret
 
 ## Read from SQL
 
-`register` creates a DuckDB schema with a view per dim, property subject and attribute, so a client that speaks only SQL reads the record:
+`register` creates a DuckDB schema with a view per dimension, property subject and attribute, so a client that speaks only SQL reads the record:
 
 ```python
 record.register("base")
