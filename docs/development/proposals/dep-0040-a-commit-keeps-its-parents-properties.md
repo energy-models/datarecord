@@ -38,7 +38,6 @@ Today a caller wraps the source. The wrapper widens its schema with the parent's
 4. Take an axis the layer writes without the column of a kept property. The writer left-joins the parent's resolved values onto it by label, and writes them into the child's axis file in the layer's row order. A label new to the child reads NULL. A label the child removes has no row, so its value goes with it.
 5. An axis the layer does not write has no file, and the fold inherits the parent's axis, its properties included.
 6. The writer checks the kept columns as it checks any written column. A kept property that refers to a dimension is refused while its value names a label the layer removes, with the message for [removing labels](../../reference/layers.md#removing-labels).
-7. The commit logs each kept property at `INFO`: `revision <id> keeps property <dim>.<name> of its parent`.
 
 A root commit, `parent=None`, has nothing to keep. A `WorkingRecord`, committed whole or as its `StagedSource` edits, declares every property of the revision it was built over, so the commit keeps none this way and joins nothing.
 
@@ -48,7 +47,7 @@ Nothing changes on disk. The kept values are ordinary columns of the child's axi
 
 The planned design moves properties into one or more properties files of their own, which fold like attribute files. There, a layer that lacks a property reads it from the layer below, as a layer that writes no `p_nom` file reads the parent's `p_nom`. Keeping the parent's properties on every commit gives that behaviour today, with the axis file as it is. A workflow written against it keeps working once properties fold like attributes, because the read returns the same rows.
 
-An omitted property therefore means "unchanged", as an omitted attribute file already does. A rule that holds for attributes on every commit and for properties only behind a flag would give one omission two meanings. The `INFO` log names each kept property, so a caller who did not expect one sees it.
+An omitted property therefore means "unchanged", as an omitted attribute file already does. A rule that holds for attributes on every commit and for properties only behind a flag would give one omission two meanings.
 
 The values are kept at commit time rather than at read time. The kept values are in the written file, so a read does no extra join and a later layer folds them like any other column. The writer also checks them before the manifest exists. This follows [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md): a layer's axis file contains the whole axis at the new revision, properties included.
 
@@ -67,7 +66,7 @@ child.record.properties["snapshot"]  # agg_3h kept by label, NULL on a new snaps
 ## Implementation notes
 
 1. `_keeping_properties` widens the source's schema with the parent's properties on the dimensions the source declares.
-2. `_kept` lists the kept properties for the `INFO` log.
+2. `_kept` lists the kept properties, by dimension.
 3. `_Carrying` wraps the `LayerData` and left-joins each written axis with the parent's resolved properties, ordered by the layer's rows.
 4. `Claim._commit` applies both whenever the claim has a parent, before `compatible_with` and `write_layer` run. A `WorkingRecord`'s schema already declares every property, so `_kept` is empty for it and no axis is wrapped.
 

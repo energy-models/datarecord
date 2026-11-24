@@ -10,7 +10,6 @@ Notes
 """
 
 import json
-import logging
 import re
 import shutil
 from itertools import permutations
@@ -1630,7 +1629,7 @@ def _aggs(revision) -> list[tuple]:
 
 
 @pytest.mark.parametrize("commit", [_by_store, _by_claim])
-def test_a_commit_keeps_the_parents_property_by_label(store, caplog, commit):
+def test_a_commit_keeps_the_parents_property_by_label(store, commit):
     """The child's restated axis has `agg` where it keeps a label, NULL on a new one.
 
     Notes
@@ -1639,7 +1638,6 @@ def test_a_commit_keeps_the_parents_property_by_label(store, caplog, commit):
     """
     root = _agg_root(store)
     source = _scenarios_with(_SCHEMA, ["x", "new", "z"])
-    caplog.set_level(logging.INFO, logger="datarecord.store.store")
     child = commit(store, source, root)
 
     assert child.manifest.schema.properties["scenario"] == _AGG.properties["scenario"]
@@ -1647,9 +1645,6 @@ def test_a_commit_keeps_the_parents_property_by_label(store, caplog, commit):
         "the parent's value on a kept label, NULL on a new one, no row for a removed"
         " one, in the source's order"
     )
-    assert caplog.messages == [
-        f"revision {child.id} keeps property scenario.agg of its parent"
-    ]
 
 
 @pytest.mark.parametrize(
@@ -1665,7 +1660,7 @@ def test_a_source_declaring_the_property_writes_its_own_values(
     assert _aggs(child) == expected, "the source declares `agg`, so its values apply"
 
 
-def test_a_commit_keeps_only_what_the_source_omits(store, caplog):
+def test_a_commit_keeps_only_what_the_source_omits(store):
     both = _declaring(
         _SCHEMA,
         scenario={"agg": PropertySpec(dtype="int"), "w": PropertySpec(dtype="int")},
@@ -1674,15 +1669,11 @@ def test_a_commit_keeps_only_what_the_source_omits(store, caplog):
         _scenarios_with(both, ["x", "y"], agg=[1, 2], w=[5, 6]), parent=None
     )
     source = _scenarios_with(_AGG, ["x", "new"], agg=[10, 20])
-    caplog.set_level(logging.INFO, logger="datarecord.store.store")
     child = store.commit(source, parent=root)
     rows = child.record.properties["scenario"].project("scenario, agg, w")
     assert rows.fetchall() == [("x", 10, 5), ("new", 20, None)], (
         "the source's `agg`, the parent's `w`"
     )
-    assert caplog.messages == [
-        f"revision {child.id} keeps property scenario.w of its parent"
-    ]
 
 
 def test_a_kept_property_reaches_through_a_layer_without_the_axis(store):
@@ -1765,15 +1756,13 @@ def test_a_kept_property_naming_a_removed_label_is_refused(store, restated):
     ],
     ids=["working-record", "edits"],
 )
-def test_edits_keep_the_parent_property_without_carrying_it(store, caplog, commit):
+def test_edits_keep_the_parent_property_without_carrying_it(store, commit):
     root = _agg_root(store)
     w = WorkingRecord(root.record)
     w.add("scenario", ["new"])
-    caplog.set_level(logging.INFO, logger="datarecord.store.store")
     child = commit(root, w)
     assert child.manifest.schema == _AGG
     assert _aggs(child) == [("x", 1), ("y", 2), ("z", 3), ("new", None)]
-    assert caplog.messages == [], "edits declare every property, so none is carried"
 
 
 def test_a_commit_keeps_a_multi_dims_property_by_label(store):

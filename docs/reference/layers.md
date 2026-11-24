@@ -212,8 +212,6 @@ Snapshot 1 has no row, so its value goes with it.
 - Only properties are kept. The commit still refuses a source whose schema omits a dimension or an attribute that the parent declares.
 - A commit of a `WorkingRecord` keeps no property this way, because its edits declare every property of the revision it was built over.
 
-The commit logs each kept property at `INFO`, as `revision <id> keeps property snapshot.agg_3h of its parent`.
-
 !!! info "See also"
 
     [The store page](store.md#a-revision-exists-only-by-its-manifest) lists the checks a commit makes before it writes data.

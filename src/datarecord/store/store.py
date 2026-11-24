@@ -19,7 +19,6 @@ Notes
 from __future__ import annotations
 
 import json
-import logging
 import os
 import threading
 import time
@@ -64,8 +63,6 @@ from datarecord.store.manifest import (
 from datarecord.store.materialise import materialise, sources_to_read
 from datarecord.store.write import carrying, layer_data, write_layer
 from datarecord.templates import Templates
-
-logger = logging.getLogger(__name__)
 
 #: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
 _SECRET = "datarecord_s3"
@@ -1384,14 +1381,6 @@ class Claim(_OfStore):
         if parent is not None:
             schema = _keeping_properties(schema, parent.manifest.schema)
             kept = _kept(schema, data.schema)
-            for dim, names in kept.items():
-                for name in names:
-                    logger.info(
-                        "revision %s keeps property %s.%s of its parent",
-                        self.id,
-                        dim,
-                        name,
-                    )
             problems = schema.compatible_with(parent.manifest.schema)
             if problems:
                 msg = (
