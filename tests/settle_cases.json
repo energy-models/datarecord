@@ -1,0 +1,433 @@
+[
+  {
+    "name": "nested",
+    "doc": "A row that sets more dimensions is kept where it applies, over a row setting fewer.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "scenario", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, null, 1.0],
+      ["a", null, 2.0],
+      ["a", "x", 3.0]
+    ],
+    "labels": { "entity": ["a", "b"], "scenario": ["x", "y"] },
+    "filter": true,
+    "expected": [
+      ["a", "x", 3.0],
+      ["a", "y", 2.0],
+      ["b", "x", 1.0],
+      ["b", "y", 1.0]
+    ]
+  },
+  {
+    "name": "crossing-resolved",
+    "doc": "Two rows that cross are settled where a row setting both dimensions applies.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "scenario", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["a", null, 1.0],
+      [null, "x", 2.0],
+      ["a", "x", 3.0]
+    ],
+    "labels": { "entity": ["a", "b"], "scenario": ["x", "y"] },
+    "filter": true,
+    "expected": [
+      ["a", "x", 3.0],
+      ["a", "y", 1.0],
+      ["b", "x", 2.0]
+    ]
+  },
+  {
+    "name": "crossing-unresolved",
+    "doc": "Two rows that cross at a coordinate where no row sets both dimensions fail the query.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "scenario", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["a", null, 1.0],
+      [null, "x", 2.0]
+    ],
+    "labels": { "entity": ["a", "b"], "scenario": ["x", "y"] },
+    "filter": true,
+    "error": "crossed"
+  },
+  {
+    "name": "crossing-outside-labels",
+    "doc": "Two rows that cross only at a label outside `labels` settle without failing.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "scenario", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["c", null, 1.0],
+      [null, "x", 2.0]
+    ],
+    "labels": { "entity": ["a", "b"], "scenario": ["x", "y"] },
+    "filter": true,
+    "expected": [
+      ["a", "x", 2.0],
+      ["b", "x", 2.0]
+    ]
+  },
+  {
+    "name": "label-outside-labels",
+    "doc": "A row setting a label outside `labels` is dropped.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "scenario", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["c", "x", 1.0],
+      [null, "x", 2.0],
+      ["a", "z", 3.0]
+    ],
+    "labels": { "entity": ["a", "b"], "scenario": ["x", "y"] },
+    "filter": true,
+    "expected": [
+      ["a", "x", 2.0],
+      ["b", "x", 2.0]
+    ]
+  },
+  {
+    "name": "label-outside-labels-unfiltered",
+    "doc": "With `filter` false, a row setting a label outside `labels` is kept as written.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "scenario", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["c", "x", 1.0],
+      [null, "x", 2.0],
+      ["a", "z", 3.0]
+    ],
+    "labels": { "entity": ["a", "b"], "scenario": ["x", "y"] },
+    "filter": false,
+    "expected": [
+      ["c", "x", 1.0],
+      ["a", "x", 2.0],
+      ["b", "x", 2.0],
+      ["a", "z", 3.0]
+    ]
+  },
+  {
+    "name": "no-labels",
+    "doc": "With no labels for a dimension, no row applies to any label, so none is kept.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 1.0],
+      ["a", 2.0]
+    ],
+    "labels": { "entity": [] },
+    "filter": true,
+    "expected": []
+  },
+  {
+    "name": "no-labels-unfiltered",
+    "doc": "With `filter` false and no labels for a dimension, a NULL row is dropped and a row setting a label is kept as written.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 1.0],
+      ["a", 2.0]
+    ],
+    "labels": { "entity": [] },
+    "filter": false,
+    "expected": [["a", 2.0]]
+  },
+  {
+    "name": "dimension-outside-labels",
+    "doc": "A dimension outside `labels` is kept as written, its NULL one more label, so rows differing only there do not compete.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["a", null, 1.0],
+      [null, 1, 2.0],
+      [null, null, 3.0]
+    ],
+    "labels": { "entity": ["a", "b"] },
+    "filter": true,
+    "expected": [
+      ["a", null, 1.0],
+      ["a", 1, 2.0],
+      ["b", 1, 2.0],
+      ["b", null, 3.0]
+    ]
+  },
+  {
+    "name": "labels-without-column",
+    "doc": "A dimension in `labels` with no column is ignored.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 1.0],
+      ["a", 2.0]
+    ],
+    "labels": { "entity": ["a", "b"], "scenario": ["x", "y"] },
+    "filter": true,
+    "expected": [
+      ["a", 2.0],
+      ["b", 1.0]
+    ]
+  },
+  {
+    "name": "constant-behind-a-series",
+    "doc": "A row with `snapshot` NULL applies at each snapshot that the entity's series leaves out.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["a", null, 1.0],
+      ["a", 0, 2.0],
+      ["b", 1, 3.0]
+    ],
+    "labels": { "entity": ["a", "b"], "snapshot": [0, 1] },
+    "filter": true,
+    "expected": [
+      ["a", 0, 2.0],
+      ["a", 1, 1.0],
+      ["b", 1, 3.0]
+    ]
+  },
+  {
+    "name": "broadcast-only",
+    "doc": "Rows leaving a dimension NULL in every row each take every label of it.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 0, 1.0],
+      [null, 1, 2.0]
+    ],
+    "labels": { "entity": ["a", "b"] },
+    "filter": true,
+    "expected": [
+      ["a", 0, 1.0],
+      ["a", 1, 2.0],
+      ["b", 0, 1.0],
+      ["b", 1, 2.0]
+    ]
+  },
+  {
+    "name": "curve-behind-a-row",
+    "doc": "A curve is dropped whole where a more specific row applies, and kept whole elsewhere.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "breakpoint", "type": "DOUBLE" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["a", null, 0.0, 10.0],
+      ["a", null, 1.0, 20.0],
+      ["a", 1, null, 5.0]
+    ],
+    "labels": { "entity": ["a"], "snapshot": [1, 2] },
+    "filter": true,
+    "expected": [
+      ["a", 1, null, 5.0],
+      ["a", 2, 0.0, 10.0],
+      ["a", 2, 1.0, 20.0]
+    ]
+  },
+  {
+    "name": "curve-behind-a-curve",
+    "doc": "A curve is dropped whole where a more specific curve applies, whatever breakpoints either has.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "breakpoint", "type": "DOUBLE" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 0.0, 1.0],
+      [null, 1.0, 2.0],
+      [null, 2.0, 3.0],
+      ["a", 0.0, 5.0],
+      ["a", 5.0, 6.0]
+    ],
+    "labels": { "entity": ["a", "b"] },
+    "filter": true,
+    "expected": [
+      ["a", 0.0, 5.0],
+      ["a", 5.0, 6.0],
+      ["b", 0.0, 1.0],
+      ["b", 1.0, 2.0],
+      ["b", 2.0, 3.0]
+    ]
+  },
+  {
+    "name": "multi-dimension",
+    "doc": "A NULL struct applies to every tuple, and a whole tuple to one, as in the figure of the reference page on the data model.",
+    "columns": [
+      { "name": "connection", "type": "STRUCT(entity VARCHAR, bus VARCHAR)" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 1.0],
+      [{ "entity": "dc", "bus": "south" }, 0.9]
+    ],
+    "labels": {
+      "connection": [
+        { "entity": "wind", "bus": "north" },
+        { "entity": "gas", "bus": "south" },
+        { "entity": "dc", "bus": "north" },
+        { "entity": "dc", "bus": "south" }
+      ]
+    },
+    "filter": true,
+    "expected": [
+      [{ "entity": "wind", "bus": "north" }, 1.0],
+      [{ "entity": "gas", "bus": "south" }, 1.0],
+      [{ "entity": "dc", "bus": "north" }, 1.0],
+      [{ "entity": "dc", "bus": "south" }, 0.9]
+    ]
+  },
+  {
+    "name": "multi-dimension-null-field",
+    "doc": "A struct with a NULL field is no tuple of `labels`, so its row is dropped, and only a NULL struct applies to every tuple.",
+    "columns": [
+      { "name": "connection", "type": "STRUCT(entity VARCHAR, bus VARCHAR)" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 1.0],
+      [{ "entity": "dc", "bus": null }, 0.5]
+    ],
+    "labels": {
+      "connection": [
+        { "entity": "dc", "bus": "north" },
+        { "entity": "dc", "bus": "south" }
+      ]
+    },
+    "filter": true,
+    "expected": [
+      [{ "entity": "dc", "bus": "north" }, 1.0],
+      [{ "entity": "dc", "bus": "south" }, 1.0]
+    ]
+  },
+  {
+    "name": "multi-dimension-beside-a-dimension",
+    "doc": "A struct column settles beside a flat dimension as one dimension.",
+    "columns": [
+      { "name": "connection", "type": "STRUCT(entity VARCHAR, bus VARCHAR)" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 0, 1.0],
+      [{ "entity": "dc", "bus": "south" }, null, 2.0],
+      [{ "entity": "dc", "bus": "south" }, 0, 3.0]
+    ],
+    "labels": {
+      "connection": [
+        { "entity": "wind", "bus": "north" },
+        { "entity": "dc", "bus": "south" }
+      ],
+      "snapshot": [0, 1]
+    },
+    "filter": true,
+    "expected": [
+      [{ "entity": "wind", "bus": "north" }, 0, 1.0],
+      [{ "entity": "dc", "bus": "south" }, 0, 3.0],
+      [{ "entity": "dc", "bus": "south" }, 1, 2.0]
+    ]
+  },
+  {
+    "name": "multi-dimension-crossing-unresolved",
+    "doc": "A struct column and a flat dimension that cross where no row sets both fail the query.",
+    "columns": [
+      { "name": "connection", "type": "STRUCT(entity VARCHAR, bus VARCHAR)" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      [null, 0, 1.0],
+      [{ "entity": "dc", "bus": "south" }, null, 2.0]
+    ],
+    "labels": {
+      "connection": [{ "entity": "dc", "bus": "south" }],
+      "snapshot": [0, 1]
+    },
+    "filter": true,
+    "error": "crossed"
+  },
+  {
+    "name": "p_max_pu-over-every-dimension",
+    "doc": "The example of the broadcast rule on the reference page on the data model.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "attribute", "type": "VARCHAR" },
+      { "name": "breakpoint", "type": "DOUBLE" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["wind", 0, "p_max_pu", null, 0.3],
+      ["wind", 1, "p_max_pu", null, 0.8],
+      ["wind", 2, "p_max_pu", null, 0.5],
+      [null, null, "p_max_pu", null, 1.0]
+    ],
+    "labels": { "entity": ["wind", "gas", "dc"], "snapshot": [0, 1, 2] },
+    "filter": true,
+    "expected": [
+      ["wind", 0, "p_max_pu", null, 0.3],
+      ["wind", 1, "p_max_pu", null, 0.8],
+      ["wind", 2, "p_max_pu", null, 0.5],
+      ["gas", 0, "p_max_pu", null, 1.0],
+      ["gas", 1, "p_max_pu", null, 1.0],
+      ["gas", 2, "p_max_pu", null, 1.0],
+      ["dc", 0, "p_max_pu", null, 1.0],
+      ["dc", 1, "p_max_pu", null, 1.0],
+      ["dc", 2, "p_max_pu", null, 1.0]
+    ]
+  },
+  {
+    "name": "p_max_pu-over-the-generators",
+    "doc": "The example of `settle` on the reference page on the record, with `snapshot` outside `labels`.",
+    "columns": [
+      { "name": "entity", "type": "VARCHAR" },
+      { "name": "snapshot", "type": "INTEGER" },
+      { "name": "attribute", "type": "VARCHAR" },
+      { "name": "breakpoint", "type": "DOUBLE" },
+      { "name": "value", "type": "DOUBLE" }
+    ],
+    "rows": [
+      ["wind", 0, "p_max_pu", null, 0.3],
+      ["wind", 1, "p_max_pu", null, 0.8],
+      ["wind", 2, "p_max_pu", null, 0.5],
+      [null, null, "p_max_pu", null, 1.0]
+    ],
+    "labels": { "entity": ["wind", "gas"] },
+    "filter": true,
+    "expected": [
+      ["gas", null, "p_max_pu", null, 1.0],
+      ["wind", 0, "p_max_pu", null, 0.3],
+      ["wind", 1, "p_max_pu", null, 0.8],
+      ["wind", 2, "p_max_pu", null, 0.5],
+      ["wind", null, "p_max_pu", null, 1.0]
+    ]
+  }
+]

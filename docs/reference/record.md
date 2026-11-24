@@ -159,6 +159,30 @@ Passing `"snapshot": record.dimensions["snapshot"]` as well gives one row per ge
 
 `filter=False` keeps a row with a label outside `labels` as written, for a reader whose own join on the labels drops it.
 Where every row at a coordinate leaves NULL a dimension that another row there sets, the query raises `duckdb.Error` on fetch, naming the coordinate.
+`settle` groups rows by every column but `breakpoint` and `value`, so `attribute` and a dimension left out of `labels` count too.
+A [curve](data-model.md#attributes) is kept or dropped whole.
+
+### Cases for a port
+
+A case of `settle` is a set of rows and labels with the rows `settle` returns for them, or the error it raises.
+datarecord keeps its cases in [`tests/settle_cases.json`](https://github.com/energy-models/datarecord/blob/main/tests/settle_cases.json), so a reader that settles rows in its own SQL can run them against its port.
+The file is not part of the package: pin it by fetching it from the repository at the tag of a datarecord release.
+
+The file is a JSON list of cases, and each case is an object with these keys:
+
+| Key        | Value                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `name`     | a unique name                                                                                                      |
+| `doc`      | one sentence stating the rule the case checks                                                                      |
+| `columns`  | the columns of the rows in order, each a `name` and a DuckDB `type`, such as `STRUCT(entity VARCHAR, bus VARCHAR)` |
+| `rows`     | the rows, a list per row in the order of `columns`, with a struct as an object and NULL as `null`                  |
+| `labels`   | per dimension, the list of its labels, typed as the column of that name; a port ignores a dimension with no column |
+| `filter`   | the `filter` argument of `settle`                                                                                  |
+| `expected` | the rows `settle` returns, in the shape of `rows`                                                                  |
+| `error`    | in place of `expected`, the kind of error: `crossed`, where two rows cross and no row sets both                    |
+
+The order of `rows` and `expected` has no meaning, and the text of an error is not part of a case.
+A case has no flags, because flags change no value: datarecord runs each case with the flags of its rows, and again with every dimension in both sets.
 
 !!! info "See also"
 

@@ -310,6 +310,12 @@ All notable changes to datarecord are documented here. The format follows
   secret scoped to the layer, and reads the ancestors with the workspace's
   key, or anonymously where the workspace has none. The [store reference](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
   lists the S3 actions each key needs.
+- `tests/settle_cases.json` lists cases of `settle`: rows as DuckDB types,
+  labels, `filter`, and the rows `settle` returns or the error it raises. A
+  reader that settles rows in its own SQL runs them against its port, fetched
+  from the repository at a release tag. The
+  [record reference](https://energy-models.github.io/datarecord/reference/record/#cases-for-a-port)
+  sets the format.
 
 ### Changed
 
