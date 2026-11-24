@@ -118,6 +118,7 @@ With `p_max_pu` over `entity`, `scenario` and `snapshot`, a root row `(gas, NULL
 `record.attributes[name]` returns the attribute's rows from the layers that the map assigns a map row to, as written.
 A dimension a map row leaves NULL stays NULL.
 Where the map has an overlap row, the read also returns a value at the overlap row's labels. That value comes from the layer the map assigns the overlap row to.
+So the read returns a row that leaves a dimension in `partial` NULL once per map row that comes from it: NULL there for its own map row, and the label for each overlap row.
 The read expands no NULL, settles no coordinate, and returns rows in no fixed order.
 An attribute that no layer wrote is an empty relation, typed as declared, and the reader applies the schema's `default`.
 

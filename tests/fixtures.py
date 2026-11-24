@@ -69,15 +69,19 @@ def write_attribute(
     *,
     snapshot_dtype="datetime64[ns]",
     connection: bool | None = None,
+    row_group_size: int | None = None,
 ) -> None:
     """Write `attributes/<attribute>.parquet` in the long schema.
 
     Each row needs at least `name` and `value`; missing dimension columns
     default to NULL, i.e. "applies to the whole axis".
     A `bus` on any row marks a per-connection attribute, its `entity` and `bus`
-    packed into the one `connection` struct column - unless `connection` says
-    otherwise, for an attribute over the `bus` dim itself; `breakpoint` marks a
-    piecewise-linear one; neither is the ordinary component-level scalar.
+    packed into the one `connection` struct column, NULL where both are -
+    unless `connection` says otherwise, for an attribute over the `bus` dim
+    itself; `breakpoint` marks a piecewise-linear one; neither is the ordinary
+    component-level scalar.
+    `row_group_size` splits the file into row groups of that many rows, in
+    the order of `rows`.
 
     Notes
     -----
@@ -104,9 +108,11 @@ def write_attribute(
     rel = duckdb.connect().from_df(df[LONG_COLUMNS])
     if connection:
         rel = rel.project(
-            "{'entity': entity, 'bus': bus} AS connection, * EXCLUDE (entity, bus)"
+            "CASE WHEN entity IS NULL AND bus IS NULL THEN NULL"
+            " ELSE {'entity': entity, 'bus': bus} END AS connection,"
+            " * EXCLUDE (entity, bus)"
         )
-    rel.to_parquet(str(target / f"{attribute}.parquet"))
+    rel.to_parquet(str(target / f"{attribute}.parquet"), row_group_size=row_group_size)
 
 
 def _hashable(value: Any) -> Any:
