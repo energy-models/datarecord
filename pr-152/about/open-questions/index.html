@@ -1170,6 +1170,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#should-removing-a-bus-remove-the-connections-at-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should removing a bus remove the connections at it?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#may-partial-name-a-field-of-a-multi-dimension" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -1820,6 +1831,17 @@
 </li>
         
           <li class="md-nav__item">
+  <a href="#should-removing-a-bus-remove-the-connections-at-it" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Should removing a bus remove the connections at it?
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
   <a href="#may-partial-name-a-field-of-a-multi-dimension" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2201,6 +2223,8 @@ SPDX-License-Identifier: CC-BY-4.0
 <p><code>bus.carrier</code> defaults to <code>AC</code> in PyPSA's schema. datarecord never stores a default, so it does not check that <code>AC</code> is a label of <code>carrier</code> (<a href="../../reference/schema/">the schema</a>). A selection applies the default when it drops labels. <code>select</code> drops a bus whose default carrier it drops, and keeps one whose default is on no axis (<a href="../../reference/selecting/">selecting</a>).</p>
 <h3 id="does-bus-earn-its-place-in-the-owner-maps-index">Does <code>bus</code> earn its place in the owner map's index?<a class="headerlink" href="#does-bus-earn-its-place-in-the-owner-maps-index" title="Permanent link">&para;</a></h3>
 <p>PyPSA's <code>partial</code> includes <code>bus</code> so that a layer can patch one bus's <code>v_nom</code>, and every read scans every <code>partial</code> dimension in the owner map's index (<a href="../layers/">layers</a>). Measuring it on a record the size of PyPSA-Eur would settle it.</p>
+<h3 id="should-removing-a-bus-remove-the-connections-at-it">Should removing a bus remove the connections at it?<a class="headerlink" href="#should-removing-a-bus-remove-the-connections-at-it" title="Permanent link">&para;</a></h3>
+<p>The PyPSA tool keeps a port's bus in the property <code>connection.bus</code>, so <code>remove</code> refuses a bus while a connection is at it (<a href="../../reference/layers/#removing-labels">layers</a>). You remove those connections first (<a href="../../reference/tools/#ports">tools</a>). A removal that cascades through a property referring to the dimension would do both in one call, as a removed label already takes the tuples that contain it.</p>
 <h3 id="may-partial-name-a-field-of-a-multi-dimension">May <code>partial</code> name a field of a multi-dimension?<a class="headerlink" href="#may-partial-name-a-field-of-a-multi-dimension" title="Permanent link">&para;</a></h3>
 <p><code>partial</code> may name a multi-dimension whole. A layer overrides an attribute one value per label along each dimension in both its <code>dims</code> and <code>partial</code> (<a href="../../reference/layers/#partial">layers</a>). So <code>period</code> in <code>partial</code> does not apply to a series over <code>snapshot</code>, the multi-dimension over <code>(period, timestep)</code>. A per-period, myopic re-solve then restates the whole series, every other period's values included (<a href="../../reference/tools/#writing-results">tools</a>). With a field in <code>partial</code>, <code>p</code>'s index would be <code>(attribute, connection, period)</code>, and the re-solve would restate its own period's series alone. The cost is a wider index on every read of every attribute over <code>snapshot</code>.</p>
 <h3 id="do-selector-keywords-need-a-qualified-form">Do selector keywords need a qualified form?<a class="headerlink" href="#do-selector-keywords-need-a-qualified-form" title="Permanent link">&para;</a></h3>
@@ -2247,7 +2271,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h3 id="what-does-build-do-with-a-value-its-type-does-not-take">What does <code>build</code> do with a value its type does not take?<a class="headerlink" href="#what-does-build-do-with-a-value-its-type-does-not-take" title="Permanent link">&para;</a></h3>
 <p>It leaves the value out and reports it in <code>Requirements.ignored</code>, as it reports an unknown type, and does not raise (<a href="../../reference/tools/">tools</a>).</p>
 <h3 id="may-a-multi-dimension-in-partial-have-categories">May a multi-dimension in <code>partial</code> have categories?<a class="headerlink" href="#may-a-multi-dimension-in-partial-have-categories" title="Permanent link">&para;</a></h3>
-<p>It may, by the rule a dimension follows. <code>connection.role: {one_of: role}</code> categorises <code>connection</code> in <code>partial</code>, so a <code>default_by</code> keyed <code>connection.role</code>, <code>flags(role=...)</code> and the keyword <code>role=</code> work as they do for <code>entity.ctype</code> (<a href="../data-model/">the data model</a>).</p>
+<p>It may, by the rule a dimension follows. A property <code>connection.kind: {one_of: kind}</code> categorises <code>connection</code> in <code>partial</code>, so a <code>default_by</code> keyed <code>connection.kind</code>, <code>flags(kind=...)</code> and the keyword <code>kind=</code> work as they do for <code>entity.ctype</code> (<a href="../data-model/">the data model</a>).</p>
 <h3 id="what-should-a-connection-value-staged-without-its-bus-mean">What should a connection value staged without its <code>bus</code> mean?<a class="headerlink" href="#what-should-a-connection-value-staged-without-its-bus-mean" title="Permanent link">&para;</a></h3>
 <p>Nothing: <code>set</code> refuses the call (<a href="../../reference/editing/">editing</a>). A multi-dimension value is a whole tuple or NULL, so <code>{entity: dc, bus: NULL}</code> is no value, and datarecord refuses it wherever a row comes in. The alternative, "every connection of this entity", would broadcast over part of a tuple, where a multi-dimension's column broadcasts only whole.</p>
 <h3 id="can-a-records-relations-be-named-views">Can a record's relations be named views?<a class="headerlink" href="#can-a-records-relations-be-named-views" title="Permanent link">&para;</a></h3>
