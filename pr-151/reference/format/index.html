@@ -1718,7 +1718,7 @@ The writer writes it last and create-only, and the revision exists from that mom
 <p>An axis file contains every label of one dimension at the layer's revision, in axis order, one row per label.
 Its first column is the dimension's column, named for it, and each further column is one <a href="../data-model/">property</a> of the dimension.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>dimensions/entity.parquet       entity | ctype | carrier | sign | type
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>dimensions/connection.parquet   connection STRUCT(entity, bus) | role
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>dimensions/connection.parquet   connection STRUCT(entity, port) | bus
 </code></pre></div>
 <ul>
 <li>A property is NULL in a row where no layer wrote a value for that label.</li>
@@ -1749,7 +1749,7 @@ Its first column is the dimension's column, named for it, and each further colum
 </tr>
 <tr>
 <td><code>efficiency</code> over <code>connection</code></td>
-<td><code>connection STRUCT(entity, bus), attribute, breakpoint, value</code></td>
+<td><code>connection STRUCT(entity, port), attribute, breakpoint, value</code></td>
 </tr>
 </tbody>
 </table>
