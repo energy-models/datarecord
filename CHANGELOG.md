@@ -9,16 +9,27 @@ SPDX-License-Identifier: CC-BY-4.0
 All notable changes to datarecord are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- A commit under a parent fills each property column that an axis file the
+  layer writes lacks with the parent's values, by label, NULL on a new label.
+  Such a column used to read NULL. To set a property to NULL, a source writes
+  its column with NULLs. A source's schema still declares every property of
+  the parent.
+
+### Fixed
+
+- `PyPSA.to_datarecord(n, con, base=record)` declares each property `base`
+  declares on a dimension of the network and the network lacks, such as a
+  snapshot property another tool added. The store fills its column from
+  `base`, where the store used to refuse the export as removing the property.
+
 ## v0.1.0a2 (2026-11-24)
 
 ### Added
 
-- `keep_properties=True` on `Store.commit` and `Claim.commit` keeps each
-  property the parent declares and the source's schema omits, on the
-  dimensions the source declares. The child's manifest declares it, and each
-  axis file the layer writes takes the parent's values by label, NULL on a new
-  label. A `WorkingRecord` with the flag raises `TypeError`, and a root
-  ignores it.
 - `select(record, **labels)`, exported beside `settle`, and `Record.select`
   return a `Selection`: a `RecordLike` holding any record at the labels named,
   as xarray's `sel` takes them. One label squeezes its dimension out of the schema,
