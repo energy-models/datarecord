@@ -34,7 +34,7 @@ from botocore import UNSIGNED
 from botocore.stub import Stubber
 from pydantic import ValidationError
 
-from datarecord import Claim, Revision, S3Credentials, Workspace
+from datarecord import Claim, Record, Revision, S3Credentials, Workspace
 from datarecord.mutable import WorkingRecord
 from datarecord.schema.schema import Schema
 from datarecord.schema.specs import Dimension
@@ -1211,6 +1211,64 @@ def test_a_record_read_first_here_reads_alike_in_other_threads(tree, working):
     record = WorkingRecord(child.record) if working else child.record
     here = _read_all(record)
     assert in_threads(4, lambda _: _read_all(record)) == [here] * 4
+
+
+_READS = [
+    pytest.param(lambda r: r.attributes["p_max_pu"], id="attribute"),
+    pytest.param(lambda r: r.dimensions["entity"], id="dimension"),
+]
+
+
+@pytest.fixture(params=[False, True], ids=["folded", "materialised"])
+def unread(request, tree):
+    """The child of `tree` in a fresh workspace, whose fold tables no read has built yet."""
+    _, child = tree
+    if request.param:
+        child.materialise()
+    fresh = Workspace()
+    yield fresh.store(child.store.uri).revision(child.id).record
+    fresh.close()
+
+
+@pytest.mark.parametrize("read", _READS)
+def test_a_first_read_inside_an_open_transaction_is_refused(unread, read):
+    """Its shared tables would be created in the transaction, and a rollback would drop them from under the record.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    """
+    unread.con.begin()
+    try:
+        with pytest.raises(duckdb.TransactionException, match=r"`record\.prepare\(\)`"):
+            read(unread).fetchall()
+    finally:
+        unread.con.rollback()
+
+
+@pytest.mark.parametrize("read", _READS)
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(Record.prepare, id="prepare"),
+        pytest.param(lambda r: r.attributes["p_max_pu"].fetchall(), id="a-read"),
+    ],
+)
+def test_a_read_after_the_tables_exist_survives_a_rollback(unread, read, build):
+    """Once `prepare()` or a read outside a transaction built them, the tables are committed.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    """
+    build(unread)
+    con = unread.con
+    con.begin()
+    unread.prepare()
+    inside = read(unread).fetchall()
+    con.rollback()
+    assert read(unread).fetchall() == inside, "the rollback drops none of the tables"
+    assert inside, "the read finds rows"
 
 
 def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):

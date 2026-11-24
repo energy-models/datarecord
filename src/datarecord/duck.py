@@ -145,14 +145,11 @@ def transaction(
         Where `con` already holds an open transaction, which DuckDB cannot nest
         and the block could not roll back alone.
     """
-    try:
-        con.begin()
-    except TransactionException as e:
-        msg = (
-            f"`{operation}` runs in its own transaction, and this cursor already "
-            f"holds one open; commit or roll it back before calling it ({url})"
-        )
-        raise TransactionException(msg) from e
+    _begin(
+        con,
+        f"`{operation}` runs in its own transaction, and this cursor already "
+        f"holds one open; commit or roll it back before calling it ({url})",
+    )
     undo: list[Callable[[], object]] = []
     try:
         try:
@@ -177,6 +174,14 @@ def refuse_open_transaction(con: DuckDBPyConnection, operation: str, url: str) -
     """
     with transaction(con, operation, url):
         pass
+
+
+def _begin(con: DuckDBPyConnection, refusal: str) -> None:
+    """Open a transaction on `con`, raising `TransactionException` with `refusal` where one is open already."""
+    try:
+        con.begin()
+    except TransactionException as e:
+        raise TransactionException(refusal) from e
 
 
 def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
@@ -420,6 +425,15 @@ def tables_in(
     return {table for (table,) in rows}
 
 
+#: What `shared_table` raises where it would create a table in an open transaction.
+_CREATE_IN_TRANSACTION = (
+    "this would create the record's shared tables inside the open "
+    "transaction on this cursor, and a rollback would drop them; call "
+    "`record.prepare()` before opening the transaction "
+    "(https://energy-models.github.io/datarecord/reference/store/#threads)"
+)
+
+
 def shared_table(
     con: DuckDBPyConnection,
     database: str,
@@ -438,6 +452,12 @@ def shared_table(
     winner commits, when its schema or table is not yet visible, so each
     `create` is retried until it either lands or meets the committed one.
 
+    Raises
+    ------
+    TransactionException
+        Where the table is missing and `con` holds an open transaction, whose
+        rollback would drop it from under every relation read off it.
+
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
@@ -446,6 +466,8 @@ def shared_table(
     name = f"{schema}.{table}"
     if table in tables_in(con, database, parent, id):
         return con.table(name)
+    _begin(con, _CREATE_IN_TRANSACTION)
+    con.commit()
     _past_conflicts(lambda: con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
     with build() as rel, suppress(duckdb.CatalogException):
         _past_conflicts(lambda: create_table(con, name, rel))

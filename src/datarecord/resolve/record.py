@@ -401,7 +401,9 @@ class _PerCursor(threading.local):
 
     def __init__(self) -> None:
         self.frozen_axes: Axes | None = None
+        self.frozen_map: DuckDBPyRelation | None = None
         self.axes: Axes | None = None
+        self.owners_of: dict[str, DuckDBPyRelation] = {}
 
 
 @dataclass(frozen=True)
@@ -484,6 +486,27 @@ class Record:
         """Whether `close()` ran, after which the record refuses every read."""
         return not self._release.alive
 
+    def prepare(self) -> None:
+        """Build the shared tables this record's reads create on first use, committed.
+
+        After it, a read of this record on any thread is safe inside a
+        transaction that may roll back. Calling it again does nothing.
+
+        Raises
+        ------
+        duckdb.TransactionException
+            Where the tables are missing and the calling thread's cursor holds
+            an open transaction.
+        ValueError
+            Once `close()` ran.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+        """
+        self._frozen_axes  # noqa: B018 - built for the shared tables it creates
+        self._frozen_map  # noqa: B018 - built for the shared table it creates
+
     def __enter__(self) -> Self:
         return self
 
@@ -498,8 +521,9 @@ class Record:
     def _require_open(self) -> None:
         """Refuse a closed record before DuckDB finds its tables gone.
 
-        Called in `_frozen_axes`, which every read takes: the axes and the
-        owner map both. A subclass says what it lost in `_closed_message`.
+        Called where a read starts from a per-thread cache: `_frozen_axes`,
+        `_frozen_map` and `_owners_of`. A subclass says what it lost in
+        `_closed_message`.
 
         Raises
         ------
@@ -740,6 +764,28 @@ class Record:
             cache.frozen_axes = Axes.shared(self.revision_id, frozen)
         return cache.frozen_axes
 
+    @property
+    def _frozen_map(self) -> DuckDBPyRelation | None:
+        """Return the frozen layers' owner map, read on the calling thread's cursor, `None` over no frozen source.
+
+        Built once per thread, as `_frozen_axes` is: finding the table asks
+        the catalog or the store, which `register` would otherwise do once
+        per attribute.
+
+        Notes
+        -----
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+        - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
+        """
+        self._require_open()
+        frozen, _ = split_frozen(self.sources)
+        if not frozen:
+            return None
+        cache = self._per_cursor
+        if cache.frozen_map is None:
+            cache.frozen_map = _frozen_table(self.revision_id, frozen)
+        return cache.frozen_map
+
     @cached_property
     def _per_cursor(self) -> _PerCursor:
         return _PerCursor()
@@ -752,7 +798,7 @@ class Record:
         -----
         - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
         """
-        owner_map = _table(self.revision_id, self.sources, self._frozen_axes)
+        owner_map = _table(self._frozen_map, self.sources, self._frozen_axes)
         return Fold(self._axes, owner_map)
 
     def _source_for(self, layer_uuid: UUID) -> LayerSource:
@@ -855,13 +901,24 @@ class Record:
 
         A plan that reads every later edit, which the whole map's does not:
         that folds only the attributes the staged layer holds when planned.
+        So it is built once per thread, and `register` shares it between the
+        attribute's view and the owner map's.
+
+        Notes
+        -----
+        - [reading with pending edits](https://energy-models.github.io/datarecord/reference/editing/)
+        - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
         """
-        return _table(
-            self.revision_id,
-            self.sources,
-            self._frozen_axes,
-            {attribute: attribute in self._frozen_owners},
-        )
+        self._require_open()
+        cache = self._per_cursor.owners_of
+        if attribute not in cache:
+            cache[attribute] = _table(
+                self._frozen_map,
+                self.sources,
+                self._frozen_axes,
+                {attribute: attribute in self._frozen_owners},
+            )
+        return cache[attribute]
 
     @property
     def _owner_map(self) -> DuckDBPyRelation:
@@ -916,9 +973,11 @@ class Record:
         layer's every row of an attribute, which then joins nothing, but add
         no owner other than themselves.
         """
+        rel = self._frozen_map
+        if rel is None:
+            return {}
         frozen, _ = split_frozen(self.sources)
-        rel = _frozen_table(self.revision_id, frozen)
-        return {} if rel is None else _owners(rel, frozen[-1].schema)
+        return _owners(rel, frozen[-1].schema)
 
     @cached_property
     def _cached_owners(self) -> dict[str, _Owners]:

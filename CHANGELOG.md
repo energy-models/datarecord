@@ -316,6 +316,8 @@ All notable changes to datarecord are documented here. The format follows
   from the repository at a release tag. The
   [record reference](https://energy-models.github.io/datarecord/reference/record/#cases-for-a-port)
   sets the format.
+- `Record.prepare()` creates and commits a record's shared fold tables, so
+  later reads are safe inside a transaction that may roll back.
 
 ### Changed
 
@@ -330,6 +332,14 @@ All notable changes to datarecord are documented here. The format follows
   `bus` at a port its type lacks, such as a one-port type's at a port but 0,
   in `unsupported_values`. Export a network again to rewrite a record that the
   PyPSA tool wrote before.
+- A record finds its frozen layers' owner map once per thread rather than
+  once per attribute read, and a `WorkingRecord` builds each attribute's
+  owner-map rows once for both its view and `name.owner_map`. So
+  `register` asks DuckDB's catalog once rather than twice per attribute.
+- Breaking: a read that would create a record's shared tables, its frozen
+  axes and its owner map, raises `duckdb.TransactionException` while `ws.con`
+  holds an open transaction, whose rollback would drop them. Call
+  `Record.prepare()` first.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is
