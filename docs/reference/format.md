@@ -152,7 +152,7 @@ The rows are grouped by `_shape`, in ascending order, so a fold that reads one s
 
 ## Registered views
 
-`record.register(name)` creates the DuckDB schema `name` in [the workspace's database](store.md#the-database), `datarecord` by default, with a view per dimension, property subject and attribute.
+`record.register(name)` creates the DuckDB schema `name` in [the workspace's database](store.md#the-database), `datarecord` by default, with a view per dimension, property subject and attribute, and a view of the owner map.
 A SQL client of that database reads the record through these views.
 
 | View                               | One per                                       | Reads as                                   |
@@ -160,6 +160,7 @@ A SQL client of that database reads the record through these views.
 | `datarecord.name.dimensions.<dim>` | dimension, a dimension with `one_of` included | `record.dimensions[dim]`                   |
 | `datarecord.name.properties.<dim>` | dimension that declares properties            | `record.properties[dim]`                   |
 | `datarecord.name.attributes.<a>`   | attribute the schema declares                 | `record.attributes[a]`, empty with no rows |
+| `datarecord.name.owner_map`        | record                                        | the [owner map](#the-owner_map-view)       |
 
 The views are the record's relations unsettled: a NULL in a dimension's column means every label, two rows may cover one coordinate and no default applies.
 Over a `WorkingRecord`, a view returns each edit once `set`, `add` or `remove` returns.
@@ -174,6 +175,29 @@ Parquet has no statistics for a whole struct column, so a filter on a multi-dime
 `connection.entity = 'gas'` skips them, and `connection = {'entity': 'gas', 'bus': 'north'}` reads every row group that holds a tuple.
 Where `snapshot` is a multi-dimension over `period` and `timestep`, filter on `snapshot.period IS NULL` rather than `snapshot IS NULL` for the rows that leave it NULL.
 Both return the same rows, since datarecord refuses a tuple with a NULL field, and only the first skips row groups.
+
+### The `owner_map` view
+
+`datarecord.name.owner_map` is the record's [owner map](resolution.md#the-owner-map), with the columns and types that the map has.
+It lists each map row of each attribute, the layer the map assigns it to, and whether the layer's rows set each dimension (`varies`) or leave it NULL (`broadcast`).
+It contains no values.
+So a SQL client finds which attributes have rows for a label, and computes an attribute's [flags](record.md#flags), without reading a value:
+
+```sql
+SELECT attribute, bool_or(varies.snapshot), bool_or(broadcast.snapshot)
+FROM datarecord.name.owner_map
+GROUP BY attribute
+```
+
+The query returns, per attribute, whether `snapshot` is in the `varies` and the `broadcast` of `record.flags()[attribute]`.
+
+Over a `WorkingRecord`, the view returns each edit once `set`, `add` or `remove` returns.
+A map row that the edits stage has the `WorkingRecord`'s own layer id as its `layer_uuid`, the same for every edit until the record closes.
+`store.commit` writes the edits as a new layer with an id of its own, so a committed map row has a `layer_uuid` that differs from the staged one.
+
+DuckDB applies a filter on `attribute` or on a dimension's column of the view, such as `WHERE attribute = 'p_nom'` or `WHERE entity = 'gas'`, in its scan of the map.
+Over a `WorkingRecord`, a filter on `attribute` restricts the read to the map rows and edits of that attribute.
+A filter on a dimension there reaches only some of the scans of the base's map, as the fold reads the whole map to find the rows that an edit covers or [crosses](resolution.md#crossing-rows).
 
 Run `USE datarecord` once to write short names, `name.dimensions.bus` and `registered`.
 `USE` holds only for the connection or cursor that runs it, and a client that attached the file under another name runs `USE` with that name.

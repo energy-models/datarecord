@@ -75,7 +75,7 @@ FLAG_COLUMNS = ("varies", "broadcast", "breakpoints")
 
 # The owner map's `layer_uuid` column type - a layering mechanism, not
 # something a schema declares.
-LAYER_UUID_TYPE = "UUID"
+LAYER_UUID_TYPE = sqltypes.UUID
 
 LAYER_COLUMN = "layer_uuid"
 """The owner map's column naming the layer each row's value is read from.
@@ -1030,8 +1030,8 @@ class Schema(_Declared):
 
         Covers the structural columns the format fixes, the declared dimensions,
         the properties of `subject` - columns of its
-        axis file, read first - and the owner map's two flag structs, whose fields
-        follow the schema's dimensions.
+        axis file, read first - and the owner map's layer column and two flag
+        structs, whose fields follow the schema's dimensions.
 
         No dimension is structural: each is declared, and typed from that
         declaration. So the `ENUM` of a dimension with `one_of` pins them
@@ -1052,9 +1052,11 @@ class Schema(_Declared):
         return None if found is None else found[1]
 
     def _structural_type(self, column: str) -> DuckDBPyType | None:
-        """Return the type the format fixes for `column`: a structural column or a flag struct."""
+        """Return the type the format fixes for `column`: a structural column, the layer column or a flag struct."""
         if column in STRUCTURAL_TYPES:
             return STRUCTURAL_TYPES[column]
+        if column == LAYER_COLUMN:
+            return LAYER_UUID_TYPE
         if column in ("varies", "broadcast"):
             return flag_type(tuple(self.dimensions)) if self.dimensions else None
         return None
