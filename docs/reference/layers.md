@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Layers
 
-This page describes revisions, the tree they form, `partial` and what a layer may contain. It also describes how a layer removes a label and how a commit keeps its parent's properties.
+This page describes revisions, the tree they form, `partial` and what a layer may contain. It also describes how a layer removes a label and how a commit fills the property columns a layer omits.
 How datarecord reads the layers of a revision as one record is on [the resolution page](resolution.md).
 
 ## Revisions
@@ -188,10 +188,10 @@ So where an ancestor left such a reference, the writer refuses the next layer th
     [Edit a record](../howto/edit-a-record.md) shows `add` and `remove`.
     [Layers and `partial`](../about/layers.md) argues for removal as restatement.
 
-## Properties a source omits
+## Property columns a layer omits
 
-A commit of a whole record under a parent keeps each property that the parent declares and the source's schema omits, on the dimensions the source's schema declares.
-Here the parent's `snapshot` axis has a property `agg_3h`, the three-hour block of each snapshot, and `source` restates the axis without it:
+When a layer writes an axis file without the column of a property, the commit writes the parent's values into that column, by label.
+Here the parent's `snapshot` axis has a property `agg_3h`, the three-hour block of each snapshot, and `source` restates the axis without its column:
 
 ```python
 child = store.commit(source, parent=root)
@@ -204,13 +204,13 @@ child = store.commit(source, parent=root)
 The child's axis file has the parent's `agg_3h` at snapshots 0 and 3, and NULL at snapshot 4, which the parent does not hold.
 Snapshot 1 has no row, so its value goes with it.
 
-- The manifest's schema is the source's schema plus each kept property. Where both declare a property, the source's declaration applies, and [`compatible_with`](schema.md#compatibility) against the parent still refuses one declared differently.
-- Where the layer writes an axis file without the column of a kept property, the commit joins the parent's values onto it by label. It writes them into that file in the layer's row order.
-- A property the source declares is the source's alone. Where the source leaves its column out of an axis file, the column is NULL.
+- The manifest's schema is the parent's schema widened by the source's. Where both declare a property, the source's declaration applies, and [`compatible_with`](schema.md#compatibility) against the parent still refuses one declared differently.
+- The rule is the same whether or not the source's schema declares the property. To set a property to NULL, a source writes its column with NULLs.
+- The commit writes the parent's values in the layer's row order. A property the parent does not declare has no values to take, so its column stays out of the file and reads NULL.
 - An axis the layer does not write has no file, and the fold reads the parent's axis, its properties included.
-- The writer checks a kept value as it checks any column of the file. It refuses a kept property that refers to a dimension while its value is a label the layer removes, as in [removing labels](#removing-labels).
-- Only properties are kept. The commit still refuses a source whose schema omits a dimension or an attribute that the parent declares.
-- A commit of a `WorkingRecord` keeps no property this way, because its edits declare every property of the revision it was built over.
+- The writer checks a taken value as it checks any column of the file. It refuses a property that refers to a dimension while its value is a label the layer removes, as in [removing labels](#removing-labels).
+- Only properties are taken from the parent. The commit still refuses a source whose schema omits a dimension or an attribute that the parent declares.
+- A root has no parent, so its axis files are as the source writes them.
 
 !!! info "See also"
 

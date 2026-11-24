@@ -47,7 +47,7 @@ from datarecord.settle import unsettled
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Mapping, Sequence
+    from collections.abc import Callable, Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -71,25 +71,17 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
 
 
 def carrying(
-    data: LayerData,
-    schema: Schema,
-    kept: Mapping[str, Sequence[str]],
-    parent: RecordLike,
-    con: DuckDBPyConnection,
+    data: LayerData, schema: Schema, parent: RecordLike, con: DuckDBPyConnection
 ) -> LayerData:
-    """Return `data` under `schema`, each axis it writes with `parent`'s values of `kept`.
+    """Return `data` under `schema`, each axis it writes with `parent`'s property columns it lacks.
 
-    Parameters
-    ----------
-    kept
-        The properties to keep, by subject: those `parent` declares and
-        `data`'s schema omits. A label `parent` lacks reads NULL in each.
+    The columns are joined by label, and a label `parent` lacks reads NULL.
 
     Notes
     -----
-    - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
+    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
     """
-    return _Carrying(data, schema, kept, parent, con)
+    return _Carrying(data, schema, parent, con)
 
 
 def _joined_by_label(
@@ -717,19 +709,17 @@ class _RecordLikeAsLayerData:
 
 
 class _Carrying:
-    """`data` under `schema`, each axis with `parent`'s values of the `kept` properties."""
+    """`data` under `schema`, each axis with `parent`'s property columns it lacks."""
 
     def __init__(
         self,
         data: LayerData,
         schema: Schema,
-        kept: Mapping[str, Sequence[str]],
         parent: RecordLike,
         con: DuckDBPyConnection,
     ) -> None:
         self._data = data
         self.schema = schema
-        self._kept = kept
         self._parent = parent
         self._con = con
 
@@ -747,5 +737,5 @@ class _Carrying:
         parents = self._parent.properties.get(dim)
         if axis is None or parents is None:
             return axis
-        carried = [c for c in self._kept.get(dim, ()) if c not in axis.columns]
+        carried = [c for c in parents.columns if c not in axis.columns]
         return _joined_by_label(axis, parents, dim, carried, self._con)

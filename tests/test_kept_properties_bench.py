@@ -8,7 +8,7 @@ The child removes every hundredth label and appends one per cent new ones.
 
 Notes
 -----
-- [properties a source omits](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
+- [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
 """
 
 from time import perf_counter

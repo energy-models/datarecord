@@ -860,7 +860,7 @@ class Store:
         -----
         - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
         - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
-        - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
+        - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
         """
         if isinstance(source, WorkingRecord):
             if parent is not _Base.OF_WORKING_RECORD:
@@ -1338,7 +1338,7 @@ class Claim(_OfStore):
         -----
         - [a revision exists only by its file](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
         - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
-        - [keeping a parent's properties](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
+        - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
         """
         meta = merge_meta(self.meta, validate_meta(meta))
         if isinstance(source, WorkingRecord):
@@ -1377,10 +1377,8 @@ class Claim(_OfStore):
         parent = None if self.parent is None else store.revision(self.parent)
         data = layer_data(source, store.workspace.con)
         schema = data.schema
-        kept: dict[str, list[str]] = {}
         if parent is not None:
-            schema = _keeping_properties(schema, parent.manifest.schema)
-            kept = _kept(schema, data.schema)
+            schema = _with_parents_properties(schema, parent.manifest.schema)
             problems = schema.compatible_with(parent.manifest.schema)
             if problems:
                 msg = (
@@ -1389,8 +1387,8 @@ class Claim(_OfStore):
                 )
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
-            if base is not None and kept:
-                data = carrying(data, schema, kept, base, store.workspace.con)
+            if base is not None:
+                data = carrying(data, schema, base, store.workspace.con)
             written = write_layer(
                 data,
                 store.layer_dir(self.id),
@@ -1407,8 +1405,12 @@ class Claim(_OfStore):
         return Revision(id=self.id, store=store)
 
 
-def _keeping_properties(schema: Schema, parent: Schema) -> Schema:
-    """`schema` with the properties only `parent` declares, on the dims both declare."""
+def _with_parents_properties(schema: Schema, parent: Schema) -> Schema:
+    """`schema` with the properties only `parent` declares, on the dims both declare.
+
+    A dim `schema` lacks keeps its properties out, so the schema stays valid
+    and `compatible_with` reports the dim as removed.
+    """
     kept = {
         dim: {**props, **schema.properties.get(dim, {})}
         for dim, props in parent.properties.items()
@@ -1418,15 +1420,6 @@ def _keeping_properties(schema: Schema, parent: Schema) -> Schema:
     if properties == schema.properties:
         return schema
     return schema.model_validate({**schema.model_dump(), "properties": properties})
-
-
-def _kept(schema: Schema, own: Schema) -> dict[str, list[str]]:
-    """The properties `schema` declares and `own` does not, by subject."""
-    kept = {
-        dim: [name for name in props if name not in own.properties.get(dim, {})]
-        for dim, props in schema.properties.items()
-    }
-    return {dim: names for dim, names in kept.items() if names}
 
 
 _MANIFESTS = """

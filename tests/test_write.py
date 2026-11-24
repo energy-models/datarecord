@@ -1589,7 +1589,7 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     )
 
 
-# -- properties a source omits (https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits) -----------------
+# -- property columns a layer omits (https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits) -------
 
 
 def _declaring(base: Schema, **properties: dict[str, PropertySpec]) -> Schema:
@@ -1634,7 +1634,7 @@ def test_a_commit_keeps_the_parents_property_by_label(store, commit):
 
     Notes
     -----
-    - [properties a source omits](https://energy-models.github.io/datarecord/reference/layers/#properties-a-source-omits)
+    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
     """
     root = _agg_root(store)
     source = _scenarios_with(_SCHEMA, ["x", "new", "z"])
@@ -1649,18 +1649,25 @@ def test_a_commit_keeps_the_parents_property_by_label(store, commit):
 
 @pytest.mark.parametrize(
     ("properties", "expected"),
-    [({"agg": [10, 30]}, [("x", 10), ("z", 30)]), ({}, [("x", None), ("z", None)])],
-    ids=["written", "column-omitted"],
+    [
+        ({"agg": [10, 30]}, [("x", 10), ("z", 30)]),
+        ({"agg": pd.array([None, None], dtype="Int64")}, [("x", None), ("z", None)]),
+        ({}, [("x", 1), ("z", 3)]),
+    ],
+    ids=["written", "blanked", "column-omitted"],
 )
-def test_a_source_declaring_the_property_writes_its_own_values(
+def test_a_declared_property_takes_the_parents_values_only_without_its_column(
     store, properties, expected
 ):
     source = _scenarios_with(_AGG, ["x", "z"], **properties)
     child = store.commit(source, parent=_agg_root(store))
-    assert _aggs(child) == expected, "the source declares `agg`, so its values apply"
+    assert _aggs(child) == expected, (
+        "a column the source writes applies, NULLs included, and one it omits is the"
+        " parent's"
+    )
 
 
-def test_a_commit_keeps_only_what_the_source_omits(store):
+def test_a_commit_keeps_only_the_columns_the_source_omits(store):
     both = _declaring(
         _SCHEMA,
         scenario={"agg": PropertySpec(dtype="int"), "w": PropertySpec(dtype="int")},
