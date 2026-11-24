@@ -767,10 +767,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#keep-some-labels-of-a-dim" class="md-nav__link">
+  <a href="#keep-some-labels-of-a-dimension" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Keep some labels of a dim
+        Keep some labels of a dimension
       
     </span>
   </a>
@@ -778,10 +778,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#squeeze-a-dim" class="md-nav__link">
+  <a href="#squeeze-a-dimension" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Squeeze a dim
+        Squeeze a dimension
       
     </span>
   </a>
@@ -1242,10 +1242,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#keep-some-labels-of-a-dim" class="md-nav__link">
+  <a href="#keep-some-labels-of-a-dimension" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Keep some labels of a dim
+        Keep some labels of a dimension
       
     </span>
   </a>
@@ -1253,10 +1253,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#squeeze-a-dim" class="md-nav__link">
+  <a href="#squeeze-a-dimension" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Squeeze a dim
+        Squeeze a dimension
       
     </span>
   </a>
@@ -1325,13 +1325,13 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="select-part-of-a-record">Select part of a record<a class="headerlink" href="#select-part-of-a-record" title="Permanent link">&para;</a></h1>
 <p>This guide shows how to read a record at some of its labels with <a href="../../reference/selecting/"><code>select</code></a>, and put squeezed labels back on rows you compute. The examples use <code>record</code> from <a href="../../tutorials/first-record/">Your first record</a>.</p>
 <p><code>select(record, **labels)</code> takes any <a href="../../reference/record/"><code>RecordLike</code></a> and returns a selection, which is a record too. <code>record.select(**labels)</code> is the same call. <code>select</code> writes nothing, and the selection's attributes stay plans on <code>record.con</code>.</p>
-<h2 id="keep-some-labels-of-a-dim">Keep some labels of a dim<a class="headerlink" href="#keep-some-labels-of-a-dim" title="Permanent link">&para;</a></h2>
-<p>Pass a list to keep those labels and the dim:</p>
+<h2 id="keep-some-labels-of-a-dimension">Keep some labels of a dimension<a class="headerlink" href="#keep-some-labels-of-a-dimension" title="Permanent link">&para;</a></h2>
+<p>Pass a list to keep those labels and the dimension:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">select</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="n">view</span> <span class="o">=</span> <span class="n">select</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="p">[</span><span class="s2">"north"</span><span class="p">])</span>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>                            connection
 <a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>0  {'entity': 'wind1', 'bus': 'north'}
@@ -1339,18 +1339,18 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>0  wind1
 <a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>1   gas1
 </code></pre></div>
-<p><code>select</code> drops the connection at <code>south</code> with its bus. <code>gas1</code> stays, because <code>select</code> drops the tuples over a dropped label and keeps the other labels of those tuples. A <code>slice(start, stop)</code> on a number or datetime axis, or a partial date string such as <code>"2013-02"</code>, keeps the dim too.</p>
-<h2 id="squeeze-a-dim">Squeeze a dim<a class="headerlink" href="#squeeze-a-dim" title="Permanent link">&para;</a></h2>
-<p>Pass one label to squeeze its dim out of the selection's schema:</p>
+<p><code>select</code> drops the connection at <code>south</code> with its bus. <code>gas1</code> stays, because <code>select</code> drops the tuples over a dropped label and keeps the other labels of those tuples. A <code>slice(start, stop)</code> on a number or datetime axis, or a partial date string such as <code>"2013-02"</code>, keeps the dimension too.</p>
+<h2 id="squeeze-a-dimension">Squeeze a dimension<a class="headerlink" href="#squeeze-a-dimension" title="Permanent link">&para;</a></h2>
+<p>Pass one label to squeeze its dimension out of the selection's schema:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">view</span> <span class="o">=</span> <span class="n">select</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">carrier</span><span class="o">=</span><span class="s2">"wind"</span><span class="p">)</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dims</span><span class="p">)</span>
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="nb">print</span><span class="p">(</span><span class="nb">tuple</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">schema</span><span class="o">.</span><span class="n">dimensions</span><span class="p">))</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>('entity', 'ctype', 'bus', 'snapshot')
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>('entity', 'ctype', 'bus', 'snapshot', 'connection')
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>  entity      ctype
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>0  wind1  Generator
 </code></pre></div>
-<p><code>carrier</code> and the property <code>entity.carrier</code> are gone, and so is <code>gas1</code>, whose carrier was dropped. On an attribute, <code>select</code> settles rows along the squeezed dim and drops its column:</p>
+<p><code>carrier</code> and the property <code>entity.carrier</code> are gone, and so is <code>gas1</code>, whose carrier was dropped. On an attribute, <code>select</code> settles rows along the squeezed dimension and drops its column:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">view</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">snapshot</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
 <a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">view</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
 </code></pre></div>
@@ -1358,19 +1358,19 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>0   gas1  p_max_pu         NaN    0.9
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>1  wind1  p_max_pu         NaN    0.8
 </code></pre></div>
-<p><code>gas1</code>'s value, stored with <code>snapshot</code> NULL, applies at snapshot 1. To keep the dim at one label, pass a list of one:</p>
+<p><code>gas1</code>'s value, stored with <code>snapshot</code> NULL, applies at snapshot 1. To keep the dimension at one label, pass a list of one:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nb">print</span><span class="p">(</span><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">snapshot</span><span class="o">=</span><span class="p">[</span><span class="mi">1</span><span class="p">])</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>  entity  snapshot attribute  breakpoint  value
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>0   gas1      &lt;NA&gt;  p_max_pu         NaN    0.9
 <a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>1  wind1         1  p_max_pu         NaN    0.8
 </code></pre></div>
-<p>The dim stays, and <code>gas1</code>'s row keeps its NULL <code>snapshot</code>.</p>
+<p>The dimension stays, and <code>gas1</code>'s row keeps its NULL <code>snapshot</code>.</p>
 <h2 id="narrow-a-selection">Narrow a selection<a class="headerlink" href="#narrow-a-selection" title="Permanent link">&para;</a></h2>
 <p>Call <code>select</code> on a selection to add keywords. <code>labels</code> returns what you asked for, and <code>base</code> returns the record selected from:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">narrow</span> <span class="o">=</span> <span class="n">view</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">carrier</span><span class="o">=</span><span class="p">[</span><span class="s2">"gas"</span><span class="p">])</span>
 <a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">print</span><span class="p">(</span><span class="n">narrow</span><span class="o">.</span><span class="n">labels</span><span class="p">,</span> <span class="n">narrow</span><span class="o">.</span><span class="n">base</span> <span class="ow">is</span> <span class="n">record</span><span class="p">)</span>
-<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">narrow</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">narrow</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>{'snapshot': 1, 'carrier': ['gas']} True
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>  entity
@@ -1378,7 +1378,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <p>The keywords merge, and <code>base</code> is the record you started from, never a selection. <code>narrow.base.select(**narrow.labels)</code> rebuilds the same selection, so pass <code>labels</code> on to rebuild it elsewhere.</p>
 <h2 id="lift-rows-back-to-the-base">Lift rows back to the base<a class="headerlink" href="#lift-rows-back-to-the-base" title="Permanent link">&para;</a></h2>
-<p>Rows computed over a selection lack the squeezed dims. <code>lift</code> adds each squeezed label back on the columns that the base declares the attribute over:</p>
+<p>Rows computed over a selection lack the squeezed dimensions. <code>lift</code> adds each squeezed label back on the columns that the base declares the attribute over:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">doubled</span> <span class="o">=</span> <span class="n">view</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="s2">"entity, value * 2 AS value"</span><span class="p">)</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">lifted</span> <span class="o">=</span> <span class="n">view</span><span class="o">.</span><span class="n">lift</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="n">doubled</span><span class="p">)</span>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="nb">print</span><span class="p">(</span><span class="n">lifted</span><span class="o">.</span><span class="n">df</span><span class="p">())</span>
@@ -1387,7 +1387,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>0  wind1         1    1.6
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>1   gas1         1    1.8
 </code></pre></div>
-<p>The lifted rows have snapshot 1 again, so <code>w.set("p_max_pu", lifted)</code> stages them on a <code>WorkingRecord</code> over the base. An attribute that the base declares over no squeezed dim comes back unchanged.</p>
+<p>The lifted rows have snapshot 1 again, so <code>w.set("p_max_pu", lifted)</code> stages them on a <code>WorkingRecord</code> over the base. An attribute that the base declares over no squeezed dimension comes back unchanged.</p>
 <h2 id="check-what-select-refuses">Check what <code>select</code> refuses<a class="headerlink" href="#check-what-select-refuses" title="Permanent link">&para;</a></h2>
 <p><code>select</code> raises at the call, naming the keyword:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">record</span><span class="o">.</span><span class="n">select</span><span class="p">(</span><span class="n">snapshot</span><span class="o">=</span><span class="mi">7</span><span class="p">)</span>

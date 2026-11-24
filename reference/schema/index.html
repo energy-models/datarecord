@@ -1698,7 +1698,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="the-schema">The schema<a class="headerlink" href="#the-schema" title="Permanent link">&para;</a></h1>
 <p>This page describes every key a schema accepts, in the order a schema declares them, and what datarecord refuses at load.
-A <strong>schema</strong> is the <code>Schema</code> of a record: the dims, properties, attributes and <code>partial</code> that may exist, with their dtypes.
+A <strong>schema</strong> is the <code>Schema</code> of a record: the dimensions, properties, attributes and <code>partial</code> that may exist, with their dtypes.
 The <a href="../data-model/">data model</a> defines each of those words.</p>
 <p>The running example declares this schema:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">AttributeSpec</span><span class="p">,</span> <span class="n">Dimension</span><span class="p">,</span> <span class="n">PropertySpec</span><span class="p">,</span> <span class="n">Schema</span>
@@ -1739,7 +1739,7 @@ Every refusal on this page raises when the schema is built or read from a manife
 datarecord stores it and compares nothing against it.
 <a href="#compatibility">Compatibility</a> lists the changes a child revision's schema may make.</p>
 <h2 id="dimensions"><code>dimensions</code><a class="headerlink" href="#dimensions" title="Permanent link">&para;</a></h2>
-<p><code>dimensions</code> maps each dim's name to a <code>Dimension</code>, multi-dims among them.</p>
+<p><code>dimensions</code> maps each dimension's name to a <code>Dimension</code>, multi-dimensions among them.</p>
 <table>
 <thead>
 <tr>
@@ -1751,7 +1751,7 @@ datarecord stores it and compares nothing against it.
 <tbody>
 <tr>
 <td><code>over</code></td>
-<td>a multi-dim's coordinates, each mapped to the dim it draws on</td>
+<td>a multi-dimension's fields, each mapped to the dimension it draws on</td>
 <td><code>None</code></td>
 </tr>
 <tr>
@@ -1761,7 +1761,7 @@ datarecord stores it and compares nothing against it.
 </tr>
 <tr>
 <td><code>one_of</code></td>
-<td>the dim's labels, in order</td>
+<td>the dimension's labels, in order</td>
 <td><code>None</code></td>
 </tr>
 <tr>
@@ -1771,20 +1771,20 @@ datarecord stores it and compares nothing against it.
 </tr>
 <tr>
 <td><code>description</code></td>
-<td>what the dim is, in prose</td>
+<td>what the dimension is, in prose</td>
 <td><code>None</code></td>
 </tr>
 </tbody>
 </table>
-<p>A schema that declares attributes declares at least one dim, because attribute data over no dim is no record.</p>
+<p>A schema that declares attributes declares at least one dimension, because attribute data over no dimension is no record.</p>
 <h3 id="over"><code>over</code><a class="headerlink" href="#over" title="Permanent link">&para;</a></h3>
-<p><code>over</code> declares a <a href="../data-model/#multi-dims">multi-dim</a>.
+<p><code>over</code> declares a <a href="../data-model/#multi-dimensions">multi-dimension</a>.
 A list is short for the dict whose keys equal its values, so <code>over=["entity", "bus"]</code> is <code>over={"entity": "entity", "bus": "bus"}</code>.
-The keys are the coordinate names, in field order, and <code>Schema.over("connection")</code> returns them.
-datarecord refuses a multi-dim that also declares <code>dtype</code> or <code>one_of</code>, and a coordinate that draws on an undeclared dim or on a multi-dim.</p>
+The keys are the field names, in field order, and <code>Schema.over("connection")</code> returns them.
+datarecord refuses a multi-dimension that also declares <code>dtype</code> or <code>one_of</code>, and a field that draws on an undeclared dimension or on a multi-dimension.</p>
 <h3 id="one_of"><code>one_of</code><a class="headerlink" href="#one_of" title="Permanent link">&para;</a></h3>
-<p><code>one_of</code> declares a <a href="../data-model/#a-dim-with-one_of">dim with <code>one_of</code></a>, whose axis is the list.
-Only a <code>"str"</code> dim takes it.
+<p><code>one_of</code> declares a <a href="../data-model/#a-dimension-with-one_of">dimension with <code>one_of</code></a>, whose axis is the list.
+Only a <code>"str"</code> dimension takes it.
 datarecord refuses an empty list, a label listed twice, and <code>one_of</code> on any other dtype.</p>
 <h2 id="attributes"><code>attributes</code><a class="headerlink" href="#attributes" title="Permanent link">&para;</a></h2>
 <p><code>attributes</code> maps each attribute's name to an <code>AttributeSpec</code>.
@@ -1805,12 +1805,12 @@ One name is one spec, one file and one <code>value</code> dtype, record-wide.</p
 </tr>
 <tr>
 <td><code>dims</code></td>
-<td>the dims and multi-dims that address a value</td>
+<td>the dimensions and multi-dimensions that address a value</td>
 <td><code>frozenset()</code></td>
 </tr>
 <tr>
 <td><code>default</code></td>
-<td>the value at a point no row covers</td>
+<td>the value at a coordinate no row covers</td>
 <td><code>None</code></td>
 </tr>
 <tr>
@@ -1835,21 +1835,21 @@ One name is one spec, one file and one <code>value</code> dtype, record-wide.</p
 </tr>
 </tbody>
 </table>
-<p>datarecord refuses a <code>dims</code> entry that is not a declared dim.
-It also refuses a multi-dim in <code>dims</code> beside a dim named like one of its coordinates, such as <code>{"connection", "bus"}</code>.</p>
+<p>datarecord refuses a <code>dims</code> entry that is not a declared dimension.
+It also refuses a multi-dimension in <code>dims</code> beside a dimension named like one of its fields, such as <code>{"connection", "bus"}</code>.</p>
 <h3 id="default_by"><code>default_by</code><a class="headerlink" href="#default_by" title="Permanent link">&para;</a></h3>
 <p><code>default_by</code> maps a categorising property, written <code>subject.name</code>, to a map from category to default.
 At a label whose category a map lists, the first key in declaration order gives the default.
 Elsewhere <code>default</code> applies.
 <code>Schema.default_for(name, **categories)</code> returns the default for an attribute or a <code>subject.name</code> property, taking each category by the property's plain name.</p>
 <p>datarecord refuses a key that is not a <a href="../data-model/#categories">categorising property</a>, naming the reason:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>attribute 'p_nom''s `default_by` is keyed by 'entity.carrier', which refers to 'carrier', but 'carrier' is not a one_of dim
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>attribute 'p_nom''s `default_by` is keyed by 'entity.carrier', which refers to 'carrier', but 'carrier' is not a one_of dimension
 </code></pre></div>
-<p>It also refuses a category that the referred dim's <code>one_of</code> does not list.
-It refuses a key on a dim that the attribute or property is not <a href="../data-model/#attributes">indexed over</a>.
-A property is indexed over its subject and the dims that the subject's coordinates draw on.</p>
+<p>It also refuses a category that the referred dimension's <code>one_of</code> does not list.
+It refuses a key on a dimension that the attribute or property is not <a href="../data-model/#attributes">indexed over</a>.
+A property is indexed over its subject and the dimensions that the subject's fields draw on.</p>
 <h2 id="properties"><code>properties</code><a class="headerlink" href="#properties" title="Permanent link">&para;</a></h2>
-<p><code>properties</code> maps each subject dim to a map from property name to <code>PropertySpec</code>.</p>
+<p><code>properties</code> maps each subject dimension to a map from property name to <code>PropertySpec</code>.</p>
 <table>
 <thead>
 <tr>
@@ -1866,7 +1866,7 @@ A property is indexed over its subject and the dims that the subject's coordinat
 </tr>
 <tr>
 <td><code>one_of</code></td>
-<td>the dim the property refers to</td>
+<td>the dimension the property refers to</td>
 <td><code>None</code></td>
 </tr>
 <tr>
@@ -1892,24 +1892,28 @@ A property is indexed over its subject and the dims that the subject's coordinat
 </tbody>
 </table>
 <p>A property declares exactly one of <code>dtype</code> and <code>one_of</code>.
-With <code>one_of</code>, the property <a href="../data-model/#properties">refers to that dim</a> and takes its type.
+With <code>one_of</code>, the property <a href="../data-model/#properties">refers to that dimension</a> and takes its type.
 <code>Schema.resolve("entity.carrier")</code> returns the subject and the spec, and <code>Schema.categorizing(dim)</code> lists the categorising properties of <code>dim</code>.</p>
 <p>datarecord refuses a property:</p>
 <ul>
 <li>that declares both <code>dtype</code> and <code>one_of</code>, or neither</li>
-<li>of an undeclared subject, or of a dim with <code>one_of</code></li>
-<li>that refers to an undeclared dim or to a multi-dim</li>
-<li>named like its subject's key column, or like a coordinate of its multi-dim</li>
+<li>of an undeclared subject, or of a dimension with <code>one_of</code></li>
+<li>that refers to an undeclared dimension or to a multi-dimension</li>
+<li>named like its subject's column, or like a field of its multi-dimension</li>
 <li>that categorises its subject and declares <code>default_by</code></li>
 </ul>
 <h2 id="partial"><code>partial</code><a class="headerlink" href="#partial" title="Permanent link">&para;</a></h2>
-<p><code>partial</code> is the set of dims along which the data one revision adds (a <a href="../layers/">layer</a>) overrides one value per label, a multi-dim among them.
-<a href="../layers/#partial">Layers</a> states what a layer restates along any other dim.
+<p><code>partial</code> is the set of dimensions along which the data one revision adds (a <a href="../layers/">layer</a>) overrides one value per label, a multi-dimension among them.
+<a href="../layers/#partial">Layers</a> states what a layer restates along any other dimension.
 <code>None</code>, the default, declares a record with no layers.
-datarecord refuses a name in <code>partial</code> that the schema does not declare as a dim.</p>
+datarecord refuses a name in <code>partial</code> that the schema does not declare as a dimension.</p>
 <h2 id="meta"><code>meta</code><a class="headerlink" href="#meta" title="Permanent link">&para;</a></h2>
 <p><code>meta</code> is a dict of a framework's own data, such as network attributes or a coordinate reference system.
-datarecord stores it and never reads it.</p>
+datarecord stores it and never reads it.
+It is a JSON object as a <a href="../store/#store">revision's <code>meta</code></a> is, a float possibly <code>inf</code>, <code>-inf</code> or <code>nan</code>.
+An int, float, bool or None key becomes the string that <code>json.dumps</code> writes for it, so <code>{2030: 0.4}</code> is stored as <code>{"2030": 0.4}</code>, as PyPSA's own files store it.
+Any other value, such as a tuple, a set or a key of another type, raises a <code>TypeError</code> naming its path when the schema is made, as in <code>meta['co2_budget']</code>.
+Two keys that become the same string, such as <code>2030</code> and <code>"2030"</code>, raise a <code>TypeError</code> too.</p>
 <h2 id="unit-and-description"><code>unit</code> and <code>description</code><a class="headerlink" href="#unit-and-description" title="Permanent link">&para;</a></h2>
 <p>A <code>Dimension</code>, an <code>AttributeSpec</code> and a <code>PropertySpec</code> each take a <code>unit</code> and a <code>description</code>.
 datarecord stores both and reads neither, so it converts no unit.
@@ -1927,12 +1931,12 @@ Each declaration maps to one DuckDB type:</p>
 </thead>
 <tbody>
 <tr>
-<td>dim, attribute, property</td>
+<td>dimension, attribute, property</td>
 <td><code>dtype: float</code></td>
 <td><code>DOUBLE</code></td>
 </tr>
 <tr>
-<td>dim, attribute, property</td>
+<td>dimension, attribute, property</td>
 <td><code>dtype: int</code></td>
 <td><code>BIGINT</code></td>
 </tr>
@@ -1942,44 +1946,44 @@ Each declaration maps to one DuckDB type:</p>
 <td><code>BOOLEAN</code></td>
 </tr>
 <tr>
-<td>dim, attribute, property</td>
+<td>dimension, attribute, property</td>
 <td><code>dtype: str</code></td>
 <td><code>VARCHAR</code></td>
 </tr>
 <tr>
-<td>dim</td>
+<td>dimension</td>
 <td><code>dtype: datetime</code></td>
 <td><code>TIMESTAMP</code> (no time zone)</td>
 </tr>
 <tr>
-<td>dim</td>
+<td>dimension</td>
 <td><code>one_of: [labels]</code></td>
 <td><code>ENUM</code> of the labels</td>
 </tr>
 <tr>
-<td>multi-dim</td>
+<td>multi-dimension</td>
 <td><code>over: {...}</code></td>
-<td><code>STRUCT</code>, a field per coordinate typed as its dim</td>
+<td><code>STRUCT</code> of its fields, each typed as its dimension</td>
 </tr>
 <tr>
 <td>property</td>
 <td><code>one_of: &lt;dim&gt;</code></td>
-<td>that dim's type</td>
+<td>that dimension's type</td>
 </tr>
 </tbody>
 </table>
 <p>An attribute takes no <code>one_of</code>, and no attribute or property is <code>datetime</code>.
-A property whose values are times refers to a <code>datetime</code> dim.
+A property whose values are times refers to a <code>datetime</code> dimension.
 The format fixes three more columns: <code>attribute VARCHAR</code>, <code>breakpoint DOUBLE</code> and <code>value</code>, typed as the attribute's <code>dtype</code>.</p>
 <h2 id="names">Names<a class="headerlink" href="#names" title="Permanent link">&para;</a></h2>
-<p>A declared dim, coordinate, attribute or property name becomes a column, and datarecord refuses a name that cannot be one:</p>
+<p>A declared dimension, field, attribute or property name becomes a column, and datarecord refuses a name that cannot be one:</p>
 <ul>
 <li>a name that is not ASCII letters, digits and <code>_</code>, starting with a letter, which is mathspec's rule for a name</li>
 <li>a column datarecord writes, compared ignoring case: <code>attribute</code>, <code>breakpoint</code>, <code>breakpoints</code>, <code>broadcast</code>, <code>layer_uuid</code>, <code>order_key</code>, <code>value</code> and <code>varies</code></li>
 <li>a name that starts with <code>_</code></li>
 <li>two names that differ only in case, which DuckDB reads as one column</li>
 </ul>
-<p>One spelling declared twice is one column and passes, as when a coordinate shares its dim's name.
+<p>One spelling declared twice is one column and passes, as when a field shares its dimension's name.
 Labels are data, and these rules do not apply to them.</p>
 <h2 id="compatibility">Compatibility<a class="headerlink" href="#compatibility" title="Permanent link">&para;</a></h2>
 <p><code>schema.compatible_with(other)</code> returns one reason for each way that layers written under <code>other</code> would not read under <code>schema</code>, and an empty list when they would.
@@ -1993,15 +1997,15 @@ Labels are data, and these rules do not apply to them.</p>
 </thead>
 <tbody>
 <tr>
-<td>add a dim, an attribute or a property</td>
+<td>add a dimension, an attribute or a property</td>
 <td>yes</td>
 </tr>
 <tr>
-<td>add a dim to an attribute's <code>dims</code></td>
+<td>add a dimension to an attribute's <code>dims</code></td>
 <td>yes</td>
 </tr>
 <tr>
-<td>add a dim to <code>partial</code></td>
+<td>add a dimension to <code>partial</code></td>
 <td>yes</td>
 </tr>
 <tr>
@@ -2009,7 +2013,7 @@ Labels are data, and these rules do not apply to them.</p>
 <td>yes</td>
 </tr>
 <tr>
-<td>remove a dim, an attribute or a property</td>
+<td>remove a dimension, an attribute or a property</td>
 <td>no</td>
 </tr>
 <tr>
@@ -2017,11 +2021,11 @@ Labels are data, and these rules do not apply to them.</p>
 <td>no</td>
 </tr>
 <tr>
-<td>remove a dim from an attribute's <code>dims</code></td>
+<td>remove a dimension from an attribute's <code>dims</code></td>
 <td>no</td>
 </tr>
 <tr>
-<td>remove a dim from <code>partial</code></td>
+<td>remove a dimension from <code>partial</code></td>
 <td>no</td>
 </tr>
 </tbody>

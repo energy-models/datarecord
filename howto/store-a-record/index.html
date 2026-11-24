@@ -1350,7 +1350,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="nb">print</span><span class="p">(</span><span class="nb">sorted</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">listdir</span><span class="p">(</span><span class="n">uri</span><span class="p">)))</span>
 <a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="n">ws</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">record</span><span class="p">,</span> <span class="n">uri</span><span class="p">)</span>
 </code></pre></div>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>['attributes', 'dims', 'manifest.json']
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>['attributes', 'dimensions', 'manifest.json']
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>FileExistsError: /private/var/folders/.../plants/ already exists; a standalone record is written to a URI that does not exist yet
 </code></pre></div>
 <p>The second write raises, because <code>uri</code> exists. The manifest is written last, so a write that fails leaves no record. Delete the failed write's data files before you write there again. The <a href="../../reference/format/">format</a> page lists each file.</p>
@@ -1362,7 +1362,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="n">store</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"s3://bucket/my-record"</span><span class="p">)</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="n">record</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">at</span><span class="p">(</span><span class="s2">"s3://bucket/out/"</span><span class="p">)</span>
 </code></pre></div>
-<p>The credentials and the endpoint come from the AWS environment variables and config files. Set <code>AWS_ENDPOINT_URL</code> to connect to a self-hosted server, which must honour conditional writes.</p>
+<p>The credentials and the endpoint come from the AWS environment variables and config files. Set <code>AWS_ENDPOINT_URL</code> to connect to a self-hosted server, which must honour conditional writes. To pass a key that the environment must not contain, give the workspace <a href="../../reference/store/#s3-credentials"><code>S3Credentials</code></a>.</p>
 <h2 id="read-from-several-threads">Read from several threads<a class="headerlink" href="#read-from-several-threads" title="Permanent link">&para;</a></h2>
 <p><code>ws.con</code> is the calling thread's DuckDB cursor, so every thread can read one record. Build each relation in the thread that fetches it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">concurrent.futures</span><span class="w"> </span><span class="kn">import</span> <span class="n">ThreadPoolExecutor</span>
@@ -1381,7 +1381,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <p>Each thread built its own relation and fetched one generator's <code>p_nom</code>. A relation or a <code>WorkingRecord</code> belongs to the thread that built it, and another thread's write path refuses it.</p>
 <h2 id="hand-a-revision-to-another-process">Hand a revision to another process<a class="headerlink" href="#hand-a-revision-to-another-process" title="Permanent link">&para;</a></h2>
-<p>A <code>Revision</code> or a <code>Claim</code> serialises as its id and its store's location, as JSON or as a pickle:</p>
+<p>A <code>Revision</code> serialises as its id and its store's location, as JSON or as a pickle:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pickle</span>
 <a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>
 <a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">Revision</span>
@@ -1396,7 +1396,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>True
 <a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>True
 </code></pre></div>
-<p>The JSON has the id and the store's location, and the loaded revision has the same ancestry. The loaded revision attaches to <code>Workspace.process()</code>, the one workspace a process creates on first use, and datarecord reads its manifests from the store. Build a source for <code>claim.commit</code> on that workspace, since a relation from another workspace is refused. Writers never share a file, so several processes can commit to one store at once (<a href="../../reference/store/">the store</a>).</p>
+<p>The JSON has the id and the store's location, and the loaded revision has the same ancestry. The loaded revision attaches to <code>Workspace.process()</code>, the one workspace a process creates on first use, and datarecord reads its manifests from the store. A <code>Claim</code> serialises the same way and carries its parent, <code>meta</code> and creation time too, and <code>store.claim_from(payload)</code> loads it onto the workspace of a store you name (<a href="../../reference/store/#claim">the claim</a>). Build a source for <code>claim.commit</code> on the workspace the claim attaches to, since a relation from another workspace is refused. Writers never share a file, so several processes can commit to one store at once (<a href="../../reference/store/">the store</a>).</p>
 
 
 

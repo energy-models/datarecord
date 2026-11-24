@@ -1055,6 +1055,8 @@
       
         
       
+        
+      
     
     
     
@@ -1213,38 +1215,39 @@ SPDX-License-Identifier: CC-BY-4.0
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>datarecord/
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── __init__.py        # every public name, which a user imports from here
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── duck.py            # relation helpers, transactions and shared tables
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── protocols.py       # RecordLike, LayerData, Relations, LazyRelations, EMPTY, Flags
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── schema/
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>│   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   ├── dtypes.py      # DUCK_TYPES, enum_type, enum_labels, takes
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── specs.py       # Dimension, AttributeSpec, PropertySpec
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED, packed, unpacked
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   └── categories.py  # selecting a categorised dim's labels, and their defaults
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>├── settle.py          # settle, the broadcast rule over long rows
-<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>├── select.py          # select, Selection
-<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── resolve/
-<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>│   ├── __init__.py    # re-exports Record
-<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
-<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   ├── coords.py      # Coords, mortal: folded axes and dead labels
-<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   ├── owner_keys.py  # owner_keys: one layer's keys as it wrote them
-<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   ├── fold.py        # Fold: a revision's folded axes, owner map and reads
-<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│   ├── owner_map.py   # fold_layer, uncovered: the owner map folded one layer at a time
-<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   └── record.py      # Record
-<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>├── mutable.py         # WorkingRecord, StagedSource
-<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── store/
-<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
-<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── files.py       # Files, LocalFiles, RemoteFiles
-<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   ├── manifest.py    # Manifest, LayerFiles, ClaimFile
-<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│   ├── cache.py       # materialise, materialised, sources_to_read
-<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│   ├── write.py       # write_layer, layer_data
-<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>│   └── store.py       # Workspace, Store, Claim, Revision, ancestry
-<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>└── tools/
-<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>    ├── __init__.py    # imports no tool module
-<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    ├── base.py        # Tool, Schema, Attr, Requirements, UnsupportedRecordError
-<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    └── pypsa.py       # PyPSA, PyPSACollection
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── templates.py       # Plan, Templates, Templated: a read built once per plan and slot types
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── protocols.py       # RecordLike, LayerData, Relations, LazyRelations, EMPTY, Flags
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── schema/
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>│   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>│   ├── dtypes.py      # DUCK_TYPES, enum_type, enum_labels, takes
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>│   ├── specs.py       # Dimension, AttributeSpec, PropertySpec
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>│   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED, packed, unpacked, cast_declared, with_columns
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>│   └── categories.py  # selecting a categorised dimension's labels, and their defaults
+<a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>├── settle.py          # settle, uncovered, unsettled: the broadcast rule over long rows
+<a id="__codelineno-0-13" name="__codelineno-0-13" href="#__codelineno-0-13"></a>├── select.py          # select, Selection
+<a id="__codelineno-0-14" name="__codelineno-0-14" href="#__codelineno-0-14"></a>├── resolve/
+<a id="__codelineno-0-15" name="__codelineno-0-15" href="#__codelineno-0-15"></a>│   ├── __init__.py    # re-exports Record
+<a id="__codelineno-0-16" name="__codelineno-0-16" href="#__codelineno-0-16"></a>│   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
+<a id="__codelineno-0-17" name="__codelineno-0-17" href="#__codelineno-0-17"></a>│   ├── axes.py        # Axes, mortal: folded axes and dead labels
+<a id="__codelineno-0-18" name="__codelineno-0-18" href="#__codelineno-0-18"></a>│   ├── owner_map_rows.py  # owner_map_rows, shape_of: one layer's map rows as it wrote them
+<a id="__codelineno-0-19" name="__codelineno-0-19" href="#__codelineno-0-19"></a>│   ├── fold.py        # Fold: a revision's folded axes, owner map and reads
+<a id="__codelineno-0-20" name="__codelineno-0-20" href="#__codelineno-0-20"></a>│   ├── owner_map.py   # fold_layer: the owner map folded one layer and one shape at a time
+<a id="__codelineno-0-21" name="__codelineno-0-21" href="#__codelineno-0-21"></a>│   └── record.py      # Record
+<a id="__codelineno-0-22" name="__codelineno-0-22" href="#__codelineno-0-22"></a>├── mutable.py         # WorkingRecord, StagedSource
+<a id="__codelineno-0-23" name="__codelineno-0-23" href="#__codelineno-0-23"></a>├── store/
+<a id="__codelineno-0-24" name="__codelineno-0-24" href="#__codelineno-0-24"></a>│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest, S3Credentials
+<a id="__codelineno-0-25" name="__codelineno-0-25" href="#__codelineno-0-25"></a>│   ├── files.py       # Files, LocalFiles, RemoteFiles, S3Credentials
+<a id="__codelineno-0-26" name="__codelineno-0-26" href="#__codelineno-0-26"></a>│   ├── manifest.py    # Manifest, LayerFiles, ClaimFile
+<a id="__codelineno-0-27" name="__codelineno-0-27" href="#__codelineno-0-27"></a>│   ├── materialise.py # materialise, materialised, sources_to_read
+<a id="__codelineno-0-28" name="__codelineno-0-28" href="#__codelineno-0-28"></a>│   ├── write.py       # write_layer, layer_data
+<a id="__codelineno-0-29" name="__codelineno-0-29" href="#__codelineno-0-29"></a>│   └── store.py       # Workspace, Store, Claim, Revision, ancestry
+<a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a>└── tools/
+<a id="__codelineno-0-31" name="__codelineno-0-31" href="#__codelineno-0-31"></a>    ├── __init__.py    # imports no tool module
+<a id="__codelineno-0-32" name="__codelineno-0-32" href="#__codelineno-0-32"></a>    ├── base.py        # Tool, Schema, Attr, Requirements, UnsupportedRecordError
+<a id="__codelineno-0-33" name="__codelineno-0-33" href="#__codelineno-0-33"></a>    └── pypsa.py       # PyPSA, PyPSACollection
 </code></pre></div>
 <h2 id="the-import-order">The import order<a class="headerlink" href="#the-import-order" title="Permanent link">&para;</a></h2>
-<p>Runtime imports follow the order <code>duck</code> → <code>schema</code> → <code>protocols</code> → <code>settle</code> → <code>select</code> → <code>resolve</code> → <code>mutable</code> → <code>store</code> → <code>tools</code>. A module imports at runtime only from modules earlier in that order or in its own subpackage. An import under <code>TYPE_CHECKING</code> may point the other way, as when <code>resolve/record.py</code> names <code>Workspace</code> in an annotation.</p>
+<p>Runtime imports follow the order <code>duck</code> → <code>templates</code> → <code>schema</code> → <code>protocols</code> → <code>settle</code> → <code>select</code> → <code>resolve</code> → <code>mutable</code> → <code>store</code> → <code>tools</code>. A module imports at runtime only from modules earlier in that order or in its own subpackage. An import under <code>TYPE_CHECKING</code> may point the other way, as when <code>resolve/record.py</code> names <code>Workspace</code> in an annotation.</p>
 <p>A subpackage's <code>__init__.py</code> re-exports its public names, and <code>datarecord/__init__.py</code> imports them from there, so a user imports from <code>datarecord</code> alone. Code inside the package imports a name from the module that defines it, so no internal import runs through an <code>__init__.py</code>.</p>
 <p>Some modules are one module because their classes need each other at runtime:</p>
 <ul>
@@ -1252,7 +1255,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <li><code>mutable.py</code> contains <code>WorkingRecord</code> and <code>StagedSource</code>, because <code>StagedSource</code> reads private members of <code>WorkingRecord</code>.</li>
 <li><code>protocols.py</code> contains the protocols apart from <code>Record</code>, because <code>resolve/fold.py</code> imports <code>Flags</code>, and a module that defined both would import the fold back.</li>
 </ul>
-<p><code>store/</code> sets where a connection and a location come from, so <code>duck.py</code> contains no state. The modules in <code>resolve/</code> take a <code>Workspace</code> and read <code>workspace.con</code> on each call, so each call runs on the calling thread's cursor.</p>
+<p><code>store/</code> sets where a connection and a location come from, so <code>duck.py</code> contains no state. <code>Workspace.templates</code> is the cache of the reads that <code>templates.py</code> builds. The modules in <code>resolve/</code> take a <code>Workspace</code> and read <code>workspace.con</code> on each call, so each call runs on the calling thread's cursor.</p>
 <h2 id="core-and-tools">Core and tools<a class="headerlink" href="#core-and-tools" title="Permanent link">&para;</a></h2>
 <p>Code that refers to a modelling framework lives under <code>datarecord/tools/</code>, and no other code may refer to one. So the core depends only on <code>duckdb</code>, <code>pydantic</code> and <code>mathspec</code>.</p>
 <p>A tool is one module per framework, <code>datarecord/tools/&lt;name&gt;.py</code>, and a caller imports it explicitly:</p>

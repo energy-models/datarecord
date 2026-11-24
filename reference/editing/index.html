@@ -927,10 +927,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#coordinates" class="md-nav__link">
+  <a href="#keywords" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Coordinates
+        Keywords
       
     </span>
   </a>
@@ -1489,10 +1489,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#coordinates" class="md-nav__link">
+  <a href="#keywords" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Coordinates
+        Keywords
       
     </span>
   </a>
@@ -1644,14 +1644,14 @@ The base is a <code>Record</code>, and <code>WorkingRecord</code> raises <code>T
 <tr>
 <th>Edit</th>
 <th>Stages</th>
-<th>Keyed by</th>
+<th>Matched on</th>
 </tr>
 </thead>
 <tbody>
 <tr>
 <td><code>set</code> an attribute</td>
 <td>rows of <code>attributes/&lt;attr&gt;.parquet</code></td>
-<td>the attribute's coordinates</td>
+<td>the attribute's dimensions</td>
 </tr>
 <tr>
 <td><code>set</code> a property</td>
@@ -1660,19 +1660,19 @@ The base is a <code>Record</code>, and <code>WorkingRecord</code> raises <code>T
 </tr>
 <tr>
 <td><code>add</code> labels or tuples</td>
-<td>the dim's axis, with the rows added</td>
-<td>the dim's label</td>
+<td>the dimension's axis, with the rows added</td>
+<td>the dimension's label</td>
 </tr>
 <tr>
 <td><code>remove</code> labels or tuples</td>
-<td>the dim's axis without them, and each multi-dim without the tuples that contain them</td>
-<td>the dim's label</td>
+<td>the dimension's axis without them, and each multi-dimension without the tuples that contain them</td>
+<td>the dimension's label</td>
 </tr>
 </tbody>
 </table>
-<p>A layer restates each axis it changes whole, whatever <code>partial</code> sets: every label the axis has, with the edits applied, in <a href="../data-model/#dims-and-labels">axis order</a>.</p>
+<p>A layer restates each axis it changes whole, whatever <code>partial</code> sets: every label the axis has, with the edits applied, in <a href="../data-model/#dimensions-and-labels">axis order</a>.</p>
 <h2 id="set"><code>set</code><a class="headerlink" href="#set" title="Permanent link">&para;</a></h2>
-<p><code>set(name, value, **coords)</code> stages values of one attribute, or of one property named <code>subject.name</code>.</p>
+<p><code>set(name, value, **labels)</code> stages values of one attribute, or of one property named <code>subject.name</code>.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">pandas</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">pd</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">series</span> <span class="o">=</span> <span class="n">pd</span><span class="o">.</span><span class="n">Series</span><span class="p">([</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.2</span><span class="p">],</span> <span class="n">index</span><span class="o">=</span><span class="n">pd</span><span class="o">.</span><span class="n">Index</span><span class="p">([</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">],</span> <span class="n">name</span><span class="o">=</span><span class="s2">"snapshot"</span><span class="p">))</span>
@@ -1685,20 +1685,20 @@ The base is a <code>Record</code>, and <code>WorkingRecord</code> raises <code>T
 <a id="__codelineno-3-10" name="__codelineno-3-10" href="#__codelineno-3-10"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"efficiency"</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"dc"</span><span class="p">,</span> <span class="n">bus</span><span class="o">=</span><span class="s2">"south"</span><span class="p">)</span>  <span class="c1"># one connection</span>
 <a id="__codelineno-3-11" name="__codelineno-3-11" href="#__codelineno-3-11"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"entity.carrier"</span><span class="p">,</span> <span class="s2">"wind"</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"dc"</span><span class="p">)</span>  <span class="c1"># a property, by its subject</span>
 </code></pre></div>
-<h3 id="coordinates">Coordinates<a class="headerlink" href="#coordinates" title="Permanent link">&para;</a></h3>
-<p>Every coordinate is a keyword, a multi-dim's coordinates included, because the schema declares which coordinates exist.
+<h3 id="keywords">Keywords<a class="headerlink" href="#keywords" title="Permanent link">&para;</a></h3>
+<p><code>set</code> takes a keyword for each field of the dimensions that the attribute is over, as the schema declares them.
 A keyword has one label or a list of labels, and <code>set</code> stages the value at each.
-A coordinate with no keyword is NULL, which by <a href="../data-model/#the-broadcast-rule">the broadcast rule</a> means every label, labels added later included.</p>
-<p><code>set</code> packs a multi-dim's coordinates into its struct column, so <code>entity="dc", bus="south"</code> stages <code>connection = {entity: dc, bus: south}</code>.
-You give every coordinate of a multi-dim or none, and none stages a NULL struct, which means every tuple.
-A coordinate is named by its own name, such as <code>from=</code> and <code>to=</code> of a corridor.</p>
+A dimension with no keyword is NULL, which by <a href="../data-model/#the-broadcast-rule">the broadcast rule</a> means every label, labels added later included.</p>
+<p><code>set</code> packs a multi-dimension's fields into its struct column, so <code>entity="dc", bus="south"</code> stages <code>connection = {entity: dc, bus: south}</code>.
+You give every field of a multi-dimension or none, and none stages a NULL struct, which means every tuple.
+A field is named by its own name, such as <code>from=</code> and <code>to=</code> of a corridor.</p>
 <h3 id="property-keywords">Property keywords<a class="headerlink" href="#property-keywords" title="Permanent link">&para;</a></h3>
-<p>A keyword that is not a coordinate of the attribute is the plain name of a property of a dim the attribute is <a href="../data-model/#attributes">indexed over</a>.
+<p>A keyword that names no dimension or field of the attribute is the plain name of a property of a dimension the attribute is <a href="../data-model/#attributes">indexed over</a>.
 It selects the labels whose value matches on the record as staged, and <code>set</code> stages one row per label.
 <code>set</code> stores nothing of the filter, so its rows do not apply to a label added later.
 Several keywords intersect: <code>ctype="Generator", carrier="wind"</code> selects the wind generators.
-A property of a multi-dim selects its tuples the same way, and a coordinate keyword such as <code>bus="north"</code> narrows them.</p>
-<p><code>set</code> refuses a dotted keyword, a property name that several of those dims declare, and a property keyword beside its own dim's coordinate keyword.</p>
+A property of a multi-dimension selects its tuples the same way, and a field keyword such as <code>bus="north"</code> narrows them.</p>
+<p><code>set</code> refuses a dotted keyword, a property name that several of those dimensions declare, and a property keyword beside the keyword of its own dimension.</p>
 <h3 id="values">Values<a class="headerlink" href="#values" title="Permanent link">&para;</a></h3>
 <table>
 <thead>
@@ -1712,7 +1712,7 @@ A property of a multi-dim selects its tuples the same way, and a coordinate keyw
 <tr>
 <td>scalar</td>
 <td>staged at every listed combination</td>
-<td>an omitted coordinate broadcasts</td>
+<td>an omitted keyword broadcasts</td>
 </tr>
 <tr>
 <td>sequence</td>
@@ -1721,24 +1721,24 @@ A property of a multi-dim selects its tuples the same way, and a coordinate keyw
 </tr>
 <tr>
 <td>mapping</td>
-<td>keys are labels of one coordinate</td>
-<td>the one coordinate without a keyword</td>
+<td>keys are labels of one keyword</td>
+<td>the one keyword not given</td>
 </tr>
 <tr>
 <td>series</td>
-<td>index is labels of one coordinate</td>
-<td>the index's name, else the one coordinate without a keyword</td>
+<td>index is labels of one keyword</td>
+<td>the index's name, else the one keyword not given</td>
 </tr>
 <tr>
 <td>frame</td>
-<td>supplies its own keys</td>
+<td>supplies its own labels</td>
 <td>single labels that complete it</td>
 </tr>
 </tbody>
 </table>
 <p>A frame is a DuckDB relation, or a pandas, polars or arrow frame that DuckDB scans.
-Over a multi-dim, a frame has the struct column, such as <code>connection STRUCT(entity, bus)</code>, and <code>set</code> refuses one with the coordinates as flat columns.
-<code>set</code> never infers a mapping's coordinate from its labels, and refuses the call where neither the index name nor the keywords settle it.</p>
+Over a multi-dimension, a frame has the struct column, such as <code>connection STRUCT(entity, bus)</code>, and <code>set</code> refuses one with the fields as flat columns.
+<code>set</code> never infers a mapping's keyword from its labels, and refuses the call where neither the index name nor the keywords settle it.</p>
 <p><code>set</code> casts a frame column to its declared <a href="../schema/#dtypes">type</a> where the cast widens it.
 It casts a smaller integer to <code>BIGINT</code>, a number to <code>DOUBLE</code>, a timestamp of any precision to <code>TIMESTAMP</code>, and text to and from an <code>ENUM</code>.
 <code>set</code> refuses any other type, and a timestamp with a time zone.</p>
@@ -1746,15 +1746,15 @@ It casts a smaller integer to <code>BIGINT</code>, a number to <code>DOUBLE</cod
 <p><code>set("entity.carrier", value, ...)</code> changes one column of the subject's axis rows and keeps the other columns.
 Its value is a mapping or series from label to value, a scalar with keywords that select the labels, or a scalar for every label.
 A categorising property is set the same way, and the label keeps its attribute values under its new category.
-<code>set</code> refuses a coordinate, such as <code>connection.bus</code>, because a coordinate is part of the key:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>`set('connection.bus', ...)` names a coordinate of the multi-dim 'connection', part of its key rather than a value; `remove` the tuples and `add` them with the new label instead
+<code>set</code> refuses a field, such as <code>connection.bus</code>, because a field is part of the label:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>`set('connection.bus', ...)` names a field of the multi-dimension 'connection', which `set` cannot change; `remove` the tuples and `add` them with the new label instead
 </code></pre></div>
 <h3 id="a-later-set">A later <code>set</code><a class="headerlink" href="#a-later-set" title="Permanent link">&para;</a></h3>
 <p>A later <code>set</code> replaces each staged row of the attribute that one of its own rows covers.
-A row covers another when, at every coordinate, it has the same label or is NULL.
+A row covers another when, on every dimension, it has the same label or is NULL.
 <code>set("p_nom", 0.9, entity=["wind"])</code> followed by <code>set("p_nom", 0.95)</code> stages one row, and <code>wind</code> is <code>0.95</code>.
 In the other order both rows stay, and <code>wind</code> is <code>0.9</code>, because datarecord keeps the more specific row.</p>
-<p>Where a new row and a staged row each leave NULL a dim that the other row sets, <code>set</code> adds a row that sets both:</p>
+<p>Where a new row and a staged row each leave NULL a dimension that the other row sets, <code>set</code> adds a row that sets both:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">w</span><span class="o">.</span><span class="n">rollback</span><span class="p">()</span>
 <a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">,</span> <span class="n">entity</span><span class="o">=</span><span class="s2">"gas"</span><span class="p">)</span>
 <a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">w</span><span class="o">.</span><span class="n">set</span><span class="p">(</span><span class="s2">"p_max_pu"</span><span class="p">,</span> <span class="mf">0.7</span><span class="p">,</span> <span class="n">snapshot</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
@@ -1763,7 +1763,7 @@ In the other order both rows stay, and <code>wind</code> is <code>0.9</code>, be
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>[('gas', 1, 'p_max_pu', None, 0.7), ('gas', None, 'p_max_pu', None, 0.5), (None, 1, 'p_max_pu', None, 0.7)]
 </code></pre></div>
 <p><code>gas</code> at snapshot 1 is 0.7, the later value, so the order of two edits sets a value and never makes an edit fail.</p>
-<p>A <code>set</code> of one value along a dim outside <a href="../layers/#partial"><code>partial</code></a> also stages the key's other values, as the record reads them.
+<p>A <code>set</code> of one value along a dimension outside <a href="../layers/#partial"><code>partial</code></a> also stages the map row's other values, as the record reads them.
 <code>w.set("p_max_pu", series, entity="gas")</code> with a series over snapshots 0 and 1 stages snapshot 2 as well, at the 1.0 that <code>gas</code> read before.</p>
 <h2 id="add-and-remove"><code>add</code> and <code>remove</code><a class="headerlink" href="#add-and-remove" title="Permanent link">&para;</a></h2>
 <p><code>add(dim, labels, **columns)</code> stages labels of <code>dim</code>, each as one whole row of its axis.</p>
@@ -1773,25 +1773,25 @@ In the other order both rows stay, and <code>wind</code> is <code>0.9</code>, be
 <a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"connection"</span><span class="p">,</span> <span class="p">[{</span><span class="s2">"entity"</span><span class="p">:</span> <span class="s2">"dc"</span><span class="p">,</span> <span class="s2">"bus"</span><span class="p">:</span> <span class="s2">"south"</span><span class="p">}])</span>
 <a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="n">w</span><span class="o">.</span><span class="n">remove</span><span class="p">(</span><span class="s2">"entity"</span><span class="p">,</span> <span class="p">[</span><span class="s2">"gas"</span><span class="p">])</span>
 </code></pre></div>
-<p><code>columns</code> are the dim's properties by plain name, each a scalar for every label or a sequence aligned to <code>labels</code>.
+<p><code>columns</code> are the dimension's properties by plain name, each a scalar for every label or a sequence aligned to <code>labels</code>.
 A property with no keyword is NULL on the row, because <code>add</code> restates the row whole.
 A new label goes after the axis's last, and a label of the base that this record removed goes back to its base position.
 A label exists because its axis row exists, so <code>add</code> with no columns is an edit of its own.</p>
-<p>A multi-dim's labels are tuples, which <code>add</code> and <code>remove</code> take in one of three forms:</p>
+<p>A multi-dimension's labels are tuples, which <code>add</code> and <code>remove</code> take in one of three forms:</p>
 <ul>
 <li>a frame with the struct column, as <code>dims["connection"]</code> returns it</li>
-<li>a frame with one column per coordinate</li>
-<li>a list of mappings from coordinate to label</li>
+<li>a frame with one column per field</li>
+<li>a list of mappings from field to label</li>
 </ul>
 <p>A frame may have property columns beside the tuples, and then each property keyword is a scalar.
-<code>add</code> refuses a frame that has both the struct column and a coordinate column, and a tuple with a coordinate missing or NULL.</p>
+<code>add</code> refuses a frame that has both the struct column and a field column, and a tuple with a field missing or NULL.</p>
 <p><code>remove(dim, labels)</code> stages the axis without <code>labels</code>.
-Every value keyed by a removed label goes, and so does every tuple, of any multi-dim, that contains one, with the tuple's values.
+Every value at a removed label goes, and so does every tuple, of any multi-dimension, that contains one, with the tuple's values.
 <code>remove("bus", ["south"])</code> removes every connection at <code>south</code>.
 <code>remove</code> refuses a label that is still the value of a property referring to <code>dim</code>, on the record as staged:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>`remove('carrier', ...)` is refused: `entity.carrier` names them at [('wind', 'wind')]; `set` those to another label or None first
 </code></pre></div>
-<p><code>add</code> and <code>remove</code> refuse a dim with <code>one_of</code>, whose labels are the schema's.
+<p><code>add</code> and <code>remove</code> refuse a dimension with <code>one_of</code>, whose labels are the schema's.
 <code>add</code> refuses an attribute as a keyword, and points at <code>set</code>.</p>
 <p>A <code>remove</code> after a <code>set</code> on the same label takes effect, because a removed label has no values.
 An <code>add</code> after a <code>remove</code> brings the label back with its values, staged ones included.
@@ -1814,11 +1814,11 @@ They raise on:</p>
 <ul>
 <li>an undeclared attribute, property or keyword, or a keyword the attribute does not vary over</li>
 <li>a plain name that only properties have, naming their dotted forms: <code>set("carrier", ...)</code> suggests <code>entity.carrier</code></li>
-<li>a label that its dim's axis, as staged, lacks, for every dim</li>
-<li>a tuple that its multi-dim, as staged, lacks</li>
-<li>a tuple with a label that its coordinate's axis lacks, naming the multi-dim, the coordinate and up to three labels</li>
-<li>a label that a dim with <code>one_of</code> does not list</li>
-<li>a value of a property that refers to a dim and is no label of it, NULL excepted</li>
+<li>a label that its dimension's axis, as staged, lacks, for every dimension</li>
+<li>a tuple that its multi-dimension, as staged, lacks</li>
+<li>a tuple with a label that its field's axis lacks, naming the multi-dimension, the field and up to three labels</li>
+<li>a label that a dimension with <code>one_of</code> does not list</li>
+<li>a value of a property that refers to a dimension and is no label of it, NULL excepted</li>
 <li>a label or frame column whose type does not fit its dtype</li>
 <li>a sequence whose length differs from its keyword's</li>
 </ul>

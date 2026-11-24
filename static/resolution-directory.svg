@@ -4,7 +4,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 150" width="700" height="150" style="max-width: 100%; height: auto" role="img" aria-labelledby="rd-t rd-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rd-t">Reading a directory as a fold over one layer</title>
-  <desc id="rd-d">The directory out contains manifest.json, dims and attributes, the layout of one layer. Read with ws.at, it is a fold over that one layer, so the owner map assigns every key to that layer.</desc>
+  <desc id="rd-d">The directory out contains manifest.json, dimensions and attributes, the layout of one layer. Read with ws.at, it is a fold over that one layer, so the owner map assigns every map row to that layer.</desc>
   <defs>
     <marker id="rd-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -21,8 +21,8 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="24" y="69.0" font-weight="bold">out/</text>
-    <text x="24" y="85.0" fill-opacity="0.7" font-size="12">manifest.json, dims/,</text>
-    <text x="24" y="96" fill-opacity="0.7" font-size="12">attributes/</text>
+    <text x="24" y="85.0" fill-opacity="0.7" font-size="12">manifest.json,</text>
+    <text x="24" y="96" fill-opacity="0.7" font-size="12">dimensions/, attributes/</text>
     <text x="400" y="30" font-weight="bold">owner map</text>
     <text x="408" y="55" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
     <text x="470" y="55" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>

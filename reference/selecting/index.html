@@ -1521,7 +1521,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="selecting">Selecting<a class="headerlink" href="#selecting" title="Permanent link">&para;</a></h1>
 <p>A <strong>selection</strong> is the <code>Selection</code> that <code>select(record, **labels)</code> returns: a record at the labels named.
 <code>select</code> reads the labels as xarray's <code>sel</code> does.
-One label squeezes its dim out of the selection, and a list, a slice or a partial date string keeps it.</p>
+One label squeezes its dimension out of the selection, and a list, a slice or a partial date string keeps it.</p>
 <h2 id="the-call">The call<a class="headerlink" href="#the-call" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">select</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>
@@ -1546,32 +1546,32 @@ A <code>Selection</code> is itself a <code>RecordLike</code>, with three more me
 </tr>
 <tr>
 <td><code>labels</code></td>
-<td>the keywords asked for, normalised: one label for a squeezed dim, else a list of labels</td>
+<td>the keywords asked for, normalised: one label for a squeezed dimension, else a list of labels</td>
 </tr>
 <tr>
 <td><code>schema</code></td>
-<td>the base's schema without the squeezed dims and what refers to them</td>
+<td>the base's schema without the squeezed dimensions and what refers to them</td>
 </tr>
 </tbody>
 </table>
-<p><code>labels</code> has what you asked for, and the labels that a selection drops through references show only in <code>view.dims</code>.
+<p><code>labels</code> has what you asked for, and the labels that a selection drops through references show only in <code>view.dimensions</code>.
 <code>view.select(**labels)</code> merges its keywords into <code>labels</code>, a later keyword replacing one of the same name, and selects <code>base</code> once.</p>
 <h2 id="keywords">Keywords<a class="headerlink" href="#keywords" title="Permanent link">&para;</a></h2>
 <p>A keyword is the name of one of three things:</p>
 <ul>
-<li>A dim, such as <code>snapshot=1</code> or <code>bus=["north"]</code>.</li>
-<li>A coordinate of a multi-dim that is no dim, such as <code>from=</code> of a corridor, which narrows the multi-dim's tuples.</li>
+<li>A dimension, such as <code>snapshot=1</code> or <code>bus=["north"]</code>.</li>
+<li>A field of a multi-dimension that is no dimension, such as <code>from=</code> of a corridor, which narrows the multi-dimension's tuples.</li>
 <li>A property by its plain name, which narrows its subject to the labels whose value, its default applied, is selected. A label whose value is NULL goes.</li>
 </ul>
-<p>A coordinate or property keyword never squeezes, so <code>labels</code> has its value as a list.
-A tuple is selected through its coordinates, never by the multi-dim's own name.</p>
+<p>A field or property keyword never squeezes, so <code>labels</code> has its value as a list.
+A tuple is selected through its fields, never by the multi-dimension's own name.</p>
 <h2 id="values">Values<a class="headerlink" href="#values" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
 <tr>
 <th>Value</th>
 <th>Selects</th>
-<th>The dim</th>
+<th>The dimension</th>
 </tr>
 </thead>
 <tbody>
@@ -1587,7 +1587,7 @@ A tuple is selected through its coordinates, never by the multi-dim's own name.<
 </tr>
 <tr>
 <td>a list</td>
-<td>each label exactly, read as the dim's dtype</td>
+<td>each label exactly, read as the dimension's dtype</td>
 <td>kept, even at one</td>
 </tr>
 <tr>
@@ -1603,17 +1603,17 @@ A slice takes an axis of numbers or datetimes and compares its ends with the lab
 The labels a selection keeps are in axis order.</p>
 <p><code>select</code> raises <code>ValueError</code> at the call, naming the keyword, for:</p>
 <ul>
-<li>a name that the schema declares as no dim, coordinate or property, or as a multi-dim</li>
-<li>a property name that several subjects declare, or a coordinate name that several multi-dims declare</li>
+<li>a name that the schema declares as no dimension, field or property, or as a multi-dimension</li>
+<li>a property name that several subjects declare, or a field name that several multi-dimensions declare</li>
 <li>a label the axis lacks, or an empty list</li>
 <li>a slice with a step, of an axis of text, with an end the axis cannot compare, or covering no label</li>
 <li>a squeezed label that another keyword's selection drops</li>
-<li>squeezing every dim of a record that declares attributes, because attribute data over no dim is no record</li>
+<li>squeezing every dimension of a record that declares attributes, because attribute data over no dimension is no record</li>
 <li>a squeeze that would change a default, as <a href="#squeezing">Squeezing</a> describes</li>
 </ul>
 <h2 id="squeezing">Squeezing<a class="headerlink" href="#squeezing" title="Permanent link">&para;</a></h2>
-<p><strong>To squeeze</strong> is to select one label of a dim, which drops the dim from the selection's schema.
-A list of one keeps the dim.
+<p><strong>To squeeze</strong> is to select one label of a dimension, which drops the dimension from the selection's schema.
+A list of one keeps the dimension.
 Squeezing <code>snapshot</code> at <code>1</code> keeps the rows at <code>1</code> and the rows NULL on <code>snapshot</code>, settles them along <code>snapshot</code> alone, and drops the column:</p>
 <figure class="diagram">
 <!--
@@ -1702,12 +1702,12 @@ SPDX-License-Identifier: CC-BY-4.0
 </figure>
 
 <p><code>wind</code> has the value it had at snapshot 1, and the NULL row stays NULL on <code>entity</code>.</p>
-<p>Squeezing a dim <code>d</code> at a label <code>l</code> changes the schema and the rows:</p>
+<p>Squeezing a dimension <code>d</code> at a label <code>l</code> changes the schema and the rows:</p>
 <ul>
 <li><code>d</code> leaves the schema with its axis and its properties, and so does every property that refers to <code>d</code>.</li>
 <li>A <code>default_by</code> keyed on a property that refers to <code>d</code> applies its entry for <code>l</code> as the default. A <code>default_by</code> keyed on a property of <code>d</code> applies the entry for the category that <code>l</code> has.</li>
-<li>A multi-dim that draws on <code>d</code> loses that coordinate. One left with no coordinate is squeezed too.</li>
-<li>An attribute over squeezed dims alone becomes one value over no dim.</li>
+<li>A multi-dimension that draws on <code>d</code> loses that field. One left with no field is squeezed too.</li>
+<li>An attribute over squeezed dimensions alone becomes one value over no dimension.</li>
 <li><code>partial</code> and every <code>Flags</code> lose <code>d</code>.</li>
 </ul>
 <p><code>record.select(ctype="Generator")</code> squeezes <code>ctype</code>, so <code>entity.ctype</code> leaves the schema and the default of <code>p_max_pu</code> is <code>1.0</code>, the <code>Generator</code> entry being absent.
@@ -1830,17 +1830,17 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <p><code>select(bus=["north"])</code> drops the bus <code>south</code> and the two connections that contain it.</p>
 <p>Nothing flows the other way.
-A dim keeps a label that no kept label refers to, such as a carrier that no entity has.
+A dimension keeps a label that no kept label refers to, such as a carrier that no entity has.
 <code>record.select(ctype="Generator")</code> drops <code>dc</code> through <code>entity.ctype</code> and keeps the bus <code>south</code>.</p>
 <h2 id="laziness-and-layers">Laziness and layers<a class="headerlink" href="#laziness-and-layers" title="Permanent link">&para;</a></h2>
 <p><code>select</code> reads the axes and properties it needs when you call it, and every attribute stays a plan on the base's connection.
 A selection needs neither the data each revision adds (its <a href="../layers/">layers</a>) nor <code>partial</code>.
-<code>view.flags()</code> returns the base's flags without the squeezed dims, which overstate the selection's rows.</p>
+<code>view.flags()</code> returns the base's flags without the squeezed dimensions, which overstate the selection's rows.</p>
 <p>A selection writes nothing, and <code>WorkingRecord</code> refuses one.
 Over a <code>WorkingRecord</code>, a narrowed axis keeps the labels it had at the call, and an attribute reads later edits at those labels.</p>
 <h2 id="lift"><code>lift</code><a class="headerlink" href="#lift" title="Permanent link">&para;</a></h2>
 <p><strong>To lift</strong> is to put the squeezed labels back on rows written over a selection, with <code>Selection.lift</code>.
-<code>view.lift(attribute, rel)</code> adds a column at its label for each squeezed dim of the attribute, and puts a squeezed coordinate back into its struct:</p>
+<code>view.lift(attribute, rel)</code> adds a column at its label for each squeezed dimension of the attribute, and puts a squeezed field back into its struct:</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
@@ -1915,9 +1915,9 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <p>The rows of <code>p_max_pu</code> over <code>select(record, snapshot=1)</code> come back with <code>snapshot</code> at <code>1</code>.</p>
 <p><code>lift</code> reads only <code>labels</code> and the base's schema.
-It returns an attribute that the base declares over no squeezed dim unchanged, so <code>lift("p_nom", rel)</code> returns <code>rel</code>.
-The coordinates come back in the base's column order.
-A row NULL on the squeezed dim in the base was settled to the label, so it comes back at the label.
+It returns an attribute that the base declares over no squeezed dimension unchanged, so <code>lift("p_nom", rel)</code> returns <code>rel</code>.
+The fields come back in the base's field order.
+A row NULL on the squeezed dimension in the base was settled to the label, so it comes back at the label.
 <code>lift</code> raises <code>KeyError</code> when the base declares no such attribute.</p>
 <div class="admonition info">
 <p class="admonition-title">See also</p>

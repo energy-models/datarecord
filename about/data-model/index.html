@@ -887,10 +887,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#why-a-dim-is-flat" class="md-nav__link">
+  <a href="#why-a-dimension-is-flat" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why a dim is flat
+        Why a dimension is flat
       
     </span>
   </a>
@@ -898,10 +898,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-a-multi-dim-is-one-struct-column" class="md-nav__link">
+  <a href="#why-a-multi-dimension-is-one-struct-column" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why a multi-dim is one struct column
+        Why a multi-dimension is one struct column
       
     </span>
   </a>
@@ -909,10 +909,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-a-category-is-a-dim-with-one_of" class="md-nav__link">
+  <a href="#why-a-category-is-a-dimension-with-one_of" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why a category is a dim with one_of
+        Why a category is a dimension with one_of
       
     </span>
   </a>
@@ -1169,10 +1169,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#why-a-dim-is-flat" class="md-nav__link">
+  <a href="#why-a-dimension-is-flat" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why a dim is flat
+        Why a dimension is flat
       
     </span>
   </a>
@@ -1180,10 +1180,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-a-multi-dim-is-one-struct-column" class="md-nav__link">
+  <a href="#why-a-multi-dimension-is-one-struct-column" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why a multi-dim is one struct column
+        Why a multi-dimension is one struct column
       
     </span>
   </a>
@@ -1191,10 +1191,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-a-category-is-a-dim-with-one_of" class="md-nav__link">
+  <a href="#why-a-category-is-a-dimension-with-one_of" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why a category is a dim with one_of
+        Why a category is a dimension with one_of
       
     </span>
   </a>
@@ -1262,37 +1262,37 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <h1 id="the-data-model">The data model<a class="headerlink" href="#the-data-model" title="Permanent link">&para;</a></h1>
 <p>datarecord stores each construct as flat as it can, so that datarecord and a reader apply one rule to every instance of it.</p>
-<h2 id="why-a-dim-is-flat">Why a dim is flat<a class="headerlink" href="#why-a-dim-is-flat" title="Permanent link">&para;</a></h2>
-<p>A dim is a set of unique labels, stored as one key column, and every dim is declared in the schema (<a href="../../reference/data-model/">the data model</a>). datarecord fixes no list of axes, so a record with <code>region</code>, <code>technology</code> or <code>vintage</code> needs a schema entry and no code change.</p>
-<p>The rejected alternative is a nested dim, keyed by its parent's label and its own. A multi-period snapshot would be <code>(period, snapshot)</code>, and every series over <code>snapshot</code> would contain its period. Each check that placed a label by one column would need a branch for two. mathspec, which supplies datarecord's dtypes, gives every dimension one flat list of labels, so a tool would flatten the key anyway.</p>
-<p>datarecord states the nesting in one of two flat forms instead. A property maps each label to a label of another dim: <code>bus.country</code> names each bus's country, and you read it as you read <code>bus.carrier</code>. A multi-dim names both in each label: PyPSA's multi-period <code>snapshot</code> is a multi-dim over <code>(period, timestep)</code>, one struct column (<a href="#why-a-multi-dim-is-one-struct-column">below</a>). With one key column either way, datarecord applies one rule to the axis, the fold key and the broadcast rule. No dim has a parent, so no series can leave a parent's label NULL.</p>
-<p>A source whose labels repeat across parents takes the multi-dim form. PyPSA reuses its timesteps in every period, so the PyPSA tool makes each snapshot the tuple of its period and timestep. "The same timestep in every period" is then the coordinate keyword <code>timestep=[t]</code>, which selects that tuple in every period.</p>
-<h2 id="why-a-multi-dim-is-one-struct-column">Why a multi-dim is one struct column<a class="headerlink" href="#why-a-multi-dim-is-one-struct-column" title="Permanent link">&para;</a></h2>
-<p>A multi-dim is a dim whose labels are tuples of other dims' labels, such as <code>connection</code> over <code>(entity, bus)</code>. A multi-dim is one struct column named for it, in its axis file and in every attribute row over it.</p>
-<p>The rejected alternative flattens the tuple into a column per field, so an attribute over <code>connection</code> has the columns <code>entity</code> and <code>bus</code>. The column <code>bus</code> then means two things: the bus of a connection, and the dim <code>bus</code>. A NULL there cannot mean every bus, because a connection's bus has no axis of its own to expand against. Declaring <code>connection</code> would stop a per-bus <code>marginal_price</code> from having one value for every bus.</p>
-<p>With one struct column, the two stay apart. A NULL <code>connection</code> means every connection, a NULL <code>bus</code> means every bus, and the column's name states which multi-dim a row belongs to. A struct is a whole tuple or NULL, so a row cannot set only part of a tuple.</p>
-<p>The other alternatives lose more. Without multi-dims, with valid pairs stated by a condition, the record loses the whole-or-NULL broadcast and the axis file that contains a multi-dim's properties, such as the PyPSA tool's <code>connection.bus</code>. A surrogate dim with one label per tuple makes you write a value against a port label and look up its entity and bus. Then the port label, not the tuple, is the value's key.</p>
-<p>datarecord applies every rule for a dim to a multi-dim. It is declared under <code>dimensions</code>, has its file under <code>dims/</code>, takes <code>add</code> and <code>remove</code>, and may sit in <code>partial</code>. Each of those rules is stated once for both.</p>
+<h2 id="why-a-dimension-is-flat">Why a dimension is flat<a class="headerlink" href="#why-a-dimension-is-flat" title="Permanent link">&para;</a></h2>
+<p>A dimension is a set of unique labels, stored as one column, and every dimension is declared in the schema (<a href="../../reference/data-model/">the data model</a>). datarecord fixes no list of axes, so a record with <code>region</code>, <code>technology</code> or <code>vintage</code> needs a schema entry and no code change.</p>
+<p>The rejected alternative is a nested dimension, labelled by its parent's label and its own. A multi-period snapshot would be <code>(period, snapshot)</code>, and every series over <code>snapshot</code> would contain its period. Each check that placed a label by one column would need a branch for two. mathspec, which supplies datarecord's dtypes, gives every dimension one flat list of labels, so a tool would flatten the label anyway.</p>
+<p>datarecord states the nesting in one of two flat forms instead. A property maps each label to a label of another dimension: <code>bus.country</code> names each bus's country, and you read it as you read <code>bus.carrier</code>. A multi-dimension names both in each label: PyPSA's multi-period <code>snapshot</code> is a multi-dimension over <code>(period, timestep)</code>, one struct column (<a href="#why-a-multi-dimension-is-one-struct-column">below</a>). With one column per dimension either way, datarecord applies one rule to the axis, the owner map's index and the broadcast rule. No dimension has a parent, so no series can leave a parent's label NULL.</p>
+<p>A source whose labels repeat across parents takes the multi-dimension form. PyPSA reuses its timesteps in every period, so the PyPSA tool makes each snapshot the tuple of its period and timestep. "The same timestep in every period" is then the field keyword <code>timestep=[t]</code>, which selects that tuple in every period.</p>
+<h2 id="why-a-multi-dimension-is-one-struct-column">Why a multi-dimension is one struct column<a class="headerlink" href="#why-a-multi-dimension-is-one-struct-column" title="Permanent link">&para;</a></h2>
+<p>A multi-dimension is a dimension whose labels are tuples of other dimensions' labels, such as <code>connection</code> over <code>(entity, bus)</code>. A multi-dimension is one struct column named for it, in its axis file and in every attribute row over it.</p>
+<p>The rejected alternative flattens the tuple into a column per field, so an attribute over <code>connection</code> has the columns <code>entity</code> and <code>bus</code>. The column <code>bus</code> then means two things: the bus of a connection, and the dimension <code>bus</code>. A NULL there cannot mean every bus, because a connection's bus has no axis of its own to expand against. Declaring <code>connection</code> would stop a per-bus <code>marginal_price</code> from having one value for every bus.</p>
+<p>With one struct column, the two stay apart. A NULL <code>connection</code> means every connection, a NULL <code>bus</code> means every bus, and the column's name states which multi-dimension a row belongs to. A struct is a whole tuple or NULL, so a row cannot set only part of a tuple.</p>
+<p>The other alternatives lose more. Without multi-dimensions, with valid pairs stated by a condition, the record loses the whole-or-NULL broadcast and the axis file that contains a multi-dimension's properties, such as the PyPSA tool's <code>connection.bus</code>. A surrogate dimension with one label per tuple makes you write a value against a port label and look up its entity and bus. Then the port label, not the tuple, is the value's label.</p>
+<p>datarecord applies every rule for a dimension to a multi-dimension. It is declared under <code>dimensions</code>, has its file under <code>dimensions/</code>, takes <code>add</code> and <code>remove</code>, and may sit in <code>partial</code>. Each of those rules is stated once for both.</p>
 <p>The cost is a struct at the boundary. A filter on one field is <code>connection.entity = 'wind'</code>, which DuckDB pushes into the parquet scan as it does a plain column. A numpy-backed pandas frame has no struct dtype, so a pandas reader unnests on the DuckDB side first.</p>
-<h2 id="why-a-category-is-a-dim-with-one_of">Why a category is a dim with <code>one_of</code><a class="headerlink" href="#why-a-category-is-a-dim-with-one_of" title="Permanent link">&para;</a></h2>
-<p>A category is a label's value of a categorising property, such as <code>entity.ctype</code>, which refers to the dim <code>ctype</code> declared with <code>one_of: [Generator, Link, Load]</code>. That dim's axis is the schema's list, and no layer writes or changes it (<a href="../../reference/schema/">the schema</a>).</p>
+<h2 id="why-a-category-is-a-dimension-with-one_of">Why a category is a dimension with <code>one_of</code><a class="headerlink" href="#why-a-category-is-a-dimension-with-one_of" title="Permanent link">&para;</a></h2>
+<p>A category is a label's value of a categorising property, such as <code>entity.ctype</code>, which refers to the dimension <code>ctype</code> declared with <code>one_of: [Generator, Link, Load]</code>. That dimension's axis is the schema's list, and no layer writes or changes it (<a href="../../reference/schema/">the schema</a>).</p>
 <p>datarecord checks a category against the schema's list wherever a <code>default_by</code>, <code>flags</code> or a selection names it. That check needs the vocabulary in the schema. If a layer could shrink the axis, a category the schema accepted could match no label in the record. The check could then run only against the folded record.</p>
-<p>The rejected alternatives each declare the same closed set a second way. An <code>Enum</code> dtype beside a reference to a dim would make a closed set categorise or not by how you declared it. A <code>one_of</code> list that only bounds an axis a layer writes would make every PyPSA export restate the schema in a file.</p>
-<p>A property categorises its subject only where the subject is in <code>partial</code>, the set of dims along which a layer overrides one value per label. A default per category is a default per label, so the owner map must assign the subject's keys label by label.</p>
-<p>The cost is that a new category is a schema change. A custom PyPSA component type needs a new schema, not a data edit. <a href="../open-questions/">Open questions</a> lists whether such a dim may grow in a layer.</p>
+<p>The rejected alternatives each declare the same closed set a second way. An <code>Enum</code> dtype beside a reference to a dimension would make a closed set categorise or not by how you declared it. A <code>one_of</code> list that only bounds an axis a layer writes would make every PyPSA export restate the schema in a file.</p>
+<p>A property categorises its subject only where the subject is in <code>partial</code>, the set of dimensions along which a layer overrides one value per label. A default per category is a default per label, so the owner map must assign the subject's map rows label by label.</p>
+<p>The cost is that a new category is a schema change. A custom PyPSA component type needs a new schema, not a data edit. <a href="../open-questions/">Open questions</a> lists whether such a dimension may grow in a layer.</p>
 <h2 id="why-properties-and-attributes-differ">Why properties and attributes differ<a class="headerlink" href="#why-properties-and-attributes-differ" title="Permanent link">&para;</a></h2>
-<p>A property is one value per label of its subject, stored as a column of the subject's axis file. An attribute is the values at points over the dims it lists, stored as long rows, one file per attribute (<a href="../../reference/data-model/">the data model</a>). You declare which a name is.</p>
-<p>The rejected alternative places a value by its shape: a value over one dim goes on that dim's axis, and anything wider in a file. That groups <code>p_nom</code> with <code>carrier</code>, which both vary over <code>entity</code> alone. Yet <code>p_nom</code> is data a model optimises against and a scenario changes, while <code>carrier</code> describes the generator. Placing by shape also makes a compatible change move a file. Widening <code>p_nom</code> over <code>scenario</code> would move it off the axis, away from the rows earlier layers wrote.</p>
+<p>A property is one value per label of its subject, stored as a column of the subject's axis file. An attribute is the values at coordinates over the dimensions it lists, stored as long rows, one file per attribute (<a href="../../reference/data-model/">the data model</a>). You declare which a name is.</p>
+<p>The rejected alternative places a value by its shape: a value over one dimension goes on that dimension's axis, and anything wider in a file. That groups <code>p_nom</code> with <code>carrier</code>, which both vary over <code>entity</code> alone. Yet <code>p_nom</code> is data a model optimises against and a scenario changes, while <code>carrier</code> describes the generator. Placing by shape also makes a compatible change move a file. Widening <code>p_nom</code> over <code>scenario</code> would move it off the axis, away from the rows earlier layers wrote.</p>
 <p>When the schema section sets the file, the file never moves. Widening <code>p_nom</code> over <code>scenario</code> adds a column to <code>attributes/p_nom.parquet</code>, and earlier rows are NULL there, which means every scenario.</p>
 <p>A property's name belongs to its subject, so <code>bus.x</code>, a map position, sits beside the attribute <code>x</code>, a line's reactance. The record-wide name rule exists so that one attribute is one file with one dtype, and a property's file is already its subject's.</p>
 <p>The cost is a declaration that can be wrong. datarecord does not derive whether a bus's <code>x</code> is metadata or data, and moving a name between sections is an incompatible schema change.</p>
 <h2 id="why-results-are-attributes">Why results are attributes<a class="headerlink" href="#why-results-are-attributes" title="Permanent link">&para;</a></h2>
 <p>A solve's results are attributes like any other, with the same spec, file layout and fold. A child layer inherits its parent's results as it inherits its inputs.</p>
 <p>The rejected alternative keeps results apart, in a second mapping, a separate directory or behind a flag on the spec. A result already has an input's spec and file shape. A split would add a branch to every reader in return for one rule about inheritance. Which attributes a solve fills is the framework's vocabulary, which the PyPSA tool reads from PyPSA's registry (<a href="../../reference/tools/">tools</a>).</p>
-<p>datarecord runs every check on results that it runs on inputs, so a reader that joins a result to <code>dims["entity"]</code> never finds an orphan.</p>
+<p>datarecord runs every check on results that it runs on inputs, so a reader that joins a result to <code>dimensions["entity"]</code> never finds an orphan.</p>
 <p>The cost is staleness. A child that edits an input keeps results computed from its parent's inputs, which describe a record that no longer exists. datarecord keeps both and leaves their coherence to you (<a href="../open-questions/">open questions</a>).</p>
 <h2 id="what-you-can-now-judge">What you can now judge<a class="headerlink" href="#what-you-can-now-judge" title="Permanent link">&para;</a></h2>
-<p>You can now judge whether a construct of your framework is a dim, a multi-dim, a property or an attribute, and what each choice costs. <a href="../../howto/declare-a-schema/">Declare a schema</a> shows each declaration.</p>
+<p>You can now judge whether a construct of your framework is a dimension, a multi-dimension, a property or an attribute, and what each choice costs. <a href="../../howto/declare-a-schema/">Declare a schema</a> shows each declaration.</p>
 
 
 

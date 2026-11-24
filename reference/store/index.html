@@ -1058,6 +1058,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Files, local and remote">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#s3-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        S3 credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-commit-with-a-key-for-its-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A commit with a key for its layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1514,6 +1542,34 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="Files, local and remote">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#s3-credentials" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        S3 credentials
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#a-commit-with-a-key-for-its-layer" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        A commit with a key for its layer
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
         
           <li class="md-nav__item">
@@ -1652,7 +1708,7 @@ A store is one location, local or on S3, that contains the layers of a tree of r
 </thead>
 <tbody>
 <tr>
-<td><code>Workspace(database=":memory:", *, con=None, name="datarecord")</code></td>
+<td><code>Workspace(database=":memory:", *, con=None, name="datarecord", credentials=None)</code></td>
 <td>attaches the DuckDB database, in memory or in a file, as <code>name</code>, on a connection of its own or on <code>con</code></td>
 </tr>
 <tr>
@@ -1678,6 +1734,10 @@ A store is one location, local or on S3, that contains the layers of a tree of r
 <tr>
 <td><code>at(uri)</code></td>
 <td>reads the standalone directory at <code>uri</code> as a <code>Record</code></td>
+</tr>
+<tr>
+<td><code>set_credentials(credentials)</code></td>
+<td>replaces the <a href="#s3-credentials">S3 credentials</a> on a live workspace, or returns to the AWS environment for <code>None</code></td>
 </tr>
 <tr>
 <td><code>registered()</code></td>
@@ -1719,7 +1779,7 @@ It attaches it on a fresh in-memory connection of its own, or on a connection yo
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">(</span><span class="n">con</span><span class="o">=</span><span class="n">server</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">"dr"</span><span class="p">)</span>  <span class="c1"># on the server's connection, attached as dr</span>
 </code></pre></div>
 <p>The cursors of a passed connection see the attached database, and their transactions are their own, not the caller's.
-SQL names what lies there in full, <code>datarecord.main.revisions</code> or <code>datarecord.edit.dims.bus</code>, since a name without its database resolves in the cursor's default database.
+SQL names what lies there in full, <code>datarecord.main.revisions</code> or <code>datarecord.edit.dimensions.bus</code>, since a name without its database resolves in the cursor's default database.
 datarecord's own SQL always does and never runs <code>USE</code>.
 A relation or frame that datarecord's SQL reads goes by a Python local named <code>_dr_&lt;role&gt;</code>, because a table or view of the same name in the cursor's temp schema or default database binds first.
 So create no table or view whose name starts with <code>_dr_</code> in the default database or temp schema of the workspace's connection.
@@ -1787,18 +1847,149 @@ DuckDB reads and writes the parquet.</p>
 Locally it writes under a temporary name and hard-links the file into place, so a read finds a whole file or none.</p>
 <p>An <code>s3://</code> URI needs the optional extra <code>datarecord[remote]</code>, which installs the boto3 package.
 Remotely, <code>create</code> is a <code>put_object</code> with <code>IfNoneMatch="*"</code>, which the server must honour, as AWS S3 does and SeaweedFS does from version 4.18 on.
-Credentials and the endpoint come from the AWS environment and config files.
+Remotely, a key the server answers with <code>404</code> is a miss, and a call it answers with <code>403</code> raises <code>PermissionError</code> naming the key or prefix.
+So does a <code>delete</code> whose every failed key S3 reports as <code>AccessDenied</code>.
+A caller needs <code>s3:ListBucket</code> on the store's prefix.
+Without it S3 refuses every listing, so <code>revisions</code>, <code>claims</code> and <code>cleanup</code>, which each list <code>layers/</code>, always raise.
+S3 then answers <code>403</code> for every absent key too, so every miss raises.
+A fold looks for the owner map of the revision it folds, and that map is absent unless the revision was materialised, so folding such a revision, the usual case, raises too.
+On S3 a denied read never counts as absent data, so <code>cleanup</code> deletes no layer after one.</p>
+<h4 id="s3-credentials">S3 credentials<a class="headerlink" href="#s3-credentials" title="Permanent link">&para;</a></h4>
+<p>Without <code>credentials</code>, a workspace takes the S3 key and the endpoint from the AWS environment and config files.
 Where <code>AWS_ENDPOINT_URL</code> is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.
-The secret is named <code>datarecord_s3</code>, so on a connection shared with its caller it replaces none of the caller's secrets.</p>
+Where boto3 finds no key in the AWS environment, the workspace reaches S3 anonymously: boto3 sends its requests unsigned, and DuckDB's secret holds no key, so DuckDB sends its requests unsigned too.
+You then read a bucket that grants reads to anyone, and a commit whose only key is <a href="#a-commit-with-a-key-for-its-layer">a key for its layer</a> writes the layer with that key.
+A call that the bucket grants to no anonymous caller raises <code>PermissionError</code>, as above.</p>
+<p>A key that the process environment must not contain, such as a token from AWS Security Token Service (STS), goes to the workspace as <code>S3Credentials</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">dataclasses</span><span class="w"> </span><span class="kn">import</span> <span class="n">replace</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">S3Credentials</span><span class="p">,</span> <span class="n">Workspace</span>
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="n">credentials</span> <span class="o">=</span> <span class="n">S3Credentials</span><span class="p">(</span>
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>    <span class="n">key_id</span><span class="p">,</span>
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>    <span class="n">secret</span><span class="p">,</span>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>    <span class="n">session_token</span><span class="o">=</span><span class="n">token</span><span class="p">,</span>
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>    <span class="n">endpoint</span><span class="o">=</span><span class="s2">"http://localhost:8333"</span><span class="p">,</span>
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>    <span class="n">region</span><span class="o">=</span><span class="s2">"eu-central-1"</span><span class="p">,</span>
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>    <span class="n">url_style</span><span class="o">=</span><span class="s2">"path"</span><span class="p">,</span>
+<a id="__codelineno-4-12" name="__codelineno-4-12" href="#__codelineno-4-12"></a><span class="p">)</span>
+<a id="__codelineno-4-13" name="__codelineno-4-13" href="#__codelineno-4-13"></a><span class="n">ws</span> <span class="o">=</span> <span class="n">Workspace</span><span class="p">(</span><span class="n">credentials</span><span class="o">=</span><span class="n">credentials</span><span class="p">)</span>
+<a id="__codelineno-4-14" name="__codelineno-4-14" href="#__codelineno-4-14"></a><span class="n">ws</span><span class="o">.</span><span class="n">set_credentials</span><span class="p">(</span>
+<a id="__codelineno-4-15" name="__codelineno-4-15" href="#__codelineno-4-15"></a>    <span class="n">replace</span><span class="p">(</span><span class="n">credentials</span><span class="p">,</span> <span class="n">key_id</span><span class="o">=</span><span class="n">new_key_id</span><span class="p">,</span> <span class="n">secret</span><span class="o">=</span><span class="n">new_secret</span><span class="p">,</span> <span class="n">session_token</span><span class="o">=</span><span class="n">new_token</span><span class="p">)</span>
+<a id="__codelineno-4-16" name="__codelineno-4-16" href="#__codelineno-4-16"></a><span class="p">)</span>
+</code></pre></div>
+<p>The workspace builds both its boto3 client and DuckDB's secret, with <code>PROVIDER config</code>, from the same <code>S3Credentials</code>, so the key and the endpoint come from them, not from the AWS environment.
+<code>endpoint</code> is the server's URL, or <code>None</code> for AWS, <code>region</code> is <code>"eu-central-1"</code> by default, and <code>url_style</code> is <code>"path"</code> for a self-hosted server and <code>"vhost"</code> by default.
+<code>S3Credentials</code> raises <code>ValueError</code> for an empty key or secret, an endpoint without a scheme or with a user, a path, a query or a fragment, and any other URL style.
+Its <code>repr</code> leaves out the secret and the session token.</p>
+<p><code>set_credentials</code> replaces the boto3 client and the secret together, so open records and registered views read with the new key from the next query on.
+A call already running may finish with the old key.
+<code>set_credentials(None)</code> returns to the AWS environment, read afresh.
+Where <code>set_credentials</code> raises, the workspace keeps the old key.
+Credentials do not cross a process boundary: a pickled store, revision or claim loads onto <code>Workspace.process()</code>, so the worker calls <code>Workspace.process().set_credentials(...)</code> before it unpickles one.</p>
+<p>DuckDB's secret is named <code>datarecord_s3</code> and has no scope, so on a connection shared with its caller it replaces none of the caller's secrets.
+Where the caller holds a secret for all of <code>s3://</code> too, DuckDB picks between the two by name: a caller's secret named before <code>datarecord_s3</code> in sort order, such as <code>aws</code>, is read in its place, and one named after it, or unnamed, is not read.
+<code>close()</code> drops <code>datarecord_s3</code> from a connection passed in.
+DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3, with a key or anonymously.
+The first <code>s3://</code> URI of a second one raises <code>duckdb.InvalidInputException</code>, and the first keeps its key; open the second on its own connection.</p>
+<h4 id="a-commit-with-a-key-for-its-layer">A commit with a key for its layer<a class="headerlink" href="#a-commit-with-a-key-for-its-layer" title="Permanent link">&para;</a></h4>
+<p>A commit can write its layer with a second key, one that reaches only the layer's directory <code>layers/&lt;id&gt;/</code>.
+Pass it to <a href="#claim"><code>Claim.commit</code></a> as <code>S3Credentials</code>, built for instance from the workspace's:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">claim</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">claim</span><span class="p">(</span><span class="n">parent</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">revision</span> <span class="o">=</span> <span class="n">claim</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>    <span class="n">source</span><span class="p">,</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">credentials</span><span class="o">=</span><span class="n">replace</span><span class="p">(</span><span class="n">credentials</span><span class="p">,</span> <span class="n">key_id</span><span class="o">=</span><span class="n">key_id</span><span class="p">,</span> <span class="n">secret</span><span class="o">=</span><span class="n">secret</span><span class="p">,</span> <span class="n">session_token</span><span class="o">=</span><span class="n">token</span><span class="p">),</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="p">)</span>
+</code></pre></div>
+<p>The commit returns the revision, which you then read with the workspace's key.</p>
+<p>While the commit runs, datarecord reaches every key under <code>layers/&lt;id&gt;/</code> with <code>credentials</code>, through boto3 and through DuckDB, and every other key with the workspace's.
+For DuckDB, datarecord creates a secret <code>datarecord_claim_&lt;id&gt;_&lt;nonce&gt;</code>, new for each commit, with its <code>SCOPE</code> set to the layer directory, and drops it when the commit returns or raises.
+DuckDB reaches a URI with the secret whose <code>SCOPE</code> matches it longest, so two commits running at once in one workspace each write with their own key.
+With a local store, <code>credentials</code> raise <code>ValueError</code>.
+<code>Store.claim</code> and <code>materialise()</code> take no such key, so the workspace's key writes <code>claim.json</code> and the <code>resolved/</code> files.</p>
+<p>A commit with a key for its layer makes these S3 calls, where <code>&lt;store&gt;</code> is the store's prefix in its bucket:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Action</th>
+<th>Resource</th>
+<th>Calls</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>layer's</td>
+<td><code>s3:GetObject</code></td>
+<td><code>&lt;store&gt;/layers/&lt;id&gt;/*</code></td>
+<td><code>HEAD</code> of <code>claim.json</code> and <code>manifest.json</code>, DuckDB's two <code>HEAD</code>s of each parquet file before it writes it, and reads of the parquet the commit just wrote</td>
+</tr>
+<tr>
+<td>layer's</td>
+<td><code>s3:PutObject</code></td>
+<td><code>&lt;store&gt;/layers/&lt;id&gt;/*</code></td>
+<td>DuckDB's upload of each parquet file, one <code>PUT</code> for a small file and a multipart upload for a large one, and the create-only <code>PUT</code> of <code>manifest.json</code></td>
+</tr>
+<tr>
+<td>layer's</td>
+<td><code>s3:AbortMultipartUpload</code></td>
+<td><code>&lt;store&gt;/layers/&lt;id&gt;/*</code></td>
+<td>DuckDB's <code>DELETE</code> of a multipart upload that fails</td>
+</tr>
+<tr>
+<td>layer's</td>
+<td><code>s3:ListBucket</code></td>
+<td>the bucket, with <code>s3:prefix</code> like <code>&lt;store&gt;/layers/&lt;id&gt;/*</code></td>
+<td>the listing under <code>manifest.json</code>, and a <code>404</code> rather than a <code>403</code> for a <code>HEAD</code> of an absent key</td>
+</tr>
+<tr>
+<td>workspace's</td>
+<td><code>s3:GetObject</code></td>
+<td><code>&lt;store&gt;/layers/*</code></td>
+<td>the ancestors' manifests the workspace does not hold yet, their parquet and <code>resolved/</code> files</td>
+</tr>
+<tr>
+<td>workspace's</td>
+<td><code>s3:ListBucket</code></td>
+<td>the bucket, with <code>s3:prefix</code> like <code>&lt;store&gt;/layers/*</code></td>
+<td>whether an ancestor is materialised, and a <code>404</code> rather than a <code>403</code> for its owner map</td>
+</tr>
+</tbody>
+</table>
+<p>A policy for the layer's key grants the first four rows and nothing else:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="p">{</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">"Version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2012-10-17"</span><span class="p">,</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">"Statement"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">      </span><span class="nt">"Effect"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Allow"</span><span class="p">,</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">      </span><span class="nt">"Action"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"s3:GetObject"</span><span class="p">,</span><span class="w"> </span><span class="s2">"s3:PutObject"</span><span class="p">,</span><span class="w"> </span><span class="s2">"s3:AbortMultipartUpload"</span><span class="p">],</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">      </span><span class="nt">"Resource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"arn:aws:s3:::&lt;bucket&gt;/&lt;store&gt;/layers/&lt;id&gt;/*"</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="p">},</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="p">{</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">      </span><span class="nt">"Effect"</span><span class="p">:</span><span class="w"> </span><span class="s2">"Allow"</span><span class="p">,</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">      </span><span class="nt">"Action"</span><span class="p">:</span><span class="w"> </span><span class="s2">"s3:ListBucket"</span><span class="p">,</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">      </span><span class="nt">"Resource"</span><span class="p">:</span><span class="w"> </span><span class="s2">"arn:aws:s3:::&lt;bucket&gt;"</span><span class="p">,</span>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">      </span><span class="nt">"Condition"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"StringLike"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"s3:prefix"</span><span class="p">:</span><span class="w"> </span><span class="s2">"&lt;store&gt;/layers/&lt;id&gt;/*"</span><span class="w"> </span><span class="p">}</span><span class="w"> </span><span class="p">}</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">    </span><span class="p">}</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">  </span><span class="p">]</span>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="p">}</span>
+</code></pre></div>
+<p>Without <code>s3:ListBucket</code>, S3 answers <code>403</code> for the absent manifest, and the commit raises <code>PermissionError</code> before it writes any data.</p>
 <h3 id="threads">Threads<a class="headerlink" href="#threads" title="Permanent link">&para;</a></h3>
 <p><code>ws.con</code> returns the calling thread's cursor, so every thread can share one workspace, one store and one <code>Record</code>.
 Tables, registered views and fold results are shared between cursors.
 A temporary table of one call, such as a fold's checkpoint, belongs to the calling cursor alone (<a href="#the-database">the database</a>).
 A <code>DuckDBPyRelation</code> and a <code>WorkingRecord</code> belong to the thread that built them.
 A write or an edit refuses a relation from another thread or connection:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ValueError: this relation was built on another connection or thread; build it on `record.con` in this thread, or hand over a pandas, polars or arrow frame to land
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>ValueError: this relation was built on another connection or thread; build it on `record.con` in this thread, or hand over a pandas, polars or arrow frame to land
 </code></pre></div>
 <p>When two threads fold one revision at once, both fold and datarecord keeps one of the two tables, so each reads the same answer.</p>
+<p>The first read of a record in a workspace creates the shared tables of its fold.
+A rollback drops a table created inside the transaction, so datarecord refuses that read while you hold a transaction open on <code>ws.con</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>TransactionException: this would create the record's shared tables inside the open transaction on this cursor, and a rollback would drop them; call `record.prepare()` before opening the transaction (https://energy-models.github.io/datarecord/reference/store/#threads)
+</code></pre></div>
+<p><code>record.prepare()</code> creates those tables and commits them, and calling it again does nothing.
+After it, you can read the record on any thread inside a transaction that you roll back later.</p>
 <div class="admonition info">
 <p class="admonition-title">See also</p>
 <p><a href="../../howto/store-a-record/">Store a record</a> shows a store, a directory, S3 and threads in use.</p>
@@ -1834,11 +2025,15 @@ A write or an edit refuses a relation from another thread or connection:</p>
 </tr>
 <tr>
 <td><code>revisions(*, meta=None)</code></td>
-<td>returns every revision, unordered, or those whose <code>meta</code> has every pair given</td>
+<td>returns every revision, unordered, or those whose <code>meta</code> contains the given meta</td>
 </tr>
 <tr>
 <td><code>claims()</code></td>
 <td>returns the pending layers, oldest first</td>
+</tr>
+<tr>
+<td><code>claim_from(payload)</code></td>
+<td>rebuilds a serialised <code>Claim</code> on this store</td>
 </tr>
 <tr>
 <td><code>cleanup(*, ids=None, older_than=None)</code></td>
@@ -1851,7 +2046,19 @@ A write or an edit refuses a relation from another thread or connection:</p>
 </tbody>
 </table>
 <p><code>parent</code> is a required keyword, so a new root is <code>parent=None</code>.
-<code>revisions(meta={"run": 1})</code> matches a value of the same type only, so <code>1</code> matches neither <code>1.0</code> nor <code>True</code>.</p>
+A revision's <code>meta</code> is a JSON object whose values are strings, numbers, booleans, null, and arrays and objects of these.
+A NumPy integer, float or bool is stored as the Python value it holds.
+Any other value, such as a date or a tuple, or a key that is no string, is refused with its path, as in <code>meta['run']['started']</code>.
+<code>revisions(meta=...)</code> matches by containment, key by key from the top: an object contains each pair of the given object, an array contains each element of the given array in some element of its own, and any other value is equal.
+So <code>revisions(meta={"changes": {"rows": [3, 1]}})</code> matches a stored <code>{"changes": {"rows": [1, 2, 3], "n": 4}}</code>: a given array matches as a set, in any order and with duplicates counting once, so <code>{"a": [1, 1]}</code> matches a stored <code>{"a": [1]}</code>.
+A value matches one of the same type only, so <code>1</code> matches neither <code>1.0</code> nor <code>True</code>.
+An empty object or array matches any stored object or array, so <code>revisions(meta={"changes": {}})</code> matches every revision with a <code>changes</code> object.</p>
+<div class="admonition note">
+<p class="admonition-title">Note</p>
+<p>A float in <code>meta</code> may be <code>inf</code>, <code>-inf</code> or <code>nan</code>, written as the bare <code>Infinity</code>, <code>-Infinity</code> and <code>NaN</code> that Python's <code>json</code> writes and reads.
+These are not standard JSON, so a strict JSON parser in another language reads <code>claim.json</code> and <code>manifest.json</code> only when told to accept them.
+A lookup compares JSON rather than floats, so <code>revisions(meta={"x": float("nan")})</code> finds a stored <code>NaN</code>, though NaN equals no float, itself included.</p>
+</div>
 <h3 id="a-revision-exists-only-by-its-manifest">The steps of a commit<a class="headerlink" href="#a-revision-exists-only-by-its-manifest" title="Permanent link">&para;</a></h3>
 <p>A write to a store runs in three steps:</p>
 <table>
@@ -1872,7 +2079,7 @@ A write or an edit refuses a relation from another thread or connection:</p>
 </tr>
 <tr>
 <td>data</td>
-<td><code>dims/</code>, <code>attributes/</code></td>
+<td><code>dimensions/</code>, <code>attributes/</code></td>
 <td>unconditional</td>
 <td>the layer's parquet</td>
 </tr>
@@ -1889,24 +2096,42 @@ A commit that fails leaves its layer pending with the files it wrote, and a retr
 <p>Before it writes data, a commit checks three things and refuses the layer otherwise:</p>
 <ul>
 <li>The layer's schema passes <a href="../schema/"><code>compatible_with</code></a> against the parent's manifest's schema.</li>
-<li>Its <code>meta</code> has every key of the claim's <code>meta</code> with the same value, and may add keys.</li>
-<li>Its parent is a revision of this store.</li>
+<li>Its <code>meta</code> has every key of the claim's <code>meta</code> with the same value, and may add keys. Values compare as JSON, so <code>1</code>, <code>1.0</code> and <code>True</code> differ, and an object differs once any key inside it does.</li>
+<li>Its parent, the claim's <code>parent</code>, is a revision of this store.</li>
 </ul>
+<p>The commit takes <code>parent</code> and <code>meta</code> from the <code>Claim</code> object, and reads <code>claim.json</code> only to check that the claim is still there.</p>
 <p><code>store.commit(w)</code> takes <code>w</code>'s base as the parent and raises <code>TypeError</code> for a <code>parent</code> passed beside it.
 Over a base that is no revision of this store, such as a standalone directory, it refuses <code>w</code> and names <code>ws.write(w, uri)</code>, which writes <code>w</code> whole.</p>
 <h3 id="claim"><code>Claim</code><a class="headerlink" href="#claim" title="Permanent link">&para;</a></h3>
 <p>A <code>Claim</code> is a revision id that a store reserves before the layer is written.
-It has <code>id</code>, <code>store</code>, <code>parent</code>, <code>meta</code> and <code>created</code>, and <code>claim.commit(source, *, meta=None)</code> writes the layer and returns the <code>Revision</code>.</p>
-<p>A claim serialises as its store's location and its id, and pickles the same way.
-A job in another process can then commit it, days later if need be.
+It has <code>id</code>, <code>store</code>, <code>parent</code>, <code>meta</code> and <code>created</code>, and <code>claim.commit(source, *, meta=None, credentials=None)</code> writes the layer and returns the <code>Revision</code>.
+<code>credentials</code> are a <a href="#a-commit-with-a-key-for-its-layer">key for the layer alone</a>.</p>
+<p>A claim serialises as all five fields, with its store's location for <code>store</code>, and pickles the same way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">claim</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">()</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">claim</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"/data/my-record"</span><span class="p">)</span><span class="o">.</span><span class="n">claim_from</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>  <span class="c1"># in another process</span>
+</code></pre></div>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"4731e41b-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"store"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/data/my-record"</span><span class="p">,</span><span class="w"> </span><span class="nt">"parent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"9716e2ef-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"meta"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"run"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"created"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-05T17:37:14.912772Z"</span><span class="w"> </span><span class="p">}</span>
+</code></pre></div>
+<p>A job in another process can then commit it, days later if need be.
+<code>store.claim_from(payload)</code> rebuilds the claim on <code>store</code>, so on its workspace and its key, and raises <code>ValueError</code> for a payload of another store.
+<code>Claim.model_validate_json(payload)</code> and an unpickled claim land on <code>Workspace.process()</code> instead.
+Each takes the five fields as they stand, without reading <code>claim.json</code>.
+A payload whose keys are exactly <code>id</code> and <code>store</code> is the short form, and the fields it lacks are read from <code>claim.json</code>.</p>
+<p>A commit checks the <code>meta</code> it is passed against the claim's <code>meta</code>, and writes the claim's <code>parent</code> to the manifest.
+Those are the object's values, so they match <code>claim.json</code> where the object came from <code>Store.claim</code>, <code>store.claims()</code> or the short form.
+A claim rebuilt from the five fields commits what they say, whatever <code>claim.json</code> holds.</p>
+<p>A claim's parent may be another pending claim, so a chain of layers is claimed before any of them is written.
+The child commits only once its parent has, and raises <code>KeyError</code> before then.
+A child whose parent's claim was cleaned up raises <code>KeyError</code> on every commit and stays in <code>store.claims()</code> until a cleanup deletes it too.
 A claim has one committer at a time.
 A commit raises <code>ValueError</code> once a cleanup deleted its claim.</p>
 <h3 id="cleanup">Cleanup<a class="headerlink" href="#cleanup" title="Permanent link">&para;</a></h3>
 <p>Only <code>cleanup</code> deletes, and only a pending layer:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="n">claim</span><span class="o">.</span><span class="n">id</span><span class="p">])</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">older_than</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">ids</span><span class="o">=</span><span class="p">[</span><span class="n">claim</span><span class="o">.</span><span class="n">id</span><span class="p">])</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="n">store</span><span class="o">.</span><span class="n">cleanup</span><span class="p">(</span><span class="n">older_than</span><span class="o">=</span><span class="n">timedelta</span><span class="p">(</span><span class="n">days</span><span class="o">=</span><span class="mi">14</span><span class="p">))</span>
 </code></pre></div>
 <p><code>cleanup</code> takes exactly one of <code>ids</code> and <code>older_than</code>, and raises <code>ValueError</code> before it deletes anything if an id is not pending.
+On S3, a layer directory holding no key, as SeaweedFS keeps one after a cleanup, is no pending layer.
 It checks each layer for a manifest again right before deleting it, without a lock.
 A cleanup that races a commit can still delete a layer that is committing, so pass ids or an age that match no running job.</p>
 <h3 id="concurrent-writers">Concurrent writers<a class="headerlink" href="#concurrent-writers" title="Permanent link">&para;</a></h3>
@@ -1917,8 +2142,8 @@ Two writers that widen one parent's schema at once both commit, each child under
 <p>A <code>Revision</code> is the id of one layer in a store.
 <a href="../layers/#revisions">The layers page</a> lists its members.</p>
 <p>A revision serialises as its id and its store's location, and pickles the same way:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">()</span>  <span class="c1"># {"id": "4731e41b-…", "store": "/data/my-record"}</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">Revision</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>  <span class="c1"># in another process</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">rev</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">()</span>  <span class="c1"># {"id": "4731e41b-…", "store": "/data/my-record"}</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="n">rev</span> <span class="o">=</span> <span class="n">Revision</span><span class="o">.</span><span class="n">model_validate_json</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>  <span class="c1"># in another process</span>
 </code></pre></div>
 <p>The second process loads the revision onto <code>Workspace.process()</code> and reads its manifest and each parent's, so <code>rev.ancestry()</code> returns there too.</p>
 <p><code>rev.record</code> builds the record once and returns the same one until you close it, then builds another.</p>

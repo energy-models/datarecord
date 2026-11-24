@@ -1697,20 +1697,20 @@ A read gives the same answers with or without those files.</p>
 <a href="../format/">The format page</a> lists the files of a layer.</p>
 </div>
 <h2 id="partial"><code>partial</code><a class="headerlink" href="#partial" title="Permanent link">&para;</a></h2>
-<p><code>partial</code> is the set of dims, declared as <code>Schema.partial</code>, along which a layer overrides one value per label.
-Along any other dim, a layer restates the whole extent of each key it touches.
-The owner map assigns an attribute's values to a layer per key. The key is the attribute's dims that are in <code>partial</code>, with the attribute's name:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>key(attribute) = (attribute.dims ∩ partial, attribute)
+<p><code>partial</code> is the set of dimensions, declared as <code>Schema.partial</code>, along which a layer overrides one value per label.
+Along any other dimension, a layer restates the whole extent of each map row it touches.
+The owner map assigns an attribute's values to a layer per map row. Its index is the attribute's dimensions that are in <code>partial</code>, with the attribute's name:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>index(attribute) = (attribute.dims ∩ partial, attribute)
 </code></pre></div>
-<p>With <code>partial = {"entity"}</code>, <code>p_max_pu</code> over <code>entity</code> and <code>snapshot</code> is keyed per entity. The owner map assigns the snapshot series of each entity whole to one layer:</p>
+<p>With <code>partial = {"entity"}</code>, <code>p_max_pu</code> over <code>entity</code> and <code>snapshot</code> has a map row per entity. The owner map assigns the snapshot series of each entity whole to one layer:</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 250" width="780" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="lp-t lp-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="lp-t">A layer overrides one label along a dim in partial and restates the series along any other</title>
-  <desc id="lp-d">With partial dims entity, the root writes p_max_pu for gas and wind at snapshots 0 and 1. The child changes wind at snapshot 1 to 0.9. It writes rows for wind alone, since entity is in partial, and restates wind's whole series, 0.5 and 0.9, since snapshot is not. The read takes gas from the root and wind from the child.</desc>
+  <title id="lp-t">A layer overrides one label along a dimension in partial and restates the series along any other</title>
+  <desc id="lp-d">With partial dimensions entity, the root writes p_max_pu for gas and wind at snapshots 0 and 1. The child changes wind at snapshot 1 to 0.9. It writes rows for wind alone, since entity is in partial, and restates wind's whole series, 0.5 and 0.9, since snapshot is not. The read takes gas from the root and wind from the child.</desc>
   <defs>
     <marker id="lp-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -1804,44 +1804,44 @@ SPDX-License-Identifier: CC-BY-4.0
 The read takes gas from the root, since the child writes no gas row, and wind from the child.
 A <a href="../editing/"><code>WorkingRecord</code></a> stages the rest of the series for you: <code>set("p_max_pu", 0.9, entity="wind", snapshot=1)</code> also stages wind's row at snapshot 0.</p>
 <ul>
-<li>A multi-dim in <code>partial</code> is in the key as its struct column, so a layer overrides one tuple's value. With <code>connection</code> outside <code>partial</code>, a layer that changes one connection's <code>efficiency</code> restates every connection's.</li>
-<li>The owner map assigns a curve whole to one layer, because <code>breakpoint</code> is in no key.</li>
+<li>A multi-dimension in <code>partial</code> is in the index as its struct column, so a layer overrides one tuple's value. With <code>connection</code> outside <code>partial</code>, a layer that changes one connection's <code>efficiency</code> restates every connection's.</li>
+<li>The owner map assigns a curve whole to one layer, because <code>breakpoint</code> is not in the index.</li>
 <li><code>partial</code> applies to attribute values alone. A layer that changes an axis restates the whole axis, whatever <code>partial</code> contains (<a href="#removing-labels">removing labels</a>).</li>
-<li>Only a property of a dim in <code>partial</code> can be categorising (<a href="../data-model/">the data model</a>).</li>
-<li>The fold reads each layer under the schema in its own manifest, so a child may add a dim to <code>partial</code> (<a href="../resolution/#a-wider-schema">a wider schema</a>).</li>
+<li>Only a property of a dimension in <code>partial</code> can be categorising (<a href="../data-model/">the data model</a>).</li>
+<li>The fold reads each layer under the schema in its own manifest, so a child may add a dimension to <code>partial</code> (<a href="../resolution/#a-wider-schema">a wider schema</a>).</li>
 </ul>
 <p>Under the PyPSA schema's <code>partial</code>, a layer overrides one bus's <code>v_nom</code> and restates every carrier's <code>co2_emissions</code>, because <code>carrier</code> is not in <code>partial</code>.</p>
 <div class="admonition info">
 <p class="admonition-title">See also</p>
 <p><a href="../schema/">The schema page</a> lists the <code>partial</code> key and what it accepts.
-<a href="../../about/layers/">Layers and <code>partial</code></a> argues for putting <code>partial</code> on the dim.</p>
+<a href="../../about/layers/">Layers and <code>partial</code></a> argues for putting <code>partial</code> on the dimension.</p>
 </div>
 <h2 id="what-a-layer-may-contain">What a layer may contain<a class="headerlink" href="#what-a-layer-may-contain" title="Permanent link">&para;</a></h2>
 <p>The writer checks each file of a layer against the schema in the layer's manifest, as it writes the file.
 A refused layer stays pending, and no read opens it.</p>
 <h3 id="types">Types<a class="headerlink" href="#types" title="Permanent link">&para;</a></h3>
 <p>The writer casts each column to its declared dtype, from a wider type of the same kind or from a column of NULLs alone.
-It refuses any other type, naming the attribute, property or dim and its dtype.</p>
+It refuses any other type, naming the attribute, property or dimension and its dtype.</p>
 <h3 id="attribute-files">Attribute files<a class="headerlink" href="#attribute-files" title="Permanent link">&para;</a></h3>
 <ul>
 <li>The writer refuses an attribute that the schema does not declare.</li>
-<li>An attribute file has exactly its attribute's own coordinates, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code> (<a href="../format/#attributesattrparquet">the long schema</a>). The writer refuses a file that lacks a coordinate, or that has a column the attribute is not over.</li>
-<li>A multi-dim's column is a struct with exactly its coordinates as fields, and the writer refuses a tuple with some fields NULL and not all.</li>
-<li>The writer refuses two rows of one attribute at one point that set the same dims. It also refuses two rows there where each row leaves NULL a dim that the other row sets, unless a third row sets both.</li>
+<li>An attribute file has exactly a column per dimension of its attribute, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code> (<a href="../format/#attributesattrparquet">the long schema</a>). The writer refuses a file that lacks a dimension's column, or that has a column the attribute is not over.</li>
+<li>A multi-dimension's column is a struct with exactly its fields, and the writer refuses a tuple with some fields NULL and not all.</li>
+<li>The writer refuses two rows of one attribute at one coordinate that set the same dimensions. It also refuses two rows there where each row leaves NULL a dimension that the other row sets, unless a third row sets both.</li>
 </ul>
 <h3 id="axis-files">Axis files<a class="headerlink" href="#axis-files" title="Permanent link">&para;</a></h3>
-<p>A <code>dims/&lt;dim&gt;.parquet</code> file contains the whole axis at the new revision, in order, with each label's properties.
-The writer refuses a file for an undeclared dim or a <a href="../data-model/">dim with <code>one_of</code></a>, and a file with a label twice.
-It refuses a column other than the key and the subject's declared properties.
+<p>A <code>dimensions/&lt;dim&gt;.parquet</code> file contains the whole axis at the new revision, in order, with each label's properties.
+The writer refuses a file for an undeclared dimension or a <a href="../data-model/">dimension with <code>one_of</code></a>, and a file with a label twice.
+It refuses a column other than the dimension's column and the subject's declared properties.
 It also refuses a file with its parent's labels in a different order from the parent's, and a new label may sit anywhere:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>ValueError: dims/entity.parquet puts entity 'wind' out of its parent's order; a restatement keeps the order of the labels its parent holds and places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dims-and-labels)
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>ValueError: dimensions/entity.parquet puts entity 'wind' out of its parent's order; a restatement keeps the order of the labels its parent holds and places a new one anywhere (https://energy-models.github.io/datarecord/reference/data-model/#dimensions-and-labels)
 </code></pre></div>
 <h3 id="labels">Labels<a class="headerlink" href="#labels" title="Permanent link">&para;</a></h3>
 <p>The labels and tuples in every row of a layer are on the layer's final axes.
-The final axis of a dim is the layer's own file, or else the parent's resolved axis.
+The final axis of a dimension is the layer's own file, or else the parent's resolved axis.
 The writer refuses an attribute row with a label or tuple outside the final axes.
-It refuses a multi-dim's tuple that contains a label outside its coordinate's final axis the same way:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ValueError: attributes/p_max_pu.parquet names 'entity' labels ['coal'], which the layer's dims/entity.parquet does not hold; add them there or drop those rows (https://energy-models.github.io/datarecord/reference/layers/)
+It refuses a multi-dimension's tuple that contains a label outside its field's final axis the same way:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>ValueError: attributes/p_max_pu.parquet names 'entity' labels ['coal'], which the layer's dimensions/entity.parquet does not hold; add them there or drop those rows (https://energy-models.github.io/datarecord/reference/layers/)
 </code></pre></div>
 <h3 id="layerdata"><code>LayerData</code><a class="headerlink" href="#layerdata" title="Permanent link">&para;</a></h3>
 <p><code>LayerData</code> is the protocol the writer reads: the rows of one layer, as pairs of an enumerator and a read.</p>
@@ -1860,8 +1860,8 @@ It refuses a multi-dim's tuple that contains a label outside its coordinate's fi
 <p><a href="../../howto/store-a-record/">Store a record</a> shows a write from start to end.</p>
 </div>
 <h2 id="removing-labels">Removing labels<a class="headerlink" href="#removing-labels" title="Permanent link">&para;</a></h2>
-<p>To remove a label is to restate its dim's axis without it, which removes its values and the tuples that contain it.
-<code>remove(dim, labels)</code> on a <a href="../editing/"><code>WorkingRecord</code></a> writes one layer that restates the axis without the labels, and every multi-dim over <code>dim</code> without the tuples that contain them:</p>
+<p>To remove a label is to restate its dimension's axis without it, which removes its values and the tuples that contain it.
+<code>remove(dim, labels)</code> on a <a href="../editing/"><code>WorkingRecord</code></a> writes one layer that restates the axis without the labels, and every multi-dimension over <code>dim</code> without the tuples that contain them:</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
@@ -1913,13 +1913,13 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">root layer</text>
-    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity</text>
+    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/entity</text>
     <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
     <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
     <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
     <text x="24" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">coal</text>
     <text x="16" y="140" font-weight="bold"></text>
-    <text x="16" y="140" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/connection</text>
+    <text x="16" y="140" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/connection</text>
     <text x="24" y="165" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">connection</text>
     <text x="24" y="186" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(gas, north)</text>
     <text x="24" y="204" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">(coal, north)</text>
@@ -2007,16 +2007,16 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <p>The child writes no <code>p_nom</code> file, and the read still has no <code>p_nom</code> row for coal.
 A removal applies to every attribute.
-On a dim in <code>partial</code> the fold drops each parent row that has the label, and on any other dim <a href="../resolution/#labels-outside-the-key">the read drops it</a>.
-A row that leaves the dim NULL stays, and applies to the labels that remain.</p>
+On a dimension in <code>partial</code> the fold drops each parent row that has the label, and on any other dimension <a href="../resolution/#labels-outside-the-index">the read drops it</a>.
+A row that leaves the dimension NULL stays, and applies to the labels that remain.</p>
 <ul>
 <li>A removed tuple takes its values. The labels in it keep their other rows, so removing <code>(gas, north)</code> leaves <code>gas</code>.</li>
-<li><code>remove</code> refuses a dim with <code>one_of</code>, whose axis is the schema's list.</li>
+<li><code>remove</code> refuses a dimension with <code>one_of</code>, whose axis is the schema's list.</li>
 <li>A sibling branch keeps a label that one branch removes.</li>
-<li>A label added again after its removal has none of the values it had below the removal. Every row that leaves its dim NULL applies to it again, whichever layer wrote the row.</li>
+<li>A label added again after its removal has none of the values it had below the removal. Every row that leaves its dimension NULL applies to it again, whichever layer wrote the row.</li>
 </ul>
 <p>The writer refuses a layer that leaves a removed label in a reference.
-A reference is a multi-dim's tuple, or a property that <a href="../data-model/">refers to a dim</a>.
+A reference is a multi-dimension's tuple, or a property that <a href="../data-model/">refers to a dimension</a>.
 The writer checks each subject whose rows contain a label the layer removes.
 It also checks each property of a subject the layer restates against every label removed so far.
 So where an ancestor left such a reference, the writer refuses the next layer that restates its subject.

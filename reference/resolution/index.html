@@ -1026,10 +1026,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#labels-outside-the-key" class="md-nav__link">
+  <a href="#labels-outside-the-index" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Labels outside the key
+        Labels outside the index
       
     </span>
   </a>
@@ -1037,10 +1037,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#a-dim-outside-partial" class="md-nav__link">
+  <a href="#a-dimension-outside-partial" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A dim outside partial
+        A dimension outside partial
       
     </span>
   </a>
@@ -1537,10 +1537,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#labels-outside-the-key" class="md-nav__link">
+  <a href="#labels-outside-the-index" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Labels outside the key
+        Labels outside the index
       
     </span>
   </a>
@@ -1548,10 +1548,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#a-dim-outside-partial" class="md-nav__link">
+  <a href="#a-dimension-outside-partial" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A dim outside partial
+        A dimension outside partial
       
     </span>
   </a>
@@ -1631,7 +1631,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h1 id="resolution">Resolution<a class="headerlink" href="#resolution" title="Permanent link">&para;</a></h1>
 <p>This page describes how datarecord reads the layers of a revision as one record.
 It covers axes, the owner map, crossing rows, what a read returns, flags, materialised revisions and a directory.</p>
-<p>A read returns one row at each point, by two rules.
+<p>A read returns one row at each coordinate, by two rules.
 Within one layer, datarecord keeps the more specific row, by <a href="../data-model/">the broadcast rule</a>.
 Across layers, a read returns the deeper layer's row where rows of two layers meet.</p>
 <figure class="diagram">
@@ -1641,7 +1641,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 190" width="760" height="190" style="max-width: 100%; height: auto" role="img" aria-labelledby="ro-t ro-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="ro-t">A read takes the layers through the fold to the owner map</title>
-  <desc id="ro-d">The root layer and the child layer feed the fold, which builds the owner map: the layer it assigns each key to. A fold at hand, materialised on disk or kept by the workspace, seeds the fold so that it starts partway. The read joins to the map the files of the layers it lists, and returns each attribute's rows as written. A reader settles each point by the broadcast rule.</desc>
+  <desc id="ro-d">The root layer and the child layer feed the fold, which builds the owner map: the layer it assigns each map row to. A fold at hand, materialised on disk or kept by the workspace, seeds the fold so that it starts partway. The read joins to the map the files of the layers it lists, and returns each attribute's rows as written. A reader settles each coordinate by the broadcast rule.</desc>
   <defs>
     <marker id="ro-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -1663,7 +1663,7 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="24" y="119.0" font-weight="bold">child layer</text>
     <text x="24" y="135.0" fill-opacity="0.7" font-size="12">layers/&lt;child&gt;/</text>
     <text x="258" y="83.0" font-weight="bold">owner map</text>
-    <text x="258" y="99.0" fill-opacity="0.7" font-size="12">a layer per key</text>
+    <text x="258" y="99.0" fill-opacity="0.7" font-size="12">a layer per map row</text>
     <text x="258" y="162.0" font-weight="bold">fold at hand</text>
     <text x="508" y="83.0" font-weight="bold">rows as written</text>
     <text x="508" y="99.0" fill-opacity="0.7" font-size="12">per attribute</text>
@@ -1693,12 +1693,12 @@ SPDX-License-Identifier: CC-BY-4.0
 </figure>
 
 <p>The step that folds a revision's <a href="../layers/">layers</a> one at a time, root first (the fold), builds the owner map.
-The map lists, for each attribute, each key a layer wrote and the layer it assigns the key to.
+The map lists, for each attribute, each map row a layer wrote and the layer it assigns that row to.
 A read of an attribute joins to the map the files of the layers it lists, and returns the rows as written.
-A <a href="../record/">reader</a> settles each point by the broadcast rule.</p>
+A <a href="../record/">reader</a> settles each coordinate by the broadcast rule.</p>
 <h2 id="axes">Axes<a class="headerlink" href="#axes" title="Permanent link">&para;</a></h2>
-<p>A layer that changes an axis restates it whole, so a revision's axis is the deepest <code>dims/&lt;dim&gt;.parquet</code> on its path from the root.
-A layer with no file for a dim leaves its parent's axis as it is.</p>
+<p>A layer that changes an axis restates it whole, so a revision's axis is the deepest <code>dimensions/&lt;dim&gt;.parquet</code> on its path from the root.
+A layer with no file for a dimension leaves its parent's axis as it is.</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
@@ -1706,7 +1706,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 236" width="760" height="236" style="max-width: 100%; height: auto" role="img" aria-labelledby="ra-t ra-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="ra-t">Each axis resolves to the deepest file for it</title>
-  <desc id="ra-d">The root layer contains dims/entity.parquet with gas and wind, and dims/scenario.parquet with low and high. The child layer restates the entity axis as gas, wind and solar, and has no scenario file. The resolved entity axis is the child's file and the resolved scenario axis is the root's.</desc>
+  <desc id="ra-d">The root layer contains dimensions/entity.parquet with gas and wind, and dimensions/scenario.parquet with low and high. The child layer restates the entity axis as gas, wind and solar, and has no scenario file. The resolved entity axis is the child's file and the resolved scenario axis is the root's.</desc>
   <defs>
     <marker id="ra-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -1737,7 +1737,7 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">root layer</text>
-    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity.parquet</text>
+    <text x="110" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/entity</text>
     <text x="24" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
     <text x="94" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
     <text x="24" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
@@ -1745,12 +1745,12 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="24" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">wind</text>
     <text x="94" y="86" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">Generator</text>
     <text x="16" y="138" font-weight="bold"></text>
-    <text x="16" y="138" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/scenario.parquet</text>
+    <text x="16" y="138" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/scenario</text>
     <text x="24" y="163" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
     <text x="24" y="184" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">low</text>
     <text x="24" y="202" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">high</text>
     <text x="290" y="22" font-weight="bold">child layer</text>
-    <text x="392" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dims/entity.parquet</text>
+    <text x="392" y="22" fill-opacity="0.7" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">dimensions/entity</text>
     <text x="298" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
     <text x="368" y="47" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">ctype</text>
     <text x="298" y="68" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">gas</text>
@@ -1805,14 +1805,14 @@ SPDX-License-Identifier: CC-BY-4.0
 
 <p>The child's entity file is the resolved entity axis, and the root's scenario file is the resolved scenario axis.</p>
 <ul>
-<li>A multi-dim's axis resolves the same way, from its file keyed by its struct column.</li>
+<li>A multi-dimension's axis resolves the same way, from its file, whose column is its struct column.</li>
 <li>The labels of an axis come in the deepest file's row order, the axis order. A label added again after its removal sits where the file that adds it puts it.</li>
 <li>A property is a column of its subject's axis file, so its values change only when a layer restates the axis.</li>
-<li>A <a href="../data-model/">dim with <code>one_of</code></a> has no file, and its axis is the schema's list at every revision.</li>
+<li>A <a href="../data-model/">dimension with <code>one_of</code></a> has no file, and its axis is the schema's list at every revision.</li>
 </ul>
 <h2 id="the-owner-map">The owner map<a class="headerlink" href="#the-owner-map" title="Permanent link">&para;</a></h2>
-<p>The owner map is the fold's result: per attribute, each key a layer wrote and the layer the map assigns it to.
-A key is the attribute's dims in <a href="../layers/#partial"><code>partial</code></a> and the attribute's name.
+<p>The owner map is the fold's result: per attribute, each map row a layer wrote and the layer the map assigns it to.
+Its index is the attribute's dimensions in <a href="../layers/#partial"><code>partial</code></a> and the attribute's name.
 The map contains no values, so its size does not depend on the length of a series or a curve.</p>
 <table>
 <thead>
@@ -1823,8 +1823,8 @@ The map contains no values, so its size does not depend on the length of a serie
 </thead>
 <tbody>
 <tr>
-<td>one per dim in <code>partial</code></td>
-<td>the key's label, or NULL where the row leaves the dim NULL. A multi-dim is one struct column</td>
+<td>one per dimension in <code>partial</code></td>
+<td>the map row's label, or NULL where the row leaves the dimension NULL. A multi-dimension is one struct column</td>
 </tr>
 <tr>
 <td><code>attribute</code></td>
@@ -1832,26 +1832,26 @@ The map contains no values, so its size does not depend on the length of a serie
 </tr>
 <tr>
 <td><code>layer_uuid</code></td>
-<td>the layer the map assigns the key to</td>
+<td>the layer the map assigns the row to</td>
 </tr>
 <tr>
 <td><code>varies</code></td>
-<td>a struct with a boolean per dim: whether the layer's rows of this key set the dim</td>
+<td>a struct with a boolean per dimension: whether the layer's rows of this map row set the dimension</td>
 </tr>
 <tr>
 <td><code>broadcast</code></td>
-<td>a struct with a boolean per dim: whether the layer's rows of this key leave the dim NULL</td>
+<td>a struct with a boolean per dimension: whether the layer's rows of this map row leave the dimension NULL</td>
 </tr>
 <tr>
 <td><code>breakpoints</code></td>
-<td>whether the layer's rows of this key form a curve</td>
+<td>whether the layer's rows of this map row form a curve</td>
 </tr>
 </tbody>
 </table>
-<p>The map has each key as its layer wrote it, a NULL included.
-It has one row per layer and distinct key, and one overlap row for each pair of rows that <a href="#crossing-rows">cross</a>.</p>
+<p>The map has each map row as its layer wrote it, a NULL included.
+It has one row per layer and distinct labels on its index, and one overlap row for each pair of rows that <a href="#crossing-rows">cross</a>.</p>
 <h2 id="folding-a-layer-onto-its-parent">Folding a layer onto its parent<a class="headerlink" href="#folding-a-layer-onto-its-parent" title="Permanent link">&para;</a></h2>
-<p>The fold takes the parent's map and the layer's own keys, and returns the layer's map.
+<p>The fold takes the parent's map and the layer's own map rows, and returns the layer's map.
 Three terms describe how the rows of two layers meet:</p>
 <table>
 <thead>
@@ -1863,22 +1863,22 @@ Three terms describe how the rows of two layers meet:</p>
 <tbody>
 <tr>
 <td>sets</td>
-<td>a row sets a dim in <code>partial</code> where its key has a label, and any other dim of the attribute where its rows vary along it</td>
+<td>a row sets a dimension in <code>partial</code> where its map row has a label, and any other dimension of the attribute where its rows vary along it</td>
 </tr>
 <tr>
 <td>covers</td>
-<td>on each dim in <code>partial</code>, the two rows have the same label, or one of them has NULL</td>
+<td>on each dimension in <code>partial</code>, the two rows have the same label, or one of them has NULL</td>
 </tr>
 <tr>
 <td>crosses</td>
-<td>the two rows cover a common point, and each row leaves NULL a dim that the other row sets</td>
+<td>the two rows cover a common coordinate, and each row leaves NULL a dimension that the other row sets</td>
 </tr>
 </tbody>
 </table>
 <p>The fold runs three steps, in this order:</p>
 <ol>
-<li>It drops each parent row that has a label or tuple that the layer <a href="../layers/#removing-labels">removes</a>, on a dim in <code>partial</code>. A row that leaves the dim NULL stays.</li>
-<li>It drops each parent row that a row of the layer covers, where the layer's row sets every dim that the parent row sets.</li>
+<li>It drops each parent row that has a label or tuple that the layer <a href="../layers/#removing-labels">removes</a>, on a dimension in <code>partial</code>. A row that leaves the dimension NULL stays.</li>
+<li>It drops each parent row that a row of the layer covers, where the layer's row sets every dimension that the parent row sets.</li>
 <li>It adds the layer's rows, and one overlap row for each parent row that a row of the layer crosses.</li>
 </ol>
 <p>Take <code>partial = {"entity", "scenario"}</code> and a root that sets <code>p_nom</code> for gas, wind and coal.
@@ -1890,7 +1890,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="rf-t rf-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rf-t">One layer folds onto its parent's owner map</title>
-  <desc id="rf-d">With partial dims entity and scenario, the parent's owner map contains the root's rows gas NULL, wind NULL and coal NULL. The child removes coal and writes gas NULL 60, NULL high 999 and gas high 999. The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas NULL covers. It adds the child's three rows and one overlap row, wind high, which the owner map assigns to the child, where the root's wind NULL crosses the child's NULL high.</desc>
+  <desc id="rf-d">With partial dimensions entity and scenario, the parent's owner map contains the root's rows gas NULL, wind NULL and coal NULL. The child removes coal and writes gas NULL 60, NULL high 999 and gas high 999. The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas NULL covers. It adds the child's three rows and one overlap row, wind high, which the owner map assigns to the child, where the root's wind NULL crosses the child's NULL high.</desc>
   <defs>
     <marker id="rf-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -2005,11 +2005,11 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas row covers.
 It keeps the root's wind row and adds the overlap row <code>(wind, high)</code>, which the owner map assigns to the child.
 The child's own <code>(gas, high)</code> is a row that its <a href="../editing/"><code>WorkingRecord</code></a> staged, because the second <code>set</code> crosses the first.</p>
-<p>A parent row that sets fewer dims than a covering row of the layer stays as written.
+<p>A parent row that sets fewer dimensions than a covering row of the layer stays as written.
 A child that writes only <code>(gas, high) = 70</code> leaves the root's <code>(gas, NULL)</code> in the map. By the broadcast rule, a read takes <code>(gas, high)</code> from the child.</p>
 <h2 id="crossing-rows">Crossing rows<a class="headerlink" href="#crossing-rows" title="Permanent link">&para;</a></h2>
-<p>Two rows of two layers cross where they cover a common point and each row leaves NULL a dim that the other row sets.
-At such a point neither row is more specific, so the broadcast rule alone does not settle it.
+<p>Two rows of two layers cross where they cover a common coordinate and each row leaves NULL a dimension that the other row sets.
+At such a coordinate neither row is more specific, so the broadcast rule alone does not settle it.
 The fold therefore adds an overlap row, which the owner map assigns to the deeper layer, with every label that either row sets.</p>
 <figure class="diagram">
 <!--
@@ -2018,7 +2018,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 250" width="800" height="250" style="max-width: 100%; height: auto" role="img" aria-labelledby="rc-t rc-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rc-t">The fold adds an overlap row where rows of two layers cross</title>
-  <desc id="rc-d">With partial dims entity and scenario, the root writes p_nom for gas and wind with scenario NULL, and the child writes p_nom 999 for scenario high with entity NULL. The owner map has these three rows and two overlap rows that it assigns to the child, gas high and wind high. The read returns five rows: gas NULL 50, wind NULL 100, NULL high 999, gas high 999 and wind high 999.</desc>
+  <desc id="rc-d">With partial dimensions entity and scenario, the root writes p_nom for gas and wind with scenario NULL, and the child writes p_nom 999 for scenario high with entity NULL. The owner map has these three rows and two overlap rows that it assigns to the child, gas high and wind high. The read returns five rows: gas NULL 50, wind NULL 100, NULL high 999, gas high 999 and wind high 999.</desc>
   <defs>
     <marker id="rc-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -2141,35 +2141,36 @@ SPDX-License-Identifier: CC-BY-4.0
 </figure>
 
 <p>The child's <code>(NULL, high)</code> crosses both root rows, so the map gains <code>(gas, high)</code> and <code>(wind, high)</code>, which it assigns to the child.
-At <code>(wind, high)</code> the overlap row sets both dims, so by the broadcast rule the value there is 999.
+At <code>(wind, high)</code> the overlap row sets both dimensions, so by the broadcast rule the value there is 999.
 The crossed parent rows stay as written, and <code>(wind, low)</code> is 100.</p>
 <p>A later fold treats an overlap row as any other row, which it may drop, cross or remove.</p>
 <h2 id="where-a-row-applies">Where a row applies<a class="headerlink" href="#where-a-row-applies" title="Permanent link">&para;</a></h2>
-<p>A NULL on a dim in <code>partial</code> means every label of that dim's axis as resolved at the revision read.
+<p>A NULL on a dimension in <code>partial</code> means every label of that dimension's axis as resolved at the revision read.
 A row therefore applies to a label added below the revision that wrote it, or one staged in a <code>WorkingRecord</code>.
 In the example above, a child that adds the scenario <code>mid</code> has <code>(gas, mid)</code> at 50.</p>
-<p>A row applies at every point that no more specific row covers, whichever layer wrote it.
-So a read returns a deeper layer's value only at the points its rows apply to.
+<p>A row applies at every coordinate that no more specific row covers, whichever layer wrote it.
+So a read returns a deeper layer's value only at the coordinates its rows apply to.
 With <code>p_max_pu</code> over <code>entity</code>, <code>scenario</code> and <code>snapshot</code>, a root row <code>(gas, NULL, 1) = 1.0</code> and a child row <code>(NULL, high, 0) = 2.0</code> leave <code>(gas, high, 1)</code> at 1.0, from the root.</p>
 <h2 id="reading-an-attribute">Reading an attribute<a class="headerlink" href="#reading-an-attribute" title="Permanent link">&para;</a></h2>
-<p><code>record.attributes[name]</code> returns the attribute's rows from the layers that the map assigns a key to, as written.
-A key left NULL stays NULL.
+<p><code>record.attributes[name]</code> returns the attribute's rows from the layers that the map assigns a map row to, as written.
+A dimension a map row leaves NULL stays NULL.
 Where the map has an overlap row, the read also returns a value at the overlap row's labels. That value comes from the layer the map assigns the overlap row to.
-The read expands no NULL, settles no point, and returns rows in no fixed order.
+So the read returns a row that leaves a dimension in <code>partial</code> NULL once per map row that comes from it: NULL there for its own map row, and the label for each overlap row.
+The read expands no NULL, settles no coordinate, and returns rows in no fixed order.
 An attribute that no layer wrote is an empty relation, typed as declared, and the reader applies the schema's <code>default</code>.</p>
-<p>A layer may contain rows of one attribute that set different dims in <code>partial</code>.
+<p>A layer may contain rows of one attribute that set different dimensions in <code>partial</code>.
 The child above is one: its <code>(gas, NULL)</code>, <code>(NULL, high)</code> and <code>(gas, high)</code> all apply at <code>(gas, high)</code>.
-At such a point the read keeps the layer's row that leaves no dim NULL that another row there sets.
-Where no row does, the read fails, naming the attribute and the point.
+At such a coordinate the read keeps the layer's row that leaves no dimension NULL that another row there sets.
+Where no row does, the read fails, naming the attribute and the coordinate.
 A curve is kept or dropped whole.</p>
 <div class="admonition info">
 <p class="admonition-title">See also</p>
 <p><a href="../record/">The record page</a> describes <code>RecordLike</code> and settling rows.
-<a href="../../about/layers/#why-the-owner-map-contains-keys-as-written">Why the owner map contains keys as written</a> gives the reasons for the map's shape.</p>
+<a href="../../about/layers/#why-the-owner-map-contains-map-rows-as-written">Why the owner map contains map rows as written</a> gives the reasons for the map's shape.</p>
 </div>
-<h2 id="labels-outside-the-key">Labels outside the key<a class="headerlink" href="#labels-outside-the-key" title="Permanent link">&para;</a></h2>
-<p>A dim outside <code>partial</code> is in no key, so the fold reads none of its labels.
-The read drops each row that has a removed label on such a dim, or a removed tuple of such a multi-dim.
+<h2 id="labels-outside-the-index">Labels outside the index<a class="headerlink" href="#labels-outside-the-index" title="Permanent link">&para;</a></h2>
+<p>A dimension outside <code>partial</code> is not in the index, so the fold reads none of its labels.
+The read drops each row that has a removed label on such a dimension, or a removed tuple of such a multi-dimension.
 A removed label is one that a layer's restatement dropped and the revision's axis lacks.</p>
 <p>Take <code>partial = {"entity"}</code>, a root with <code>p_max_pu</code> for wind at snapshots 0, 1 and 2, and a child that removes snapshot 2:</p>
 <figure class="diagram">
@@ -2178,8 +2179,8 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 260" width="780" height="260" style="max-width: 100%; height: auto" role="img" aria-labelledby="rx-t rx-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="rx-t">A read drops a row with a removed label on a dim outside partial</title>
-  <desc id="rx-d">With partial entity alone, the root writes p_max_pu for wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and the snapshot axis 0, 1, 2. The child restates the snapshot axis as 0 and 1, which removes snapshot 2, and writes no p_max_pu file. snapshot is in no key, so the owner map assigns wind to the root. The read returns the root's rows at snapshots 0 and 1 and drops the row at snapshot 2.</desc>
+  <title id="rx-t">A read drops a row with a removed label on a dimension outside partial</title>
+  <desc id="rx-d">With partial entity alone, the root writes p_max_pu for wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and the snapshot axis 0, 1, 2. The child restates the snapshot axis as 0 and 1, which removes snapshot 2, and writes no p_max_pu file. snapshot is not in the index, so the owner map assigns wind to the root. The read returns the root's rows at snapshots 0 and 1 and drops the row at snapshot 2.</desc>
   <defs>
     <marker id="rx-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -2293,20 +2294,20 @@ SPDX-License-Identifier: CC-BY-4.0
 </figure>
 
 <p>The child writes no <code>p_max_pu</code> file, yet the read drops the root's row at snapshot 2 and returns its other two rows.</p>
-<p>With <code>connection</code> outside <code>partial</code>, a connection attribute's key is the attribute's name alone.
-Removing a tuple then removes its values at read, as it does for a multi-dim in <code>partial</code> at the fold.</p>
-<h2 id="a-dim-outside-partial">A dim outside <code>partial</code><a class="headerlink" href="#a-dim-outside-partial" title="Permanent link">&para;</a></h2>
-<p>A crossing along a dim outside <code>partial</code> has no key column for an overlap row to set.
+<p>With <code>connection</code> outside <code>partial</code>, a connection attribute's index is the attribute's name alone.
+Removing a tuple then removes its values at read, as it does for a multi-dimension in <code>partial</code> at the fold.</p>
+<h2 id="a-dimension-outside-partial">A dimension outside <code>partial</code><a class="headerlink" href="#a-dimension-outside-partial" title="Permanent link">&para;</a></h2>
+<p>A crossing along a dimension outside <code>partial</code> has no index column for an overlap row to set.
 A <code>WorkingRecord</code> settles such a crossing as it stages.
-Where a staged row leaves the dim NULL over a parent row that sets it, the commit also writes the value along the parent's labels.</p>
+Where a staged row leaves the dimension NULL over a parent row that sets it, the commit also writes the value along the parent's labels.</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 196" width="780" height="196" style="max-width: 100%; height: auto" role="img" aria-labelledby="ru-t ru-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="ru-t">A child that leaves a dim outside partial NULL is written along the parent's labels</title>
-  <desc id="ru-d">With partial dims entity alone, the root writes p_max_pu over snapshot for every entity: NULL 0 0.2 and NULL 1 0.5. The edit sets wind to 0.9 with snapshot NULL. store.commit writes the child layer as wind NULL, wind 0 and wind 1, all 0.9, so the child's rows set every dim that the root's rows set. The fold refuses a layer with the first row alone.</desc>
+  <title id="ru-t">A child that leaves a dimension outside partial NULL is written along the parent's labels</title>
+  <desc id="ru-d">With partial dimensions entity alone, the root writes p_max_pu over snapshot for every entity: NULL 0 0.2 and NULL 1 0.5. The edit sets wind to 0.9 with snapshot NULL. store.commit writes the child layer as wind NULL, wind 0 and wind 1, all 0.9, so the child's rows set every dimension that the root's rows set. The fold refuses a layer with the first row alone.</desc>
   <defs>
     <marker id="ru-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -2393,7 +2394,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 </figure>
 
-<p>With <code>partial = {"entity"}</code>, the child's rows at wind set every dim that the root's rows set.
+<p>With <code>partial = {"entity"}</code>, the child's rows at wind set every dimension that the root's rows set.
 Nothing crosses, and wind is 0.9 at each snapshot.
 The fold refuses a layer written another way that leaves such a crossing.
 It checks the layer when a workspace first folds it:</p>
@@ -2404,8 +2405,8 @@ It checks the layer when a workspace first folds it:</p>
 A child's schema may be wider than its parent's where the change passes <a href="../schema/"><code>compatible_with</code></a>.
 The fold then extends the parent's map to the child's schema before it folds the child.</p>
 <ul>
-<li>Where a dim is added to an attribute's <code>dims</code>, the parent's rows of that attribute broadcast along it.</li>
-<li>Where a dim is added to <code>partial</code>, the fold splits each parent row that varies along it by the labels that its layer wrote there.</li>
+<li>Where a dimension is added to an attribute's <code>dims</code>, the parent's rows of that attribute broadcast along it.</li>
+<li>Where a dimension is added to <code>partial</code>, the fold splits each parent row that varies along it by the labels that its layer wrote there.</li>
 </ul>
 <figure class="diagram">
 <!--
@@ -2413,7 +2414,7 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 220" width="820" height="220" style="max-width: 100%; height: auto" role="img" aria-labelledby="rw-t rw-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="rw-t">The fold splits the parent's rows by their labels when a dim joins partial</title>
+  <title id="rw-t">The fold splits the parent's rows by their labels when a dimension joins partial</title>
   <desc id="rw-d">The root, under partial entity, writes gas low 1 and gas high 2. The child, under partial entity and scenario, writes gas high 3. The fold splits the root's map row by the scenarios the root wrote: gas low and gas high, both assigned to the root. The child's gas high covers the second, which the fold drops. The read gives gas low 1 and gas high 3.</desc>
   <defs>
     <marker id="rw-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
@@ -2508,7 +2509,7 @@ SPDX-License-Identifier: CC-BY-4.0
 Under the child's <code>partial = {"entity", "scenario"}</code>, the fold splits the root's row into <code>(gas, low)</code> and <code>(gas, high)</code>, and the child's <code>(gas, high)</code> covers the second.
 The read gives <code>(gas, low) 1</code> and <code>(gas, high) 3</code>.</p>
 <h2 id="flags">Flags<a class="headerlink" href="#flags" title="Permanent link">&para;</a></h2>
-<p>The fold computes <code>varies</code>, <code>broadcast</code> and <code>breakpoints</code> for each row of the map from the layer's rows of that key.
+<p>The fold computes <code>varies</code>, <code>broadcast</code> and <code>breakpoints</code> for each row of the map from the layer's rows of that map row.
 An overlap row takes the flags of the layer row it comes from.
 <code>record.flags()</code> unions them per attribute:</p>
 <figure class="diagram">
@@ -2583,11 +2584,11 @@ SPDX-License-Identifier: CC-BY-4.0
 </figure>
 
 <p><code>p_max_pu</code> has <code>snapshot</code> in both sets, because wind's rows set it and gas's row leaves it NULL.
-<code>p_nom</code> broadcasts along <code>entity</code> and <code>scenario</code>, the two dims it is over.</p>
+<code>p_nom</code> broadcasts along <code>entity</code> and <code>scenario</code>, the two dimensions it is over.</p>
 <ul>
-<li><code>flags(**categories)</code> unions the flags of the rows that apply to the labels of those categories. A row NULL on the dim applies to every label.</li>
-<li>Each struct has a field for every dim the schema declares. A dim that a multi-dim draws on has its own field, so <code>flags()</code> reports <code>bus</code> as broadcast for a <code>marginal_price</code> constant over buses.</li>
-<li>The flags describe the rows in the map. So a NULL row that deeper rows cover at every label still puts its dim in <code>broadcast</code>.</li>
+<li><code>flags(**categories)</code> unions the flags of the rows that apply to the labels of those categories. A row NULL on the dimension applies to every label.</li>
+<li>Each struct has a field for every dimension the schema declares. A dimension that a multi-dimension draws on has its own field, so <code>flags()</code> reports <code>bus</code> as broadcast for a <code>marginal_price</code> constant over buses.</li>
+<li>The flags describe the rows in the map. So a NULL row that deeper rows cover at every label still puts its dimension in <code>broadcast</code>.</li>
 </ul>
 <div class="admonition info">
 <p class="admonition-title">See also</p>
@@ -2659,8 +2660,8 @@ SPDX-License-Identifier: CC-BY-4.0
 It reads nothing of <code>root</code>, <code>a</code> or <code>b</code>.</p>
 <ul>
 <li>A read gives the same answers after you materialise, and opens fewer layers.</li>
-<li>datarecord never starts a revision's fold from that revision's own cache.</li>
-<li>A materialised map has keys as written, so a NULL in it applies to a label that a descendant adds.</li>
+<li>datarecord never starts a revision's fold from that revision's own resolved files.</li>
+<li>A materialised map has map rows as written, so a NULL in it applies to a label that a descendant adds.</li>
 <li>A read under a wider schema extends a materialised map as it extends one folded live.</li>
 </ul>
 <div class="admonition info">
@@ -2677,7 +2678,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 150" width="700" height="150" style="max-width: 100%; height: auto" role="img" aria-labelledby="rd-t rd-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rd-t">Reading a directory as a fold over one layer</title>
-  <desc id="rd-d">The directory out contains manifest.json, dims and attributes, the layout of one layer. Read with ws.at, it is a fold over that one layer, so the owner map assigns every key to that layer.</desc>
+  <desc id="rd-d">The directory out contains manifest.json, dimensions and attributes, the layout of one layer. Read with ws.at, it is a fold over that one layer, so the owner map assigns every map row to that layer.</desc>
   <defs>
     <marker id="rd-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -2694,8 +2695,8 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="24" y="69.0" font-weight="bold">out/</text>
-    <text x="24" y="85.0" fill-opacity="0.7" font-size="12">manifest.json, dims/,</text>
-    <text x="24" y="96" fill-opacity="0.7" font-size="12">attributes/</text>
+    <text x="24" y="85.0" fill-opacity="0.7" font-size="12">manifest.json,</text>
+    <text x="24" y="96" fill-opacity="0.7" font-size="12">dimensions/, attributes/</text>
     <text x="400" y="30" font-weight="bold">owner map</text>
     <text x="408" y="55" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">entity</text>
     <text x="470" y="55" font-weight="bold" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">scenario</text>
@@ -2721,7 +2722,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 </figure>
 
-<p>The owner map assigns every key to the one layer, the axis order is each file's row order, and <code>partial</code> has no effect.
+<p>The owner map assigns every map row to the one layer, the axis order is each file's row order, and <code>partial</code> has no effect.
 One <code>Record</code> reads both a directory and a revision, so a reader cannot tell them apart.
 <code>store.layer(id)</code> reads one layer of a store alone in the same way.</p>
 <div class="admonition info">

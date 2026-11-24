@@ -1021,10 +1021,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dimsdimparquet" class="md-nav__link">
+  <a href="#dimensionsdimparquet" class="md-nav__link">
     <span class="md-ellipsis">
       
-        dims/&lt;dim&gt;.parquet
+        dimensions/&lt;dim&gt;.parquet
       
     </span>
   </a>
@@ -1056,6 +1056,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#owner_map_rowsparquet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        owner_map_rows.parquet
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1092,6 +1103,17 @@
   
     <nav class="md-nav" aria-label="Registered views">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-owner_map-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The owner_map view
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#the-registered-table" class="md-nav__link">
@@ -1494,10 +1516,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dimsdimparquet" class="md-nav__link">
+  <a href="#dimensionsdimparquet" class="md-nav__link">
     <span class="md-ellipsis">
       
-        dims/&lt;dim&gt;.parquet
+        dimensions/&lt;dim&gt;.parquet
       
     </span>
   </a>
@@ -1529,6 +1551,17 @@
         
       </ul>
     </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#owner_map_rowsparquet" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        owner_map_rows.parquet
+      
+    </span>
+  </a>
   
 </li>
       
@@ -1565,6 +1598,17 @@
   
     <nav class="md-nav" aria-label="Registered views">
       <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#the-owner_map-view" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        The owner_map view
+      
+    </span>
+  </a>
+  
+</li>
         
           <li class="md-nav__item">
   <a href="#the-registered-table" class="md-nav__link">
@@ -1617,18 +1661,20 @@ A standalone directory has the same layout at its own URI, with no <code>claim.j
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>&lt;location&gt;/layers/&lt;id&gt;/
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>├── claim.json                  # written when the store hands out the id
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>├── manifest.json               # written last: the revision exists from here
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── dims/&lt;dim&gt;.parquet          # one axis per dim the layer restates
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>├── dimensions/&lt;dim&gt;.parquet          # one axis per dimension the layer restates
 <a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>├── attributes/&lt;attr&gt;.parquet   # one attribute per file, results included
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>└── resolved/                   # written by materialise()
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    ├── dim_owners.parquet
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    ├── dead/&lt;dim&gt;.parquet
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    └── owner_map.parquet
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>├── owner_map_rows.parquet      # owner-map rows of the shapes varying outside partial
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>└── resolved/                   # written by materialise()
+<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    ├── dimension_owners.parquet
+<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>    ├── dead/&lt;dim&gt;.parquet
+<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>    └── owner_map.parquet
 </code></pre></div>
-<p>Each file takes the declared name unchanged, so the dim <code>bus</code> is <code>dims/bus.parquet</code> and the attribute <code>p_nom</code> is <code>attributes/p_nom.parquet</code>.
+<p>Each file takes the declared name unchanged, so the dimension <code>bus</code> is <code>dimensions/bus.parquet</code> and the attribute <code>p_nom</code> is <code>attributes/p_nom.parquet</code>.
 A read opens the files that the manifest lists, and no other.</p>
 <h2 id="claimjson"><code>claim.json</code><a class="headerlink" href="#claimjson" title="Permanent link">&para;</a></h2>
 <p><code>claim.json</code> lists the id, the parent, the claimed <code>meta</code> and when the <a href="../store/">store</a> handed out the id.
-The store writes it create-only and keeps it after the commit, so an id is claimed once.</p>
+The store writes it create-only and keeps it after the commit, so an id is claimed once.
+The manifest, not <code>claim.json</code>, is authoritative for <code>parent</code> and <code>meta</code>: a claim rebuilt from its serialised form commits what that form says (<a href="../store/#claim">the claim</a>).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="p">{</span><span class="w"> </span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"4731e41b-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"parent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"9716e2ef-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"meta"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="w"> </span><span class="nt">"run"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a"</span><span class="w"> </span><span class="p">},</span><span class="w"> </span><span class="nt">"created"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-11-05T17:37:14.912772Z"</span><span class="w"> </span><span class="p">}</span>
 </code></pre></div>
 <h2 id="manifestjson"><code>manifest.json</code><a class="headerlink" href="#manifestjson" title="Permanent link">&para;</a></h2>
@@ -1652,40 +1698,40 @@ The writer writes it last and create-only, and the revision exists from that mom
 </tr>
 <tr>
 <td><code>schema</code></td>
-<td>the full <a href="../schema/">schema</a> the layer was written under</td>
+<td>the full <a href="../schema/">schema</a> the layer was written under, its <code>meta</code> and a non-finite <code>default</code> written as <code>meta</code> is</td>
 </tr>
 <tr>
 <td><code>files</code></td>
-<td><code>{"dims": [...], "attributes": [...]}</code>: the declared names of the files the layer wrote</td>
+<td><code>{"dimensions": [...], "attributes": [...], "owner_map_rows": [...]}</code>: the declared names of the files the layer wrote, and the <code>_shape</code> of each shape <code>owner_map_rows.parquet</code> holds</td>
 </tr>
 <tr>
 <td><code>meta</code></td>
-<td>the revision's own <code>meta</code>: a flat object of strings, integers, finite floats and booleans</td>
+<td>the revision's own <code>meta</code>: an object of strings, numbers, booleans, null, arrays and objects, a float possibly <code>Infinity</code>, <code>-Infinity</code> or <code>NaN</code></td>
 </tr>
 </tbody>
 </table>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"4731e41b-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"parent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"9716e2ef-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"schema"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">…</span><span class="p">},</span><span class="w"> </span><span class="nt">"files"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"dims"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"entity"</span><span class="p">],</span><span class="w"> </span><span class="nt">"attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">]},</span><span class="w"> </span><span class="nt">"meta"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"run"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a"</span><span class="p">}}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="p">{</span><span class="nt">"id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"4731e41b-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"parent"</span><span class="p">:</span><span class="w"> </span><span class="s2">"9716e2ef-…"</span><span class="p">,</span><span class="w"> </span><span class="nt">"schema"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="err">…</span><span class="p">},</span><span class="w"> </span><span class="nt">"files"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"entity"</span><span class="p">],</span><span class="w"> </span><span class="nt">"attributes"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"p_nom"</span><span class="p">],</span><span class="w"> </span><span class="nt">"owner_map_rows"</span><span class="p">:</span><span class="w"> </span><span class="p">[]},</span><span class="w"> </span><span class="nt">"meta"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span><span class="nt">"run"</span><span class="p">:</span><span class="w"> </span><span class="s2">"a"</span><span class="p">}}</span>
 </code></pre></div>
 <p>A layer that restates only the entity axis and writes only <code>p_nom</code> lists those two files.
 <code>meta</code> describes one revision, such as a run's id, and a child does not inherit it.
 <code>schema.meta</code> describes the record, and a child inherits it with the rest of the schema.</p>
-<h2 id="dimsdimparquet"><code>dims/&lt;dim&gt;.parquet</code><a class="headerlink" href="#dimsdimparquet" title="Permanent link">&para;</a></h2>
-<p>An axis file contains every label of one dim at the layer's revision, in axis order, one row per label.
-Its first column is the key, named for the dim, and each further column is one <a href="../data-model/">property</a> of the dim.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>dims/entity.parquet       entity | ctype | carrier | sign | type
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>dims/connection.parquet   connection STRUCT(entity, port) | bus
+<h2 id="dimensionsdimparquet"><code>dimensions/&lt;dim&gt;.parquet</code><a class="headerlink" href="#dimensionsdimparquet" title="Permanent link">&para;</a></h2>
+<p>An axis file contains every label of one dimension at the layer's revision, in axis order, one row per label.
+Its first column is the dimension's column, named for it, and each further column is one <a href="../data-model/">property</a> of the dimension.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>dimensions/entity.parquet       entity | ctype | carrier | sign | type
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>dimensions/connection.parquet   connection STRUCT(entity, port) | bus
 </code></pre></div>
 <ul>
 <li>A property is NULL in a row where no layer wrote a value for that label.</li>
-<li>A <a href="../data-model/">multi-dim</a>'s file is keyed by one struct column named for it, with a field per coordinate. Its rows are every tuple of the multi-dim at the layer's revision.</li>
-<li>A <a href="../data-model/">dim with <code>one_of</code></a> has no file. The writer refuses a layer that has one.</li>
+<li>A <a href="../data-model/">multi-dimension</a>'s file has one struct column named for it, with its fields, as its first column. Its rows are every tuple of the multi-dimension at the layer's revision.</li>
+<li>A <a href="../data-model/">dimension with <code>one_of</code></a> has no file. The writer refuses a layer that has one.</li>
 <li>A layer removes a label or tuple by writing the file without it (<a href="../layers/#removing-labels">removing labels</a>).</li>
 </ul>
 <h2 id="attributesattrparquet"><code>attributes/&lt;attr&gt;.parquet</code><a class="headerlink" href="#attributesattrparquet" title="Permanent link">&para;</a></h2>
-<p>An attribute file contains the long rows of one attribute: its own coordinates, then the columns every row has.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>&lt;coordinate&gt; ... | attribute | breakpoint | value
+<p>An attribute file contains the long rows of one attribute: a column per dimension of the attribute, then the columns every row has.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>&lt;dim&gt; ... | attribute | breakpoint | value
 </code></pre></div>
-<p>The coordinates are the dims that the attribute's <a href="../schema/"><code>dims</code></a> declare, multi-dims first, each multi-dim as one struct column.</p>
+<p>The dimensions are those the attribute's <a href="../schema/"><code>dims</code></a> declare, in the order the schema declares them, a multi-dimension's fields packed in one struct column.</p>
 <table>
 <thead>
 <tr>
@@ -1708,7 +1754,7 @@ Its first column is the key, named for the dim, and each further column is one <
 </tr>
 </tbody>
 </table>
-<p>A NULL coordinate means every label of its dim, by <a href="../data-model/">the broadcast rule</a>.
+<p>A NULL in a dimension's column means every label of its dimension, by <a href="../data-model/">the broadcast rule</a>.
 <code>breakpoint</code> is NULL except on the rows of a curve.
 <code>value</code> has the attribute's dtype, since each file contains one attribute.</p>
 <p>Widening <code>p_nom</code> over <code>scenario</code> adds a <code>scenario</code> column to the files written from then on.
@@ -1724,12 +1770,12 @@ A file written before has no <code>scenario</code> column, and a read takes its 
 </thead>
 <tbody>
 <tr>
-<td>property of a dim</td>
-<td>a column of <code>dims/&lt;dim&gt;.parquet</code></td>
+<td>property of a dimension</td>
+<td>a column of <code>dimensions/&lt;dim&gt;.parquet</code></td>
 </tr>
 <tr>
-<td>property of a multi-dim</td>
-<td>a column of <code>dims/&lt;multi-dim&gt;.parquet</code></td>
+<td>property of a multi-dimension</td>
+<td>a column of <code>dimensions/&lt;multi-dim&gt;.parquet</code></td>
 </tr>
 <tr>
 <td>attribute, any <code>dims</code></td>
@@ -1737,11 +1783,22 @@ A file written before has no <code>scenario</code> column, and a read takes its 
 </tr>
 </tbody>
 </table>
-<p>A property is named by its subject, so <code>bus.x</code> is a column of <code>dims/bus.parquet</code>, and an attribute <code>x</code> is <code>attributes/x.parquet</code>.
+<p>A property is named by its subject, so <code>bus.x</code> is a column of <code>dimensions/bus.parquet</code>, and an attribute <code>x</code> is <code>attributes/x.parquet</code>.
 An axis file has no attribute values.</p>
+<h2 id="owner_map_rowsparquet"><code>owner_map_rows.parquet</code><a class="headerlink" href="#owner_map_rowsparquet" title="Permanent link">&para;</a></h2>
+<p><code>owner_map_rows.parquet</code> holds the layer's own rows of the <a href="../resolution/#the-owner-map">owner map</a>, which a fold would otherwise aggregate from its attribute files.
+A shape is the set of dimensions an attribute is over.
+The writer keeps every owner-map row of a shape where a row of the layer names a dimension of the shape outside <a href="../layers/#partial"><code>partial</code></a>, and no row of any other shape.
+The other shapes have an owner-map row per attribute row, so a fold aggregates them from the attribute files at no extra cost.
+The manifest lists the <code>_shape</code> of each shape the file holds in <code>files.owner_map_rows</code>, in ascending order, so a read knows them without opening the file.
+A layer that keeps no shape has no <code>owner_map_rows.parquet</code>, and <code>files.owner_map_rows</code> is empty.</p>
+<p>The file has the owner map's columns but <code>layer_uuid</code>, which a read sets to the layer it reads, and the <code>BIGINT</code> column <code>_shape</code>.
+Bit <code>i</code> of <code>_shape</code> is set where the row's attribute is over the <code>i</code>-th dimension of the layer's schema.
+The rows are grouped by <code>_shape</code>, in ascending order, and the distinct values of <code>_shape</code> are the list in the manifest.
+A manifest listing a <code>_shape</code> that is not the shape of an attribute file it lists, or listing them out of order, is refused when read.</p>
 <h2 id="labels">Labels<a class="headerlink" href="#labels" title="Permanent link">&para;</a></h2>
 <p>An axis file has one row per label, so two entities named <code>north</code> collide whatever their <code>ctype</code>.
-A bus named <code>north</code> is a label of another dim and collides with neither.</p>
+A bus named <code>north</code> is a label of another dimension and collides with neither.</p>
 <p>An attribute row has the label alone, so a <code>p_nom</code> row has an <code>entity</code> column and no <code>ctype</code> column.
 datarecord never renames a label: a <a href="../tools/">tool</a> reports a collision in a framework's names.</p>
 <h2 id="resolved"><code>resolved/</code><a class="headerlink" href="#resolved" title="Permanent link">&para;</a></h2>
@@ -1756,12 +1813,12 @@ No manifest lists these files, a read opens each by name, and a layer's data sta
 </thead>
 <tbody>
 <tr>
-<td><code>dim_owners.parquet</code></td>
-<td>a row <code>(dim, layer_uuid, has_dead)</code> per axis: the layer whose <code>dims/&lt;dim&gt;.parquet</code> is the revision's axis</td>
+<td><code>dimension_owners.parquet</code></td>
+<td>a row <code>(dimension, layer_uuid, has_dead)</code> per axis: the layer whose <code>dimensions/&lt;dim&gt;.parquet</code> is the revision's axis</td>
 </tr>
 <tr>
 <td><code>dead/&lt;dim&gt;.parquet</code></td>
-<td>the removed labels of a dim, written only where <code>has_dead</code> is true</td>
+<td>the removed labels of a dimension, written only where <code>has_dead</code> is true</td>
 </tr>
 <tr>
 <td><code>owner_map.parquet</code></td>
@@ -1770,9 +1827,12 @@ No manifest lists these files, a read opens each by name, and a layer's data sta
 </tbody>
 </table>
 <p>A revision is materialised once <code>owner_map.parquet</code> exists.
-<code>dim_owners.parquet</code> points into ancestor layers by UUID rather than copying their files.</p>
+Beside the owner map's columns, <code>owner_map.parquet</code> has the <code>BIGINT</code> column <code>_shape</code>.
+Bit <code>i</code> of <code>_shape</code> is set where the row's attribute is over the <code>i</code>-th dimension of the revision's schema.
+The rows are grouped by <code>_shape</code>, in ascending order, so a fold that reads one shape skips the row groups of the others.
+<code>dimension_owners.parquet</code> points into ancestor layers by UUID rather than copying their files.</p>
 <h2 id="registered-views">Registered views<a class="headerlink" href="#registered-views" title="Permanent link">&para;</a></h2>
-<p><code>record.register(name)</code> creates the DuckDB schema <code>name</code> in <a href="../store/#the-database">the workspace's database</a>, <code>datarecord</code> by default, with a view per dim, property subject and attribute.
+<p><code>record.register(name)</code> creates the DuckDB schema <code>name</code> in <a href="../store/#the-database">the workspace's database</a>, <code>datarecord</code> by default, with a view per dimension, property subject and attribute, and a view of the owner map.
 A SQL client of that database reads the record through these views.</p>
 <table>
 <thead>
@@ -1784,13 +1844,13 @@ A SQL client of that database reads the record through these views.</p>
 </thead>
 <tbody>
 <tr>
-<td><code>datarecord.name.dims.&lt;dim&gt;</code></td>
-<td>dim, a dim with <code>one_of</code> included</td>
-<td><code>record.dims[dim]</code></td>
+<td><code>datarecord.name.dimensions.&lt;dim&gt;</code></td>
+<td>dimension, a dimension with <code>one_of</code> included</td>
+<td><code>record.dimensions[dim]</code></td>
 </tr>
 <tr>
 <td><code>datarecord.name.properties.&lt;dim&gt;</code></td>
-<td>dim that declares properties</td>
+<td>dimension that declares properties</td>
 <td><code>record.properties[dim]</code></td>
 </tr>
 <tr>
@@ -1798,12 +1858,42 @@ A SQL client of that database reads the record through these views.</p>
 <td>attribute the schema declares</td>
 <td><code>record.attributes[a]</code>, empty with no rows</td>
 </tr>
+<tr>
+<td><code>datarecord.name.owner_map</code></td>
+<td>record</td>
+<td>the <a href="#the-owner_map-view">owner map</a></td>
+</tr>
 </tbody>
 </table>
-<p>The views are the record's relations unsettled: a NULL coordinate means every label, two rows may cover one point and no default applies.
+<p>The views are the record's relations unsettled: a NULL in a dimension's column means every label, two rows may cover one coordinate and no default applies.
 Over a <code>WorkingRecord</code>, a view returns each edit once <code>set</code>, <code>add</code> or <code>remove</code> returns.
-A view reads the tables of its own database under any name a client attaches it as: a client that attaches the workspace's file as <code>r</code> reads <code>r.name.dims.&lt;dim&gt;</code>, and never a table of its own with the same name.</p>
-<p>Run <code>USE datarecord</code> once to write short names, <code>name.dims.bus</code> and <code>registered</code>.
+A view reads the tables of its own database under any name a client attaches it as: a client that attaches the workspace's file as <code>r</code> reads <code>r.name.dimensions.&lt;dim&gt;</code>, and never a table of its own with the same name.</p>
+<p>DuckDB applies a filter on a dimension in <a href="../layers/#partial"><code>partial</code></a> of an attribute view, such as <code>WHERE entity = 'gas'</code>, in its scan of the layer files.
+It then reads only the row groups whose statistics admit the label, and those that hold a NULL in that dimension or in one the view takes ahead of it.
+The view takes the dimensions in order of how many more of the attribute's map rows set them than leave them NULL, a tie in declaration order.
+Over a <code>WorkingRecord</code> it counts the frozen layers' map rows, and takes the declaration order where they do not hold the attribute.
+The order changes how many row groups a filter reads, never the rows a view returns.
+Parquet has no statistics for a whole struct column, so a filter on a multi-dimension skips row groups only where it tests a field.
+<code>connection.entity = 'gas'</code> skips them, and <code>connection = {'entity': 'gas', 'bus': 'north'}</code> reads every row group that holds a tuple.
+Where <code>snapshot</code> is a multi-dimension over <code>period</code> and <code>timestep</code>, filter on <code>snapshot.period IS NULL</code> rather than <code>snapshot IS NULL</code> for the rows that leave it NULL.
+Both return the same rows, since datarecord refuses a tuple with a NULL field, and only the first skips row groups.</p>
+<h3 id="the-owner_map-view">The <code>owner_map</code> view<a class="headerlink" href="#the-owner_map-view" title="Permanent link">&para;</a></h3>
+<p><code>datarecord.name.owner_map</code> is the record's <a href="../resolution/#the-owner-map">owner map</a>, with the columns and types that the map has.
+It lists each map row of each attribute, the layer the map assigns it to, and whether the layer's rows set each dimension (<code>varies</code>) or leave it NULL (<code>broadcast</code>).
+It contains no values.
+So a SQL client finds which attributes have rows for a label, and computes an attribute's <a href="../record/#flags">flags</a>, without reading a value:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">SELECT</span><span class="w"> </span><span class="n">attribute</span><span class="p">,</span><span class="w"> </span><span class="n">bool_or</span><span class="p">(</span><span class="n">varies</span><span class="p">.</span><span class="n">snapshot</span><span class="p">),</span><span class="w"> </span><span class="n">bool_or</span><span class="p">(</span><span class="n">broadcast</span><span class="p">.</span><span class="n">snapshot</span><span class="p">)</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">FROM</span><span class="w"> </span><span class="n">datarecord</span><span class="p">.</span><span class="n">name</span><span class="p">.</span><span class="n">owner_map</span>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="k">GROUP</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">attribute</span>
+</code></pre></div>
+<p>The query returns, per attribute, whether <code>snapshot</code> is in the <code>varies</code> and the <code>broadcast</code> of <code>record.flags()[attribute]</code>.</p>
+<p>Over a <code>WorkingRecord</code>, the view returns each edit once <code>set</code>, <code>add</code> or <code>remove</code> returns.
+A map row that the edits stage has the <code>WorkingRecord</code>'s own layer id as its <code>layer_uuid</code>, the same for every edit until the record closes.
+<code>store.commit</code> writes the edits as a new layer with an id of its own, so a committed map row has a <code>layer_uuid</code> that differs from the staged one.</p>
+<p>DuckDB applies a filter on <code>attribute</code> or on a dimension's column of the view, such as <code>WHERE attribute = 'p_nom'</code> or <code>WHERE entity = 'gas'</code>, in its scan of the map.
+Over a <code>WorkingRecord</code>, a filter on <code>attribute</code> restricts the read to the map rows and edits of that attribute.
+A filter on a dimension there reaches every scan of the base's map but one per shape over two or more dimensions in <code>partial</code>, as the fold reads all of that shape's map rows to find those that <a href="../resolution/#crossing-rows">cross</a> an edit.</p>
+<p>Run <code>USE datarecord</code> once to write short names, <code>name.dimensions.bus</code> and <code>registered</code>.
 <code>USE</code> holds only for the connection or cursor that runs it, and a client that attached the file under another name runs <code>USE</code> with that name.
 datarecord never runs <code>USE</code> on its own cursors.</p>
 <p><code>register</code> raises if <code>name</code> exists in the workspace's database, or if another cursor registers it at the same time.

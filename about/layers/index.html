@@ -948,10 +948,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-the-owner-map-contains-keys-as-written" class="md-nav__link">
+  <a href="#why-the-owner-map-contains-map-rows-as-written" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why the owner map contains keys as written
+        Why the owner map contains map rows as written
       
     </span>
   </a>
@@ -1202,10 +1202,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#why-the-owner-map-contains-keys-as-written" class="md-nav__link">
+  <a href="#why-the-owner-map-contains-map-rows-as-written" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Why the owner map contains keys as written
+        Why the owner map contains map rows as written
       
     </span>
   </a>
@@ -1264,22 +1264,22 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>A layer's data is written once, and the rules for overriding values, restating axes and removing labels each follow from that choice.</p>
 <h2 id="why-a-layer-is-written-once">Why a layer is written once<a class="headerlink" href="#why-a-layer-is-written-once" title="Permanent link">&para;</a></h2>
 <p>A layer is the data one revision adds on top of its parent, and revisions form a tree (<a href="../../reference/layers/">layers</a>). Once <code>store.commit</code> writes a layer, nothing changes its data. A <code>WorkingRecord</code> stages edits until a commit writes them as a new child.</p>
-<p>The rejected alternative is a layer edited in place. Its descendants would then read a base that can shift under them, so branching from it would be unsafe. Every cache derived from it would also need invalidating on each edit.</p>
-<p>With an immutable base, both problems go. Any revision can be a parent, so a scenario branches from any revision without a copy. A materialised revision has its owner map and resolved axes written under <code>resolved/</code>. That cache derives only from immutable layers, so it never goes stale, and a read returns the same rows with or without it.</p>
+<p>The rejected alternative is a layer edited in place. Its descendants would then read a base that can shift under them, so branching from it would be unsafe. Every materialised revision below it would also need its resolved files rewritten on each edit.</p>
+<p>With an immutable base, both problems go. Any revision can be a parent, so a scenario branches from any revision without a copy. A materialised revision has its owner map and resolved axes written under <code>resolved/</code>. Those files derive only from immutable layers, so they never go stale, and a read returns the same rows with or without them.</p>
 <p>The cost is depth. Every change is a new layer, and a read folds the layers from the root or from the nearest materialised ancestor. In a fresh workspace that fold grows with the depth of the tree until you materialise (<a href="../../howto/branch-and-materialise/">branch and materialise</a>).</p>
 <h2 id="why-partial-sits-on-the-axis">Why <code>partial</code> sits on the axis<a class="headerlink" href="#why-partial-sits-on-the-axis" title="Permanent link">&para;</a></h2>
-<p><code>partial</code> is the set of dims along which a layer overrides one value per label. Along any other dim, a layer restates the whole extent of each key it touches. With <code>snapshot</code> outside <code>partial</code>, changing one hour of a generator's <code>p_max_pu</code> restates that generator's whole series.</p>
-<p>The reason lies in how a framework reads a series. A framework that stores a constant apart from a series, as PyPSA does, cannot receive half a series. If a layer could patch one snapshot, a read would mix the layer's values at the snapshots it wrote with its parent's at the rest. That holds for every attribute over <code>snapshot</code>, so the rule belongs to the dim and not to each attribute.</p>
-<p><code>partial</code> and an attribute's <code>dims</code> set different things. <code>dims</code> states which dims an attribute varies over, so <code>p_nom_opt</code>, a capacity an optimiser fixes before the scenario is known, is declared over <code>entity</code> alone. <code>partial</code> states how finely a layer may patch. A flag on the dim alone would make every attribute vary per scenario, the first-stage decision included. Keeping the two apart lets the writer refuse a <code>p_nom_opt</code> row that sets a scenario.</p>
-<p>The rejected alternatives are <code>partial</code> per attribute, and every dim in <code>partial</code>. Per attribute, the fold's key would vary by attribute, where the fold needs one fixed key. Each dim in <code>partial</code> widens that key, and every read of every attribute scans the wider key. A dim left out adds work once per edit, bounded by the length of its axis. The PyPSA tool puts <code>entity</code>, <code>bus</code>, <code>port</code>, <code>scenario</code> and <code>connection</code> in <code>partial</code>, and leaves <code>snapshot</code> and <code>carrier</code> out.</p>
+<p><code>partial</code> is the set of dimensions along which a layer overrides one value per label. Along any other dimension, a layer restates the whole extent of each map row it touches. With <code>snapshot</code> outside <code>partial</code>, changing one hour of a generator's <code>p_max_pu</code> restates that generator's whole series.</p>
+<p>The reason lies in how a framework reads a series. A framework that stores a constant apart from a series, as PyPSA does, cannot receive half a series. If a layer could patch one snapshot, a read would mix the layer's values at the snapshots it wrote with its parent's at the rest. That holds for every attribute over <code>snapshot</code>, so the rule belongs to the dimension and not to each attribute.</p>
+<p><code>partial</code> and an attribute's <code>dims</code> set different things. <code>dims</code> states which dimensions an attribute varies over, so <code>p_nom_opt</code>, a capacity an optimiser fixes before the scenario is known, is declared over <code>entity</code> alone. <code>partial</code> states how finely a layer may patch. A flag on the dimension alone would make every attribute vary per scenario, the first-stage decision included. Keeping the two apart lets the writer refuse a <code>p_nom_opt</code> row that sets a scenario.</p>
+<p>The rejected alternatives are <code>partial</code> per attribute, and every dimension in <code>partial</code>. Per attribute, the owner map's index would vary by attribute, where the fold needs one fixed index. Each dimension in <code>partial</code> widens that index, and every read of every attribute scans the wider index. A dimension left out adds work once per edit, bounded by the length of its axis. The PyPSA tool puts <code>entity</code>, <code>bus</code>, <code>port</code>, <code>scenario</code> and <code>connection</code> in <code>partial</code>, and leaves <code>snapshot</code> and <code>carrier</code> out.</p>
 <h2 id="why-a-layer-restates-an-axis-whole">Why a layer restates an axis whole<a class="headerlink" href="#why-a-layer-restates-an-axis-whole" title="Permanent link">&para;</a></h2>
-<p>A layer that changes an axis writes its file whole: every label, with its properties, in order. A revision's axis is the deepest file for that dim on its path from the root.</p>
-<p>The rejected alternative patches an axis label by label, with a tombstone row for each removed label. No single file then states which labels an axis has, or in which order. The order matters, because a tool builds its framework's index in axis order, such as the PyPSA tool's snapshots and buses. Every cache and staged fold would derive that order from the history, and a patched axis would need an owner map of its own.</p>
-<p>With one file per axis, a cache or a staged fold always lists the same labels, in the same order, as a full fold. The writer refuses a restatement that reorders its parent's labels, so an edit reorders no index.</p>
+<p>A layer that changes an axis writes its file whole: every label, with its properties, in order. A revision's axis is the deepest file for that dimension on its path from the root.</p>
+<p>The rejected alternative patches an axis label by label, with a tombstone row for each removed label. No single file then states which labels an axis has, or in which order. The order matters, because a tool builds its framework's index in axis order, such as the PyPSA tool's snapshots and buses. Every materialised revision and staged fold would derive that order from the history, and a patched axis would need an owner map of its own.</p>
+<p>With one file per axis, a materialised revision or a staged fold always lists the same labels, in the same order, as a full fold. The writer refuses a restatement that reorders its parent's labels, so an edit reorders no index.</p>
 <p>The cost is storage that grows with the axis and not with the edit. On a record of 60,000 entities and 150,000 connections, a one-entity property edit wrote 0.30 MB where a label patch wrote 0.8 kB. An axis is small beside the series over it, so the cost stays small beside a solve's results.</p>
-<h2 id="why-the-owner-map-contains-keys-as-written">Why the owner map contains keys as written<a class="headerlink" href="#why-the-owner-map-contains-keys-as-written" title="Permanent link">&para;</a></h2>
-<p>The owner map is the fold's result: per attribute, each key a layer wrote and the layer the map assigns it to (<a href="../../reference/resolution/">resolution</a>). datarecord keeps each key as the layer wrote it, NULL included. Where rows of two layers cross, the fold adds one overlap row that sets the labels of both. The map assigns that row to the deeper layer.</p>
-<p>The rejected alternative expands each NULL to the labels of its dim when the fold runs. The map then grows with those labels, so one broadcast over 60,000 entities and two scenarios takes 120,000 rows. A materialised map also contains the expansion, so it has no row for a label a child adds later:</p>
+<h2 id="why-the-owner-map-contains-map-rows-as-written">Why the owner map contains map rows as written<a class="headerlink" href="#why-the-owner-map-contains-map-rows-as-written" title="Permanent link">&para;</a></h2>
+<p>The owner map is the fold's result: per attribute, each map row a layer wrote and the layer the map assigns it to (<a href="../../reference/resolution/">resolution</a>). datarecord keeps each map row as the layer wrote it, NULL included. Where rows of two layers cross, the fold adds one overlap row that sets the labels of both. The map assigns that row to the deeper layer.</p>
+<p>The rejected alternative expands each NULL to the labels of its dimension when the fold runs. The map then grows with those labels, so one broadcast over 60,000 entities and two scenarios takes 120,000 rows. A materialised map also contains the expansion, so it has no row for a label a child adds later:</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
@@ -1287,7 +1287,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 290" width="780" height="290" style="max-width: 100%; height: auto" role="img" aria-labelledby="alk-t alk-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="alk-t">An owner map that expands a broadcast against one that keeps it as written</title>
-  <desc id="alk-d">The parent layer writes p_nom with entity NULL and value 50. The child layer restates the entity axis as gas, wind and solar, adding solar. An owner map that expands the parent's broadcast contains one row per label that the broadcast applied to when it was folded, gas and wind, both assigned to the parent, and has no row for solar, which came after that fold. An owner map that keeps the key as written contains one row, entity NULL, assigned to the parent, and NULL means gas, wind and solar.</desc>
+  <desc id="alk-d">The parent layer writes p_nom with entity NULL and value 50. The child layer restates the entity axis as gas, wind and solar, adding solar. An owner map that expands the parent's broadcast contains one row per label that the broadcast applied to when it was folded, gas and wind, both assigned to the parent, and has no row for solar, which came after that fold. An owner map that keeps the map row as written contains one row, entity NULL, assigned to the parent, and NULL means gas, wind and solar.</desc>
   <defs>
     <marker id="alk-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -1343,7 +1343,7 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="236" y="57" font-size="12" font-weight="bold">fold</text>
     <text x="268" y="57" font-size="12" fill-opacity="0.7">one row per label</text>
     <text x="312" y="185" font-size="12" font-weight="bold">fold</text>
-    <text x="344" y="185" font-size="12" fill-opacity="0.7">key as written</text>
+    <text x="344" y="185" font-size="12" fill-opacity="0.7">map row as written</text>
     <text x="36" y="269" font-size="12">parent layer</text>
     <text x="156" y="269" font-size="12">child layer</text>
     <text x="276" y="269" font-size="12">owner map</text>
@@ -1372,16 +1372,16 @@ SPDX-License-Identifier: CC-BY-4.0
 
 </figure>
 
-<p>Kept as written, the parent's NULL means every label the axis has at the revision you read, <code>solar</code> included. A label added below a materialised revision, or staged in a <code>WorkingRecord</code>, gets the broadcast value as it would without the cache.</p>
+<p>Kept as written, the parent's NULL means every label the axis has at the revision you read, <code>solar</code> included. A label added below a materialised revision, or staged in a <code>WorkingRecord</code>, gets the broadcast value as it would if the revision were not materialised.</p>
 <p>A second alternative keeps a depth on each row and works out at every read which layer's row applies. Every read would then repeat work the fold does once, and a reader would have to handle layers.</p>
-<p>On unusual trees, this design reads more slowly than expansion would. Where many layers override one attribute along ever different sets of dims, the crossing pairs multiply. In a benchmark of 32 layers that mostly cross each other, the first read took 1.5 times as long as with expansion. A workflow rarely builds such a tree.</p>
+<p>On unusual trees, this design reads more slowly than expansion would. Where many layers override one attribute along ever different sets of dimensions, the crossing pairs multiply. In a benchmark of 32 layers that mostly cross each other, the first read took 1.5 times as long as with expansion. A workflow rarely builds such a tree.</p>
 <h2 id="why-removing-a-label-is-a-restatement">Why removing a label is a restatement<a class="headerlink" href="#why-removing-a-label-is-a-restatement" title="Permanent link">&para;</a></h2>
-<p>A layer removes a label by restating its axis without it. Removing a label also removes its values on every attribute and every multi-dim tuple that sets it (<a href="../../reference/layers/">layers</a>).</p>
-<p>The rejected alternatives add a second mechanism: a tombstone row per removed label, or a list of removals in the manifest. The fold would have to apply it as well as the restatement. With removal as a restatement, datarecord reads every axis by one rule: the deepest file for its dim. The labels a layer removes are its parent's axis minus its own file.</p>
+<p>A layer removes a label by restating its axis without it. Removing a label also removes its values on every attribute and every multi-dimension tuple that sets it (<a href="../../reference/layers/">layers</a>).</p>
+<p>The rejected alternatives add a second mechanism: a tombstone row per removed label, or a list of removals in the manifest. The fold would have to apply it as well as the restatement. With removal as a restatement, datarecord reads every axis by one rule: the deepest file for its dimension. The labels a layer removes are its parent's axis minus its own file.</p>
 <p>The writer refuses a layer whose values, tuples or properties refer to a removed label. <code>remove</code> refuses a label that a property still refers to. Every row a read returns sets only labels the record has, so a reader that joins a value to its axis finds no orphan.</p>
-<p>Along a dim in <code>partial</code>, a label added again after its removal gets back none of the values written for it below the removal. Under PyPSA's <code>partial</code>, a new bus that takes an old bus's name inherits neither the old bus's carrier nor its series. A broadcast value still applies to it, because a NULL means every label the axis has. Sibling branches keep a label that one branch removes.</p>
+<p>Along a dimension in <code>partial</code>, a label added again after its removal gets back none of the values written for it below the removal. Under PyPSA's <code>partial</code>, a new bus that takes an old bus's name inherits neither the old bus's carrier nor its series. A broadcast value still applies to it, because a NULL means every label the axis has. Sibling branches keep a label that one branch removes.</p>
 <h2 id="what-you-can-now-judge">What you can now judge<a class="headerlink" href="#what-you-can-now-judge" title="Permanent link">&para;</a></h2>
-<p>You can now judge which dims to put in <code>partial</code>, what an axis edit costs and when to materialise a deep tree. <a href="../../howto/edit-a-record/">Edit a record</a> shows the edits that write a layer.</p>
+<p>You can now judge which dimensions to put in <code>partial</code>, what an axis edit costs and when to materialise a deep tree. <a href="../../howto/edit-a-record/">Edit a record</a> shows the edits that write a layer.</p>
 
 
 

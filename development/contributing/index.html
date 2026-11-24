@@ -1127,6 +1127,8 @@
       
         
       
+        
+      
     
     
     
@@ -1433,7 +1435,7 @@ no decision, number or rejected idea changes.</p>
 questions page. <code>pixi run lint</code> fails on such a link.</p>
 <h2 id="architecture-in-one-paragraph">Architecture in one paragraph<a class="headerlink" href="#architecture-in-one-paragraph" title="Permanent link">&para;</a></h2>
 <p>datarecord stores dimensioned attribute data with a declared schema. A record
-has entities (labels of the <code>entity</code> dim, unique record-wide) and multi-dims over
+has entities (labels of the <code>entity</code> dimension, unique record-wide) and multi-dimensions over
 them, such as <code>connection</code> over <code>(entity, bus)</code>. It also has attribute values
 over both, and the axes those values vary along. The <code>RecordLike</code> protocol defines a record by
 the relations it exposes, whatever the storage, and a parquet directory is its

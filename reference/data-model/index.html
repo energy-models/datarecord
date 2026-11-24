@@ -792,22 +792,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#dims-and-labels" class="md-nav__link">
+  <a href="#dimensions-and-labels" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dims and labels
+        Dimensions and labels
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Dims and labels">
+    <nav class="md-nav" aria-label="Dimensions and labels">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#a-dim-with-one_of" class="md-nav__link">
+  <a href="#a-dimension-with-one_of" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A dim with one_of
+        A dimension with one_of
       
     </span>
   </a>
@@ -820,10 +820,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#multi-dims" class="md-nav__link">
+  <a href="#multi-dimensions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Multi-dims
+        Multi-dimensions
       
     </span>
   </a>
@@ -876,10 +876,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#a-multi-dims-column" class="md-nav__link">
+  <a href="#a-multi-dimensions-column" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A multi-dim's column
+        A multi-dimension's column
       
     </span>
   </a>
@@ -1450,22 +1450,22 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#dims-and-labels" class="md-nav__link">
+  <a href="#dimensions-and-labels" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Dims and labels
+        Dimensions and labels
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Dims and labels">
+    <nav class="md-nav" aria-label="Dimensions and labels">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#a-dim-with-one_of" class="md-nav__link">
+  <a href="#a-dimension-with-one_of" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A dim with one_of
+        A dimension with one_of
       
     </span>
   </a>
@@ -1478,10 +1478,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#multi-dims" class="md-nav__link">
+  <a href="#multi-dimensions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Multi-dims
+        Multi-dimensions
       
     </span>
   </a>
@@ -1534,10 +1534,10 @@
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#a-multi-dims-column" class="md-nav__link">
+  <a href="#a-multi-dimensions-column" class="md-nav__link">
     <span class="md-ellipsis">
       
-        A multi-dim's column
+        A multi-dimension's column
       
     </span>
   </a>
@@ -1587,17 +1587,17 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="the-data-model">The data model<a class="headerlink" href="#the-data-model" title="Permanent link">&para;</a></h1>
-<p>This page describes what a record contains: dims and their labels, multi-dims, properties and categories, attributes, and the broadcast rule for an attribute's rows.
-A <strong>record</strong> is the object you hold: dims, properties and attributes under one <a href="../schema/">schema</a>, exposed as DuckDB relations through <a href="../record/"><code>RecordLike</code></a>.
+<p>This page describes what a record contains: dimensions and their labels, multi-dimensions, properties and categories, attributes, and the broadcast rule for an attribute's rows.
+A <strong>record</strong> is the object you hold: dimensions, properties and attributes under one <a href="../schema/">schema</a>, exposed as DuckDB relations through <a href="../record/"><code>RecordLike</code></a>.
 <code>Record</code>, <code>WorkingRecord</code> and <code>Selection</code> are records.
 The reasons for each choice below are on the <a href="../../about/data-model/">about page</a>.</p>
 <p>The examples read one record of the running example, whose schema the <a href="../schema/">schema reference</a> declares.
 It has the entities <code>wind</code>, <code>gas</code> and <code>dc</code>, the buses <code>north</code> and <code>south</code>, and the snapshots 0, 1 and 2.</p>
-<h2 id="dims-and-labels">Dims and labels<a class="headerlink" href="#dims-and-labels" title="Permanent link">&para;</a></h2>
-<p>A <strong>dim</strong> is a set of unique labels that values vary along, declared by a <code>Dimension</code> under <code>dimensions</code>.
-A <strong>label</strong> is one value of a dim, unique within it, typed by the dim's <code>dtype</code>.
-An <strong>axis</strong> is the labels one dim has in one record, in order, which <code>record.dims[dim]</code> returns:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<h2 id="dimensions-and-labels">Dimensions and labels<a class="headerlink" href="#dimensions-and-labels" title="Permanent link">&para;</a></h2>
+<p>A <strong>dimension</strong> is a set of unique labels that values vary along, declared by a <code>Dimension</code> under <code>dimensions</code>.
+A <strong>label</strong> is one value of a dimension, unique within it, typed by the dimension's <code>dtype</code>.
+An <strong>axis</strong> is the labels one dimension has in one record, in order, which <code>record.dimensions[dim]</code> returns:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>[('wind',), ('gas',), ('dc',)]
 </code></pre></div>
@@ -1605,65 +1605,65 @@ An <strong>axis</strong> is the labels one dim has in one record, in order, whic
 <p>A label exists because its axis has a row for it, whether or not any attribute row contains it.
 The schema declares no order.
 A record's data is the data each of its revisions adds (a <a href="../layers/">layer</a>), and <a href="../resolution/#axes">resolution</a> states which layer's file sets the axis order.</p>
-<h3 id="a-dim-with-one_of">A dim with <code>one_of</code><a class="headerlink" href="#a-dim-with-one_of" title="Permanent link">&para;</a></h3>
-<p>A dim with <code>one_of</code> has exactly the labels its list declares, in list order.
-Its axis comes from the schema and from no file, so <code>record.dims["ctype"]</code> returns <code>Generator</code>, <code>Link</code> and <code>Load</code> in every record of the schema.
+<h3 id="a-dimension-with-one_of">A dimension with <code>one_of</code><a class="headerlink" href="#a-dimension-with-one_of" title="Permanent link">&para;</a></h3>
+<p>A dimension with <code>one_of</code> has exactly the labels its list declares, in list order.
+Its axis comes from the schema and from no file, so <code>record.dimensions["ctype"]</code> returns <code>Generator</code>, <code>Link</code> and <code>Load</code> in every record of the schema.
 Its column is an <code>ENUM</code> of the labels.
-A dim with <code>one_of</code> has no properties, and <a href="../editing/#add-and-remove"><code>add</code> and <code>remove</code></a> refuse it: a new label is a schema change.
-Otherwise it is a dim like any other, which an attribute may range over and a property may refer to.</p>
-<h2 id="multi-dims">Multi-dims<a class="headerlink" href="#multi-dims" title="Permanent link">&para;</a></h2>
-<p>A <strong>multi-dim</strong> is a dim declared with <code>over</code>, whose labels are tuples of other dims' labels and list the combinations that exist.
+A dimension with <code>one_of</code> has no properties, and <a href="../editing/#add-and-remove"><code>add</code> and <code>remove</code></a> refuse it: a new label is a schema change.
+Otherwise it is a dimension like any other, which an attribute may range over and a property may refer to.</p>
+<h2 id="multi-dimensions">Multi-dimensions<a class="headerlink" href="#multi-dimensions" title="Permanent link">&para;</a></h2>
+<p>A <strong>multi-dimension</strong> is a dimension declared with <code>over</code>, whose labels are tuples of other dimensions' labels and list the combinations that exist.
 <code>connection</code> over <code>(entity, bus)</code> lists which entity attaches to which bus:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dims</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">record</span><span class="o">.</span><span class="n">dimensions</span><span class="p">[</span><span class="s2">"connection"</span><span class="p">]</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>[({'entity': 'wind', 'bus': 'north'},), ({'entity': 'gas', 'bus': 'south'},),
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a> ({'entity': 'dc', 'bus': 'north'},), ({'entity': 'dc', 'bus': 'south'},)]
 </code></pre></div>
 <p>The link <code>dc</code> attaches to both buses, and each generator to one.</p>
-<p>A multi-dim is one struct column named for it, in its axis and in every attribute row over it.
-A <strong>coordinate</strong> is one named position in a key: a column of an attribute's rows, or a field of a multi-dim's tuple.
-The struct has one field per coordinate, in <code>over</code> order, each typed as the dim it draws on.
-Two coordinates may draw on one dim, such as <code>from</code> and <code>to</code> of a corridor between two buses.
-Each coordinate draws on a dim that is no multi-dim.</p>
+<p>A multi-dimension is one struct column named for it, in its axis and in every attribute row over it.
+A <strong>field</strong> is one named part of a dimension's label: a multi-dimension has one per entry of <code>over</code>, such as <code>entity</code> and <code>bus</code> of <code>connection</code>, and a flat dimension has one, named for itself.
+The struct has one field per entry of <code>over</code>, in <code>over</code> order, each typed as the dimension it draws on.
+Two fields may draw on one dimension, such as <code>from</code> and <code>to</code> of a corridor between two buses.
+Each field draws on a dimension that is no multi-dimension.</p>
 <p>The struct's value is a whole tuple or NULL.
 A struct with some fields NULL, such as <code>{entity: dc, bus: NULL}</code>, matches no tuple, and <code>set</code>, <code>add</code> and <code>store.commit</code> refuse it.</p>
-<p><code>connection.bus</code> is the <code>bus</code> coordinate wherever a dotted <code>subject.name</code> stands.
-<code>Schema.resolve("connection.bus")</code> returns <code>connection</code> and the dim <code>bus</code> that the coordinate draws on.
-A coordinate is part of the key and has no value of its own, so datarecord refuses <code>set("connection.bus", ...)</code>.
+<p><code>connection.bus</code> is the <code>bus</code> field wherever a dotted <code>subject.name</code> stands.
+<code>Schema.resolve("connection.bus")</code> returns <code>connection</code> and the dimension <code>bus</code> that the field draws on.
+A field is part of the label and has no value of its own, so datarecord refuses <code>set("connection.bus", ...)</code>.
 A tuple changes only through a <code>remove</code> of the old tuple and an <code>add</code> of the new one.</p>
 <p>Removing a label that a tuple contains removes the tuple and its values (<a href="../layers/">layers</a>).
-For a multi-dim with no tuples, <code>record.dims</code> returns an empty relation.</p>
+For a multi-dimension with no tuples, <code>record.dimensions</code> returns an empty relation.</p>
 <h2 id="properties">Properties<a class="headerlink" href="#properties" title="Permanent link">&para;</a></h2>
-<p>A <strong>property</strong> is a value per label of its subject dim, declared by a <code>PropertySpec</code> under <code>properties</code>.
-It is stored as a column of that dim's axis file, so it has no <code>dims</code> of its own.
+<p>A <strong>property</strong> is a value per label of its subject dimension, declared by a <code>PropertySpec</code> under <code>properties</code>.
+It is stored as a column of that dimension's axis file, so it has no <code>dims</code> of its own.
 You name it <code>subject.name</code>, such as <code>entity.carrier</code> or <code>bus.carrier</code>, and a plain name always means an attribute.
-<code>record.properties[subject]</code> returns the subject's key and every property declared for it:</p>
+<code>record.properties[subject]</code> returns the subject's column and every property declared for it:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"entity"</span><span class="p">]</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>[('wind', 'Generator', 'wind'), ('gas', 'Generator', 'gas'), ('dc', 'Link', None)]
 </code></pre></div>
 <p>The columns are <code>entity</code>, <code>ctype</code> and <code>carrier</code>, and <code>dc</code> has no carrier because no layer wrote one.</p>
 <p>A property's name belongs to its subject.
-<code>bus.x</code> and an attribute <code>x</code> are two names, and <code>carrier</code> may be a property of <code>entity</code>, a property of <code>bus</code> and a dim at once.
-A multi-dim's tuples are its labels, so a multi-dim may have properties too.</p>
-<p>A property may refer to a dim with <code>one_of</code> in place of <code>dtype</code>, and its values are then that dim's labels.
+<code>bus.x</code> and an attribute <code>x</code> are two names, and <code>carrier</code> may be a property of <code>entity</code>, a property of <code>bus</code> and a dimension at once.
+A multi-dimension's tuples are its labels, so a multi-dimension may have properties too.</p>
+<p>A property may refer to a dimension with <code>one_of</code> in place of <code>dtype</code>, and its values are then that dimension's labels.
 A value that is not NULL must be a label the record has.
 <a href="../editing/#validation"><code>set</code> and <code>add</code></a> refuse a label the axis lacks, and <code>remove</code> refuses a label that is still a property's value.
 A NULL value refers to no label.
 A chain such as bus to state to country is two properties, <code>bus.state</code> and <code>state.country</code>, which a reader joins.</p>
-<p>A property has one value per label and does not vary along another dim.
-A mapping that varies, such as a bus's country per scenario, is a multi-dim over <code>(bus, scenario)</code> with a property <code>country</code>.</p>
+<p>A property has one value per label and does not vary along another dimension.
+A mapping that varies, such as a bus's country per scenario, is a multi-dimension over <code>(bus, scenario)</code> with a property <code>country</code>.</p>
 <h2 id="categories">Categories<a class="headerlink" href="#categories" title="Permanent link">&para;</a></h2>
 <p>A <strong>category</strong> is a label's value of a categorising property.
 A property categorises its subject when two conditions hold:</p>
 <ul>
-<li>The subject is in <a href="../schema/#partial"><code>partial</code></a>, the dims along which a layer overrides one value per label, a multi-dim among them.</li>
-<li>The property refers to a dim with <code>one_of</code>.</li>
+<li>The subject is in <a href="../schema/#partial"><code>partial</code></a>, the dimensions along which a layer overrides one value per label, a multi-dimension among them.</li>
+<li>The property refers to a dimension with <code>one_of</code>.</li>
 </ul>
 <p><code>entity.ctype</code> refers to <code>ctype</code>, which has <code>one_of</code>, and <code>entity</code> is in <code>partial</code>, so <code>ctype</code> categorises <code>entity</code>.
 <code>entity.carrier</code> refers to <code>carrier</code>, which has no <code>one_of</code>, so it categorises nothing.
 <code>Schema.categorizing("entity")</code> lists <code>("ctype",)</code>, the categorising properties in declaration order.</p>
-<p>A category selects labels and keys a default:</p>
+<p>A category selects labels and picks a default:</p>
 <ul>
 <li><code>flags(ctype="Generator")</code>, a <code>set</code> keyword and a <code>select</code> keyword each apply to the labels with that category.</li>
 <li><code>default_by</code> keyed <code>entity.ctype</code> gives a default per category, which <code>Schema.default_for(name, ctype="Load")</code> returns.</li>
@@ -1672,26 +1672,27 @@ A property categorises its subject when two conditions hold:</p>
 A category that no label has selects no label.
 When <code>set</code> changes a label's category, the label keeps its attribute values, and a read per category uses the current category.</p>
 <h2 id="attributes">Attributes<a class="headerlink" href="#attributes" title="Permanent link">&para;</a></h2>
-<p>An <strong>attribute</strong> is the values at points over the dims its <code>AttributeSpec</code> lists, stored as long rows, one file per attribute.
-A <strong>point</strong> is one label or NULL on each coordinate of an attribute, which is where a row's value applies.
-Each row has the attribute's coordinates, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code>:</p>
+<p>An <strong>attribute</strong> is the values at coordinates over the dimensions its <code>AttributeSpec</code> lists, stored as long rows, one file per attribute.
+A <strong>coordinate</strong> is one label on each dimension of an attribute, such as <code>(wind, 1)</code>, which is where a value applies.
+Each row has a column per dimension of the attribute, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code>.
+A row's labels on those columns cover one coordinate or, with a NULL, many:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">record</span><span class="o">.</span><span class="n">attributes</span><span class="p">[</span><span class="s2">"p_max_pu"</span><span class="p">]</span><span class="o">.</span><span class="n">order</span><span class="p">(</span><span class="s2">"snapshot"</span><span class="p">)</span><span class="o">.</span><span class="n">fetchall</span><span class="p">()</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[('wind', 0, 'p_max_pu', None, 0.3), ('wind', 1, 'p_max_pu', None, 0.8),
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a> ('wind', 2, 'p_max_pu', None, 0.5), (None, None, 'p_max_pu', None, 1.0)]
 </code></pre></div>
-<p><code>wind</code> has a value per snapshot, and the last row, NULL on both coordinates, gives 1.0 at every other point.</p>
-<p>An attribute's coordinates are the entries of its <code>dims</code>, with a multi-dim as its one struct column, so <code>p_nom</code> has <code>entity</code> alone.
-An attribute <strong>is indexed over</strong> each dim its <code>dims</code> lists and each dim that a coordinate of one of its multi-dims draws on.
-<code>dims</code> sets which coordinates address a value and nothing about what the value means.
+<p><code>wind</code> has a value per snapshot, and the last row, NULL on both dimensions, gives 1.0 at every other coordinate.</p>
+<p>An attribute is stored with a column per entry of its <code>dims</code>, a multi-dimension's fields packed in one struct column, so <code>p_nom</code> is stored with <code>entity</code>.
+An attribute <strong>is indexed over</strong> each dimension its <code>dims</code> lists and each dimension that a field of one of its multi-dimensions draws on.
+<code>dims</code> sets which dimensions address a value and nothing about what the value means.
 A solve's results are attributes too, which a child layer inherits like any other row.</p>
 <p><code>breakpoint</code> is NULL in an ordinary row.
 On an attribute with <code>breakpoints</code>, a curve is one row per breakpoint, with <code>breakpoint</code> the abscissa and <code>value</code> the ordinate there.
 datarecord checks no property of the curve, such as convexity.</p>
 <h2 id="the-broadcast-rule">The broadcast rule<a class="headerlink" href="#the-broadcast-rule" title="Permanent link">&para;</a></h2>
-<p><strong>The broadcast rule</strong> is the rule that a NULL coordinate means every label of its dim.
-Where rows cover one point, datarecord keeps the row that leaves no dim NULL that another row there sets.
-The settled rows below take the rows of <code>p_max_pu</code> above and give one row per point:</p>
+<p><strong>The broadcast rule</strong> is the rule that a NULL in a dimension's column means every label of its dimension.
+Where rows cover one coordinate, datarecord keeps the row that leaves no dimension NULL that another row there sets.
+The settled rows below take the rows of <code>p_max_pu</code> above and give one row per coordinate:</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
@@ -1699,7 +1700,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="db-t db-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="db-t">Settling p_max_pu over its axes by the broadcast rule</title>
-  <desc id="db-d">The attribute p_max_pu has four rows: wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and one row with entity and snapshot NULL and value 1.0. Settled over the entity axis wind, gas, dc and the snapshot axis 0, 1, 2, the result has one row per point: wind keeps its own three values, because a row that sets entity and snapshot is more specific than the NULL row, and gas and dc take 1.0 at every snapshot from the NULL row.</desc>
+  <desc id="db-d">The attribute p_max_pu has four rows: wind at snapshots 0, 1 and 2 with 0.3, 0.8 and 0.5, and one row with entity and snapshot NULL and value 1.0. Settled over the entity axis wind, gas, dc and the snapshot axis 0, 1, 2, the result has one row per coordinate: wind keeps its own three values, because a row that sets entity and snapshot is more specific than the NULL row, and gas and dc take 1.0 at every snapshot from the NULL row.</desc>
   <defs>
     <marker id="db-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -1772,7 +1773,7 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="132" y="243">2</text>
     </g>
     <text x="476" y="22" font-weight="bold">settled rows</text>
-    <text x="586" y="22" fill-opacity="0.75">one per point</text>
+    <text x="586" y="22" fill-opacity="0.75">one per coordinate</text>
     <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
     <text x="484" y="47" font-weight="bold">entity</text>
     <text x="548" y="47" font-weight="bold">snapshot</text>
@@ -1837,20 +1838,20 @@ SPDX-License-Identifier: CC-BY-4.0
 
 </figure>
 
-<p><code>wind</code> keeps its three values, because a row that sets both coordinates is more specific than the NULL row.
+<p><code>wind</code> keeps its three values, because a row that sets both dimensions is more specific than the NULL row.
 <code>gas</code> and <code>dc</code> take 1.0 at every snapshot.</p>
-<p>A NULL coordinate means every label of its dim, labels that a later layer adds included.
+<p>A NULL means every label of its dimension, labels that a later layer adds included.
 <code>set("p_max_pu", 0.9)</code> writes one row with <code>entity</code> NULL, which applies to every entity, loads included.
 A value for some categories is one row per label: <code>set("p_max_pu", 0.9, ctype="Generator")</code> writes a row for <code>wind</code> and one for <code>gas</code>.</p>
-<p>A row that sets a dim is more specific than one that leaves that dim NULL.
-Where two rows of one layer each leave NULL a dim that the other row sets, neither is more specific.
-<code>store.commit</code> refuses such a layer, naming the attribute and the point.
+<p>A row that sets a dimension is more specific than one that leaves that dimension NULL.
+Where two rows of one layer each leave NULL a dimension that the other row sets, neither is more specific.
+<code>store.commit</code> refuses such a layer, naming the attribute and the coordinate.
 Rows of two layers meet the same way, and <a href="../resolution/">the fold</a> adds a row that sets both where they cross.</p>
-<p>A point that no row covers takes the attribute's default, from <code>default_by</code> for the label's category, else <code>default</code>.
+<p>A coordinate that no row covers takes the attribute's default, from <code>default_by</code> for the label's category, else <code>default</code>.
 A default is never stored.
 <code>record.attributes</code> returns the rows as written, NULL included, and a reader applies the rule with <a href="../record/#settle"><code>settle</code></a> and the default with <code>Schema.default_for</code>.</p>
-<h3 id="a-multi-dims-column">A multi-dim's column<a class="headerlink" href="#a-multi-dims-column" title="Permanent link">&para;</a></h3>
-<p>A multi-dim's struct column broadcasts over its tuples.
+<h3 id="a-multi-dimensions-column">A multi-dimension's column<a class="headerlink" href="#a-multi-dimensions-column" title="Permanent link">&para;</a></h3>
+<p>A multi-dimension's struct column broadcasts over its tuples.
 A NULL <code>connection</code> means every tuple, and a whole tuple means one:</p>
 <figure class="diagram">
 <!--
@@ -1858,8 +1859,8 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="dm-t dm-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="dm-t">A multi-dim's tuples, and a NULL struct that applies to each of them</title>
-  <desc id="dm-d">The axis of the multi-dim connection lists four tuples, each with a field per coordinate, entity and bus: wind north, gas south, dc north and dc south. The attribute efficiency has a row with connection NULL and value 1.0, and a row at the tuple dc south with value 0.9. A row with entity dc and bus NULL matches no tuple, so no such row exists. Settled over the axis, the result has one row per tuple: dc south keeps 0.9 and the three other tuples take 1.0 from the NULL row.</desc>
+  <title id="dm-t">A multi-dimension's tuples, and a NULL struct that applies to each of them</title>
+  <desc id="dm-d">The axis of the multi-dimension connection lists four tuples, each with the fields entity and bus: wind north, gas south, dc north and dc south. The attribute efficiency has a row with connection NULL and value 1.0, and a row at the tuple dc south with value 0.9. A row with entity dc and bus NULL matches no tuple, so no such row exists. Settled over the axis, the result has one row per tuple: dc south keeps 0.9 and the three other tuples take 1.0 from the NULL row.</desc>
   <defs>
     <marker id="dm-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -1887,7 +1888,7 @@ SPDX-License-Identifier: CC-BY-4.0
   </g>
   <g fill="currentColor">
     <text x="16" y="22" font-weight="bold">axis</text>
-    <text x="56" y="22" fill-opacity="0.75">connection, a field per coordinate</text>
+    <text x="56" y="22" fill-opacity="0.75">connection, a struct of its fields</text>
     <g font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">
     <text x="24" y="47" font-weight="bold">entity</text>
     <text x="106" y="47" font-weight="bold">bus</text>
@@ -1955,11 +1956,11 @@ SPDX-License-Identifier: CC-BY-4.0
 </figure>
 
 <p>The tuple <code>{dc, south}</code> keeps 0.9, and the three other tuples take 1.0 from the NULL row.</p>
-<p>The dims a multi-dim draws on broadcast on their own.
-A coordinate stays inside its struct, so <code>bus</code> inside <code>connection</code> is a field, and an attribute over the dim <code>bus</code> has a separate <code>bus</code> column.
-An attribute's <code>dims</code> may not list a multi-dim beside a dim with the name of one of its coordinates. A keyword such as <code>bus=</code> would then address both.</p>
+<p>The dimensions a multi-dimension draws on broadcast on their own.
+A field stays inside its struct, so <code>bus</code> inside <code>connection</code> is no column of its own, and an attribute over the dimension <code>bus</code> has a separate <code>bus</code> column.
+An attribute's <code>dims</code> may not list a multi-dimension beside a dimension with the name of one of its fields. A keyword such as <code>bus=</code> would then address both.</p>
 <h2 id="wide-and-long-rows">Wide and long rows<a class="headerlink" href="#wide-and-long-rows" title="Permanent link">&para;</a></h2>
-<p>A record returns <code>dims</code> and <code>properties</code> wide, with one row per label or tuple, and <code>attributes</code> long, with one row per value:</p>
+<p>A record returns <code>dimensions</code> and <code>properties</code> wide, with one row per label or tuple, and <code>attributes</code> long, with one row per value:</p>
 <table>
 <thead>
 <tr>
@@ -1969,11 +1970,11 @@ An attribute's <code>dims</code> may not list a multi-dim beside a dim with the 
 </thead>
 <tbody>
 <tr>
-<td><code>dims["entity"]</code></td>
+<td><code>dimensions["entity"]</code></td>
 <td><code>entity</code></td>
 </tr>
 <tr>
-<td><code>dims["connection"]</code></td>
+<td><code>dimensions["connection"]</code></td>
 <td><code>connection STRUCT(entity, bus)</code></td>
 </tr>
 <tr>
@@ -1992,7 +1993,7 @@ An attribute's <code>dims</code> may not list a multi-dim beside a dim with the 
 </table>
 <p>An attribute row has no property columns.
 To read one category's rows, a reader joins <code>properties["entity"]</code>, filtered on the category, on <code>entity</code>.
-To read a multi-dim's fields flat, a reader takes <code>connection.bus</code> in SQL or unnests the struct.</p>
+To read a multi-dimension's fields flat, a reader takes <code>connection.bus</code> in SQL or unnests the struct.</p>
 <div class="admonition info">
 <p class="admonition-title">See also</p>
 <ul>

@@ -870,10 +870,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dims" class="md-nav__link">
+  <a href="#dimensions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        dims
+        dimensions
       
     </span>
   </a>
@@ -982,6 +982,23 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="settle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cases-for-a-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cases for a port
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -1499,10 +1516,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#dims" class="md-nav__link">
+  <a href="#dimensions" class="md-nav__link">
     <span class="md-ellipsis">
       
-        dims
+        dimensions
       
     </span>
   </a>
@@ -1612,6 +1629,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="settle">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cases-for-a-port" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Cases for a port
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
     </ul>
@@ -1649,30 +1683,30 @@ The reasons for one interface over a directory and a tree are on the <a href="..
 The examples read the record of the running example that the <a href="../data-model/">data model</a> describes.</p>
 <h2 id="schema"><code>schema</code><a class="headerlink" href="#schema" title="Permanent link">&para;</a></h2>
 <p><code>schema</code> is the record's <a href="../schema/">schema</a>.
-A <code>Record</code> returns the schema of the deepest revision's data (its last <a href="../layers/">layer</a>), and a <code>Selection</code> returns its base's schema without the dims it squeezed.</p>
+A <code>Record</code> returns the schema of the deepest revision's data (its last <a href="../layers/">layer</a>), and a <code>Selection</code> returns its base's schema without the dimensions it squeezed.</p>
 <h2 id="con"><code>con</code><a class="headerlink" href="#con" title="Permanent link">&para;</a></h2>
 <p><code>con</code> is the DuckDB connection that every relation of the record is planned on.
 A <code>Record</code> returns the calling thread's cursor of its workspace, so a relation belongs to the thread that built it (<a href="../store/">store</a>).
 A reader plans its own frames and SQL on <code>con</code> beside the record's relations.</p>
-<h2 id="dims"><code>dims</code><a class="headerlink" href="#dims" title="Permanent link">&para;</a></h2>
-<p><code>dims</code> maps every dim the schema declares to a relation of its axis: the label column alone, one row per label, in axis order.
-A multi-dim's relation is its one struct column, such as <code>connection STRUCT(entity, bus)</code>.
-A dim with <code>one_of</code> returns its list, and a dim that no layer has labels for returns an empty relation with its declared column.</p>
+<h2 id="dimensions"><code>dimensions</code><a class="headerlink" href="#dimensions" title="Permanent link">&para;</a></h2>
+<p><code>dimensions</code> maps every dimension the schema declares to a relation of its axis: the label column alone, one row per label, in axis order.
+A multi-dimension's relation is its one struct column, such as <code>connection STRUCT(entity, bus)</code>.
+A dimension with <code>one_of</code> returns its list, and a dimension that no layer has labels for returns an empty relation with its declared column.</p>
 <h2 id="properties"><code>properties</code><a class="headerlink" href="#properties" title="Permanent link">&para;</a></h2>
-<p><code>properties</code> maps every subject that declares properties to a relation of the subject's key and one column per property, named by the property's plain name.
+<p><code>properties</code> maps every subject that declares properties to a relation of the subject's column and one column per property, named by the property's plain name.
 The values are as stored, with no default applied, so NULL means that no layer wrote a value.
 <code>Schema.default_for("entity.carrier", **categories)</code> returns a property's default.</p>
 <h2 id="attributes"><code>attributes</code><a class="headerlink" href="#attributes" title="Permanent link">&para;</a></h2>
-<p><code>attributes</code> maps every attribute the schema declares to a relation of its long rows: the attribute's coordinates, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code>.
+<p><code>attributes</code> maps every attribute the schema declares to a relation of its long rows: a column per dimension of the attribute, then <code>attribute</code>, <code>breakpoint</code> and <code>value</code>.
 The rows are as written, in no promised order:</p>
 <ul>
-<li>A NULL coordinate stays NULL, and a reader applies <a href="../data-model/#the-broadcast-rule">the broadcast rule</a> itself, with <a href="#settle"><code>settle</code></a> or its own SQL.</li>
-<li>Two rows may cover one point, of one layer or of two. Where they do, the record has one row there that leaves no dim NULL that another row there sets.</li>
-<li>A point that no row covers has no row, and <code>Schema.default_for</code> gives its default.</li>
+<li>A NULL in a dimension's column stays NULL, and a reader applies <a href="../data-model/#the-broadcast-rule">the broadcast rule</a> itself, with <a href="#settle"><code>settle</code></a> or its own SQL.</li>
+<li>Two rows may cover one coordinate, of one layer or of two. Where they do, the record has one row there that leaves no dimension NULL that another row there sets.</li>
+<li>A coordinate that no row covers has no row, and <code>Schema.default_for</code> gives its default.</li>
 </ul>
 <p>An attribute that no layer has rows for returns an empty relation with its declared columns.</p>
 <h2 id="flags"><code>flags</code><a class="headerlink" href="#flags" title="Permanent link">&para;</a></h2>
-<p><strong>Flags</strong> are what <code>record.flags(**categories)</code> returns: per attribute, which dims its rows set and which they leave NULL.</p>
+<p><strong>Flags</strong> are what <code>record.flags(**categories)</code> returns: per attribute, which dimensions its rows set and which they leave NULL.</p>
 <table>
 <thead>
 <tr>
@@ -1683,11 +1717,11 @@ The rows are as written, in no promised order:</p>
 <tbody>
 <tr>
 <td><code>varies</code></td>
-<td>the dims that some row of the attribute sets</td>
+<td>the dimensions that some row of the attribute sets</td>
 </tr>
 <tr>
 <td><code>broadcast</code></td>
-<td>the dims that some row leaves NULL</td>
+<td>the dimensions that some row leaves NULL</td>
 </tr>
 <tr>
 <td><code>breakpoints</code></td>
@@ -1697,21 +1731,21 @@ The rows are as written, in no promised order:</p>
 </table>
 <p><code>flags()</code> answers for the whole record in one query.
 Only attributes with rows have an entry, so <code>set(record.flags())</code> lists the attributes the record has rows for.
-Each set has only dims that the attribute is addressed by, multi-dims included, and a dim outside its <code>dims</code> is in neither set.</p>
+Each set has only dimensions that the attribute is addressed by, multi-dimensions included, and a dimension outside its <code>dims</code> is in neither set.</p>
 <p><code>flags(**categories)</code> answers for the labels of one category.
-Each keyword is a <a href="../data-model/#categories">categorising property</a> of one dim, by its plain name, with one category or a list.
-Only rows that apply to a matching label count: a row that has the label, and a row that leaves its dim NULL.</p>
+Each keyword is a <a href="../data-model/#categories">categorising property</a> of one dimension, by its plain name, with one category or a list.
+Only rows that apply to a matching label count: a row that has the label, and a row that leaves its dimension NULL.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)[</span><span class="s2">"p_max_pu"</span><span class="p">]</span>
 </code></pre></div>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Flags(varies=frozenset({'snapshot', 'entity'}), broadcast=frozenset({'snapshot', 'entity'}), breakpoints=False)
 </code></pre></div>
 <p><code>snapshot</code> is in both sets, because <code>wind</code> has a row per snapshot and <code>gas</code> takes its value at every snapshot from the NULL row.
-The flags describe the rows as written, so a NULL row that more specific rows cover at every label still puts its dim in <code>broadcast</code>.</p>
-<p><code>flags</code> raises <code>ValueError</code> when the keywords categorise several dims, or none:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>['carrier'] categorize no dim; a categorizing property is a property of a `partial` dim that refers to a dim with `one_of`
+The flags describe the rows as written, so a NULL row that more specific rows cover at every label still puts its dimension in <code>broadcast</code>.</p>
+<p><code>flags</code> raises <code>ValueError</code> when the keywords categorise several dimensions, or none:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>['carrier'] categorize no dimension; a categorizing property is a property of a `partial` dimension that refers to a dimension with `one_of`
 </code></pre></div>
 <h2 id="relations">Relations<a class="headerlink" href="#relations" title="Permanent link">&para;</a></h2>
-<p><code>Relations</code> is <code>Mapping[str, DuckDBPyRelation]</code>, the type of <code>dims</code>, <code>properties</code> and <code>attributes</code>.
+<p><code>Relations</code> is <code>Mapping[str, DuckDBPyRelation]</code>, the type of <code>dimensions</code>, <code>properties</code> and <code>attributes</code>.
 A <code>Record</code> returns <code>LazyRelations</code>, which builds each relation when a reader first looks it up.
 Listing the keys reads no file, and building a relation reads the file's footer, which is one round trip on a remote store.</p>
 <p>A relation is a query plan, and nothing is read until a reader fetches it with <code>.fetchall()</code>, <code>.df()</code>, <code>.pl()</code> or <code>.to_arrow_table()</code>.</p>
@@ -1729,11 +1763,11 @@ A record you never close keeps its tables while it or any relation taken from it
 SQL you write over such a relation, <code>con.sql("FROM rel")</code>, does not keep it, so keep the relation, the record or a <code>with</code> block alive until you have fetched (<a href="../store/#the-database">the database</a>).
 The next record over the same revision folds its ancestry again, so a process that reads one revision often keeps one record open.</p>
 <h3 id="register"><code>register</code><a class="headerlink" href="#register" title="Permanent link">&para;</a></h3>
-<p><code>record.register(name)</code> creates a DuckDB view per dim, property subject and attribute, for a SQL client (<a href="../format/">format</a>).</p>
+<p><code>record.register(name)</code> creates a DuckDB view per dimension, property subject and attribute, and one of the owner map, for a SQL client (<a href="../format/#registered-views">format</a>).</p>
 <h2 id="settle"><code>settle</code><a class="headerlink" href="#settle" title="Permanent link">&para;</a></h2>
-<p><strong>To settle rows</strong> is to apply the broadcast rule to long rows with <code>settle(rel, labels, flags)</code>, giving one row per label passed at each point.
-<code>settle</code> expands each NULL on a coordinate in <code>labels</code> over the labels passed, and drops a row with a label outside them.
-At each point it keeps the row that leaves no coordinate in <code>labels</code> NULL that another row there sets.</p>
+<p><strong>To settle rows</strong> is to apply the broadcast rule to long rows with <code>settle(rel, labels, flags)</code>, giving one row per label passed at each coordinate.
+<code>settle</code> expands each NULL on a dimension in <code>labels</code> over the labels passed, and drops a row with a label outside them.
+At each coordinate it keeps the row that leaves no dimension in <code>labels</code> NULL that another row there sets.</p>
 <figure class="diagram">
 <!--
 SPDX-FileCopyrightText: datarecord contributors
@@ -1848,7 +1882,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </figure>
 
 <p>Over the generators <code>wind</code> and <code>gas</code>, the NULL row gives each a row at <code>snapshot</code> NULL, beside <code>wind</code>'s series.</p>
-<p>A coordinate left out of <code>labels</code> stays as written, and its NULL counts as one more label:</p>
+<p>A dimension left out of <code>labels</code> stays as written, and its NULL counts as one more label:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">datarecord</span><span class="w"> </span><span class="kn">import</span> <span class="n">settle</span>
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>
 <a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="n">flags</span> <span class="o">=</span> <span class="n">record</span><span class="o">.</span><span class="n">flags</span><span class="p">(</span><span class="n">ctype</span><span class="o">=</span><span class="s2">"Generator"</span><span class="p">)</span>
@@ -1862,13 +1896,13 @@ SPDX-License-Identifier: CC-BY-4.0
 </code></pre></div>
 <p><code>dc</code> is no generator, so its rows are gone.
 <code>snapshot</code> is not in <code>labels</code>, so <code>gas</code> keeps one constant row, and <code>wind</code> keeps its series beside a row at <code>snapshot</code> NULL.
-Passing <code>"snapshot": record.dims["snapshot"]</code> as well gives one row per generator and snapshot.</p>
-<p><code>labels</code> maps each coordinate to a relation of its labels, or of a multi-dim's tuples, in a column of the coordinate's name.
+Passing <code>"snapshot": record.dimensions["snapshot"]</code> as well gives one row per generator and snapshot.</p>
+<p><code>labels</code> maps each dimension to a relation of its labels, or of a multi-dimension's tuples, in a column of the dimension's name.
 <code>flags</code> sets how much work the query does, and flags that overstate the rows give the same result more slowly:</p>
 <table>
 <thead>
 <tr>
-<th>The coordinate is in</th>
+<th>The dimension is in</th>
 <th><code>settle</code></th>
 </tr>
 </thead>
@@ -1888,11 +1922,62 @@ Passing <code>"snapshot": record.dims["snapshot"]</code> as well gives one row p
 </tbody>
 </table>
 <p><code>filter=False</code> keeps a row with a label outside <code>labels</code> as written, for a reader whose own join on the labels drops it.
-Where every row at a point leaves NULL a coordinate that another row there sets, the query raises <code>duckdb.Error</code> on fetch, naming the point.</p>
+Where every row at a coordinate leaves NULL a dimension that another row there sets, the query raises <code>duckdb.Error</code> on fetch, naming the coordinate.
+<code>settle</code> groups rows by every column but <code>breakpoint</code> and <code>value</code>, so <code>attribute</code> and a dimension left out of <code>labels</code> count too.
+A <a href="../data-model/#attributes">curve</a> is kept or dropped whole.</p>
+<h3 id="cases-for-a-port">Cases for a port<a class="headerlink" href="#cases-for-a-port" title="Permanent link">&para;</a></h3>
+<p>A case of <code>settle</code> is a set of rows and labels with the rows <code>settle</code> returns for them, or the error it raises.
+datarecord keeps its cases in <a href="https://github.com/energy-models/datarecord/blob/main/tests/settle_cases.json"><code>tests/settle_cases.json</code></a>, so a reader that settles rows in its own SQL can run them against its port.
+The file is not part of the package: pin it by fetching it from the repository at the tag of a datarecord release.</p>
+<p>The file is a JSON list of cases, and each case is an object with these keys:</p>
+<table>
+<thead>
+<tr>
+<th>Key</th>
+<th>Value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>a unique name</td>
+</tr>
+<tr>
+<td><code>doc</code></td>
+<td>one sentence stating the rule the case checks</td>
+</tr>
+<tr>
+<td><code>columns</code></td>
+<td>the columns of the rows in order, each a <code>name</code> and a DuckDB <code>type</code>, such as <code>STRUCT(entity VARCHAR, bus VARCHAR)</code></td>
+</tr>
+<tr>
+<td><code>rows</code></td>
+<td>the rows, a list per row in the order of <code>columns</code>, with a struct as an object and NULL as <code>null</code></td>
+</tr>
+<tr>
+<td><code>labels</code></td>
+<td>per dimension, the list of its labels, typed as the column of that name; a port ignores a dimension with no column</td>
+</tr>
+<tr>
+<td><code>filter</code></td>
+<td>the <code>filter</code> argument of <code>settle</code></td>
+</tr>
+<tr>
+<td><code>expected</code></td>
+<td>the rows <code>settle</code> returns, in the shape of <code>rows</code></td>
+</tr>
+<tr>
+<td><code>error</code></td>
+<td>in place of <code>expected</code>, the kind of error: <code>crossed</code>, where two rows cross and no row sets both</td>
+</tr>
+</tbody>
+</table>
+<p>The order of <code>rows</code> and <code>expected</code> has no meaning, and the text of an error is not part of a case.
+A case has no flags, because flags change no value: datarecord runs each case with the flags of its rows, and again with every dimension in both sets.</p>
 <div class="admonition info">
 <p class="admonition-title">See also</p>
 <ul>
-<li><a href="../data-model/">The data model</a> defines dims, properties, attributes and the broadcast rule.</li>
+<li><a href="../data-model/">The data model</a> defines dimensions, properties, attributes and the broadcast rule.</li>
 <li><a href="../selecting/">Selecting</a> describes <code>select</code> and <code>Selection</code>.</li>
 <li><a href="../editing/">Editing</a> describes <code>WorkingRecord</code>.</li>
 <li><a href="../../howto/read-a-record/">Read a record</a> shows the steps.</li>

@@ -1331,59 +1331,59 @@ SPDX-License-Identifier: CC-BY-4.0
 <tbody>
 <tr>
 <td><a href="../data-model/">record</a></td>
-<td>the object you hold: dims, properties and attributes under one schema, exposed through <code>RecordLike</code></td>
+<td>the object you hold: dimensions, properties and attributes under one schema, exposed through <code>RecordLike</code></td>
 </tr>
 <tr>
-<td><a href="../data-model/#dims-and-labels">dim</a></td>
+<td><a href="../data-model/#dimensions-and-labels">dimension</a></td>
 <td>a set of unique labels that values vary along, declared by a <code>Dimension</code> under <code>dimensions</code></td>
 </tr>
 <tr>
-<td><a href="../data-model/#dims-and-labels">axis</a></td>
-<td>the labels one dim has in one record, in order, which <code>record.dims[dim]</code> returns</td>
+<td><a href="../data-model/#dimensions-and-labels">axis</a></td>
+<td>the labels one dimension has in one record, in order, which <code>record.dimensions[dim]</code> returns</td>
 </tr>
 <tr>
-<td><a href="../data-model/#dims-and-labels">label</a></td>
-<td>one value of a dim, unique within it, which is a tuple on a multi-dim</td>
+<td><a href="../data-model/#dimensions-and-labels">label</a></td>
+<td>one value of a dimension, unique within it, which is a tuple on a multi-dimension</td>
 </tr>
 <tr>
-<td><a href="../data-model/#multi-dims">multi-dim</a></td>
-<td>a dim declared with <code>over</code>, whose labels are tuples of other dims' labels</td>
+<td><a href="../data-model/#multi-dimensions">multi-dimension</a></td>
+<td>a dimension declared with <code>over</code>, whose labels are tuples of other dimensions' labels</td>
 </tr>
 <tr>
-<td><a href="../data-model/#multi-dims">coordinate</a></td>
-<td>one named position in a key: a column of an attribute's rows, or a field of a multi-dim's tuple</td>
-</tr>
-<tr>
-<td><a href="../data-model/#attributes">point</a></td>
-<td>one label or NULL on each coordinate of an attribute, where a row's value applies</td>
+<td><a href="../data-model/#multi-dimensions">field</a></td>
+<td>one named part of a dimension's label: one per entry of <code>over</code> on a multi-dimension, such as <code>bus</code> of <code>connection</code>, and one named for itself on a flat dimension</td>
 </tr>
 <tr>
 <td><a href="../data-model/#properties">property</a></td>
-<td>a value per label of its subject dim, named <code>subject.name</code>, stored as a column of that dim's axis file</td>
+<td>a value per label of its subject dimension, named <code>subject.name</code>, stored as a column of that dimension's axis file</td>
 </tr>
 <tr>
 <td><a href="../data-model/#categories">category</a></td>
-<td>a label's value of a property of a dim in <code>partial</code> that refers to a dim with <code>one_of</code></td>
+<td>a label's value of a property of a dimension in <code>partial</code> that refers to a dimension with <code>one_of</code></td>
 </tr>
 <tr>
 <td><a href="../data-model/#attributes">attribute</a></td>
-<td>the values at points over the dims its <code>AttributeSpec</code> lists, stored as long rows, one file per attribute</td>
+<td>the values at coordinates over the dimensions its <code>AttributeSpec</code> lists, stored as long rows, one file per attribute</td>
+</tr>
+<tr>
+<td><a href="../data-model/#attributes">coordinate</a></td>
+<td>one label on each dimension of an attribute, where a value applies</td>
 </tr>
 <tr>
 <td><a href="../data-model/#attributes">indexed over</a></td>
-<td>of an attribute: each dim its <code>dims</code> lists, and each dim that a coordinate of one of its multi-dims draws on</td>
+<td>of an attribute: each dimension its <code>dims</code> lists, and each dimension that a field of one of its multi-dimensions draws on</td>
 </tr>
 <tr>
 <td><a href="../data-model/#the-broadcast-rule">the broadcast rule</a></td>
-<td>a NULL coordinate means every label of its dim, and where rows cover one point, datarecord keeps the row that leaves no dim NULL that another row there sets</td>
+<td>a NULL in a dimension's column means every label of its dimension, and where rows cover one coordinate, datarecord keeps the row that leaves no dimension NULL that another row there sets</td>
 </tr>
 <tr>
 <td><a href="../schema/">schema</a></td>
-<td>the <code>Schema</code> of a record: the dims, properties, attributes and <code>partial</code> that may exist</td>
+<td>the <code>Schema</code> of a record: the dimensions, properties, attributes and <code>partial</code> that may exist</td>
 </tr>
 <tr>
 <td><a href="../layers/#partial"><code>partial</code></a></td>
-<td>the dims along which a layer overrides one value per label</td>
+<td>the dimensions along which a layer overrides one value per label</td>
 </tr>
 <tr>
 <td><a href="../layers/#revisions">layer</a></td>
@@ -1395,7 +1395,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td><a href="../layers/#removing-labels">to remove a label</a></td>
-<td>to restate its dim's axis without it, which removes its values and the tuples that contain it</td>
+<td>to restate its dimension's axis without it, which removes its values and the tuples that contain it</td>
 </tr>
 <tr>
 <td><a href="../resolution/">the fold</a></td>
@@ -1403,11 +1403,11 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td><a href="../resolution/#the-owner-map">the owner map</a></td>
-<td>the fold's result: per attribute, each key a layer wrote and the layer the map assigns it to</td>
+<td>the fold's result: per attribute, each map row a layer wrote and the layer the map assigns it to</td>
 </tr>
 <tr>
 <td><a href="../resolution/#crossing-rows">to cross</a></td>
-<td>of two rows of two layers, to cover a common point where each row leaves NULL a dim that the other row sets</td>
+<td>of two rows of two layers, to cover a common coordinate where each row leaves NULL a dimension that the other row sets</td>
 </tr>
 <tr>
 <td><a href="../resolution/#materialised-revisions">to materialise</a></td>
@@ -1439,11 +1439,11 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td><a href="../record/#flags">flags</a></td>
-<td>per attribute, the dims some row sets (<code>varies</code>) and the dims some row leaves NULL (<code>broadcast</code>)</td>
+<td>per attribute, the dimensions some row sets (<code>varies</code>) and the dimensions some row leaves NULL (<code>broadcast</code>)</td>
 </tr>
 <tr>
 <td><a href="../record/#settle">to settle rows</a></td>
-<td>to apply the broadcast rule to long rows with <code>settle</code>, one row per label passed at each point</td>
+<td>to apply the broadcast rule to long rows with <code>settle</code>, one row per label passed at each coordinate</td>
 </tr>
 <tr>
 <td><a href="../selecting/">selection</a></td>
@@ -1451,7 +1451,7 @@ SPDX-License-Identifier: CC-BY-4.0
 </tr>
 <tr>
 <td><a href="../selecting/#squeezing">to squeeze</a></td>
-<td>to select one label of a dim, which drops the dim from the selection's schema</td>
+<td>to select one label of a dimension, which drops the dimension from the selection's schema</td>
 </tr>
 <tr>
 <td><a href="../selecting/#lift">to lift</a></td>
