@@ -61,7 +61,7 @@ from datarecord.store.manifest import (
     merge_meta,
 )
 from datarecord.store.materialise import materialise, sources_to_read
-from datarecord.store.write import carrying, layer_data, write_layer
+from datarecord.store.write import layer_data, write_layer
 from datarecord.templates import Templates
 
 #: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
@@ -1383,8 +1383,6 @@ class Claim(_OfStore):
                 )
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
-            if base is not None:
-                data = carrying(data, base, store.workspace.con)
             written = write_layer(
                 data,
                 store.layer_dir(self.id),

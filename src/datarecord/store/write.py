@@ -70,14 +70,21 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     return _RecordLikeAsLayerData(source, con)
 
 
-def carrying(data: LayerData, parent: RecordLike, con: DuckDBPyConnection) -> LayerData:
-    """Return `data` with each axis filling its missing declared property columns from `parent`.
-
-    Notes
-    -----
-    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
-    """
-    return _Carrying(data, parent, con)
+def _with_parents_properties(
+    read: Callable[[str], DuckDBPyRelation | None],
+    parent: Record,
+    schema: Schema,
+    con: DuckDBPyConnection,
+    dim: str,
+) -> DuckDBPyRelation | None:
+    """`read(dim)` with each declared property column it lacks taken from `parent`."""
+    axis = read(dim)
+    held = parent.properties.get(dim)
+    if axis is None or held is None:
+        return axis
+    declared = schema.properties.get(dim, {})
+    missing = [c for c in held.columns if c in declared and c not in axis.columns]
+    return _joined_by_label(axis, held, dim, missing, con)
 
 
 def _joined_by_label(
@@ -133,7 +140,8 @@ def write_layer(
         built.
     parent
         The revision's record the layer folds over; none for a root or a
-        standalone record.
+        standalone record. A declared property column an axis lacks takes
+        `parent`'s values.
     owner_rows_from
         The source `data` is, whose owner-map rows `owner_map_rows.parquet`
         takes where it keeps them, as a staging area does; none aggregates
@@ -174,6 +182,7 @@ def write_layer(
     - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
+    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
     """
     schema = data.schema
     con = workspace.con
@@ -199,8 +208,13 @@ def write_layer(
         return frame
 
     refuse_one_of_file(schema, data.axes(), "the layer")
+    axis = (
+        data.axis
+        if parent is None
+        else partial(_with_parents_properties, data.axis, parent, schema, con)
+    )
     for dim in sorted(data.axes(), key=schema.multi_dimensions.__contains__):
-        frame = _written(data.axis, "dimensions", dim)
+        frame = _written(axis, "dimensions", dim)
         if frame is None:
             continue
         written["dimensions"].append(dim)
@@ -700,35 +714,3 @@ class _RecordLikeAsLayerData:
 
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         return self._read(self._attributes, name)
-
-
-class _Carrying:
-    """`carrying`'s result."""
-
-    def __init__(
-        self, data: LayerData, parent: RecordLike, con: DuckDBPyConnection
-    ) -> None:
-        self._data = data
-        self.schema = data.schema
-        self._parent = parent
-        self._con = con
-
-    def axes(self) -> set[str]:
-        return self._data.axes()
-
-    def attributes(self) -> set[str]:
-        return self._data.attributes()
-
-    def attribute(self, name: str) -> DuckDBPyRelation | None:
-        return self._data.attribute(name)
-
-    def axis(self, dim: str) -> DuckDBPyRelation | None:
-        axis = self._data.axis(dim)
-        parents = self._parent.properties.get(dim)
-        if axis is None or parents is None:
-            return axis
-        declared = self.schema.properties.get(dim, {})
-        carried = [
-            c for c in parents.columns if c in declared and c not in axis.columns
-        ]
-        return _joined_by_label(axis, parents, dim, carried, self._con)
