@@ -1637,10 +1637,7 @@ def test_a_commit_keeps_the_parents_property_by_label(store, commit):
     - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
     """
     root = _agg_root(store)
-    source = _scenarios_with(_SCHEMA, ["x", "new", "z"])
-    child = commit(store, source, root)
-
-    assert child.manifest.schema.properties["scenario"] == _AGG.properties["scenario"]
+    child = commit(store, _scenarios_with(_AGG, ["x", "new", "z"]), root)
     assert _aggs(child) == [("x", 1), ("new", None), ("z", 3)], (
         "the parent's value on a kept label, NULL on a new one, no row for a removed"
         " one, in the source's order"
@@ -1675,7 +1672,7 @@ def test_a_commit_keeps_only_the_columns_the_source_omits(store):
     root = store.commit(
         _scenarios_with(both, ["x", "y"], agg=[1, 2], w=[5, 6]), parent=None
     )
-    source = _scenarios_with(_AGG, ["x", "new"], agg=[10, 20])
+    source = _scenarios_with(both, ["x", "new"], agg=[10, 20])
     child = store.commit(source, parent=root)
     rows = child.record.properties["scenario"].project("scenario, agg, w")
     assert rows.fetchall() == [("x", 10, 5), ("new", 20, None)], (
@@ -1685,8 +1682,8 @@ def test_a_commit_keeps_only_the_columns_the_source_omits(store):
 
 def test_a_kept_property_reaches_through_a_layer_without_the_axis(store):
     root = _agg_root(store)
-    middle = store.commit(_Source(_SCHEMA, attributes={"p_nom": _long()}), parent=root)
-    leaf = store.commit(_scenarios_with(_SCHEMA, ["y", "new"]), parent=middle)
+    middle = store.commit(_Source(_AGG, attributes={"p_nom": _long()}), parent=root)
+    leaf = store.commit(_scenarios_with(_AGG, ["y", "new"]), parent=middle)
     assert _aggs(leaf) == [("y", 2), ("new", None)], "the root's values, by label"
 
 
@@ -1699,24 +1696,32 @@ def _with_region(base: Schema) -> Schema:
 @pytest.mark.parametrize(
     ("parent", "source", "match"),
     [
+        (_AGG, _SCHEMA, "property 'agg' of 'scenario' removed"),
         (
             _AGG,
             _declaring(_SCHEMA, scenario={"agg": PropertySpec(dtype="str")}),
             "property 'agg' of 'scenario' .* -> ",
         ),
-        (widened(_AGG, "extra"), _SCHEMA, "attribute 'extra' removed"),
-        (_with_region(_AGG), _SCHEMA, "dimension 'region' removed"),
+        (widened(_AGG, "extra"), _AGG, "attribute 'extra' removed"),
+        (_with_region(_AGG), _AGG, "dimension 'region' removed"),
     ],
-    ids=["property-redeclared", "attribute-omitted", "dimension-omitted"],
+    ids=[
+        "property-omitted",
+        "property-redeclared",
+        "attribute-omitted",
+        "dimension-omitted",
+    ],
 )
-def test_a_commit_still_refuses_any_other_incompatibility(store, parent, source, match):
+def test_a_commit_refuses_a_source_narrowing_its_parents_schema(
+    store, parent, source, match
+):
     root = _agg_root(store, parent)
     with pytest.raises(ValueError, match=match):
         store.commit(_scenarios_with(source, ["x"]), parent=root)
 
 
 def test_an_axis_the_layer_does_not_write_reads_the_parents_properties(store):
-    source = _Source(_SCHEMA, attributes={"p_nom": _long()})
+    source = _Source(_AGG, attributes={"p_nom": _long()})
     child = store.commit(source, parent=_agg_root(store))
     assert "scenario" not in child.manifest.files.dimensions
     assert _aggs(child) == [("x", 1), ("y", 2), ("z", 3)], (
@@ -1752,7 +1757,7 @@ def test_a_kept_property_naming_a_removed_label_is_refused(store, restated):
     if restated:
         dims["entity"] = entities[["entity"]]
     with pytest.raises(ValueError, match="removing a label removes"):
-        store.commit(_Source(_SCHEMA, dims=dims), parent=root)
+        store.commit(_Source(homed, dims=dims), parent=root)
 
 
 @pytest.mark.parametrize(
@@ -1792,7 +1797,7 @@ def test_a_commit_keeps_a_multi_dims_property_by_label(store):
         parent=None,
     )
     source = _Source(
-        _SCHEMA, connections={"connection": pd.DataFrame({"connection": [ab, cb]})}
+        length, connections={"connection": pd.DataFrame({"connection": [ab, cb]})}
     )
     child = store.commit(source, parent=root)
     rows = child.record.properties["connection"].project("connection, length")

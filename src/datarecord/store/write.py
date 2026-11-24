@@ -70,10 +70,8 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     return _RecordLikeAsLayerData(source, con)
 
 
-def carrying(
-    data: LayerData, schema: Schema, parent: RecordLike, con: DuckDBPyConnection
-) -> LayerData:
-    """Return `data` under `schema`, each axis it writes with `parent`'s property columns it lacks.
+def carrying(data: LayerData, parent: RecordLike, con: DuckDBPyConnection) -> LayerData:
+    """Return `data`, each axis it writes with `parent`'s values of the declared property columns it lacks.
 
     The columns are joined by label, and a label `parent` lacks reads NULL.
 
@@ -81,7 +79,7 @@ def carrying(
     -----
     - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
     """
-    return _Carrying(data, schema, parent, con)
+    return _Carrying(data, parent, con)
 
 
 def _joined_by_label(
@@ -709,17 +707,13 @@ class _RecordLikeAsLayerData:
 
 
 class _Carrying:
-    """`data` under `schema`, each axis with `parent`'s property columns it lacks."""
+    """`data`, each axis with `parent`'s values of the declared property columns it lacks."""
 
     def __init__(
-        self,
-        data: LayerData,
-        schema: Schema,
-        parent: RecordLike,
-        con: DuckDBPyConnection,
+        self, data: LayerData, parent: RecordLike, con: DuckDBPyConnection
     ) -> None:
         self._data = data
-        self.schema = schema
+        self.schema = data.schema
         self._parent = parent
         self._con = con
 
@@ -737,5 +731,8 @@ class _Carrying:
         parents = self._parent.properties.get(dim)
         if axis is None or parents is None:
             return axis
-        carried = [c for c in parents.columns if c not in axis.columns]
+        declared = self.schema.properties.get(dim, {})
+        carried = [
+            c for c in parents.columns if c in declared and c not in axis.columns
+        ]
         return _joined_by_label(axis, parents, dim, carried, self._con)

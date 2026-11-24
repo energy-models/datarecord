@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""A child commit over an axis of a million labels, keeping its parent's three properties.
+"""A child commit over an axis of a million labels, filling its parent's three property columns.
 
 The child removes every hundredth label and appends one per cent new ones.
 
@@ -28,17 +28,16 @@ PROPERTIES = {
 }
 
 
-def _schema(properties: dict[str, PropertySpec]) -> Schema:
-    return Schema(
-        dimensions={"entity": Dimension(dtype="str")},
-        properties={"entity": properties} if properties else {},
-        attributes={},
-        partial=frozenset({"entity"}),
-    )
+SCHEMA = Schema(
+    dimensions={"entity": Dimension(dtype="str")},
+    properties={"entity": PROPERTIES},
+    attributes={},
+    partial=frozenset({"entity"}),
+)
 
 
-def _entities(ids: np.ndarray, schema: Schema) -> _Source:
-    """A source whose `entity` axis is `e<id>`, with each property `schema` declares."""
+def _entities(ids: np.ndarray, columns: list[str]) -> _Source:
+    """A source whose `entity` axis is `e<id>`, with the property `columns`."""
     frame = pd.DataFrame(
         {
             "entity": "e" + pd.Series(ids).astype(str),
@@ -47,25 +46,23 @@ def _entities(ids: np.ndarray, schema: Schema) -> _Source:
             "agg": ids // 3,
         }
     )
-    columns = ["entity", *schema.properties.get("entity", {})]
     return _Source(
-        schema,
+        SCHEMA,
         dims={"entity": frame[["entity"]]},
-        properties={"entity": frame[columns]},
+        properties={"entity": frame[["entity", *columns]]},
     )
 
 
 @pytest.mark.benchmark
 def test_keeping_properties_takes_at_most_twice_stating_them(store):
-    declaring, omitting = _schema(PROPERTIES), _schema({})
-    root = store.commit(_entities(np.arange(LABELS), declaring), parent=None)
+    root = store.commit(_entities(np.arange(LABELS), [*PROPERTIES]), parent=None)
     ids = np.arange(LABELS)
     child = np.concatenate([ids[ids % 100 != 0], LABELS + np.arange(LABELS // 100)])
 
     timings: dict[str, list[float]] = {"own": [], "keep": []}
     for _ in range(3):
-        for way, schema in (("own", declaring), ("keep", omitting)):
-            source = _entities(child, schema)
+        for way, columns in (("own", [*PROPERTIES]), ("keep", [])):
+            source = _entities(child, columns)
             start = perf_counter()
             kept = store.commit(source, parent=root)
             timings[way].append(perf_counter() - start)

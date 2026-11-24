@@ -309,7 +309,7 @@ A commit that fails leaves its layer pending with the files it wrote, and a retr
 
 Before it writes data, a commit checks three things and refuses the layer otherwise:
 
-- The layer's schema, the [parent's widened by the source's](layers.md#property-columns-a-layer-omits), passes [`compatible_with`](schema.md) against the parent's manifest's schema.
+- The layer's schema passes [`compatible_with`](schema.md) against the parent's manifest's schema.
 - Its `meta` has every key of the claim's `meta` with the same value, and may add keys. Values compare as JSON, so `1`, `1.0` and `True` differ, and an object differs once any key inside it does.
 - Its parent, the claim's `parent`, is a revision of this store.
 

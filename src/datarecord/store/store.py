@@ -844,8 +844,8 @@ class Store:
         A `WorkingRecord` brings its parent, the revision it was built over,
         and is written as its edits, a delta against that revision. Any other
         source names its `parent`, `None` for a new root, and is written
-        whole, keeping each property `parent` declares and the source's
-        schema omits.
+        whole, each axis file taking `parent`'s values of a declared property
+        whose column it lacks.
 
         Raises
         ------
@@ -1297,10 +1297,9 @@ class Claim(_OfStore):
         The data goes straight into the layer directory; the manifest, written
         create-only and last, lists its files, its full schema, the claim's
         parent and the claim's `meta` with `meta` added. A `WorkingRecord` is
-        written as its edits. Under a parent, the layer keeps each property the
-        parent declares and the source's schema omits, on the dimensions the
-        source declares: the manifest declares it, and each axis file the
-        layer writes takes the parent's values by label, NULL on a new label.
+        written as its edits. Under a parent, each axis file the layer writes
+        without the column of a property the schema declares takes the
+        parent's values of it by label, NULL on a new label.
 
         Parameters
         ----------
@@ -1378,7 +1377,6 @@ class Claim(_OfStore):
         data = layer_data(source, store.workspace.con)
         schema = data.schema
         if parent is not None:
-            schema = _with_parents_properties(schema, parent.manifest.schema)
             problems = schema.compatible_with(parent.manifest.schema)
             if problems:
                 msg = (
@@ -1388,7 +1386,7 @@ class Claim(_OfStore):
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
             if base is not None:
-                data = carrying(data, schema, base, store.workspace.con)
+                data = carrying(data, base, store.workspace.con)
             written = write_layer(
                 data,
                 store.layer_dir(self.id),
@@ -1403,23 +1401,6 @@ class Claim(_OfStore):
         manifest.write(files, store.manifest_uri(self.id))
         store._cache([manifest])
         return Revision(id=self.id, store=store)
-
-
-def _with_parents_properties(schema: Schema, parent: Schema) -> Schema:
-    """`schema` with the properties only `parent` declares, on the dims both declare.
-
-    A dim `schema` lacks keeps its properties out, so the schema stays valid
-    and `compatible_with` reports the dim as removed.
-    """
-    kept = {
-        dim: {**props, **schema.properties.get(dim, {})}
-        for dim, props in parent.properties.items()
-        if dim in schema.dimensions
-    }
-    properties = {**schema.properties, **kept}
-    if properties == schema.properties:
-        return schema
-    return schema.model_validate({**schema.model_dump(), "properties": properties})
 
 
 _MANIFESTS = """

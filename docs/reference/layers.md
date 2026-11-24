@@ -190,8 +190,8 @@ So where an ancestor left such a reference, the writer refuses the next layer th
 
 ## Property columns a layer omits
 
-When a layer writes an axis file without the column of a property, the commit writes the parent's values into that column, by label.
-Here the parent's `snapshot` axis has a property `agg_3h`, the three-hour block of each snapshot, and `source` restates the axis without its column:
+When a layer writes an axis file without the column of a property its schema declares, the commit writes the parent's values into that column, by label.
+Here the parent's `snapshot` axis has a property `agg_3h`, the three-hour block of each snapshot, and `source` declares it but restates the axis without its column:
 
 ```python
 child = store.commit(source, parent=root)
@@ -204,12 +204,11 @@ child = store.commit(source, parent=root)
 The child's axis file has the parent's `agg_3h` at snapshots 0 and 3, and NULL at snapshot 4, which the parent does not hold.
 Snapshot 1 has no row, so its value goes with it.
 
-- The manifest's schema is the parent's schema widened by the source's. Where both declare a property, the source's declaration applies, and [`compatible_with`](schema.md#compatibility) against the parent still refuses one declared differently.
-- The rule is the same whether or not the source's schema declares the property. To set a property to NULL, a source writes its column with NULLs.
+- The source's schema still declares every property of the parent. A schema that omits one fails [`compatible_with`](schema.md#compatibility), and the commit refuses the layer.
+- To set a property to NULL, a source writes its column with NULLs.
 - The commit writes the parent's values in the layer's row order. A property the parent does not declare has no values to take, so its column stays out of the file and reads NULL.
 - An axis the layer does not write has no file, and the fold reads the parent's axis, its properties included.
 - The writer checks a taken value as it checks any column of the file. It refuses a property that refers to a dimension while its value is a label the layer removes, as in [removing labels](#removing-labels).
-- Only properties are taken from the parent. The commit still refuses a source whose schema omits a dimension or an attribute that the parent declares.
 - A root has no parent, so its axis files are as the source writes them.
 
 !!! info "See also"
