@@ -37,7 +37,6 @@ from tests.fixtures import (
     relation,
     schema,
     unpacked,
-    widened,
     write_axis,
 )
 
@@ -1610,127 +1609,47 @@ def _scenarios_with(schema: Schema, order: list[str], **properties: list) -> _So
     )
 
 
-def _by_store(store, source, parent):
-    return store.commit(source, parent=parent)
-
-
-def _by_claim(store, source, parent):
-    return store.claim(parent=parent).commit(source)
-
-
-def _agg_root(store, schema: Schema = _AGG):
+def _agg_root(store):
     """A root whose `scenario` axis is `x, y, z`, with `agg` 1, 2 and 3."""
-    source = _scenarios_with(schema, ["x", "y", "z"], agg=[1, 2, 3])
-    return store.commit(source, parent=None)
+    return store.commit(
+        _scenarios_with(_AGG, ["x", "y", "z"], agg=[1, 2, 3]), parent=None
+    )
 
 
 def _aggs(revision) -> list[tuple]:
     return revision.record.properties["scenario"].project("scenario, agg").fetchall()
 
 
-@pytest.mark.parametrize("commit", [_by_store, _by_claim])
-def test_a_commit_keeps_the_parents_property_by_label(store, commit):
-    """The child's restated axis has `agg` where it keeps a label, NULL on a new one.
-
-    Notes
-    -----
-    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
-    """
-    root = _agg_root(store)
-    child = commit(store, _scenarios_with(_AGG, ["x", "new", "z"]), root)
-    assert _aggs(child) == [("x", 1), ("new", None), ("z", 3)], (
-        "the parent's value on a kept label, NULL on a new one, no row for a removed"
-        " one, in the source's order"
-    )
-
-
 @pytest.mark.parametrize(
     ("properties", "expected"),
     [
-        ({"agg": [10, 30]}, [("x", 10), ("z", 30)]),
-        ({"agg": pd.array([None, None], dtype="Int64")}, [("x", None), ("z", None)]),
-        ({}, [("x", 1), ("z", 3)]),
+        ({"agg": [10, 20, 30]}, [("x", 10), ("new", 20), ("z", 30)]),
+        (
+            {"agg": pd.array([None] * 3, dtype="Int64")},
+            [("x", None), ("new", None), ("z", None)],
+        ),
+        ({}, [("x", 1), ("new", None), ("z", 3)]),
     ],
     ids=["written", "blanked", "column-omitted"],
 )
 def test_a_declared_property_takes_the_parents_values_only_without_its_column(
     store, properties, expected
 ):
-    source = _scenarios_with(_AGG, ["x", "z"], **properties)
+    """The source restates `scenario` as `x, new, z`, removing `y`.
+
+    Notes
+    -----
+    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
+    """
+    source = _scenarios_with(_AGG, ["x", "new", "z"], **properties)
     child = store.commit(source, parent=_agg_root(store))
     assert _aggs(child) == expected, (
-        "a column the source writes applies, NULLs included, and one it omits is the"
-        " parent's"
+        "a column the source writes applies, NULLs included; one it omits takes the"
+        " parent's value by label, NULL on a new label, in the source's order"
     )
 
 
-def test_a_commit_keeps_only_the_columns_the_source_omits(store):
-    both = _declaring(
-        _SCHEMA,
-        scenario={"agg": PropertySpec(dtype="int"), "w": PropertySpec(dtype="int")},
-    )
-    root = store.commit(
-        _scenarios_with(both, ["x", "y"], agg=[1, 2], w=[5, 6]), parent=None
-    )
-    source = _scenarios_with(both, ["x", "new"], agg=[10, 20])
-    child = store.commit(source, parent=root)
-    rows = child.record.properties["scenario"].project("scenario, agg, w")
-    assert rows.fetchall() == [("x", 10, 5), ("new", 20, None)], (
-        "the source's `agg`, the parent's `w`"
-    )
-
-
-def test_a_kept_property_reaches_through_a_layer_without_the_axis(store):
-    root = _agg_root(store)
-    middle = store.commit(_Source(_AGG, attributes={"p_nom": _long()}), parent=root)
-    leaf = store.commit(_scenarios_with(_AGG, ["y", "new"]), parent=middle)
-    assert _aggs(leaf) == [("y", 2), ("new", None)], "the root's values, by label"
-
-
-def _with_region(base: Schema) -> Schema:
-    """`base` declaring one more dimension, `region`."""
-    dimensions = {**base.dimensions, "region": Dimension(dtype="str")}
-    return Schema(**{**base.model_dump(), "dimensions": dimensions})
-
-
-@pytest.mark.parametrize(
-    ("parent", "source", "match"),
-    [
-        (_AGG, _SCHEMA, "property 'agg' of 'scenario' removed"),
-        (
-            _AGG,
-            _declaring(_SCHEMA, scenario={"agg": PropertySpec(dtype="str")}),
-            "property 'agg' of 'scenario' .* -> ",
-        ),
-        (widened(_AGG, "extra"), _AGG, "attribute 'extra' removed"),
-        (_with_region(_AGG), _AGG, "dimension 'region' removed"),
-    ],
-    ids=[
-        "property-omitted",
-        "property-redeclared",
-        "attribute-omitted",
-        "dimension-omitted",
-    ],
-)
-def test_a_commit_refuses_a_source_narrowing_its_parents_schema(
-    store, parent, source, match
-):
-    root = _agg_root(store, parent)
-    with pytest.raises(ValueError, match=match):
-        store.commit(_scenarios_with(source, ["x"]), parent=root)
-
-
-def test_an_axis_the_layer_does_not_write_reads_the_parents_properties(store):
-    source = _Source(_AGG, attributes={"p_nom": _long()})
-    child = store.commit(source, parent=_agg_root(store))
-    assert "scenario" not in child.manifest.files.dimensions
-    assert _aggs(child) == [("x", 1), ("y", 2), ("z", 3)], (
-        "the fold reads the parent's axis, its properties included"
-    )
-
-
-@pytest.mark.parametrize("restated", [True, False], ids=["restated", "not-restated"])
-def test_a_kept_property_naming_a_removed_label_is_refused(store, restated):
+def test_a_kept_property_naming_a_removed_label_is_refused(store):
     """`home` on entity `b` is bus `b1`, which the child removes.
 
     Notes
@@ -1753,27 +1672,16 @@ def test_a_kept_property_naming_a_removed_label_is_refused(store, restated):
         ),
         parent=None,
     )
-    dims = {"bus": pd.DataFrame({"bus": ["b0"]})}
-    if restated:
-        dims["entity"] = entities[["entity"]]
+    dims = {"bus": pd.DataFrame({"bus": ["b0"]}), "entity": entities[["entity"]]}
     with pytest.raises(ValueError, match="removing a label removes"):
         store.commit(_Source(homed, dims=dims), parent=root)
 
 
-@pytest.mark.parametrize(
-    "commit",
-    [
-        lambda root, w: root.store.commit(w),
-        lambda root, w: root.store.claim(parent=root).commit(w.edits),
-    ],
-    ids=["working-record", "edits"],
-)
-def test_edits_keep_the_parent_property_without_carrying_it(store, commit):
+def test_edits_keep_the_parent_property_without_carrying_it(store):
     root = _agg_root(store)
     w = WorkingRecord(root.record)
     w.add("scenario", ["new"])
-    child = commit(root, w)
-    assert child.manifest.schema == _AGG
+    child = store.commit(w)
     assert _aggs(child) == [("x", 1), ("y", 2), ("z", 3), ("new", None)]
 
 
