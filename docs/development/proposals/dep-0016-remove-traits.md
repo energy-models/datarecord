@@ -12,7 +12,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Author   | Jonas Hoersch                                                                                        |
 | Status   | Implemented (2026-10-20)                                                                             |
 | Created  | 2026-10-20                                                                                           |
-| Version  | Unreleased                                                                                           |
+| Version  | v0.1.0a2                                                                                             |
 | Replaces | [DEP 1](dep-0001-dims-groups-traits.md) (its traits), [DEP 3](dep-0003-trait-switches.md) (switches) |
 
 The design landed in [the schema](../../reference/schema.md), [the data model](../../reference/data-model.md) and [the tools reference](../../reference/tools.md). Where they and this DEP differ, follow those pages.

@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status   | Implemented (2026-11-03)                                                                                                                                                 |
 | Requires | [DEP 25](dep-0025-a-layer-carries-its-manifest.md), [DEP 26](dep-0026-the-fold-reads-each-layer-under-its-own-schema.md), [DEP 33](dep-0033-the-fold-is-a-fixed-plan.md) |
 | Created  | 2026-11-02                                                                                                                                                               |
-| Version  | Unreleased                                                                                                                                                               |
+| Version  | v0.1.0a2                                                                                                                                                                 |
 
 The design landed in [record](../../reference/record.md), [store](../../reference/store.md) and [format](../../reference/format.md). Where they and this DEP differ, follow those pages.
 

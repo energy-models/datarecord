@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status        | Implemented (2026-10-20)                                                                                 |
 | Requires      | [DEP 16](dep-0016-remove-traits.md)                                                                      |
 | Created       | 2026-10-20                                                                                               |
-| Version       | Unreleased                                                                                               |
+| Version       | v0.1.0a2                                                                                                 |
 | Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its SubNetwork as an `entity`, and its tombstones) |
 
 The design landed in [the schema](../../reference/schema.md), [the record format](../../reference/format.md), [the record](../../reference/record.md), [the fold](../../reference/resolution.md) and [the tools reference](../../reference/tools.md). Where they and this DEP differ, follow those pages.

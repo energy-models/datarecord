@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status        | Implemented (2026-10-13)                                                                                               |
 | Requires      | [DEP 10](dep-0010-a-group-is-a-struct-column.md)                                                                       |
 | Created       | 2026-10-13                                                                                                             |
-| Version       | Unreleased                                                                                                             |
+| Version       | v0.1.0a2                                                                                                               |
 | Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its removal by tombstone, and dead labels as winning tombstones) |
 
 The design landed in [layers](../../reference/layers.md) and [the fold](../../reference/resolution.md). Where they and this DEP differ, follow those pages.
