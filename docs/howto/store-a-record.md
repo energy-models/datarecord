@@ -101,7 +101,7 @@ Each thread built its own relation and fetched one generator's `p_nom`. A relati
 
 ## Hand a revision to another process
 
-A `Revision` or a `Claim` serialises as its id and its store's location, as JSON or as a pickle:
+A `Revision` serialises as its id and its store's location, as JSON or as a pickle:
 
 ```python
 import pickle
@@ -121,4 +121,4 @@ True
 True
 ```
 
-The JSON has the id and the store's location, and the loaded revision has the same ancestry. The loaded revision attaches to `Workspace.process()`, the one workspace a process creates on first use, and datarecord reads its manifests from the store. Build a source for `claim.commit` on that workspace, since a relation from another workspace is refused. Writers never share a file, so several processes can commit to one store at once ([the store](../reference/store.md)).
+The JSON has the id and the store's location, and the loaded revision has the same ancestry. The loaded revision attaches to `Workspace.process()`, the one workspace a process creates on first use, and datarecord reads its manifests from the store. A `Claim` serialises the same way and carries its parent, `meta` and creation time too, and `store.claim_from(payload)` loads it onto the workspace of a store you name ([the claim](../reference/store.md#claim)). Build a source for `claim.commit` on the workspace the claim attaches to, since a relation from another workspace is refused. Writers never share a file, so several processes can commit to one store at once ([the store](../reference/store.md)).

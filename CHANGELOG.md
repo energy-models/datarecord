@@ -87,9 +87,14 @@ All notable changes to datarecord are documented here. The format follows
   revision it was built over, and refuses one built over anything else,
   naming `ws.write(w, uri)`, which writes the flattened record. Each claim and
   manifest is written once, create-only.
-- A `Claim` serialises and pickles as its store's location and id, and reads
-  its parent, `meta` and claim time back from its `claim.json`, so a job in
-  another process commits it. `store.claims()` lists the pending layers,
+- A `Claim` serialises and pickles as its id, its store's location, parent,
+  `meta` and claim time, so a job in another process commits it without a
+  read of `claim.json`. `store.claim_from(payload)` rebuilds it on a store
+  the caller names, so on that store's workspace and key.
+  `Claim.model_validate_json` and an unpickled claim land on
+  `Workspace.process()`. The short form of only the id and location still
+  completes itself from `claim.json`. A claim's parent may be a pending
+  claim, which commits first. `store.claims()` lists the pending layers,
   oldest first, with their `meta`, and `store.revisions(meta={...})` returns
   the revisions whose `meta` holds every pair given.
 - `store.cleanup(ids=[...])` and `store.cleanup(older_than=timedelta(...))`
