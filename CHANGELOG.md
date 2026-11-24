@@ -345,6 +345,22 @@ All notable changes to datarecord are documented here. The format follows
   fraction of the time. A filter on `attribute` still reaches every scan of
   the base's map, and one on a dimension now reaches all but one scan per
   shape over two or more dimensions in `partial`.
+- A `WorkingRecord` builds the labels each staged restatement removes once per
+  thread rather than once per attribute whose owner map it folds. So
+  `register` binds that anti-join once per dimension, not once per attribute.
+- A `WorkingRecord` drops a staged row of a removed label by joining the row
+  to every staged axis, then filtering and projecting once, rather than with a
+  join, a filter and a projection per dimension.
+- A record builds the read of an attribute once per plan and set of column
+  types, over the rows and map rows of the first attribute it reads, and
+  writes each later attribute's own rows and map rows into that SQL text where
+  the first one's were. Before, it built every attribute's read step by step,
+  and DuckDB bound each step.
+  `record.attributes[name]` and the registered view are that text, bound once.
+  The workspace keeps that text for every thread and every record whose plan
+  and column types agree. A frozen record keeps its fold per thread, and an
+  attribute no layer holds gets the text of an empty view, kept per set of
+  column types.
 - Breaking: on S3, a `403` no longer counts as a missing key. Every call of
   `RemoteFiles` the server answers with `403` raises `PermissionError` naming
   the key or prefix, as does a `delete` whose every failed key is

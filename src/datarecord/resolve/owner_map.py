@@ -25,7 +25,8 @@ from collections.abc import (
     Sequence,
 )
 from contextlib import contextmanager
-from functools import reduce
+from functools import partial, reduce
+from typing import NamedTuple
 from uuid import UUID
 
 import duckdb
@@ -656,7 +657,7 @@ def _fold_map(
         keyed, dead = base.axes.schema, base.axes.dead
         maps = _by_shape(cast_declared(keyed, base.owner_map), keyed)
         held = {name: base.axes.get(name) for name in _pruned(schema)}
-    return _fold_onto(maps, above, held, con, keyed=keyed, dead=dead, made=made)
+    return _fold_onto(maps, restated(above, held, dead), con, keyed=keyed, made=made)
 
 
 def _fold_at_hand(source: LayerSource) -> Fold | None:
@@ -718,14 +719,86 @@ def _pruned(schema: Schema) -> tuple[str, ...]:
     return schema.partial_dimensions
 
 
+class Restated(NamedTuple):
+    """One source as `_fold_onto` folds it, with the labels its restatements remove.
+
+    Attributes
+    ----------
+    source
+        The source.
+    removed
+        Per `partial` dimension of its schema, the labels the previous
+        restatement held and its own omits.
+    dead_at
+        A dimension joining `partial` to the labels removed along it below
+        `source` and not held again, `None` where there are none (`_widened`).
+    """
+
+    source: LayerSource
+    removed: dict[str, DuckDBPyRelation]
+    dead_at: Callable[[str], DuckDBPyRelation | None]
+
+
+def restated(
+    sources: Sequence[LayerSource],
+    held: Mapping[str, DuckDBPyRelation | None],
+    dead: Mapping[str, DuckDBPyRelation],
+) -> list[Restated]:
+    """Each of `sources` with the labels its restatements remove, as `_fold_onto` folds them.
+
+    A source restating a membership removes the labels the previous
+    restatement held and its own omits. `held` is that previous restatement
+    per `_pruned` membership of the node's schema as of the first source,
+    `None` where there is none, so a first restatement removes nothing. A
+    membership outside a source's `partial` is no index column there, so its
+    restatements are kept instead, beside `dead`, its labels removed as of
+    the first source, until it joins `partial`.
+
+    The result is the same for every attribute folded, so a caller folding
+    one attribute at a time builds it once (`Record._restated`).
+
+    Notes
+    -----
+    - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
+    """
+    held = dict(held)
+    past = {
+        name: [r for r in (dead.get(name), axis) if r is not None]
+        for name, axis in held.items()
+    }
+    out = []
+    for source in sources:
+        dead_at = partial(_dead_at, dict(held), {n: list(p) for n, p in past.items()})
+        removed = {}
+        for name, before in held.items():
+            now = source.axis(name)
+            if now is None:
+                continue
+            if name not in source.schema.partial_dimensions:
+                past[name].append(now)
+            elif before is not None:
+                removed[name] = removed_labels(before, now, name)
+            held[name] = now
+        out.append(Restated(source, removed, dead_at))
+    return out
+
+
+def _dead_at(
+    held: Mapping[str, DuckDBPyRelation | None],
+    past: Mapping[str, Sequence[DuckDBPyRelation]],
+    name: str,
+) -> DuckDBPyRelation | None:
+    """`Restated.dead_at` from the axes `held` and `past` before its source."""
+    axis = held[name]
+    return None if axis is None else _dead_labels(past[name], axis, name, fixed=False)
+
+
 def _fold_onto(
     maps: dict[Shape, DuckDBPyRelation],
-    sources: Sequence[LayerSource],
-    held: dict[str, DuckDBPyRelation | None],
+    sources: Sequence[Restated],
     con: DuckDBPyConnection,
     *,
     keyed: Schema,
-    dead: Mapping[str, DuckDBPyRelation],
     made: dict[str, DuckDBPyRelation] | None = None,
     attributes: Collection[str] | None = None,
 ) -> dict[Shape, DuckDBPyRelation]:
@@ -734,14 +807,8 @@ def _fold_onto(
     Each source folds under its own schema, the map extended to it first
     (`_widened`), so the map is keyed by the last source's schema, `keyed`
     where there is none. The map stays one relation per shape under the
-    source's schema, and each shape folds on its own (`fold_layer`). A source
-    restating a membership removes the labels the previous restatement held
-    and its own omits. `held` is that previous restatement per `_pruned` membership of
-    the node's schema as of the first source, `None` where there is none, so
-    a first restatement removes nothing. A membership outside a source's
-    `partial` is no index column there, so its restatements are kept
-    instead, beside `dead`, its labels removed as of the first source, until
-    it joins `partial`.
+    source's schema, and each shape folds on its own (`fold_layer`). Each
+    source drops the labels its restatements remove (`restated`).
 
     Where `made` is given, each source's fold but the last is kept in a table
     per shape before the next folds onto it, and so are the labels it removes
@@ -761,39 +828,20 @@ def _fold_onto(
     - [a fold starts from the nearest fold at hand](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [deletion](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
     """
-    held = dict(held)
-    past = {
-        name: [r for r in (dead.get(name), axis) if r is not None]
-        for name, axis in held.items()
-    }
-
-    def dead_at(name: str) -> DuckDBPyRelation | None:
-        axis = held[name]
-        return (
-            None if axis is None else _dead_labels(past[name], axis, name, fixed=False)
-        )
+    layers = [r.source for r in sources]
 
     def owner(layer: UUID) -> LayerSource:
-        return source_for(sources, layer)
+        return source_for(layers, layer)
 
     def keep(rel: DuckDBPyRelation) -> DuckDBPyRelation:
         if made is None or rel.type == "TABLE_RELATION":
             return rel
         return _checkpoint(rel, made, con)
 
-    for source in sources:
+    for source, restates, dead_at in sources:
         maps = _widened(maps, keyed, source.schema, dead_at, owner)
         keyed = source.schema
-        removed = {}
-        for name, before in held.items():
-            now = source.axis(name)
-            if now is None:
-                continue
-            if name not in keyed.partial_dimensions:
-                past[name].append(now)
-            elif before is not None:
-                removed[name] = keep(removed_labels(before, now, name))
-            held[name] = now
+        removed = {name: keep(rel) for name, rel in restates.items()}
         owned = _layer_owner_map_rows(
             source, source.attributes() if attributes is None else attributes
         )
@@ -811,7 +859,7 @@ def _fold_onto(
             )
             if rel is not None:
                 folded[shape] = rel
-        if made is not None and source is not sources[-1]:
+        if made is not None and source is not layers[-1]:
             folded = {shape: keep(rel) for shape, rel in folded.items()}
             _drop_unread(made, folded.values(), con)
         maps = folded
@@ -921,10 +969,17 @@ def split_frozen(
     return list(sources[:count]), list(sources[count:])
 
 
+def restated_above(sources: Sequence[LayerSource], frozen_axes: Axes) -> list[Restated]:
+    """The sources above the frozen ones, `restated` onto the frozen layers' axes `frozen_axes`."""
+    _, above = split_frozen(sources)
+    held = {name: frozen_axes.get(name) for name in _pruned(sources[-1].schema)}
+    return restated(above, held, frozen_axes.dead)
+
+
 def _table(
     frozen_map: DuckDBPyRelation | None,
     sources: Sequence[LayerSource],
-    frozen_axes: Axes,
+    above: Sequence[Restated],
     attributes: Mapping[str, bool] | None = None,
 ) -> DuckDBPyRelation:
     """The owner map over `sources`, folded onto the frozen layers' `frozen_map` (`_frozen_table`), as a caller reads it (`_unstamped`).
@@ -933,8 +988,8 @@ def _table(
     back as a relation, so a staging area's edits are picked up with no
     bookkeeping at all: a relation over a staging table reads whatever the
     table holds when it is collected. `frozen_map` is `None` where no source
-    is frozen. `frozen_axes` are the frozen layers' axes, which a
-    restatement above them removes labels from.
+    is frozen. `above` are the sources after them as `restated_above` gives
+    them.
 
     Parameters
     ----------
@@ -951,7 +1006,7 @@ def _table(
     - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [the owner map](https://energy-models.github.io/datarecord/reference/resolution/#the-owner-map)
     """
-    frozen, above = split_frozen(sources)
+    frozen, _ = split_frozen(sources)
     rel = frozen_map
     if rel is not None and attributes is None and not above:
         return _unstamped(rel)
@@ -963,16 +1018,7 @@ def _table(
             None if attributes is None else [a for a, h in attributes.items() if h]
         )
         maps = _by_shape(rel, keyed, held_by)
-    held = {name: frozen_axes.get(name) for name in _pruned(schema)}
-    maps = _fold_onto(
-        maps,
-        above,
-        held,
-        con,
-        keyed=keyed,
-        dead=frozen_axes.dead,
-        attributes=attributes,
-    )
+    maps = _fold_onto(maps, above, con, keyed=keyed, attributes=attributes)
     return _as_one(maps, schema, con)
 
 
