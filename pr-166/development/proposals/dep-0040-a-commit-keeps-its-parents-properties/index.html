@@ -10,7 +10,7 @@
       
       
       
-        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-166/development/proposals/dep-0040-a-commit-may-keep-its-parents-properties/">
+        <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-166/development/proposals/dep-0040-a-commit-keeps-its-parents-properties/">
       
       
         <link rel="prev" href="../dep-0039-query-templates-avoid-rebinding-a-read/">
@@ -27,7 +27,7 @@
     
     
       
-        <title>DEP 40: a commit may keep its parent's properties - datarecord</title>
+        <title>DEP 40: a commit keeps its parent's properties - datarecord</title>
       
     
     
@@ -82,7 +82,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#dep-40-a-commit-may-keep-its-parents-properties" class="md-skip">
+        <a href="#dep-40-a-commit-keeps-its-parents-properties" class="md-skip">
           Skip to content
         </a>
       
@@ -118,7 +118,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              DEP 40: a commit may keep its parent's properties
+              DEP 40: a commit keeps its parent's properties
             
           </span>
         </div>
@@ -1965,7 +1965,7 @@
   <span class="md-ellipsis">
     
   
-    DEP 40: a commit may keep its parent's properties
+    DEP 40: a commit keeps its parent's properties
   
 
     
@@ -1983,7 +1983,7 @@
   <span class="md-ellipsis">
     
   
-    DEP 40: a commit may keep its parent's properties
+    DEP 40: a commit keeps its parent's properties
   
 
     
@@ -2287,7 +2287,7 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 
-<h1 id="dep-40-a-commit-may-keep-its-parents-properties">DEP 40: a commit may keep its parent's properties<a class="headerlink" href="#dep-40-a-commit-may-keep-its-parents-properties" title="Permanent link">&para;</a></h1>
+<h1 id="dep-40-a-commit-keeps-its-parents-properties">DEP 40: a commit keeps its parent's properties<a class="headerlink" href="#dep-40-a-commit-keeps-its-parents-properties" title="Permanent link">&para;</a></h1>
 <table>
 <thead>
 <tr>
@@ -2298,7 +2298,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <tbody>
 <tr>
 <td>Title</td>
-<td>a commit may keep its parent's properties</td>
+<td>a commit keeps its parent's properties</td>
 </tr>
 <tr>
 <td>Author</td>
@@ -2316,63 +2316,58 @@ SPDX-License-Identifier: CC-BY-4.0
 <td>Created</td>
 <td>2026-11-19</td>
 </tr>
-<tr>
-<td>Version</td>
-<td>Unreleased</td>
-</tr>
 </tbody>
 </table>
 <h2 id="abstract">Abstract<a class="headerlink" href="#abstract" title="Permanent link">&para;</a></h2>
-<p><code>Store.commit</code> and <code>Claim.commit</code> take <code>keep_properties=True</code>, which keeps each property the parent declares and the source's schema omits. The child's manifest declares the kept properties, and the commit writes the parent's values into each axis file the layer writes, by label. Without the flag, a commit refuses such a source as it does today.</p>
+<p>A commit of a whole record under a parent keeps each property the parent declares and the source's schema omits, on the dimensions the source declares. The child's manifest declares the kept properties, and the commit writes the parent's values into each axis file the layer writes, by label. Where <code>compatible_with</code> used to refuse such a source as removing the property, the commit now writes it.</p>
 <h2 id="motivation">Motivation<a class="headerlink" href="#motivation" title="Permanent link">&para;</a></h2>
 <p>A modelling workflow widens a record with properties that a tool does not model. One step adds <code>snapshot.agg_3h</code>, the three-hour block of each snapshot, so that a later step can aggregate the time series. A later step then exports the full network again, such as <code>PyPSA.to_datarecord(n, con)</code> after clustering, and commits it as a child. The tool's schema has no <code>agg_3h</code>, so <code>compatible_with</code> reports the property as removed and the commit refuses the child:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ValueError: this layer's schema is incompatible with its parent's: property 'agg_3h' of 'snapshot' removed (https://energy-models.github.io/datarecord/reference/schema/#compatibility)
 </code></pre></div>
 <p>Today a caller wraps the source. The wrapper widens its schema with the parent's properties and joins the parent's values back onto each axis by label. Every workflow that mixes a tool's export with its own properties writes that wrapper again.</p>
 <h2 id="specification">Specification<a class="headerlink" href="#specification" title="Permanent link">&para;</a></h2>
-<p><code>Store.commit(source, *, parent, meta=None, keep_properties=False)</code> and <code>Claim.commit(source, *, meta=None, credentials=None, keep_properties=False)</code> take the flag. <code>Store.commit</code> passes it to <code>Claim.commit</code>.</p>
-<p>With <code>keep_properties=True</code> and a parent:</p>
+<p><code>Store.commit</code> and <code>Claim.commit</code> take no new argument. With a parent and a source that is not a <code>WorkingRecord</code> or its edits:</p>
 <ol>
 <li>The kept properties are those the parent's manifest schema declares on a dimension the source's schema declares, and the source's schema does not.</li>
 <li>The child's manifest schema is the source's schema plus the kept properties. Where both declare a property, the source's declaration applies.</li>
 <li><code>compatible_with</code> against the parent runs on that schema, as for any commit. So a property the source declares differently from the parent is still refused, and so is a dimension or an attribute the source omits.</li>
 <li>Take an axis the layer writes without the column of a kept property. The writer left-joins the parent's resolved values onto it by label, and writes them into the child's axis file in the layer's row order. A label new to the child reads NULL. A label the child removes has no row, so its value goes with it.</li>
 <li>An axis the layer does not write has no file, and the fold inherits the parent's axis, its properties included.</li>
-<li>The writer checks the carried columns as it checks any written column. A carried property that refers to a dimension is refused while its value names a label the layer removes, with the message for <a href="../../../reference/layers/#removing-labels">removing labels</a>.</li>
+<li>The writer checks the kept columns as it checks any written column. A kept property that refers to a dimension is refused while its value names a label the layer removes, with the message for <a href="../../../reference/layers/#removing-labels">removing labels</a>.</li>
 <li>The commit logs each kept property at <code>INFO</code>: <code>revision &lt;id&gt; keeps property &lt;dim&gt;.&lt;name&gt; of its parent</code>.</li>
 </ol>
-<p>A root commit, <code>parent=None</code>, ignores the flag. A <code>WorkingRecord</code> with the flag set raises <code>TypeError</code>, whether committed whole or as its <code>StagedSource</code> edits. Its layer already keeps every property it does not edit.</p>
-<p>Nothing changes on disk. The carried values are ordinary columns of the child's axis files, and the manifest is an ordinary manifest.</p>
+<p>A root commit, <code>parent=None</code>, has nothing to keep. A <code>WorkingRecord</code>, committed whole or as its <code>StagedSource</code> edits, declares every property of the revision it was built over, so the commit keeps none this way and joins nothing.</p>
+<p>Nothing changes on disk. The kept values are ordinary columns of the child's axis files, and the manifest is an ordinary manifest.</p>
 <h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
-<p>The flag is per commit, so the writer states that an omitted property means "unchanged". A tool that drops a property by mistake is still refused by default.</p>
-<p>The values are carried at commit time rather than at read time. The carried values are in the written file, so a read does no extra join and a later layer folds them like any other column. The writer also checks them before the manifest exists. This follows <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a>: a layer's axis file contains the whole axis at the new revision, properties included.</p>
-<p>Only properties are kept. A property describes a label, so the parent's value stays right for a label the child keeps. An attribute or a dimension is data the tool restates. Keeping one that the tool omits would need a rule per shape, which this DEP does not argue for.</p>
-<p>The cost is one join per written axis that lacks a kept property, at commit time. A commit without the flag runs as before.</p>
+<p>The planned design moves properties into one or more properties files of their own, which fold like attribute files. There, a layer that lacks a property reads it from the layer below, as a layer that writes no <code>p_nom</code> file reads the parent's <code>p_nom</code>. Keeping the parent's properties on every commit gives that behaviour today, with the axis file as it is. A workflow written against it keeps working once properties fold like attributes, because the read returns the same rows.</p>
+<p>An omitted property therefore means "unchanged", as an omitted attribute file already does. A rule that holds for attributes on every commit and for properties only behind a flag would give one omission two meanings. The <code>INFO</code> log names each kept property, so a caller who did not expect one sees it.</p>
+<p>The values are kept at commit time rather than at read time. The kept values are in the written file, so a read does no extra join and a later layer folds them like any other column. The writer also checks them before the manifest exists. This follows <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a>: a layer's axis file contains the whole axis at the new revision, properties included.</p>
+<p>Only properties are kept. A property describes a label, so the parent's value stays right for a label the child keeps. A source whose schema omits an attribute or a dimension is still refused, because keeping one would need a rule per shape, which this DEP does not argue for.</p>
+<p>The cost is one join per written axis that lacks a kept property, at commit time. A commit whose source declares every property of its parent runs as before.</p>
 <h2 id="usage">Usage<a class="headerlink" href="#usage" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="n">clustered</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">con</span><span class="p">)</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">clustered</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="n">widened</span><span class="p">,</span> <span class="n">keep_properties</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">child</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"snapshot"</span><span class="p">]</span>  <span class="c1"># agg_3h carried by label, NULL on a new snapshot</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">clustered</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="n">widened</span><span class="p">)</span>
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="n">child</span><span class="o">.</span><span class="n">record</span><span class="o">.</span><span class="n">properties</span><span class="p">[</span><span class="s2">"snapshot"</span><span class="p">]</span>  <span class="c1"># agg_3h kept by label, NULL on a new snapshot</span>
 </code></pre></div>
-<p>A commit without the flag refuses <code>clustered</code> as before.</p>
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
 <li><code>_keeping_properties</code> widens the source's schema with the parent's properties on the dimensions the source declares.</li>
 <li><code>_kept</code> lists the kept properties for the <code>INFO</code> log.</li>
 <li><code>_Carrying</code> wraps the <code>LayerData</code> and left-joins each written axis with the parent's resolved properties, ordered by the layer's rows.</li>
-<li><code>Claim._commit</code> applies both when <code>keep_properties</code> is set and the claim has a parent, before <code>compatible_with</code> and <code>write_layer</code> run.</li>
+<li><code>Claim._commit</code> applies both whenever the claim has a parent, before <code>compatible_with</code> and <code>write_layer</code> run. A <code>WorkingRecord</code>'s schema already declares every property, so <code>_kept</code> is empty for it and no axis is wrapped.</li>
 </ol>
-<p>Take a child that removes bus <code>south</code> while it carries <code>entity.bus = south</code> for <code>wind</code>. The writer refuses it as in point 6, whether or not the child restates the <code>entity</code> axis.</p>
+<p>Take a child that removes bus <code>south</code> while it keeps <code>entity.bus = south</code> for <code>wind</code>. The writer refuses it as in point 6, whether or not the child restates the <code>entity</code> axis.</p>
 <h2 id="rejected-ideas">Rejected ideas<a class="headerlink" href="#rejected-ideas" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Always keep the parent's properties, so an omission always means "unchanged". A tool that drops a property by mistake would then keep stale values silently. Opt-in makes the writer state the intent.</li>
-<li>Carry the values in the fold at read time. Every read would join one relation per carried column, and the writer could not check the carried values.</li>
+<li>Keep the parent's properties only with <code>keep_properties=True</code> on the commit, and refuse the source otherwise. The writer would state the intent, and a tool that drops a property by mistake would be refused. But an omitted property would then mean "removed" by default, while an omitted attribute means "unchanged", and the flag would become dead weight once properties fold like attributes.</li>
+<li>Carry the values in the fold at read time. Every read would join one relation per kept column, and the writer could not check the kept values.</li>
 <li>Let each tool carry the values itself. The PyPSA tool's <code>to_datarecord</code> already takes a <code>base</code> and leaves out values that repeat it. It could also carry the properties of <code>base</code>. Every tool would then repeat the label join, and a hand-written source would get nothing.</li>
 <li>Leave it to a caller-side wrapper or helper. That is what users write today, once per workflow.</li>
 </ul>
 <h2 id="open-issues">Open issues<a class="headerlink" href="#open-issues" title="Permanent link">&para;</a></h2>
 <ul>
-<li>Dimensions and attributes that the parent declares and the source omits are not kept.</li>
-<li>A carried value that a tool's edit made stale is not detectable. If clustering merges snapshots, the carried <code>agg_3h</code> is the parent's value for the label kept, whatever the merge meant.</li>
+<li>A source cannot remove a property its parent declares, because the commit keeps it. Removing one was already refused by <code>compatible_with</code>, so no workflow loses a capability.</li>
+<li>A kept value that a tool's edit made stale is not detectable. If clustering merges snapshots, the kept <code>agg_3h</code> is the parent's value for the label kept, whatever the merge meant.</li>
 </ul>
 
 

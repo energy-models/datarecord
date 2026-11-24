@@ -2012,7 +2012,7 @@ After it, you can read the record on any thread inside a transaction that you ro
 <td>hands out a new layer id under <code>parent</code> and returns a <code>Claim</code></td>
 </tr>
 <tr>
-<td><code>commit(source, *, parent, meta=None, keep_properties=False)</code></td>
+<td><code>commit(source, *, parent, meta=None)</code></td>
 <td>claims and commits in one call, and returns the <code>Revision</code></td>
 </tr>
 <tr>
@@ -2095,7 +2095,7 @@ A lookup compares JSON rather than floats, so <code>revisions(meta={"x": float("
 A commit that fails leaves its layer pending with the files it wrote, and a retried commit writes them again.</p>
 <p>Before it writes data, a commit checks three things and refuses the layer otherwise:</p>
 <ul>
-<li>The layer's schema passes <a href="../schema/"><code>compatible_with</code></a> against the parent's manifest's schema. With <code>keep_properties=True</code>, the layer's schema first takes each property the parent declares and the source omits (<a href="../layers/#keep_properties"><code>keep_properties</code></a>).</li>
+<li>The layer's schema passes <a href="../schema/"><code>compatible_with</code></a> against the parent's manifest's schema, once it <a href="../layers/#properties-a-source-omits">keeps each property</a> that the parent declares and the source omits.</li>
 <li>Its <code>meta</code> has every key of the claim's <code>meta</code> with the same value, and may add keys. Values compare as JSON, so <code>1</code>, <code>1.0</code> and <code>True</code> differ, and an object differs once any key inside it does.</li>
 <li>Its parent, the claim's <code>parent</code>, is a revision of this store.</li>
 </ul>
@@ -2104,8 +2104,8 @@ A commit that fails leaves its layer pending with the files it wrote, and a retr
 Over a base that is no revision of this store, such as a standalone directory, it refuses <code>w</code> and names <code>ws.write(w, uri)</code>, which writes <code>w</code> whole.</p>
 <h3 id="claim"><code>Claim</code><a class="headerlink" href="#claim" title="Permanent link">&para;</a></h3>
 <p>A <code>Claim</code> is a revision id that a store reserves before the layer is written.
-It has <code>id</code>, <code>store</code>, <code>parent</code>, <code>meta</code> and <code>created</code>, and <code>claim.commit(source, *, meta=None, credentials=None, keep_properties=False)</code> writes the layer and returns the <code>Revision</code>.
-<code>credentials</code> are a <a href="#a-commit-with-a-key-for-its-layer">key for the layer alone</a>, and <code>keep_properties</code> <a href="../layers/#keep_properties">keeps the parent's properties</a> that the source omits.</p>
+It has <code>id</code>, <code>store</code>, <code>parent</code>, <code>meta</code> and <code>created</code>, and <code>claim.commit(source, *, meta=None, credentials=None)</code> writes the layer and returns the <code>Revision</code>.
+<code>credentials</code> are a <a href="#a-commit-with-a-key-for-its-layer">key for the layer alone</a>.</p>
 <p>A claim serialises as all five fields, with its store's location for <code>store</code>, and pickles the same way:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">payload</span> <span class="o">=</span> <span class="n">claim</span><span class="o">.</span><span class="n">model_dump_json</span><span class="p">()</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">claim</span> <span class="o">=</span> <span class="n">ws</span><span class="o">.</span><span class="n">store</span><span class="p">(</span><span class="s2">"/data/my-record"</span><span class="p">)</span><span class="o">.</span><span class="n">claim_from</span><span class="p">(</span><span class="n">payload</span><span class="p">)</span>  <span class="c1"># in another process</span>

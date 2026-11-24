@@ -1059,10 +1059,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#keep_properties" class="md-nav__link">
+  <a href="#properties-a-source-omits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        keep_properties
+        Properties a source omits
       
     </span>
   </a>
@@ -1604,10 +1604,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#keep_properties" class="md-nav__link">
+  <a href="#properties-a-source-omits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        keep_properties
+        Properties a source omits
       
     </span>
   </a>
@@ -2048,13 +2048,10 @@ So where an ancestor left such a reference, the writer refuses the next layer th
 <p><a href="../../howto/edit-a-record/">Edit a record</a> shows <code>add</code> and <code>remove</code>.
 <a href="../../about/layers/">Layers and <code>partial</code></a> argues for removal as restatement.</p>
 </div>
-<h2 id="keep_properties"><code>keep_properties</code><a class="headerlink" href="#keep_properties" title="Permanent link">&para;</a></h2>
-<p><code>keep_properties=True</code> on <code>Store.commit</code> or <code>Claim.commit</code> keeps each property that the parent declares and the source's schema omits, on the dimensions the source's schema declares.
-By default the commit refuses such a source, because its schema removes the property:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>ValueError: this layer's schema is incompatible with its parent's: property 'agg_3h' of 'snapshot' removed (https://energy-models.github.io/datarecord/reference/schema/#compatibility)
-</code></pre></div>
-<p>Here the parent's <code>snapshot</code> axis has a property <code>agg_3h</code>, the three-hour block of each snapshot, and <code>source</code> restates the axis without it:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="n">root</span><span class="p">,</span> <span class="n">keep_properties</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<h2 id="properties-a-source-omits">Properties a source omits<a class="headerlink" href="#properties-a-source-omits" title="Permanent link">&para;</a></h2>
+<p>A commit of a whole record under a parent keeps each property that the parent declares and the source's schema omits, on the dimensions the source's schema declares.
+Here the parent's <code>snapshot</code> axis has a property <code>agg_3h</code>, the three-hour block of each snapshot, and <code>source</code> restates the axis without it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
 </code></pre></div>
 <figure class="diagram">
 <!--
@@ -2062,8 +2059,8 @@ SPDX-FileCopyrightText: datarecord contributors
 SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 280" width="800" height="280" style="max-width: 100%; height: auto" role="img" aria-labelledby="lk-t lk-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
-  <title id="lk-t">A commit with keep_properties carries a parent's property into the child's axis file by label</title>
-  <desc id="lk-d">The parent layer's snapshot axis contains snapshots 0, 1 and 3, with agg_3h 0, 0 and 3. The child source restates the snapshot axis as 0, 3 and 4, with no agg_3h column, so it removes snapshot 1 and adds snapshot 4. The commit with keep_properties set to True writes the child layer's snapshot axis as 0, 3 and 4, with agg_3h 0, 3 and NULL. Snapshot 1 has no row, because the child removes it.</desc>
+  <title id="lk-t">A commit writes a parent's property into the child's axis file by label</title>
+  <desc id="lk-d">The parent layer's snapshot axis contains snapshots 0, 1 and 3, with agg_3h 0, 0 and 3. The child source restates the snapshot axis as 0, 3 and 4, with no agg_3h column, so it removes snapshot 1 and adds snapshot 4. The commit writes the child layer's snapshot axis as 0, 3 and 4, with agg_3h 0, 3 and NULL. Snapshot 1 has no row, because the child removes it.</desc>
   <defs>
     <marker id="lk-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>
@@ -2120,7 +2117,7 @@ SPDX-License-Identifier: CC-BY-4.0
     <text x="652" y="104" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">3</text>
     <text x="564" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">4</text>
     <text x="652" y="122" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">NULL</text>
-    <text x="312" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">commit(keep_properties=True)</text>
+    <text x="312" y="92" font-family="ui-monospace, SFMono-Regular, Menlo, monospace" font-size="12">commit(source, parent=root)</text>
     <text x="312" y="118" font-size="12">carries agg_3h by label</text>
     <text x="36" y="267" font-size="12">parent layer</text>
     <text x="166" y="267" font-size="12">child source</text>
@@ -2156,11 +2153,11 @@ Snapshot 1 has no row, so its value goes with it.</p>
 <ul>
 <li>The manifest's schema is the source's schema plus each kept property. Where both declare a property, the source's declaration applies, and <a href="../schema/#compatibility"><code>compatible_with</code></a> against the parent still refuses one declared differently.</li>
 <li>Where the layer writes an axis file without the column of a kept property, the commit joins the parent's values onto it by label. It writes them into that file in the layer's row order.</li>
+<li>A property the source declares is the source's alone. Where the source leaves its column out of an axis file, the column is NULL.</li>
 <li>An axis the layer does not write has no file, and the fold reads the parent's axis, its properties included.</li>
-<li>The writer checks a carried value as it checks any column of the file. It refuses a carried property that refers to a dimension while its value is a label the layer removes, as in <a href="#removing-labels">removing labels</a>.</li>
+<li>The writer checks a kept value as it checks any column of the file. It refuses a kept property that refers to a dimension while its value is a label the layer removes, as in <a href="#removing-labels">removing labels</a>.</li>
 <li>Only properties are kept. The commit still refuses a source whose schema omits a dimension or an attribute that the parent declares.</li>
-<li>A root commit, <code>parent=None</code>, ignores <code>keep_properties</code>.</li>
-<li>A <code>WorkingRecord</code> keeps every property it does not edit, so a commit of one with <code>keep_properties=True</code> raises <code>TypeError</code>.</li>
+<li>A commit of a <code>WorkingRecord</code> keeps no property this way, because its edits declare every property of the revision it was built over.</li>
 </ul>
 <p>The commit logs each kept property at <code>INFO</code>, as <code>revision &lt;id&gt; keeps property snapshot.agg_3h of its parent</code>.</p>
 <div class="admonition info">

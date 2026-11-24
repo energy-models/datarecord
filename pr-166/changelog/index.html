@@ -13,7 +13,7 @@
         <link rel="canonical" href="https://energy-models.github.io/datarecord/pr-166/changelog/">
       
       
-        <link rel="prev" href="../development/proposals/dep-0040-a-commit-may-keep-its-parents-properties/">
+        <link rel="prev" href="../development/proposals/dep-0040-a-commit-keeps-its-parents-properties/">
       
       
       
@@ -1098,12 +1098,6 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="unreleased">[Unreleased]<a class="headerlink" href="#unreleased" title="Permanent link">&para;</a></h2>
 <h3 id="added">Added<a class="headerlink" href="#added" title="Permanent link">&para;</a></h3>
 <ul>
-<li><code>keep_properties=True</code> on <code>Store.commit</code> and <code>Claim.commit</code> keeps each
-  property the parent declares and the source's schema omits, on the
-  dimensions the source declares. The child's manifest declares it, and each
-  axis file the layer writes takes the parent's values by label, NULL on a new
-  label. A <code>WorkingRecord</code> with the flag raises <code>TypeError</code>, and a root
-  ignores it.</li>
 <li><code>select(record, **labels)</code>, exported beside <code>settle</code>, and <code>Record.select</code>
   return a <code>Selection</code>: a <code>RecordLike</code> holding any record at the labels named,
   as xarray's <code>sel</code> takes them. One label squeezes its dimension out of the schema,
@@ -1412,6 +1406,12 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Breaking: a commit of a whole record under a parent keeps each property the
+  parent declares and the source's schema omits, on the dimensions the source
+  declares, where it used to refuse the source as removing the property. The
+  child's manifest declares the kept property, and each axis file the layer
+  writes takes the parent's values by label, NULL on a new label. The commit
+  logs each kept property at <code>INFO</code>.</li>
 <li>Breaking: the PyPSA tool keys <code>connection</code> by <code>(entity, port)</code>, where the
   port is PyPSA's number in <code>bus0</code>, <code>bus1</code>, ... and a one-port type's <code>bus</code> is
   port 0. The bus is the property <code>connection.bus</code>, and the dimension <code>role</code> and the
@@ -2006,7 +2006,7 @@ SPDX-License-Identifier: CC-BY-4.0
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../development/proposals/dep-0040-a-commit-may-keep-its-parents-properties/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 40: a commit may keep its parent&#39;s properties">
+          <a href="../development/proposals/dep-0040-a-commit-keeps-its-parents-properties/" class="md-footer__link md-footer__link--prev" aria-label="Previous: DEP 40: a commit keeps its parent&#39;s properties">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -2016,7 +2016,7 @@ SPDX-License-Identifier: CC-BY-4.0
                 Previous
               </span>
               <div class="md-ellipsis">
-                DEP 40: a commit may keep its parent's properties
+                DEP 40: a commit keeps its parent's properties
               </div>
             </div>
           </a>
