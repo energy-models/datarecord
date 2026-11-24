@@ -2095,7 +2095,7 @@ A lookup compares JSON rather than floats, so <code>revisions(meta={"x": float("
 A commit that fails leaves its layer pending with the files it wrote, and a retried commit writes them again.</p>
 <p>Before it writes data, a commit checks three things and refuses the layer otherwise:</p>
 <ul>
-<li>The layer's schema passes <a href="../schema/"><code>compatible_with</code></a> against the parent's manifest's schema, once it <a href="../layers/#properties-a-source-omits">keeps each property</a> that the parent declares and the source omits.</li>
+<li>The layer's schema passes <a href="../schema/"><code>compatible_with</code></a> against the parent's manifest's schema.</li>
 <li>Its <code>meta</code> has every key of the claim's <code>meta</code> with the same value, and may add keys. Values compare as JSON, so <code>1</code>, <code>1.0</code> and <code>True</code> differ, and an object differs once any key inside it does.</li>
 <li>Its parent, the claim's <code>parent</code>, is a revision of this store.</li>
 </ul>

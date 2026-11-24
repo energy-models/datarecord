@@ -1059,10 +1059,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#properties-a-source-omits" class="md-nav__link">
+  <a href="#property-columns-a-layer-omits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Properties a source omits
+        Property columns a layer omits
       
     </span>
   </a>
@@ -1604,10 +1604,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#properties-a-source-omits" class="md-nav__link">
+  <a href="#property-columns-a-layer-omits" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Properties a source omits
+        Property columns a layer omits
       
     </span>
   </a>
@@ -1641,7 +1641,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 
 <h1 id="layers">Layers<a class="headerlink" href="#layers" title="Permanent link">&para;</a></h1>
-<p>This page describes revisions, the tree they form, <code>partial</code> and what a layer may contain. It also describes how a layer removes a label and how a commit keeps its parent's properties.
+<p>This page describes revisions, the tree they form, <code>partial</code> and what a layer may contain. It also describes how a layer removes a label and how a commit fills the property columns a layer omits.
 How datarecord reads the layers of a revision as one record is on <a href="../resolution/">the resolution page</a>.</p>
 <h2 id="revisions">Revisions<a class="headerlink" href="#revisions" title="Permanent link">&para;</a></h2>
 <p>The data one revision adds on top of its parent (a layer) is a directory under <code>layers/&lt;id&gt;/</code> of a <a href="../store/">store</a>, written once.
@@ -2048,9 +2048,9 @@ So where an ancestor left such a reference, the writer refuses the next layer th
 <p><a href="../../howto/edit-a-record/">Edit a record</a> shows <code>add</code> and <code>remove</code>.
 <a href="../../about/layers/">Layers and <code>partial</code></a> argues for removal as restatement.</p>
 </div>
-<h2 id="properties-a-source-omits">Properties a source omits<a class="headerlink" href="#properties-a-source-omits" title="Permanent link">&para;</a></h2>
-<p>A commit of a whole record under a parent keeps each property that the parent declares and the source's schema omits, on the dimensions the source's schema declares.
-Here the parent's <code>snapshot</code> axis has a property <code>agg_3h</code>, the three-hour block of each snapshot, and <code>source</code> restates the axis without it:</p>
+<h2 id="property-columns-a-layer-omits">Property columns a layer omits<a class="headerlink" href="#property-columns-a-layer-omits" title="Permanent link">&para;</a></h2>
+<p>When a layer writes an axis file without the column of a property its schema declares, the commit writes the parent's values into that column, by label.
+Here the parent's <code>snapshot</code> axis has a property <code>agg_3h</code>, the three-hour block of each snapshot, and <code>source</code> declares it but restates the axis without its column:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">child</span> <span class="o">=</span> <span class="n">store</span><span class="o">.</span><span class="n">commit</span><span class="p">(</span><span class="n">source</span><span class="p">,</span> <span class="n">parent</span><span class="o">=</span><span class="n">root</span><span class="p">)</span>
 </code></pre></div>
 <figure class="diagram">
@@ -2151,13 +2151,12 @@ SPDX-License-Identifier: CC-BY-4.0
 <p>The child's axis file has the parent's <code>agg_3h</code> at snapshots 0 and 3, and NULL at snapshot 4, which the parent does not hold.
 Snapshot 1 has no row, so its value goes with it.</p>
 <ul>
-<li>The manifest's schema is the source's schema plus each kept property. Where both declare a property, the source's declaration applies, and <a href="../schema/#compatibility"><code>compatible_with</code></a> against the parent still refuses one declared differently.</li>
-<li>Where the layer writes an axis file without the column of a kept property, the commit joins the parent's values onto it by label. It writes them into that file in the layer's row order.</li>
-<li>A property the source declares is the source's alone. Where the source leaves its column out of an axis file, the column is NULL.</li>
+<li>The source's schema still declares every property of the parent. A schema that omits one fails <a href="../schema/#compatibility"><code>compatible_with</code></a>, and the commit refuses the layer.</li>
+<li>To set a property to NULL, a source writes its column with NULLs.</li>
+<li>The commit writes the parent's values in the layer's row order. A property the parent does not declare has no values to take, so its column stays out of the file and reads NULL.</li>
 <li>An axis the layer does not write has no file, and the fold reads the parent's axis, its properties included.</li>
-<li>The writer checks a kept value as it checks any column of the file. It refuses a kept property that refers to a dimension while its value is a label the layer removes, as in <a href="#removing-labels">removing labels</a>.</li>
-<li>Only properties are kept. The commit still refuses a source whose schema omits a dimension or an attribute that the parent declares.</li>
-<li>A commit of a <code>WorkingRecord</code> keeps no property this way, because its edits declare every property of the revision it was built over.</li>
+<li>The writer checks a taken value as it checks any column of the file. It refuses a property that refers to a dimension while its value is a label the layer removes, as in <a href="#removing-labels">removing labels</a>.</li>
+<li>A root has no parent, so its axis files are as the source writes them.</li>
 </ul>
 <div class="admonition info">
 <p class="admonition-title">See also</p>

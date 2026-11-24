@@ -2392,6 +2392,8 @@ It raises <code>UnsupportedRecordError</code> for two types with one name, and <
 An input at a port or a custom column placed as an attribute is written wherever <code>base</code> has no value for it.
 A value set back to its default over a <code>base</code> with another is written.
 Values compare exactly, and NULL equals NULL.
+The schema declares each property that <code>base</code> declares on a dimension of the network and the network lacks, such as a snapshot property another tool added.
+The network has no column for it, so the store fills it from <code>base</code> on commit (<a href="../layers/#property-columns-a-layer-omits">property columns a layer omits</a>).
 <code>to_datarecord</code> raises <code>ValueError</code> where <code>base</code> is a selection, has a dimension of its own, or has other investment periods than the network.</p>
 <p><code>to_datarecord(n, con, results_only=True, base=record)</code> presents only the solve's results:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">results</span> <span class="o">=</span> <span class="n">PyPSA</span><span class="o">.</span><span class="n">to_datarecord</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="n">ws</span><span class="o">.</span><span class="n">con</span><span class="p">,</span> <span class="n">results_only</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span> <span class="n">base</span><span class="o">=</span><span class="n">inputs</span><span class="o">.</span><span class="n">record</span><span class="p">)</span>
