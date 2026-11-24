@@ -23,11 +23,24 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
+from duckdb import ColumnExpression as col
+
+from datarecord.duck import pattern
 from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_map_rows import (
+    SHAPE_COLUMN,
+    _isin,
+    _mask,
+    _owned_by,
+)
+from datarecord.schema.schema import cast_declared
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from duckdb import DuckDBPyRelation
 
+    from datarecord.resolve.owner_map_rows import Shape
     from datarecord.schema.schema import Schema
     from datarecord.store.manifest import LayerFiles, Manifest
     from datarecord.store.store import Store, Workspace
@@ -137,8 +150,7 @@ class LayerSource(Protocol):
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         """`attributes/<name>.parquet` - one attribute's own columns, unpadded.
 
-        Not the singular of `all_attributes`: this is the *owned* read, and it
-        must keep exactly the columns the file has, a padded one being ambiguous
+        It must keep exactly the columns the file has, a padded one being ambiguous
         against the broadcast rule.
 
         Notes
@@ -147,23 +159,37 @@ class LayerSource(Protocol):
         """
         ...
 
-    def owners(self, name: str) -> DuckDBPyRelation | None:
-        """One attribute's owner-map rows, where this layer keeps them; `None` where the fold aggregates `attribute(name)`.
+    def rows(self, names: Sequence[str]) -> DuckDBPyRelation | None:
+        """The rows of those of `names` this layer has, as one relation by column name; `None` where it has none.
 
-        A staging area keeps them in a table each edit refreshes, so that a
-        fold reading them does not aggregate every staged row once per use.
+        An attribute without a column of another reads NULL there.
         """
         ...
 
-    def all_attributes(self) -> DuckDBPyRelation | None:
-        """Every `attributes/*.parquet` unioned by name, unprojected.
+    def owner_map_rows(
+        self, shape: Shape, names: Sequence[str]
+    ) -> DuckDBPyRelation | None:
+        """The owner-map rows of those of `names` this layer has, attributes of one `shape`, where it keeps them; `None` where the fold aggregates `rows(names)`.
 
-        Only attributes have one: they share `owner_map_index`, so a single scan
-        answers the ownership `GROUP BY` for every attribute at once. An axis
-        folds on its own column, so a union across them would have
-        nothing to fold on.
+        A staging area keeps them in a table per attribute each edit
+        refreshes, so that a fold reading them does not aggregate every staged
+        row once per use. A file layer keeps those of each shape its manifest
+        lists in `files.owner_map_rows`, in `owner_map_rows.parquet`.
+
+        Notes
+        -----
+        - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
         """
         ...
+
+
+OWNER_MAP_ROWS_FILE = "owner_map_rows.parquet"
+"""A layer's owner-map rows of the shapes it keeps them for, at its root.
+
+Notes
+-----
+- [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
+"""
 
 
 class _FileLayer:
@@ -194,6 +220,9 @@ class _FileLayer:
 
         @property
         def workspace(self) -> Workspace: ...
+
+        @property
+        def layer_id(self) -> UUID: ...
 
     @property
     def schema(self) -> Schema:
@@ -233,13 +262,21 @@ class _FileLayer:
             return None
         return self._read("attributes", [name])
 
-    def owners(self, name: str) -> DuckDBPyRelation | None:
-        return None
+    def rows(self, names: Sequence[str]) -> DuckDBPyRelation | None:
+        listed = [name for name in names if name in self.files.attributes]
+        return self._read("attributes", listed) if listed else None
 
-    def all_attributes(self) -> DuckDBPyRelation | None:
-        if not self.files.attributes:
+    def owner_map_rows(
+        self, shape: Shape, names: Sequence[str]
+    ) -> DuckDBPyRelation | None:
+        listed = [name for name in names if name in self.files.attributes]
+        stored = self.files.owner_map_rows
+        if not listed or pattern(self.schema.dimensions, shape) not in stored:
             return None
-        return self._read("attributes", list(self.files.attributes))
+        rel = self.workspace.con.read_parquet(self.uri(OWNER_MAP_ROWS_FILE))
+        rel = rel.filter(col(SHAPE_COLUMN) == _mask(self.schema, shape))
+        rel = cast_declared(self.schema, rel.filter(_isin(listed)))
+        return _owned_by(rel, self.schema, self.layer_id)
 
     def materialised(self) -> Fold | None:
         """Not materialised by default: only a `ParquetLayer` has a revision to materialise."""

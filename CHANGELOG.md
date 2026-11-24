@@ -533,6 +533,35 @@ All notable changes to datarecord are documented here. The format follows
   holds.
   `Revision.materialise` writes the fold its workspace already holds rather
   than folding again.
+- The fold runs once per shape, the set of dimensions an attribute is over
+  under the layer's schema, so each step tests a constant per dimension
+  rather than the row's attribute against lists of names. The cold fold of a
+  revision with 1.2 billion attribute rows takes 6 seconds rather than about
+  five and a half minutes. A layer whose schema changes an attribute's shape
+  moves its map rows to the new shape. `LayerSource.all_attributes` is gone.
+  `LayerSource.rows(names)` hands over several attributes' rows as one
+  relation, which a file layer reads in one scan per shape.
+- Breaking: `resolved/owner_map.parquet` has a column `_shape`, each row's
+  attribute's dimensions under the revision's schema as a bitmask, and is
+  grouped by it, so a fold starting from a materialised revision reads the map
+  one shape at a time by that column. A revision materialised before fails
+  the read: delete its `resolved/` and materialise it again.
+- Breaking: a `manifest.json` listing an attribute file its schema does not
+  declare is refused when read, naming the layer and the files, where the
+  fold read the attribute as over every dimension.
+- A layer writes `owner_map_rows.parquet`, its owner-map rows of each shape
+  in which a row names a dimension outside `partial`, and its manifest's
+  `files.owner_map_rows` lists those shapes' `_shape`, ascending. A fold reads
+  those shapes' rows from the file rather than aggregating the attribute
+  files, and aggregates the rest, and every shape of a layer without the
+  file, as before. With the file, the cold fold of the revision with 1.2
+  billion attribute rows takes under a second. A manifest listing a shape no
+  attribute file it lists has, or listing them out of order, is refused when
+  read.
+  `LayerSource.owner_map_rows` takes a shape and the names of its attributes.
+- The workspace's `revisions` table carries `files.owner_map_rows`. A
+  workspace database made before lacks it, so its folds aggregate every
+  shape: delete it, it is a cache, to read the file.
 - A write builds each attribute and axis carrying a multi-dimension once. It checks
   for a tuple with some fields NULL on the file it wrote, not on the source.
 - An edit inside a transaction the caller holds open on the same cursor is

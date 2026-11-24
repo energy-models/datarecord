@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS {revisions} (
   id       UUID,
   parent   UUID,
   meta     JSON,
-  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[]),
+  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[], owner_map_rows BIGINT[]),
   schema   VARCHAR,
   PRIMARY KEY (location, id)
 )
@@ -726,6 +726,7 @@ class Store:
             files = {
                 "dimensions": list(manifest.files.dimensions),
                 "attributes": list(manifest.files.attributes),
+                "owner_map_rows": list(manifest.files.owner_map_rows),
             }
             self._insert(
                 _in(self.workspace, "INSERT OR IGNORE INTO {schemas} VALUES (?, ?)"),
@@ -1127,9 +1128,10 @@ class Claim(_OfStore):
         meta = merge_meta(self.meta, validate_meta(meta))
         if isinstance(source, WorkingRecord):
             source = source.edits
-        if isinstance(source, StagedSource) and source.base != self.parent:
+        staged = source if isinstance(source, StagedSource) else None
+        if staged is not None and staged.base != self.parent:
             msg = (
-                f"these edits were staged over revision {source.base}, so they "
+                f"these edits were staged over revision {staged.base}, so they "
                 f"are a delta against it and not against {self.parent}; commit "
                 f"them as a child of the revision the `WorkingRecord` was built over"
             )
@@ -1151,7 +1153,11 @@ class Claim(_OfStore):
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
             files = write_layer(
-                data, store.layer_dir(self.id), store.workspace, parent=base
+                data,
+                store.layer_dir(self.id),
+                store.workspace,
+                parent=base,
+                owner_rows_from=staged,
             )
         manifest = Manifest(
             id=self.id, parent=self.parent, schema=schema, files=files, meta=meta

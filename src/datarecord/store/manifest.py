@@ -18,12 +18,13 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Self
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter
+from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter, model_validator
 from pydantic.dataclasses import dataclass
 
+from datarecord.duck import pattern
 from datarecord.schema.schema import Schema, schema_digest
 
 if TYPE_CHECKING:
@@ -41,10 +42,22 @@ class LayerFiles:
     """What a layer wrote, by declared name: `dimensions/<dim>.parquet`, `attributes/<attr>.parquet`.
 
     A read opens exactly these and ignores any other file in the layer.
+
+    Attributes
+    ----------
+    owner_map_rows
+        The `_shape` of each shape whose owner-map rows the layer wrote to
+        `owner_map_rows.parquet`, ascending: bit `i` for the `i`-th dimension of
+        its schema. Empty where it wrote no such file.
+
+    Notes
+    -----
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
 
     dimensions: tuple[str, ...] = ()
     attributes: tuple[str, ...] = ()
+    owner_map_rows: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True, config=ConfigDict(extra="forbid"))
@@ -74,6 +87,32 @@ class Manifest:
     schema: InstanceOf[Schema]
     files: LayerFiles
     meta: Meta = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _declared_files(self) -> Self:
+        """Refuse an attribute file whose name `schema` does not declare, and an `owner_map_rows` entry out of order or no listed attribute's shape."""
+        undeclared = sorted(set(self.files.attributes) - set(self.schema.attributes))
+        if undeclared:
+            msg = (
+                f"layer {self.id} lists attribute files {undeclared} its schema "
+                f"does not declare"
+            )
+            raise ValueError(msg)
+        masks = self.files.owner_map_rows
+        if list(masks) != sorted(set(masks)):
+            msg = f"layer {self.id} lists owner_map_rows {list(masks)} not ascending"
+            raise ValueError(msg)
+        dims = self.schema.dimensions
+        held = {
+            pattern(dims, self.schema.dimensions_of(a)) for a in self.files.attributes
+        }
+        if strays := sorted(set(masks) - held):
+            msg = (
+                f"layer {self.id} lists owner_map_rows {strays}, the shape of no "
+                f"attribute file it lists"
+            )
+            raise ValueError(msg)
+        return self
 
     def write(self, files: Files, uri: str) -> None:
         """Write this manifest at `uri`, create-only.

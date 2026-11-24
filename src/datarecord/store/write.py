@@ -16,6 +16,7 @@ Notes
 
 from __future__ import annotations
 
+from dataclasses import replace
 from functools import cached_property, partial
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -34,8 +35,13 @@ from datarecord.resolve.axes import (
     refuse_unheld,
     removed_labels,
 )
+from datarecord.resolve.owner_map import stored_owner_map_rows
 from datarecord.resolve.record import Record
-from datarecord.resolve.sources import DirectorySource, refuse_foreign_columns
+from datarecord.resolve.sources import (
+    OWNER_MAP_ROWS_FILE,
+    DirectorySource,
+    refuse_foreign_columns,
+)
 from datarecord.schema.schema import DERIVED, Schema, cast_declared
 from datarecord.settle import unsettled
 from datarecord.store.manifest import LayerFiles, Manifest
@@ -70,6 +76,7 @@ def write_layer(
     workspace: Workspace,
     *,
     parent: Record | None = None,
+    owner_rows_from: LayerSource | None = None,
 ) -> LayerFiles:
     """Write `data`'s files into the layer directory `base`, and return what it wrote.
 
@@ -78,6 +85,8 @@ def write_layer(
     at a time and each file written before the next is built, so a
     lazily-building source does one read per file rather than one per key up
     front. A failed write leaves the files it wrote, which no manifest lists.
+    Last, `owner_map_rows.parquet` holds the owner-map rows of the shapes
+    `stored_owner_map_rows` keeps.
 
     Parameters
     ----------
@@ -87,6 +96,10 @@ def write_layer(
     parent
         The revision's record the layer folds over; none for a root or a
         standalone record.
+    owner_rows_from
+        The source `data` is, whose owner-map rows `owner_map_rows.parquet`
+        takes where it keeps them, as a staging area does; none aggregates
+        them from the files written.
 
     Raises
     ------
@@ -122,6 +135,7 @@ def write_layer(
     - [the long schema](https://energy-models.github.io/datarecord/reference/format/#attributesattrparquet)
     - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
     schema = data.schema
     con = workspace.con
@@ -160,9 +174,8 @@ def write_layer(
     held: Callable[[str], DuckDBPyRelation | None]
     held = partial(_parent_axis, parent, schema, con=con)
     if data.axes():
-        dims = LayerFiles(dimensions=tuple(written["dimensions"]), attributes=())
-        manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=dims)
-        layer = DirectorySource(base, manifest, workspace, manifest.id)
+        dims = LayerFiles(dimensions=tuple(written["dimensions"]))
+        layer = _as_layer(base, schema, dims, workspace)
         parents = [] if parent is None else parent.sources
         axes = Axes.resolve([*parents, layer])
         held = axes.get
@@ -194,7 +207,21 @@ def write_layer(
     )
     if data.axes():
         _require_living_references(parent, layer, axes)
-    return files
+    whole = _as_layer(base, schema, files, workspace)
+    stored = stored_owner_map_rows(whole, owner_rows_from)
+    if stored is None:
+        return files
+    rows, masks = stored
+    write_parquet(rows, whole.uri(OWNER_MAP_ROWS_FILE), con, ordered=True)
+    return replace(files, owner_map_rows=masks)
+
+
+def _as_layer(
+    base: str, schema: Schema, files: LayerFiles, workspace: Workspace
+) -> DirectorySource:
+    """The layer at `base` as written so far, `files` under `schema`, read as one layer."""
+    manifest = Manifest(id=uuid4(), parent=None, schema=schema, files=files)
+    return DirectorySource(base, manifest, workspace, manifest.id)
 
 
 def _write_frame(
