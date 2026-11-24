@@ -27,6 +27,7 @@ from typing import Any
 from uuid import uuid4
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pytest
 from botocore import UNSIGNED
@@ -35,6 +36,7 @@ from pydantic import ValidationError
 
 from datarecord import Claim, Revision, S3Credentials, Workspace
 from datarecord.mutable import WorkingRecord
+from datarecord.schema.schema import Schema
 from datarecord.schema.specs import Dimension
 from datarecord.store import write
 from datarecord.store.files import LocalFiles, PreconditionFailedError, RemoteFiles
@@ -727,11 +729,14 @@ def test_a_layer_directory_without_a_claim_is_no_claim(store):
 
 @pytest.fixture(scope="module")
 def metas(module_store):
-    """Three revisions by their `meta`, and a pending claim carrying `a`'s."""
+    """Six revisions by their `meta`, and a pending claim carrying `a`'s."""
     metas = {
         "a": {"run": "a", "n": 1},
         "b": {"run": "b", "n": 1},
         "c": {"run": "c", "ok": True},
+        "d": {"run": "d", "changes": {"p_nom": {"n": 1, "rows": [1, 2, 3]}}},
+        "e": {"run": "e", "note": {"meta": {"run": "x"}}},
+        "f": {"run": "f", "notes": [{"meta": {"run": "x"}}]},
     }
     names = {
         module_store.commit(_p_nom(), parent=None, meta=m).id: name
@@ -744,15 +749,40 @@ def metas(module_store):
 @pytest.mark.parametrize(
     ("meta", "found"),
     [
-        ({}, {"a", "b", "c"}),
+        ({}, {"a", "b", "c", "d", "e", "f"}),
         ({"run": "a", "n": 1}, {"a"}),
         ({"run": "a", "n": 2}, set()),
         ({"n": 1.0}, set()),
+        ({"changes": {"p_nom": {"n": 1}}}, {"d"}),
+        ({"changes": {"p_nom": {"rows": [3, 1]}}}, {"d"}),
+        ({"changes": {"p_nom": {"rows": [1, 1]}}}, {"d"}),
+        ({"changes": {"p_nom": {"rows": [4]}}}, set()),
+        ({"changes": {"p_nom": {"n": 1.0}}}, set()),
+        ({"p_nom": {"n": 1}}, set()),
+        ({"changes": {}}, {"d"}),
+        ({"run": "x"}, set()),
     ],
-    ids=["none", "both", "one-off", "other-type"],
+    ids=[
+        "none",
+        "both",
+        "one-off",
+        "other-type",
+        "nested-pair",
+        "array-subset",
+        "array-repeated",
+        "array-other",
+        "nested-other-type",
+        "not-below-the-top",
+        "empty-object",
+        "not-a-nested-meta-key",
+    ],
 )
 def test_revisions_filter_by_meta(metas, meta, found):
-    """A revision is listed when its `meta` holds every pair given; a pending layer never.
+    """A revision is listed when its `meta` contains the given meta; a pending layer never.
+
+    Containment is key by key from the top, so a given array matches a
+    stored one holding its elements in any order, and a pair matches no
+    deeper object.
 
     Notes
     -----
@@ -768,21 +798,91 @@ def test_revisions_filter_by_meta(metas, meta, found):
         fresh.close()
 
 
-def test_a_meta_float_is_finite(store):
-    """JSON has no NaN or infinity, so either would be read back as null.
+@pytest.mark.parametrize(
+    ("value", "written"),
+    [
+        (None, "null"),
+        (math.inf, "Infinity"),
+        (-math.inf, "-Infinity"),
+        (math.nan, "NaN"),
+        (np.int64(3), "3"),
+        (np.float32(1.5), "1.5"),
+        (np.bool_(True), "true"),
+    ],
+    ids=["null", "inf", "-inf", "nan", "np.int64", "np.float32", "np.bool_"],
+)
+def test_a_meta_value_may_be_null_non_finite_or_numpy(store, value, written):
+    """Written as Python's `json` writes it, read back equal, and found by a lookup, in the schema's `meta` too.
 
-    Refused before the claim or the manifest is written.
+    A lookup compares JSON, so `NaN` finds `NaN` though the float equals nothing,
+    and a NumPy scalar is stored as the Python value it holds.
 
     Notes
     -----
-    - [the layers](https://energy-models.github.io/datarecord/reference/store/)
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
-    with pytest.raises(ValidationError, match="finite"):
-        store.claim(parent=None, meta={"x": math.nan})
+    meta = {"x": value, "nested": {"xs": [value]}}
+    stored = {"x": json.loads(written), "nested": {"xs": [json.loads(written)]}}
+    claim = store.claim(parent=None, meta=meta)
+    schema = Schema(**{**_SCHEMA.model_dump(), "meta": meta})
+    done = claim.commit(
+        _Source(schema, attributes={"p_nom": _long()}), meta={"y": value}
+    )
+    raw = Path(store.layer_dir(done.id), "manifest.json").read_text()
+    assert f'"x":{written}' in raw.replace(" ", ""), "the manifest keeps the bare word"
+    fresh = Workspace()
+    try:
+        for reader in (store, fresh.store(store.uri)):
+            back = reader.revision(done.id)
+            assert json.dumps(back.meta) == json.dumps({**stored, "y": stored["x"]})
+            assert json.dumps(back.manifest.schema.meta) == json.dumps(stored), (
+                "the schema's too"
+            )
+            listed = [r.id for r in reader.revisions(meta={"nested": {"xs": [value]}})]
+            assert listed == [done.id]
+        again = fresh.store(store.uri).claim_from(claim.model_dump_json())
+        assert json.dumps(again.meta) == json.dumps(stored), "a claim crosses too"
+    finally:
+        fresh.close()
+
+
+@pytest.mark.parametrize(
+    ("meta", "match"),
+    [
+        ({"x": timedelta(1)}, r"meta\['x'\] is .* of type timedelta"),
+        (
+            {"x": {"y": [1, (2, 3)]}},
+            r"meta\['x'\]\['y'\]\[1\] is \(2, 3\) of type tuple",
+        ),
+        ({"x": {1: "a"}}, r"meta\['x'\] has the key 1 of type int"),
+        ([("x", 1)], "meta is of type list"),
+        ([], "meta is of type list"),
+        ("", "meta is of type str"),
+        (0, "meta is of type int"),
+    ],
+    ids=[
+        "date",
+        "nested-tuple",
+        "int-key",
+        "no-object",
+        "empty-list",
+        "empty-str",
+        "zero",
+    ],
+)
+def test_a_meta_value_that_is_no_json_names_its_path(store, meta, match):
+    """Refused at any depth, before the claim or the manifest is written, with the path of the first one.
+
+    Notes
+    -----
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
+    """
+    with pytest.raises(TypeError, match=match):
+        store.claim(parent=None, meta=meta)
     assert not Path(store.uri, "layers").exists(), "no claim is written"
     claim = store.claim(parent=None)
-    with pytest.raises(ValidationError, match="finite"):
-        claim.commit(_p_nom(), meta={"x": math.nan})
+    with pytest.raises(TypeError, match=match):
+        claim.commit(_p_nom(), meta=meta)
     assert _pending(store) == [str(claim.id)], "no manifest is written"
 
 
@@ -794,7 +894,8 @@ def test_a_claim_crosses_a_process_boundary(store):
     - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
     """
     root = store.commit(_p_nom(), parent=None)
-    claim = store.claim(parent=root, meta={"run": "a"})
+    claimed = {"run": "a", "by": {"names": ["x", "y"], "n": 1.5}}
+    claim = store.claim(parent=root, meta=claimed)
     dumped = claim.model_dump_json()
     assert json.loads(dumped).keys() == {"id", "store", "parent", "meta", "created"}
     short = json.dumps({"id": str(claim.id), "store": store.uri})
@@ -808,11 +909,11 @@ def test_a_claim_crosses_a_process_boundary(store):
         assert (back.id, back.parent, back.meta, back.created) == (
             claim.id,
             root.id,
-            {"run": "a"},
+            claimed,
             claim.created,
         )
     done = pickle.loads(pickle.dumps(claim)).commit(_p_nom(2.0), meta={"ok": True})
-    assert store.revision(done.id).meta == {"run": "a", "ok": True}
+    assert store.revision(done.id).meta == {**claimed, "ok": True}
     with pytest.raises(KeyError, match="No claim"):
         Claim.model_validate({"id": str(uuid4()), "store": store.uri})
 
@@ -901,24 +1002,42 @@ def test_a_claim_on_a_pending_parent_commits_after_it(store):
     assert second.commit(_p_nom(3.0)).ancestry() == [root.id, first.id, second.id]
 
 
+_CLAIMED = {"run": "a", "n": 3, "by": {"user": "u", "tags": ["a"]}}
+_CHANGES = {"p_nom_max": {"subjects": 412, "series_rows": 0, "median_ratio": 1.5}}
+
+
 @pytest.mark.parametrize(
     ("given", "outcome"),
     [
-        ({"status": "optimal"}, {"run": "a", "n": 3, "status": "optimal"}),
+        ({"status": "optimal"}, {**_CLAIMED, "status": "optimal"}),
+        ({"manta.changes": _CHANGES}, {**_CLAIMED, "manta.changes": _CHANGES}),
+        ({"by": {"user": "u", "tags": ["a"]}}, _CLAIMED),
         ({"run": "b"}, "changes the claimed meta \\['run'\\]"),
+        ({"n": 3.0}, "changes the claimed meta \\['n'\\]"),
+        ({"by": {"user": "v", "tags": ["a"]}}, "changes the claimed meta \\['by'\\]"),
+        ({"by": {"user": "u", "tags": []}}, "changes the claimed meta \\['by'\\]"),
     ],
-    ids=["adds", "changes"],
+    ids=[
+        "adds",
+        "adds-nested",
+        "restates-nested",
+        "changes",
+        "changes-type",
+        "changes-nested",
+        "narrows-nested",
+    ],
 )
 def test_a_commit_may_add_to_its_claims_meta_but_not_change_it(store, given, outcome):
     """A job learns its outcome at its end, so it adds a key; a claimed key stays.
 
-    Read back by a new workspace, each value keeps its type.
+    Values compare as JSON, so `3` is no `3.0` and an object changes with
+    any key inside it. Read back by a new workspace, each value keeps its type.
 
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
-    claim = store.claim(parent=None, meta={"run": "a", "n": 3})
+    claim = store.claim(parent=None, meta=_CLAIMED)
     if isinstance(outcome, str):
         with pytest.raises(ValueError, match=outcome):
             claim.commit(_p_nom(), meta=given)

@@ -10,8 +10,11 @@ Notes
 """
 
 import json
+import math
+from datetime import timedelta
 from typing import Any
 
+import numpy as np
 import pytest
 from duckdb import sqltypes
 from duckdb.sqltypes import DuckDBPyType
@@ -654,26 +657,81 @@ def test_a_dim_reference_must_resolve(build, match):
 # -- defaults through the manifest (https://energy-models.github.io/datarecord/reference/schema/#attributes, https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record) ------------------------------
 
 
-@pytest.mark.parametrize("value", [float("inf"), None])
-def test_a_default_survives_the_manifest_round_trip(value):
-    """An `inf` default must read back as `inf`, not as "no default".
+@pytest.mark.parametrize(
+    ("value", "written"),
+    [
+        (math.inf, "Infinity"),
+        (-math.inf, "-Infinity"),
+        (math.nan, "NaN"),
+        (None, "null"),
+    ],
+    ids=["inf", "-inf", "nan", "null"],
+)
+def test_a_default_survives_the_manifest_round_trip(value, written):
+    """A non-finite default is written as the bare word `meta` uses and reads back, not as "no default".
 
-    JSON has no literal for a non-finite float, and pydantic's own serialiser
-    emits `null` for one - which would silently turn an unbounded capacity into
-    an absent bound. PyPSA declares `inf` defaults (`p_nom_max`), so this is the
-    ordinary case rather than an edge one, and it is only the encoding in
-    `AttributeSpec` that keeps it.
+    PyPSA declares `inf` defaults (`p_nom_max`), where `null` would turn an
+    unbounded capacity into an absent bound.
 
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/#manifestjson)
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="str")},
         attributes={"p_nom_max": AttributeSpec(dtype="float", default=value)},
     )
-    back = Schema.model_validate_json(schema.model_dump_json())
+    raw = schema.model_dump_json()
+    assert f'"default":{written}' in raw, "the bare word, no sentinel string"
+    back = Schema.model_validate_json(raw)
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
+
+
+# -- meta (https://energy-models.github.io/datarecord/reference/schema/#meta) --
+
+
+@pytest.mark.parametrize(
+    ("meta", "match"),
+    [
+        ({"x": (1, 2)}, r"meta\['x'\] is \(1, 2\) of type tuple"),
+        ({"x": {"y": timedelta(1)}}, r"meta\['x'\]\['y'\] is .* of type timedelta"),
+        (
+            {"x": {(2030, 2040): 0.4}},
+            r"meta\['x'\] has the key \(2030, 2040\) of type tuple",
+        ),
+        (
+            {"x": {2030: 0.4, "2030": 0.1}},
+            r"meta\['x'\] has the key '2030' and another that is also '2030'",
+        ),
+        ({"x": [{1, 2}]}, r"meta\['x'\]\[0\] is .* of type set"),
+        ({"x": np.datetime64(1, "D")}, r"meta\['x'\] is .* of type datetime64"),
+    ],
+    ids=["tuple", "timedelta", "tuple-key", "colliding-keys", "set", "np.datetime64"],
+)
+def test_a_schema_meta_value_that_is_no_json_names_its_path(meta, match):
+    """Refused at construction by the rule a revision's `meta` follows, not converted at the write.
+
+    Notes
+    -----
+    - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+    """
+    with pytest.raises(TypeError, match=match):
+        Schema(meta=meta)
+
+
+@pytest.mark.parametrize(
+    ("key", "name"),
+    [(2030, "2030"), (1.5, "1.5"), (True, "true"), (None, "null"), (np.int64(7), "7")],
+)
+def test_a_schema_meta_key_becomes_the_string_json_writes(key, name):
+    """Nested too, so a PyPSA-Eur `n.meta` keyed by planning horizon is kept.
+
+    Notes
+    -----
+    - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+    """
+    assert Schema(meta={"x": {key: 1}}).meta == {"x": {name: 1}}
 
 
 # -- versioning (https://energy-models.github.io/datarecord/reference/schema/#compatibility) -------------------------------------------------------

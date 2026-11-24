@@ -1441,6 +1441,54 @@ class TestPyPSA:
         held = [None if pd.isna(value) else value for value in built]
         assert held == kept, "the values round-trip as declared"
 
+    def test_network_meta_keeps_non_finite_floats(self, store):
+        """`n.meta` round-trips `inf`, `-inf` and `nan` as the bare words, not as null.
+
+        Notes
+        -----
+        - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
+        """
+        n = _north()
+        n.meta = {"cap": np.inf, "floor": -np.inf, "unknown": np.nan, "none": None}
+        revision = export_network(n, store)
+        raw = Path(store.layer_dir(revision.id), "manifest.json").read_text()
+        assert '"cap":Infinity' in raw, "the manifest keeps the bare word"
+        fresh = Workspace()
+        try:
+            for reader in (store, fresh.store(store.uri)):
+                built = PyPSA.build(reader.revision(revision.id).record)
+                assert repr(built.meta) == repr(n.meta)
+        finally:
+            fresh.close()
+
+    def test_network_meta_year_keys_come_back_as_strings(self, store):
+        """An int key, as PyPSA-Eur's planning horizons are, reads back as the string PyPSA's own files hold.
+
+        Notes
+        -----
+        - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+        """
+        n = _north()
+        n.meta = {"co2_budget": {2030: 0.4, 2040: 0.1}}
+        revision = export_network(n, store)
+        built = PyPSA.build(store.revision(revision.id).record)
+        assert built.meta == {"co2_budget": {"2030": 0.4, "2040": 0.1}}
+
+    def test_network_meta_that_is_no_json_is_refused_with_its_path(self, store):
+        """A tuple is refused before anything is written.
+
+        Notes
+        -----
+        - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+        """
+        n = _north()
+        n.meta = {"co2_budget": (0.4, 0.1)}
+        with pytest.raises(
+            TypeError, match=r"meta\['meta'\]\['co2_budget'\] is \(0\.4, 0\.1\)"
+        ):
+            export_network(n, store)
+        assert store.revisions() == []
+
     def test_a_shape_is_a_property_of_the_label_it_outlines(self, store):
         """A shape is `{dim}.shape_{type}` as WKT, a `component` that is no PyPSA type a dim of its own, its CRS in the schema's `meta`.
 

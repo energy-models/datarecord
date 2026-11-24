@@ -6,6 +6,10 @@
 # PyPSA's own attribute name: fixed operation & maintenance cost.
 fom = "fom"
 
+[default.extend-identifiers]
+# Pydantic's config key for how JSON writes inf and nan.
+ser_json_inf_nan = "ser_json_inf_nan"
+
 [default]
 # Heading anchors: mkdocs slugs drop apostrophes, e.g. "property's" -> "propertys".
 # Pydantic's quoted errors cut `input_value` mid-word, e.g. "...onnection'".

@@ -55,7 +55,15 @@ All notable changes to datarecord are documented here. The format follows
 - `Workspace` holds the DuckDB database and `Store` holds one location. Each
   layer under `layers/<id>/` carries its own `manifest.json`, a `Manifest`
   holding its id, its parent, the full schema it was written under, the files
-  it wrote and a flat `meta` of strings, integers, finite floats and booleans.
+  it wrote and a `meta` of strings, numbers, booleans, null, and arrays and
+  objects of these. The schema's `meta` follows the same rule, except that an
+  int, float, bool or None key becomes the string `json.dumps` writes for it,
+  so a PyPSA network's `n.meta` keeps its year keys. A float may be
+  `inf`, `-inf` or `nan`, written as the bare `Infinity`, `-Infinity` and `NaN`
+  of Python's `json`, in either `meta` and in a `default`, so a PyPSA
+  network's `n.meta` keeps them. A NumPy integer, float or bool is stored as
+  its Python value. Any other value in either `meta` is refused with a
+  `TypeError` naming its path, when the claim, commit or schema is made.
   A read opens exactly the files the manifest lists and globs nothing. A
   `Revision` is its location and id: it compares, hashes and serialises as
   them, and reads its ancestry in a new process. `rev.manifest` and
@@ -96,7 +104,10 @@ All notable changes to datarecord are documented here. The format follows
   completes itself from `claim.json`. A claim's parent may be a pending
   claim, which commits first. `store.claims()` lists the pending layers,
   oldest first, with their `meta`, and `store.revisions(meta={...})` returns
-  the revisions whose `meta` holds every pair given.
+  the revisions whose `meta` contains the given meta, key by key from the top, an
+  array containing a given array's elements in any order. A commit compares
+  a restated claimed value as JSON, so `1`, `1.0` and `True` differ at any
+  depth.
 - `store.cleanup(ids=[...])` and `store.cleanup(older_than=timedelta(...))`
   delete pending layers, and refuse an id that is not pending. Nothing else
   deletes.

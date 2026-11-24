@@ -256,21 +256,33 @@ When two threads fold one revision at once, both fold and datarecord keeps one o
 
 ## `Store`
 
-| Member                                  | Does                                                                          |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| `uri`                                   | the absolute location                                                         |
-| `claim(*, parent, meta=None)`           | hands out a new layer id under `parent` and returns a `Claim`                 |
-| `commit(source, *, parent, meta=None)`  | claims and commits in one call, and returns the `Revision`                    |
-| `commit(w, *, meta=None)`               | writes a `WorkingRecord`'s edits as a child of the revision it was built over |
-| `revision(id)`                          | returns one revision, and raises `KeyError` for an id with no manifest        |
-| `revisions(*, meta=None)`               | returns every revision, unordered, or those whose `meta` has every pair given |
-| `claims()`                              | returns the pending layers, oldest first                                      |
-| `claim_from(payload)`                   | rebuilds a serialised `Claim` on this store                                   |
-| `cleanup(*, ids=None, older_than=None)` | deletes pending layers and returns their ids                                  |
-| `layer(id)`                             | reads one layer alone as a `Record`                                           |
+| Member                                  | Does                                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------------- |
+| `uri`                                   | the absolute location                                                            |
+| `claim(*, parent, meta=None)`           | hands out a new layer id under `parent` and returns a `Claim`                    |
+| `commit(source, *, parent, meta=None)`  | claims and commits in one call, and returns the `Revision`                       |
+| `commit(w, *, meta=None)`               | writes a `WorkingRecord`'s edits as a child of the revision it was built over    |
+| `revision(id)`                          | returns one revision, and raises `KeyError` for an id with no manifest           |
+| `revisions(*, meta=None)`               | returns every revision, unordered, or those whose `meta` contains the given meta |
+| `claims()`                              | returns the pending layers, oldest first                                         |
+| `claim_from(payload)`                   | rebuilds a serialised `Claim` on this store                                      |
+| `cleanup(*, ids=None, older_than=None)` | deletes pending layers and returns their ids                                     |
+| `layer(id)`                             | reads one layer alone as a `Record`                                              |
 
 `parent` is a required keyword, so a new root is `parent=None`.
-`revisions(meta={"run": 1})` matches a value of the same type only, so `1` matches neither `1.0` nor `True`.
+A revision's `meta` is a JSON object whose values are strings, numbers, booleans, null, and arrays and objects of these.
+A NumPy integer, float or bool is stored as the Python value it holds.
+Any other value, such as a date or a tuple, or a key that is no string, is refused with its path, as in `meta['run']['started']`.
+`revisions(meta=...)` matches by containment, key by key from the top: an object contains each pair of the given object, an array contains each element of the given array in some element of its own, and any other value is equal.
+So `revisions(meta={"changes": {"rows": [3, 1]}})` matches a stored `{"changes": {"rows": [1, 2, 3], "n": 4}}`: a given array matches as a set, in any order and with duplicates counting once, so `{"a": [1, 1]}` matches a stored `{"a": [1]}`.
+A value matches one of the same type only, so `1` matches neither `1.0` nor `True`.
+An empty object or array matches any stored object or array, so `revisions(meta={"changes": {}})` matches every revision with a `changes` object.
+
+!!! note
+
+    A float in `meta` may be `inf`, `-inf` or `nan`, written as the bare `Infinity`, `-Infinity` and `NaN` that Python's `json` writes and reads.
+    These are not standard JSON, so a strict JSON parser in another language reads `claim.json` and `manifest.json` only when told to accept them.
+    A lookup compares JSON rather than floats, so `revisions(meta={"x": float("nan")})` finds a stored `NaN`, though NaN equals no float, itself included.
 
 ### The steps of a commit { #a-revision-exists-only-by-its-manifest }
 
@@ -288,7 +300,7 @@ A commit that fails leaves its layer pending with the files it wrote, and a retr
 Before it writes data, a commit checks three things and refuses the layer otherwise:
 
 - The layer's schema passes [`compatible_with`](schema.md) against the parent's manifest's schema.
-- Its `meta` has every key of the claim's `meta` with the same value, and may add keys.
+- Its `meta` has every key of the claim's `meta` with the same value, and may add keys. Values compare as JSON, so `1`, `1.0` and `True` differ, and an object differs once any key inside it does.
 - Its parent, the claim's `parent`, is a revision of this store.
 
 The commit takes `parent` and `meta` from the `Claim` object, and reads `claim.json` only to check that the claim is still there.
