@@ -67,9 +67,11 @@ All notable changes to datarecord are documented here. The format follows
   `datarecord` by default, on a connection of its own or on a caller's `con`,
   such as a server's, whose default database it leaves alone. It creates its
   tables there, so a user's file opened as a workspace gets datarecord's
-  tables beside its own. `ws.close()` closes its cursors and detaches the
-  database, and closes the connection only where it opened it. Its S3 secret
-  is named `datarecord_s3`, so it replaces no secret of the caller's.
+  tables beside its own. `ws.close()` closes its cursors, detaches the
+  database, drops its S3 secret `datarecord_s3` from a caller's connection,
+  and closes the connection only where it opened it. The secret replaces no
+  secret of the caller's, but a caller's secret for all of `s3://` named
+  before `datarecord_s3` wins the tie.
 - The prefix `_dr_` is reserved: a table or view whose name starts with it, in
   the default database or temp schema of a workspace's connection, may stand
   in for the data datarecord's SQL reads.
@@ -272,6 +274,18 @@ All notable changes to datarecord are documented here. The format follows
   holding no snapshot, is refused. A network's results are written over the
   selection it was built from, `base=view`, and lifted back to the labels it
   squeezes.
+- `Workspace(credentials=S3Credentials(...))` reaches S3 with a key passed in
+  rather than the AWS environment's: an access key id, a secret, a session
+  token, an endpoint, a region (`eu-central-1` by default) and a URL
+  style. The workspace builds its
+  boto3 client and DuckDB's secret, with `PROVIDER config`, from the same
+  `S3Credentials`, whose `repr` leaves out the secret and the token.
+  `Workspace.set_credentials` replaces both on a live workspace, so open
+  records and registered views read with the new key, and `None` returns to
+  the AWS environment.
+  Only one workspace per DuckDB connection may reach S3, since DuckDB's
+  secrets belong to the whole connection: the first `s3://` URI of a
+  second one raises `duckdb.InvalidInputException`.
 
 ### Changed
 
@@ -642,6 +656,16 @@ All notable changes to datarecord are documented here. The format follows
 
 ### Fixed
 
+- A workspace reaching a self-hosted S3 server with `AWS_ENDPOINT_URL` sets
+  up DuckDB from the AWS SDK's default credential chain, as boto3 does. On
+  DuckDB 2.0 its former chain, `env;config`, failed with "no profile
+  'default' found in config file" wherever `~/.aws/config` held no such
+  profile, even with the key in the environment or `~/.aws/credentials`.
+- On S3, a directory exists by a key under it alone. On SeaweedFS, which keeps
+  the directory a cleanup emptied, `cleanup(ids=...)` naming that layer again
+  raises `ValueError` before it deletes anything, rather than deleting the
+  other layers named and then failing with `FileNotFoundError`, and
+  `Workspace.write` to a URI whose keys were all deleted no longer refuses it.
 - `PyPSA.build` refuses a record whose rows of an attribute hold several
   labels of a dimension PyPSA's registry declares it without, such as a generator's
   `marginal_cost` over `period` in a multi-period record, rather than keeping

@@ -15,3 +15,5 @@ SPDX-License-Identifier: CC-BY-4.0
 ::: datarecord.store.store.Revision
 
 ::: datarecord.store.manifest.Manifest
+
+::: datarecord.store.files.S3Credentials

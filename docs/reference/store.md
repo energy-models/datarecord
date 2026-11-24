@@ -23,19 +23,20 @@ record = ws.write(source, "out/")
 
 ## `Workspace`
 
-| Member                                                           | Does                                                                                                             |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `Workspace(database=":memory:", *, con=None, name="datarecord")` | attaches the DuckDB database, in memory or in a file, as `name`, on a connection of its own or on `con`          |
-| `name`                                                           | returns the database's name in SQL                                                                               |
-| `qualified(table)`                                               | names a table of the database's `main` schema in full, `datarecord.main.<table>`                                 |
-| `con`                                                            | returns the calling thread's cursor on the connection the database is attached to                                |
-| `store(uri)`                                                     | returns the workspace's one `Store` for the normalised location                                                  |
-| `write(source, uri, *, meta=None)`                               | writes `source` as a standalone directory and returns it as a `Record`                                           |
-| `at(uri)`                                                        | reads the standalone directory at `uri` as a `Record`                                                            |
-| `registered()`                                                   | returns the [`registered` table](format.md#the-registered-table)                                                 |
-| `unregister(name)`                                               | drops a [registration](format.md#registered-views)                                                               |
-| `Workspace.process()`                                            | returns the process's default workspace, created on first use                                                    |
-| `close()`                                                        | closes every thread's cursor, detaches the database and closes the connection only where the workspace opened it |
+| Member                                                                             | Does                                                                                                             |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `Workspace(database=":memory:", *, con=None, name="datarecord", credentials=None)` | attaches the DuckDB database, in memory or in a file, as `name`, on a connection of its own or on `con`          |
+| `name`                                                                             | returns the database's name in SQL                                                                               |
+| `qualified(table)`                                                                 | names a table of the database's `main` schema in full, `datarecord.main.<table>`                                 |
+| `con`                                                                              | returns the calling thread's cursor on the connection the database is attached to                                |
+| `store(uri)`                                                                       | returns the workspace's one `Store` for the normalised location                                                  |
+| `write(source, uri, *, meta=None)`                                                 | writes `source` as a standalone directory and returns it as a `Record`                                           |
+| `at(uri)`                                                                          | reads the standalone directory at `uri` as a `Record`                                                            |
+| `set_credentials(credentials)`                                                     | replaces the [S3 credentials](#s3-credentials) on a live workspace, or returns to the AWS environment for `None` |
+| `registered()`                                                                     | returns the [`registered` table](format.md#the-registered-table)                                                 |
+| `unregister(name)`                                                                 | drops a [registration](format.md#registered-views)                                                               |
+| `Workspace.process()`                                                              | returns the process's default workspace, created on first use                                                    |
+| `close()`                                                                          | closes every thread's cursor, detaches the database and closes the connection only where the workspace opened it |
 
 A location is a local path or an `s3://` URI, and any other scheme raises `ValueError`.
 `store("")` raises, and a local path is resolved when you call `store`, `write` or `at`, so a later `chdir` does not change the location.
@@ -133,9 +134,49 @@ Without it S3 refuses every listing, so `revisions`, `claims` and `cleanup`, whi
 S3 then answers `403` for every absent key too, so every miss raises.
 A fold looks for the owner map of the revision it folds, and that map is absent unless the revision was materialised, so folding such a revision, the usual case, raises too.
 On S3 a denied read never counts as absent data, so `cleanup` deletes no layer after one.
-Credentials and the endpoint come from the AWS environment and config files.
+
+#### S3 credentials
+
+Without `credentials`, a workspace takes the S3 key and the endpoint from the AWS environment and config files.
 Where `AWS_ENDPOINT_URL` is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.
-The secret is named `datarecord_s3`, so on a connection shared with its caller it replaces none of the caller's secrets.
+
+A key that the process environment must not contain, such as a token from AWS Security Token Service (STS), goes to the workspace as `S3Credentials`:
+
+```python
+from dataclasses import replace
+
+from datarecord import S3Credentials, Workspace
+
+credentials = S3Credentials(
+    key_id,
+    secret,
+    session_token=token,
+    endpoint="http://localhost:8333",
+    region="eu-central-1",
+    url_style="path",
+)
+ws = Workspace(credentials=credentials)
+ws.set_credentials(
+    replace(credentials, key_id=new_key_id, secret=new_secret, session_token=new_token)
+)
+```
+
+The workspace builds both its boto3 client and DuckDB's secret, with `PROVIDER config`, from the same `S3Credentials`, so the key and the endpoint come from them, not from the AWS environment.
+`endpoint` is the server's URL, or `None` for AWS, `region` is `"eu-central-1"` by default, and `url_style` is `"path"` for a self-hosted server and `"vhost"` by default.
+`S3Credentials` raises `ValueError` for an empty key or secret, an endpoint without a scheme or with a user, a path, a query or a fragment, and any other URL style.
+Its `repr` leaves out the secret and the session token.
+
+`set_credentials` replaces the boto3 client and the secret together, so open records and registered views read with the new key from the next query on.
+A call already running may finish with the old key.
+`set_credentials(None)` returns to the AWS environment, read afresh.
+Where `set_credentials` raises, the workspace keeps the old key.
+Credentials do not cross a process boundary: a pickled store, revision or claim loads onto `Workspace.process()`, so the worker calls `Workspace.process().set_credentials(...)` before it unpickles one.
+
+DuckDB's secret is named `datarecord_s3` and has no scope, so on a connection shared with its caller it replaces none of the caller's secrets.
+Where the caller holds a secret for all of `s3://` too, DuckDB picks between the two by name: a caller's secret named before `datarecord_s3` in sort order, such as `aws`, is read in its place, and one named after it, or unnamed, is not read.
+`close()` drops `datarecord_s3` from a connection passed in.
+DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3.
+The first `s3://` URI of a second one raises `duckdb.InvalidInputException`, and the first keeps its key; open the second on its own connection.
 
 ### Threads
 
@@ -214,6 +255,7 @@ store.cleanup(older_than=timedelta(days=14))
 ```
 
 `cleanup` takes exactly one of `ids` and `older_than`, and raises `ValueError` before it deletes anything if an id is not pending.
+On S3, a layer directory holding no key, as SeaweedFS keeps one after a cleanup, is no pending layer.
 It checks each layer for a manifest again right before deleting it, without a lock.
 A cleanup that races a commit can still delete a layer that is committing, so pass ids or an age that match no running job.
 

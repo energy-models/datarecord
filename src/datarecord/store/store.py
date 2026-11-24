@@ -52,7 +52,7 @@ from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource
 from datarecord.schema.schema import Schema
-from datarecord.store.files import Files, LocalFiles, RemoteFiles
+from datarecord.store.files import Files, LocalFiles, RemoteFiles, S3Credentials
 from datarecord.store.manifest import (
     ClaimFile,
     LayerFiles,
@@ -231,8 +231,12 @@ class Workspace:
     con
         A connection to attach `database` on, such as a server's; its default
         database and transactions stay its own. A fresh in-memory one by default.
+        DuckDB shares an S3 secret across the whole connection, so only one
+        workspace on it may reach `s3://` URIs.
     name
         What `database` is attached as, and named by in SQL.
+    credentials
+        The S3 key for `s3://` URIs, in place of the AWS environment's.
 
     Raises
     ------
@@ -244,6 +248,7 @@ class Workspace:
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
     """
 
     def __init__(
@@ -252,6 +257,7 @@ class Workspace:
         *,
         con: DuckDBPyConnection | None = None,
         name: str = "datarecord",
+        credentials: S3Credentials | None = None,
     ) -> None:
         self.name = name
         self._owned = con is None
@@ -274,6 +280,7 @@ class Workspace:
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
+        self._credentials = credentials
         self._remote: Files | None = None
         self._remote_lock = threading.Lock()
 
@@ -365,41 +372,72 @@ class Workspace:
             raise ValueError(msg)
         with self._remote_lock:
             if self._remote is None:
-                self._remote = self._connect_remote()
+                self._remote = self._connect_remote(self._credentials)
             return self._remote
 
-    def _connect_remote(self) -> Files:
-        """Set up boto3 and DuckDB's `httpfs` from the AWS environment, once.
+    def set_credentials(self, credentials: S3Credentials | None) -> None:
+        """Reach `s3://` URIs with `credentials` from now on, or with the AWS environment for `None`.
 
-        Never for a local workspace: `PROVIDER credential_chain` probes
+        Open records and registered views read with the new key. A call that
+        is running when the key changes may finish with the old one.
+
+        Once the workspace has reached S3, a call that raises leaves it on the
+        old key.
+
+        Raises
+        ------
+        duckdb.Error
+            If DuckDB refuses the S3 secret, such as for `None` where its
+            credential chain finds no key.
+
+        Notes
+        -----
+        - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
+        """
+        with self._remote_lock:
+            if self._remote is not None:
+                self._remote = self._connect_remote(credentials)
+            self._credentials = credentials
+
+    def _connect_remote(self, credentials: S3Credentials | None) -> Files:
+        """Set up boto3 and DuckDB's `httpfs` with `credentials`, or the AWS environment.
+
+        Runs on the first `s3://` URI and again on each `set_credentials`,
+        never for a local workspace: `PROVIDER credential_chain` probes
         instance-metadata endpoints that hang for minutes where none exist.
-        With `AWS_ENDPOINT_URL` set, the secret adds what the chain does not
-        supply - the endpoint, path-style addressing, SSL per its scheme - and
-        skips that probe, a self-hosted server having no metadata service.
 
         Raises
         ------
         ImportError
             If boto3, from `datarecord[remote]`, is missing.
+        duckdb.InvalidInputException
+            On the first `s3://` URI, if another workspace on this DuckDB
+            connection already reaches S3.
 
         Notes
         -----
+        - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
         - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
         """
-        files = RemoteFiles()
-        options = ["TYPE s3", "PROVIDER credential_chain"]
-        endpoint = os.environ.get("AWS_ENDPOINT_URL")
-        if endpoint:
-            url = urlparse(endpoint)
-            options += [
-                f"ENDPOINT '{url.netloc}'",
-                "URL_STYLE 'path'",
-                f"USE_SSL {str(url.scheme == 'https').lower()}",
-                "CHAIN 'env;config'",
-            ]
+        files = RemoteFiles(credentials)
+        parameters: list[str | bool] = []
+        if credentials is None:
+            options = _chain_options()
+        else:
+            options, parameters = _config_options(credentials)
         with self._db.cursor() as setup:
             setup.execute("INSTALL httpfs; LOAD httpfs;")
-            setup.execute(f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})")
+            if self._remote is None and _secret_exists(setup):
+                msg = (
+                    f"another workspace on this DuckDB connection already reaches "
+                    f"S3 with the secret `{_SECRET}`, and only one per connection "
+                    f"is supported; open workspace `{self.name}` on its own "
+                    f"connection"
+                )
+                raise duckdb.InvalidInputException(msg)
+            setup.execute(
+                f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})", parameters
+            )
         return files
 
     def store(self, uri: str) -> Store:
@@ -496,7 +534,12 @@ class Workspace:
         """Close every thread's cursor and detach the database.
 
         The connection is closed with them only where the workspace opened it;
-        one passed in stays open for its owner.
+        one passed in stays open for its owner, without the workspace's S3
+        secret.
+
+        Notes
+        -----
+        - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
         """
         self._holds.close()
         with self._made_lock:
@@ -504,8 +547,62 @@ class Workspace:
                 cursor.close()
         with self._db.cursor() as teardown:
             teardown.execute(f"DETACH {col(self.name)}")
+            if not self._owned and self._remote is not None:
+                teardown.execute(f"DROP SECRET IF EXISTS {_SECRET}")
         if self._owned:
             self._db.close()
+
+
+def _secret_exists(con: DuckDBPyConnection) -> bool:
+    """Whether the connection holds a secret named `_SECRET`, whichever workspace made it."""
+    return bool(
+        con.execute(
+            "SELECT 1 FROM duckdb_secrets() WHERE name = ?", [_SECRET]
+        ).fetchall()
+    )
+
+
+def _chain_options() -> list[str]:
+    """The options of a DuckDB S3 secret, `PROVIDER credential_chain`, from the AWS environment.
+
+    The chain is the AWS SDK's default, as boto3's is. DuckDB 2.0 refuses any
+    `CHAIN` naming `config` unless the AWS config file holds the profile,
+    even where the environment or the credentials file holds the key. With
+    `AWS_ENDPOINT_URL` set, the secret adds what the chain does not supply -
+    the endpoint, path-style addressing, SSL per its scheme.
+    """
+    options = ["TYPE s3", "PROVIDER credential_chain"]
+    endpoint = os.environ.get("AWS_ENDPOINT_URL")
+    if endpoint:
+        url = urlparse(endpoint)
+        options += [
+            f"ENDPOINT {lit(url.netloc)}",
+            "URL_STYLE 'path'",
+            f"USE_SSL {str(url.scheme == 'https').lower()}",
+        ]
+    return options
+
+
+def _config_options(credentials: S3Credentials) -> tuple[list[str], list[str | bool]]:
+    """The options of a DuckDB S3 secret, `PROVIDER config`, and the values they bind.
+
+    The values travel as prepared parameters, never in the statement's text,
+    which DuckDB's query log and parser errors repeat.
+    """
+    values: dict[str, str | bool | None] = {
+        "KEY_ID": credentials.key_id,
+        "SECRET": credentials.secret,
+        "SESSION_TOKEN": credentials.session_token,
+        "REGION": credentials.region,
+        "URL_STYLE": credentials.url_style,
+    }
+    if credentials.endpoint is not None:
+        url = urlparse(credentials.endpoint)
+        values["ENDPOINT"] = url.netloc
+        values["USE_SSL"] = url.scheme == "https"
+    given = {k: v for k, v in values.items() if v is not None}
+    options = ["TYPE s3", "PROVIDER config", *(f"{k} ?" for k in given)]
+    return options, list(given.values())
 
 
 _process: Workspace | None = None
@@ -845,7 +942,9 @@ class Store:
     def _scan(self) -> set[UUID]:
         """List `layers/` once, cache each manifest not yet held, and return the pending ids.
 
-        A pending layer is one listed without a manifest.
+        A pending layer is one listed without a manifest whose directory
+        exists: SeaweedFS lists the directory a cleanup emptied, where S3
+        lists nothing.
         """
         held = {
             row[0]
@@ -859,7 +958,8 @@ class Store:
         for id, manifest in read.items():
             if manifest is not None:
                 self._cache_upward(id, read)
-        return {id for id, m in read.items() if m is None}
+        unmanifested = [id for id, m in read.items() if m is None]
+        return {id for id in unmanifested if self.files.exists(self.layer_dir(id))}
 
     def revisions(self, *, meta: Meta | None = None) -> list[Revision]:
         """Every revision in this store whose `meta` holds each pair of `meta`, unordered.

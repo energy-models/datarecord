@@ -31,8 +31,8 @@ datarecord/
 │   └── record.py      # Record
 ├── mutable.py         # WorkingRecord, StagedSource
 ├── store/
-│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
-│   ├── files.py       # Files, LocalFiles, RemoteFiles
+│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest, S3Credentials
+│   ├── files.py       # Files, LocalFiles, RemoteFiles, S3Credentials
 │   ├── manifest.py    # Manifest, LayerFiles, ClaimFile
 │   ├── materialise.py # materialise, materialised, sources_to_read
 │   ├── write.py       # write_layer, layer_data
