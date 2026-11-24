@@ -1410,8 +1410,7 @@ SPDX-License-Identifier: CC-BY-4.0
   parent declares and the source's schema omits, on the dimensions the source
   declares, where it used to refuse the source as removing the property. The
   child's manifest declares the kept property, and each axis file the layer
-  writes takes the parent's values by label, NULL on a new label. The commit
-  logs each kept property at <code>INFO</code>.</li>
+  writes takes the parent's values by label, NULL on a new label.</li>
 <li>Breaking: the PyPSA tool keys <code>connection</code> by <code>(entity, port)</code>, where the
   port is PyPSA's number in <code>bus0</code>, <code>bus1</code>, ... and a one-port type's <code>bus</code> is
   port 0. The bus is the property <code>connection.bus</code>, and the dimension <code>role</code> and the

@@ -2334,13 +2334,12 @@ SPDX-License-Identifier: CC-BY-4.0
 <li>Take an axis the layer writes without the column of a kept property. The writer left-joins the parent's resolved values onto it by label, and writes them into the child's axis file in the layer's row order. A label new to the child reads NULL. A label the child removes has no row, so its value goes with it.</li>
 <li>An axis the layer does not write has no file, and the fold inherits the parent's axis, its properties included.</li>
 <li>The writer checks the kept columns as it checks any written column. A kept property that refers to a dimension is refused while its value names a label the layer removes, with the message for <a href="../../../reference/layers/#removing-labels">removing labels</a>.</li>
-<li>The commit logs each kept property at <code>INFO</code>: <code>revision &lt;id&gt; keeps property &lt;dim&gt;.&lt;name&gt; of its parent</code>.</li>
 </ol>
 <p>A root commit, <code>parent=None</code>, has nothing to keep. A <code>WorkingRecord</code>, committed whole or as its <code>StagedSource</code> edits, declares every property of the revision it was built over, so the commit keeps none this way and joins nothing.</p>
 <p>Nothing changes on disk. The kept values are ordinary columns of the child's axis files, and the manifest is an ordinary manifest.</p>
 <h2 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h2>
 <p>The planned design moves properties into one or more properties files of their own, which fold like attribute files. There, a layer that lacks a property reads it from the layer below, as a layer that writes no <code>p_nom</code> file reads the parent's <code>p_nom</code>. Keeping the parent's properties on every commit gives that behaviour today, with the axis file as it is. A workflow written against it keeps working once properties fold like attributes, because the read returns the same rows.</p>
-<p>An omitted property therefore means "unchanged", as an omitted attribute file already does. A rule that holds for attributes on every commit and for properties only behind a flag would give one omission two meanings. The <code>INFO</code> log names each kept property, so a caller who did not expect one sees it.</p>
+<p>An omitted property therefore means "unchanged", as an omitted attribute file already does. A rule that holds for attributes on every commit and for properties only behind a flag would give one omission two meanings.</p>
 <p>The values are kept at commit time rather than at read time. The kept values are in the written file, so a read does no extra join and a later layer folds them like any other column. The writer also checks them before the manifest exists. This follows <a href="../dep-0020-a-layer-restates-an-axis-whole/">DEP 20</a>: a layer's axis file contains the whole axis at the new revision, properties included.</p>
 <p>Only properties are kept. A property describes a label, so the parent's value stays right for a label the child keeps. A source whose schema omits an attribute or a dimension is still refused, because keeping one would need a rule per shape, which this DEP does not argue for.</p>
 <p>The cost is one join per written axis that lacks a kept property, at commit time. A commit whose source declares every property of its parent runs as before.</p>
@@ -2352,7 +2351,7 @@ SPDX-License-Identifier: CC-BY-4.0
 <h2 id="implementation-notes">Implementation notes<a class="headerlink" href="#implementation-notes" title="Permanent link">&para;</a></h2>
 <ol>
 <li><code>_keeping_properties</code> widens the source's schema with the parent's properties on the dimensions the source declares.</li>
-<li><code>_kept</code> lists the kept properties for the <code>INFO</code> log.</li>
+<li><code>_kept</code> lists the kept properties, by dimension.</li>
 <li><code>_Carrying</code> wraps the <code>LayerData</code> and left-joins each written axis with the parent's resolved properties, ordered by the layer's rows.</li>
 <li><code>Claim._commit</code> applies both whenever the claim has a parent, before <code>compatible_with</code> and <code>write_layer</code> run. A <code>WorkingRecord</code>'s schema already declares every property, so <code>_kept</code> is empty for it and no axis is wrapped.</li>
 </ol>
