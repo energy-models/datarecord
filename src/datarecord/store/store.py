@@ -22,8 +22,8 @@ import json
 import os
 import threading
 import time
-from collections.abc import Hashable, Iterable, Mapping
-from contextlib import nullcontext
+from collections.abc import Hashable, Iterable, Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
@@ -237,6 +237,7 @@ class Workspace:
         What `database` is attached as, and named by in SQL.
     credentials
         The S3 key for `s3://` URIs, in place of the AWS environment's.
+        Without a key from either, the workspace reaches S3 anonymously.
 
     Raises
     ------
@@ -387,8 +388,8 @@ class Workspace:
         Raises
         ------
         duckdb.Error
-            If DuckDB refuses the S3 secret, such as for `None` where its
-            credential chain finds no key.
+            If DuckDB refuses the S3 secret, such as for `None` where boto3
+            finds a key that DuckDB's credential chain does not.
 
         Notes
         -----
@@ -401,6 +402,9 @@ class Workspace:
 
     def _connect_remote(self, credentials: S3Credentials | None) -> Files:
         """Set up boto3 and DuckDB's `httpfs` with `credentials`, or the AWS environment.
+
+        Where boto3 finds no key in the AWS environment, both send their
+        requests unsigned.
 
         Runs on the first `s3://` URI and again on each `set_credentials`,
         never for a local workspace: `PROVIDER credential_chain` probes
@@ -422,7 +426,7 @@ class Workspace:
         files = RemoteFiles(credentials)
         parameters: list[str | bool] = []
         if credentials is None:
-            options = _chain_options()
+            options = _environment_options(anonymous=files.anonymous)
         else:
             options, parameters = _config_options(credentials)
         with self._db.cursor() as setup:
@@ -439,6 +443,41 @@ class Workspace:
                 f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})", parameters
             )
         return files
+
+    @contextmanager
+    def _scoped(
+        self, prefix: str, credentials: S3Credentials, name: str
+    ) -> Iterator[Files]:
+        """`Files` with `credentials`, and DuckDB's S3 secret `name` with them for `prefix`, while the block runs.
+
+        DuckDB reaches a URI with the secret whose `SCOPE` matches it longest,
+        so a URI under `prefix` with this one and any other with the
+        workspace's. The secret is dropped however the block ends.
+
+        Raises
+        ------
+        ValueError
+            If `prefix` is no `s3://` URI.
+
+        Notes
+        -----
+        - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
+        """
+        if not prefix.startswith("s3://"):
+            msg = f"{prefix} is local, so it takes no S3 credentials"
+            raise ValueError(msg)
+        files = RemoteFiles(credentials)
+        options, parameters = _config_options(credentials)
+        with self._db.cursor() as setup:
+            setup.execute(
+                f"CREATE SECRET {name} ({', '.join(options)}, SCOPE ?)",
+                [*parameters, prefix],
+            )
+        try:
+            yield files
+        finally:
+            with self._db.cursor() as teardown:
+                teardown.execute(f"DROP SECRET {name}")
 
     def store(self, uri: str) -> Store:
         """This workspace's store at `uri`, one object per normalised location.
@@ -562,16 +601,21 @@ def _secret_exists(con: DuckDBPyConnection) -> bool:
     )
 
 
-def _chain_options() -> list[str]:
-    """The options of a DuckDB S3 secret, `PROVIDER credential_chain`, from the AWS environment.
+def _environment_options(*, anonymous: bool) -> list[str]:
+    """The options of a DuckDB S3 secret from the AWS environment.
 
-    The chain is the AWS SDK's default, as boto3's is. DuckDB 2.0 refuses any
-    `CHAIN` naming `config` unless the AWS config file holds the profile,
-    even where the environment or the credentials file holds the key. With
+    With a key, `PROVIDER credential_chain`: the chain is the AWS SDK's
+    default, as boto3's is. DuckDB 2.0 refuses any `CHAIN` naming `config`
+    unless the AWS config file holds the profile, even where the environment
+    or the credentials file holds the key. `anonymous`, where boto3's chain
+    finds no key, is `PROVIDER config` with no key, so DuckDB sends its
+    requests unsigned rather than refuse the empty chain, and still reaches
+    the environment's endpoint, which no secret at all would lose. With
     `AWS_ENDPOINT_URL` set, the secret adds what the chain does not supply -
     the endpoint, path-style addressing, SSL per its scheme.
     """
-    options = ["TYPE s3", "PROVIDER credential_chain"]
+    provider = "config" if anonymous else "credential_chain"
+    options = ["TYPE s3", f"PROVIDER {provider}"]
     endpoint = os.environ.get("AWS_ENDPOINT_URL")
     if endpoint:
         url = urlparse(endpoint)
@@ -1175,7 +1219,7 @@ class Claim(_OfStore):
     def __reduce__(self) -> tuple[Any, ...]:
         return Claim.model_validate_json, (self.model_dump_json(),)
 
-    def _refuse_cleaned_up(self) -> None:
+    def _refuse_cleaned_up(self, files: Files) -> None:
         """Raise once `Store.cleanup` deleted this claim's layer.
 
         Checked before the data and again right before the manifest, which
@@ -1186,7 +1230,7 @@ class Claim(_OfStore):
         ValueError
             If the claim file is gone.
         """
-        if not self.store.files.exists(self.store.claim_uri(self.id)):
+        if not files.exists(self.store.claim_uri(self.id)):
             msg = (
                 f"layer {self.id} was cleaned up, so its claim commits no "
                 f"more; claim a new layer"
@@ -1194,7 +1238,11 @@ class Claim(_OfStore):
             raise ValueError(msg)
 
     def commit(
-        self, source: LayerData | RecordLike, *, meta: Meta | None = None
+        self,
+        source: LayerData | RecordLike,
+        *,
+        meta: Meta | None = None,
+        credentials: S3Credentials | None = None,
     ) -> Revision:
         """Write `source` as this claim's layer, then its manifest, which makes it a revision.
 
@@ -1202,6 +1250,13 @@ class Claim(_OfStore):
         create-only and last, lists its files, its full schema, the claim's
         parent and the claim's `meta` with `meta` added. A `WorkingRecord` is
         written as its edits.
+
+        Parameters
+        ----------
+        credentials
+            A key for this layer alone, which reaches every file under its
+            layer directory during the commit, while everything else, such
+            as the parent's layers, is read with the workspace's key.
 
         Raises
         ------
@@ -1217,14 +1272,21 @@ class Claim(_OfStore):
             If another commit of this claim wrote the manifest first.
         KeyError
             If the claim's parent is gone from the store.
+        ValueError
+            If `credentials` come with a local store.
+        PermissionError
+            If the server denies the layer's key a call on `claim.json` or
+            `manifest.json`.
+        duckdb.HTTPException
+            If the server denies the layer's key a write of the layer's data.
         pydantic.ValidationError
             If `meta` is not flat, each value a string, finite number or boolean.
 
         Notes
         -----
         - [a revision exists only by its file](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
+        - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
         """
-        store = self.store
         meta = merge_meta(self.meta, validate_meta(meta))
         if isinstance(source, WorkingRecord):
             source = source.edits
@@ -1236,10 +1298,29 @@ class Claim(_OfStore):
                 f"them as a child of the revision the `WorkingRecord` was built over"
             )
             raise ValueError(msg)
-        if store.files.exists(store.manifest_uri(self.id)):
+        store = self.store
+        if credentials is None:
+            return self._commit(source, meta, store.files)
+        name = f"datarecord_claim_{self.id.hex}_{uuid4().hex}"
+        with store.workspace._scoped(
+            store.layer_dir(self.id), credentials, name
+        ) as files:
+            return self._commit(source, meta, files)
+
+    def _commit(
+        self, source: LayerData | RecordLike, meta: Meta, files: Files
+    ) -> Revision:
+        """`commit` with `files` reaching the layer directory.
+
+        Every call under the layer goes through `files`, and every other
+        through the store's, so a key scoped to the layer is never asked for
+        an ancestor.
+        """
+        store = self.store
+        if files.exists(store.manifest_uri(self.id)):
             msg = f"revision {self.id} is committed already; a claim commits once"
             raise ValueError(msg)
-        self._refuse_cleaned_up()
+        self._refuse_cleaned_up(files)
         parent = None if self.parent is None else store.revision(self.parent)
         data = layer_data(source, store.workspace.con)
         schema = data.schema
@@ -1252,18 +1333,18 @@ class Claim(_OfStore):
                 )
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
-            files = write_layer(
+            written = write_layer(
                 data,
                 store.layer_dir(self.id),
                 store.workspace,
                 parent=base,
-                owner_rows_from=staged,
+                owner_rows_from=source if isinstance(source, StagedSource) else None,
             )
         manifest = Manifest(
-            id=self.id, parent=self.parent, schema=schema, files=files, meta=meta
+            id=self.id, parent=self.parent, schema=schema, files=written, meta=meta
         )
-        self._refuse_cleaned_up()
-        manifest.write(store.files, store.manifest_uri(self.id))
+        self._refuse_cleaned_up(files)
+        manifest.write(files, store.manifest_uri(self.id))
         store._cache([manifest])
         return Revision(id=self.id, store=store)
 

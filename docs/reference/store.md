@@ -139,6 +139,9 @@ On S3 a denied read never counts as absent data, so `cleanup` deletes no layer a
 
 Without `credentials`, a workspace takes the S3 key and the endpoint from the AWS environment and config files.
 Where `AWS_ENDPOINT_URL` is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.
+Where boto3 finds no key in the AWS environment, the workspace reaches S3 anonymously: boto3 sends its requests unsigned, and DuckDB's secret holds no key, so DuckDB sends its requests unsigned too.
+You then read a bucket that grants reads to anyone, and a commit whose only key is [a key for its layer](#a-commit-with-a-key-for-its-layer) writes the layer with that key.
+A call that the bucket grants to no anonymous caller raises `PermissionError`, as above.
 
 A key that the process environment must not contain, such as a token from AWS Security Token Service (STS), goes to the workspace as `S3Credentials`:
 
@@ -175,8 +178,63 @@ Credentials do not cross a process boundary: a pickled store, revision or claim 
 DuckDB's secret is named `datarecord_s3` and has no scope, so on a connection shared with its caller it replaces none of the caller's secrets.
 Where the caller holds a secret for all of `s3://` too, DuckDB picks between the two by name: a caller's secret named before `datarecord_s3` in sort order, such as `aws`, is read in its place, and one named after it, or unnamed, is not read.
 `close()` drops `datarecord_s3` from a connection passed in.
-DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3.
+DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3, with a key or anonymously.
 The first `s3://` URI of a second one raises `duckdb.InvalidInputException`, and the first keeps its key; open the second on its own connection.
+
+#### A commit with a key for its layer
+
+A commit can write its layer with a second key, one that reaches only the layer's directory `layers/<id>/`.
+Pass it to [`Claim.commit`](#claim) as `S3Credentials`, built for instance from the workspace's:
+
+```python
+claim = store.claim(parent=root)
+revision = claim.commit(
+    source,
+    credentials=replace(credentials, key_id=key_id, secret=secret, session_token=token),
+)
+```
+
+The commit returns the revision, which you then read with the workspace's key.
+
+While the commit runs, datarecord reaches every key under `layers/<id>/` with `credentials`, through boto3 and through DuckDB, and every other key with the workspace's.
+For DuckDB, datarecord creates a secret `datarecord_claim_<id>_<nonce>`, new for each commit, with its `SCOPE` set to the layer directory, and drops it when the commit returns or raises.
+DuckDB reaches a URI with the secret whose `SCOPE` matches it longest, so two commits running at once in one workspace each write with their own key.
+With a local store, `credentials` raise `ValueError`.
+`Store.claim` and `materialise()` take no such key, so the workspace's key writes `claim.json` and the `resolved/` files.
+
+A commit with a key for its layer makes these S3 calls, where `<store>` is the store's prefix in its bucket:
+
+| Key         | Action                    | Resource                                                  | Calls                                                                                                                                                     |
+| ----------- | ------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| layer's     | `s3:GetObject`            | `<store>/layers/<id>/*`                                   | `HEAD` of `claim.json` and `manifest.json`, DuckDB's two `HEAD`s of each parquet file before it writes it, and reads of the parquet the commit just wrote |
+| layer's     | `s3:PutObject`            | `<store>/layers/<id>/*`                                   | DuckDB's upload of each parquet file, one `PUT` for a small file and a multipart upload for a large one, and the create-only `PUT` of `manifest.json`     |
+| layer's     | `s3:AbortMultipartUpload` | `<store>/layers/<id>/*`                                   | DuckDB's `DELETE` of a multipart upload that fails                                                                                                        |
+| layer's     | `s3:ListBucket`           | the bucket, with `s3:prefix` like `<store>/layers/<id>/*` | the listing under `manifest.json`, and a `404` rather than a `403` for a `HEAD` of an absent key                                                          |
+| workspace's | `s3:GetObject`            | `<store>/layers/*`                                        | the ancestors' manifests the workspace does not hold yet, their parquet and `resolved/` files                                                             |
+| workspace's | `s3:ListBucket`           | the bucket, with `s3:prefix` like `<store>/layers/*`      | whether an ancestor is materialised, and a `404` rather than a `403` for its owner map                                                                    |
+
+A policy for the layer's key grants the first four rows and nothing else:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
+      "Resource": "arn:aws:s3:::<bucket>/<store>/layers/<id>/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<bucket>",
+      "Condition": { "StringLike": { "s3:prefix": "<store>/layers/<id>/*" } }
+    }
+  ]
+}
+```
+
+Without `s3:ListBucket`, S3 answers `403` for the absent manifest, and the commit raises `PermissionError` before it writes any data.
 
 ### Threads
 
@@ -238,7 +296,8 @@ Over a base that is no revision of this store, such as a standalone directory, i
 ### `Claim`
 
 A `Claim` is a revision id that a store reserves before the layer is written.
-It has `id`, `store`, `parent`, `meta` and `created`, and `claim.commit(source, *, meta=None)` writes the layer and returns the `Revision`.
+It has `id`, `store`, `parent`, `meta` and `created`, and `claim.commit(source, *, meta=None, credentials=None)` writes the layer and returns the `Revision`.
+`credentials` are a [key for the layer alone](#a-commit-with-a-key-for-its-layer).
 
 A claim serialises as its store's location and its id, and pickles the same way.
 A job in another process can then commit it, days later if need be.

@@ -19,7 +19,7 @@ import subprocess
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterator
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
 from textwrap import dedent
@@ -29,6 +29,7 @@ from uuid import uuid4
 import duckdb
 import pandas as pd
 import pytest
+from botocore import UNSIGNED
 from botocore.stub import Stubber
 from pydantic import ValidationError
 
@@ -345,7 +346,7 @@ def _secret(workspace: Workspace) -> dict[str, str]:
     ((listed,),) = workspace.con.execute(
         "SELECT secret_string FROM duckdb_secrets() WHERE name = 'datarecord_s3'"
     ).fetchall()
-    return dict(kv.split("=", 1) for kv in listed.split(";"))
+    return dict(kv.split("=", 1) for kv in listed.split(";") if kv)
 
 
 @pytest.mark.parametrize(
@@ -394,14 +395,45 @@ def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypat
     assert "endpoint" not in secret and "session_token" not in secret
 
 
-def test_credentials_stay_out_of_duckdbs_query_log(workspace):
-    workspace.con.execute("SET enable_logging = true")
-    workspace.set_credentials(
-        S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1])
-    )
+def _connect(workspace: Workspace, credentials: S3Credentials) -> None:
+    workspace.set_credentials(credentials)
     workspace.files("s3://bucket/record")
+
+
+def _commit_with_a_key_for_its_layer(
+    workspace: Workspace, credentials: S3Credentials
+) -> None:
+    """Commit a claim on S3 with `credentials` for its layer, failing at its first S3 call."""
+    workspace.set_credentials(S3Credentials("reader", "reader"))
+    store = workspace.store("s3://bucket/record")
+    claim = Claim(
+        id=uuid4(), store=store, parent=None, meta={}, created=datetime.now(UTC)
+    )
+    with pytest.raises(ConnectionError, match="offline"):
+        claim.commit(_p_nom(), credentials=credentials)
+
+
+@pytest.mark.parametrize(
+    ("secret_by", "statement"),
+    [
+        (_connect, "CREATE OR REPLACE SECRET"),
+        (_commit_with_a_key_for_its_layer, "CREATE SECRET"),
+    ],
+)
+def test_credentials_stay_out_of_duckdbs_query_log(
+    workspace,
+    monkeypatch,
+    secret_by: Callable[[Workspace, S3Credentials], None],
+    statement: str,
+):
+    def offline(*_: object) -> bool:
+        raise ConnectionError("offline")
+
+    monkeypatch.setattr(RemoteFiles, "exists", offline)
+    workspace.con.execute("SET enable_logging = true")
+    secret_by(workspace, S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1]))
     logged = workspace.con.execute("SELECT message FROM duckdb_logs").fetchall()
-    assert any("CREATE OR REPLACE SECRET" in m for (m,) in logged), "the log is on"
+    assert any(statement in m for (m,) in logged), "the log holds the statement"
     leaked = [m for (m,) in logged for s in (_KEY_ID, *_SECRETS) if s in m]
     assert leaked == [], "credentials bind as parameters, out of the logged text"
 
@@ -455,29 +487,64 @@ def test_the_environments_key_sets_up_duckdb_without_a_config_file(
         AWS_CONFIG_FILE=str(tmp_path / "missing"),
         AWS_ENDPOINT_URL="http://localhost:8333",
     )
-    assert (secret["key_id"], secret["endpoint"]) == (_KEY_ID, "localhost:8333")
-
-
-def test_failed_replacement_keeps_the_old_credentials_where_duckdb_refuses():
-    """boto3 builds, keyless, and DuckDB's credential chain finds no key."""
-    secret = _secret_in_a_fresh_process(
-        f"""
-        import duckdb
-        from datarecord import S3Credentials, Workspace
-        ws = Workspace(credentials=S3Credentials({_KEY_ID!r}, "x"))
-        files = ws.files("s3://bucket/record")
-        try:
-            ws.set_credentials(None)
-        except duckdb.Error:
-            assert ws.files("s3://bucket/record") is files, "boto3 keeps the old key"
-        else:
-            raise AssertionError("DuckDB took an empty credential chain")
-        """,
-        AWS_CONFIG_FILE=os.devnull,
-        AWS_SHARED_CREDENTIALS_FILE=os.devnull,
-        AWS_ENDPOINT_URL="http://localhost:1",
+    assert (secret["provider"], secret["key_id"], secret["endpoint"]) == (
+        "credential_chain",
+        _KEY_ID,
+        "localhost:8333",
     )
-    assert secret["key_id"] == _KEY_ID, "boto3 and DuckDB stay alike"
+
+
+@pytest.fixture
+def keyless(monkeypatch) -> None:
+    """An AWS environment in which boto3 finds no key."""
+    for name in [k for k in os.environ if k.startswith("AWS_")]:
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+
+
+def _unsigned(files: object) -> bool:
+    assert isinstance(files, RemoteFiles)
+    return files.anonymous and files._s3.meta.config.signature_version is UNSIGNED
+
+
+@pytest.mark.parametrize("before", [None, S3Credentials(_KEY_ID, _SECRETS[0])])
+def test_a_workspace_without_a_key_reaches_s3_anonymously(
+    workspace, keyless, before: S3Credentials | None
+):
+    """Without a key anywhere, boto3 and DuckDB both send unsigned requests, also after a key."""
+    workspace.set_credentials(before)
+    workspace.store("s3://bucket/record")
+    workspace.set_credentials(None)
+    assert _unsigned(workspace.files("s3://bucket/record")), "boto3 signs nothing"
+    secret = _secret(workspace)
+    assert secret["provider"] == "config", "DuckDB takes no credential chain"
+    assert "key_id" not in secret, "DuckDB signs nothing"
+
+
+def test_a_commit_without_a_workspace_key_writes_with_its_layers(
+    workspace, keyless, monkeypatch
+):
+    """A writer whose only key is the layer's commits with it, and reads the rest anonymously."""
+    seen: list[tuple[bool, list[str]]] = []
+
+    def offline(files: RemoteFiles, _: str) -> bool:
+        names = workspace.con.execute("SELECT name FROM duckdb_secrets()").fetchall()
+        seen.append((_unsigned(files), sorted(n.split("_")[1] for (n,) in names)))
+        raise ConnectionError("offline")
+
+    monkeypatch.setattr(RemoteFiles, "exists", offline)
+    store = workspace.store("s3://bucket/record")
+    claim = Claim(
+        id=uuid4(), store=store, parent=None, meta={}, created=datetime.now(UTC)
+    )
+    with pytest.raises(ConnectionError, match="offline"):
+        claim.commit(_p_nom(), credentials=S3Credentials(_KEY_ID, _SECRETS[0]))
+    assert _unsigned(store.files), "the store reads anonymously"
+    assert seen == [(False, ["claim", "s3"])], "the commit writes with its layer's key"
+    assert _secret(workspace)["provider"] == "config", "the layer's secret is dropped"
 
 
 def test_closing_a_workspace_drops_its_secret_from_a_callers_connection():
@@ -515,6 +582,16 @@ def test_credentials_on_a_local_workspace_set_up_no_secret(workspace, tmp_path):
     )
     names = workspace.con.execute("SELECT name FROM duckdb_secrets()").fetchall()
     assert ("datarecord_s3",) not in names
+
+
+def test_a_key_for_its_layer_is_refused_on_a_local_store(store):
+    claim = store.claim(parent=None)
+    with pytest.raises(ValueError, match="is local, so it takes no S3 credentials"):
+        claim.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long()}),
+            credentials=S3Credentials(_KEY_ID, _SECRETS[0]),
+        )
+    assert store.claims() == [claim], "the layer stays pending"
 
 
 def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
