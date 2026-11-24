@@ -1237,9 +1237,9 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>build</code> sets them back. <code>to_datarecord</code> adds every
   carrier that a component names and <code>carrier</code> does not list, and stores <code>""</code>
   as NULL. <code>verify</code> reports an entity attached to no bus.</li>
-<li>The PyPSA tool declares the dimensions <code>ctype</code> and <code>role</code> with <code>one_of</code>, and
-  <code>entity.ctype</code>, <code>entity.carrier</code> and <code>connection.role</code> as properties.
-  <code>partial</code> is <code>{"entity", "bus", "scenario", "connection"}</code>.</li>
+<li>The PyPSA tool declares the dimension <code>ctype</code> with <code>one_of</code>, and
+  <code>entity.ctype</code>, <code>entity.carrier</code> and <code>connection.bus</code> as properties.
+  <code>partial</code> is <code>{"entity", "bus", "port", "scenario", "connection"}</code>.</li>
 <li>PyPSA SubNetworks are labels of the dimension <code>sub_network</code>, without a suffix.
   <code>sub_network.carrier</code> refers to <code>carrier</code>, and <code>slack_bus</code> is a
   property over <code>sub_network</code>. A solve that has SubNetworks restates the
@@ -1257,7 +1257,7 @@ SPDX-License-Identifier: CC-BY-4.0
   custom column clashes any more.</li>
 <li>The PyPSA tool stores per-port results on connections like per-port inputs.
   <code>p0</code>, <code>p1</code>, <code>p2</code> and a one-port type's <code>p</code> are one result <code>p</code> over the
-  <code>connection</code> multi-dimension, with a row per <code>(entity, bus)</code> that keeps the port's
+  <code>connection</code> multi-dimension, with a row per <code>(entity, port)</code> that keeps the port's
   sign. <code>q</code> works the same way. <code>Link.p</code> and <code>Process.p</code> are <code>p_internal</code>, and
   a three-port Link's <code>p2</code> is a declared result.</li>
 <li>The PyPSA tool stores a Process's <code>rate0</code>, <code>rate1</code>, <code>rate2</code> as one input
@@ -1406,6 +1406,17 @@ SPDX-License-Identifier: CC-BY-4.0
 </ul>
 <h3 id="changed">Changed<a class="headerlink" href="#changed" title="Permanent link">&para;</a></h3>
 <ul>
+<li>Breaking: the PyPSA tool keys <code>connection</code> by <code>(entity, port)</code>, where the
+  port is PyPSA's number in <code>bus0</code>, <code>bus1</code>, ... and a one-port type's <code>bus</code> is
+  port 0. The bus is the property <code>connection.bus</code>, and the dimension <code>role</code> and the
+  property <code>connection.role</code> are gone. A Link with <code>bus0</code> and <code>bus1</code> at one bus
+  keeps both ports and their efficiencies, where it lost one silently (#95).
+  <code>remove("bus", ...)</code> refuses a bus that a connection is at, so remove those
+  connections first. <code>build</code> leaves out a value at a port PyPSA has no column
+  of it for, such as a Link's <code>efficiency</code> at port 0, and <code>verify</code> reports a
+  <code>bus</code> at a port its type lacks, such as a one-port type's at a port but 0,
+  in <code>unsupported_values</code>. Export a network again to rewrite a record that the
+  PyPSA tool wrote before.</li>
 <li>A record finds its frozen layers' owner map once per thread rather than
   once per attribute read. So <code>register</code> asks DuckDB's catalog once rather
   than twice per attribute.</li>
@@ -1543,13 +1554,14 @@ SPDX-License-Identifier: CC-BY-4.0
   Its table is <code>dimensions/&lt;multi-dim&gt;.parquet</code>, keyed by that column with its
   properties beside it; <code>groups/</code> and <code>resolved/groups/</code> are gone, so every
   record with a group is written again. <code>record.dimensions["connection"]</code> is the
-  struct column alone and <code>record.properties["connection"]</code> adds <code>role</code>.
+  struct column alone and <code>record.properties["connection"]</code> adds its
+  properties, such as the PyPSA tool's <code>connection.bus</code>.
   <code>add</code> and <code>remove</code> take a multi-dimension's tuples as a frame holding its struct
   column, so <code>add("connection", record.dimensions["connection"])</code> round-trips, or
   one with a column per field instead, or as a list of mappings from
   field to label.
-  <code>connection.bus</code> names a field wherever <code>subject.name</code> stands, and
-  <code>set</code> refuses it. No property refers to one. New on <code>Schema</code>: <code>multi_dimensions</code>, <code>over</code>, <code>multi_dimensions_of</code>,
+  Over <code>(entity, bus)</code>, <code>connection.bus</code> names a field wherever
+  <code>subject.name</code> stands, and <code>set</code> refuses it. No property refers to one. New on <code>Schema</code>: <code>multi_dimensions</code>, <code>over</code>, <code>multi_dimensions_of</code>,
   <code>check_multi_dimension_columns</code> and <code>field_over</code>. The PyPSA tool declares <code>connection</code> under <code>dimensions</code>.</p>
 </li>
 <li>A dimension with <code>one_of</code> has its axis derived from the list: <code>record.dimensions["ctype"]</code>
@@ -1562,15 +1574,16 @@ SPDX-License-Identifier: CC-BY-4.0
   <code>add</code> and <code>remove</code> on it are refused, and a property declared on it is
   refused at load. A record carrying such a file is written again. New on
   <code>Schema</code>: <code>one_of_dimensions</code>; <code>Schema.require_listed</code> is <code>require_one_of</code>. The
-  PyPSA tool no longer writes the <code>ctype</code> and <code>role</code> axes.</li>
+  PyPSA tool no longer writes the <code>ctype</code> axis.</li>
 <li>A multi-dimension in <code>partial</code> is categorized by a property that refers to a dimension
-  with <code>one_of</code>, as a dimension is: <code>connection.role</code> categorizes <code>connection</code>, so a
-  <code>default_by</code> keyed <code>connection.role</code> loads, <code>Schema.categorizing("connection")</code>
-  lists <code>role</code>, and <code>flags(role="output")</code>, <code>default_for(name, role="output")</code>
-  and <code>set(..., role="output")</code> select by it. A role picks the
-  tuples of an attribute over <code>connection</code>, narrowed by labels of a field,
-  and of a property of it: <code>set("connection.note", v, role="output")</code> patches
-  the output connections, as <code>set("entity.note", v, ctype="Generator")</code> does
+  with <code>one_of</code>, as a dimension is: a property <code>connection.kind</code> referring to a dimension
+  <code>kind</code> categorizes <code>connection</code>, so a <code>default_by</code> keyed <code>connection.kind</code>
+  loads, <code>Schema.categorizing("connection")</code> lists <code>kind</code>, and
+  <code>flags(kind="output")</code>, <code>default_for(name, kind="output")</code> and
+  <code>set(..., kind="output")</code> select by it. A category picks the tuples of
+  an attribute over <code>connection</code>, narrowed by labels of a field, and of a
+  property of it: <code>set("connection.note", v, kind="output")</code> patches the
+  output connections, as <code>set("entity.note", v, ctype="Generator")</code> does
   the generators, and <code>ctype="Link"</code> on it the connections of links.</li>
 <li>The design pages are grouped by topic: the data model, layers, using a
   record, storage, frameworks and the package. Each old design page URL
@@ -1578,9 +1591,9 @@ SPDX-License-Identifier: CC-BY-4.0
   API reference uses the design section names.</li>
 <li>An attribute over a multi-dimension carries it as one struct column named for it,
   holding its fields, such as <code>connection STRUCT(entity, bus)</code>. Its
-  table is keyed by that column, and <code>dimensions/connection.parquet</code> is
-  <code>connection STRUCT(entity, bus) | role</code>. The PyPSA tool declares no <code>bus</code>
-  attribute. A port's bus is the connection tuple.</li>
+  table is keyed by that column, and <code>dimensions/connection.parquet</code> holds it with
+  the multi-dimension's properties. The PyPSA tool declares no <code>bus</code> attribute: a
+  port's bus is the property <code>connection.bus</code>.</li>
 <li>The dimensions that a multi-dimension draws on broadcast. A per-bus value with
   <code>bus = NULL</code> holds for every bus, and <code>bus</code> must be in <code>partial</code> to patch one
   bus at a time. <code>WorkingRecord.set</code> still takes <code>bus=</code>. Listing a multi-dimension
