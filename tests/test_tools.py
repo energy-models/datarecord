@@ -2542,6 +2542,29 @@ class TestPyPSA:
         if not stochastic:
             assert_networks_equal(built, n)
 
+    def test_a_global_constraint_keeps_its_bus(self, store):
+        """A GlobalConstraint's `bus` is its connection at port 0, and one without a bus has none.
+
+        Notes
+        -----
+        - [ports](https://energy-models.github.io/datarecord/reference/tools/#ports)
+        """
+        n = _north()
+        n.add("GlobalConstraint", "cap", bus="north", constant=5.0)
+        n.add("GlobalConstraint", "co2", constant=1.0)
+
+        record = export_network(n, store).record
+        buses = _flat(record.properties["connection"]).set_index("entity")["bus"]
+        assert buses.to_dict() == {"gen": "north", "cap": "north"}, (
+            "a constraint without a bus has no connection"
+        )
+        built = PyPSA.build(record)
+        assert built.c.GlobalConstraint.static["bus"].to_dict() == {
+            "cap": "north",
+            "co2": "",
+        }
+        assert_networks_equal(built, n)
+
     def test_per_type_defaults_round_trip_with_nothing_written(self, store):
         """A Load and a StorageUnit added without `sign` or `p_min_pu` build with their own defaults.
 
