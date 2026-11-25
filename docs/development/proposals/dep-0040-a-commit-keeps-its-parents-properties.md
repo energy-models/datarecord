@@ -10,7 +10,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | -------- | -------------------------------------------------------------------------------------- |
 | Title    | a commit keeps its parent's properties                                                 |
 | Author   | Bryn Pickering                                                                         |
-| Status   | Draft (2026-11-19)                                                                     |
+| Status   | Implemented (2026-11-19)                                                              |
 | Requires | [DEP 12](dep-0012-properties.md), [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) |
 | Created  | 2026-11-19                                                                             |
 
