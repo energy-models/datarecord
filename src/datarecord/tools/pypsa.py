@@ -2710,7 +2710,7 @@ class _NetworkSource:
 
     @cached_property
     def schema(self) -> RecordSchema:
-        """The registry's schema, widened by this network's shapes, custom columns, multi-period `snapshot` and `meta`.
+        """The registry's schema, widened by this network's shapes, custom columns, multi-period `snapshot` and `meta`, then by `base`'s properties.
 
         A custom text property named like a dimension refers to it.
 
@@ -2719,6 +2719,7 @@ class _NetworkSource:
         - [the schema](https://energy-models.github.io/datarecord/reference/schema/)
         - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
         - [geometry](https://energy-models.github.io/datarecord/reference/tools/#geometry)
+        - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
         """
         base = _registry().schema
         dimensions = dict(base.dimensions)
@@ -2743,6 +2744,10 @@ class _NetworkSource:
                 for name, dtype in typed.items()
                 if name not in properties[dim]
             }
+        if self.base is not None:
+            for dim, held in self.base.schema.properties.items():
+                if dim in dimensions:
+                    properties[dim] = held | properties.get(dim, {})
         return _rebuilt(
             base,
             dimensions=dimensions,

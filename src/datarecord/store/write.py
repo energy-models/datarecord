@@ -47,7 +47,7 @@ from datarecord.settle import unsettled
 from datarecord.store.manifest import LayerFiles, Manifest
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
 
     from duckdb import DuckDBPyConnection, DuckDBPyRelation
 
@@ -68,6 +68,51 @@ def layer_data(source: LayerData | RecordLike, con: DuckDBPyConnection) -> Layer
     if isinstance(source, LayerData):
         return source
     return _RecordLikeAsLayerData(source, con)
+
+
+def _with_parents_properties(
+    read: Callable[[str], DuckDBPyRelation | None],
+    parent: Record,
+    schema: Schema,
+    con: DuckDBPyConnection,
+    dim: str,
+) -> DuckDBPyRelation | None:
+    """`read(dim)` with each declared property column it lacks taken from `parent`."""
+    axis = read(dim)
+    held = parent.properties.get(dim)
+    if axis is None or held is None:
+        return axis
+    declared = schema.properties.get(dim, {})
+    missing = [c for c in held.columns if c in declared and c not in axis.columns]
+    return _joined_by_label(axis, held, dim, missing, con)
+
+
+def _joined_by_label(
+    axis: DuckDBPyRelation,
+    values: DuckDBPyRelation,
+    dim: str,
+    columns: Sequence[str],
+    con: DuckDBPyConnection,
+) -> DuckDBPyRelation:
+    """`axis` with `columns` of `values` left-joined on `dim`, in `axis`'s row order.
+
+    The `ORDER BY` is the outermost clause, since a join defines no order.
+    """
+    if not columns:
+        return axis
+    _dr_joined = (
+        axis.project(star(), fn.row_number().over().alias("_row"))
+        .set_alias("a")
+        .join(values.set_alias("p"), null_safe("a", "p", (dim,)), how="left")
+        .project(
+            col("a", "_row"),
+            *(col("a", c) for c in axis.columns),
+            *(col("p", c) for c in columns),
+        )
+    )
+    return anchored(
+        con.sql("SELECT * EXCLUDE (_row) FROM _dr_joined ORDER BY _row"), _dr_joined
+    )
 
 
 def write_layer(
@@ -95,7 +140,8 @@ def write_layer(
         built.
     parent
         The revision's record the layer folds over; none for a root or a
-        standalone record.
+        standalone record. A declared property column an axis lacks takes
+        `parent`'s values.
     owner_rows_from
         The source `data` is, whose owner-map rows `owner_map_rows.parquet`
         takes where it keeps them, as a staging area does; none aggregates
@@ -136,6 +182,7 @@ def write_layer(
     - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
+    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
     """
     schema = data.schema
     con = workspace.con
@@ -161,8 +208,13 @@ def write_layer(
         return frame
 
     refuse_one_of_file(schema, data.axes(), "the layer")
+    axis = (
+        data.axis
+        if parent is None
+        else partial(_with_parents_properties, data.axis, parent, schema, con)
+    )
     for dim in sorted(data.axes(), key=schema.multi_dimensions.__contains__):
-        frame = _written(data.axis, "dimensions", dim)
+        frame = _written(axis, "dimensions", dim)
         if frame is None:
             continue
         written["dimensions"].append(dim)
@@ -647,11 +699,7 @@ class _RecordLikeAsLayerData:
         raise ValueError(msg)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order.
-
-        The row is numbered on `dims[dim]` alone, and the `ORDER BY` on it is
-        the outermost clause, since a join defines no order.
-        """
+        """`dims[dim]` with `properties[dim]` joined on the label, in `dims[dim]`'s row order."""
         axis = self._read(self._dims, dim)
         if axis is None or dim not in self._properties:
             return axis
@@ -659,26 +707,7 @@ class _RecordLikeAsLayerData:
         if props is None:
             return axis
         values = [c for c in props.columns if c not in axis.columns]
-        if not values:
-            return axis
-        _dr_joined = (
-            axis.project(star(), fn.row_number().over().alias("_row"))
-            .set_alias("a")
-            .join(
-                props.set_alias("p"),
-                null_safe("a", "p", (dim,)),
-                how="left",
-            )
-            .project(
-                col("a", "_row"),
-                *(col("a", c) for c in axis.columns),
-                *(col("p", c) for c in values),
-            )
-        )
-        return anchored(
-            self._con.sql("SELECT * EXCLUDE (_row) FROM _dr_joined ORDER BY _row"),
-            _dr_joined,
-        )
+        return _joined_by_label(axis, props, dim, values, self._con)
 
     def attributes(self) -> set[str]:
         return set(self._attributes)

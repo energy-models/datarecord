@@ -666,6 +666,33 @@ _SNAPSHOT_SELECTIONS = pytest.mark.parametrize(
 )
 
 
+class _SnapshotCluster:
+    """`record` with `snapshot.cluster`, one cluster per three snapshots."""
+
+    def __init__(self, record):
+        snapshot = record.schema.properties.get("snapshot", {})
+        properties = {
+            **record.schema.properties,
+            "snapshot": {**snapshot, "cluster": PropertySpec(dtype="int")},
+        }
+        self.schema = record.schema.model_copy(update={"properties": properties})
+        self._snapshots = record.dimensions["snapshot"].project(
+            "*, (row_number() OVER () - 1) // 3 AS cluster"
+        )
+
+    def axes(self) -> set[str]:
+        return {"snapshot"}
+
+    def axis(self, dim: str) -> DuckDBPyRelation | None:
+        return self._snapshots if dim == "snapshot" else None
+
+    def attributes(self) -> set[str]:
+        return set()
+
+    def attribute(self, name: str) -> DuckDBPyRelation | None:
+        return None
+
+
 class TestPyPSA:
     """The PyPSA tool: export a network, verify and build a record, write results back."""
 
@@ -2245,6 +2272,24 @@ class TestPyPSA:
         child = PyPSA.build(revision.store.commit(layer, parent=revision).record)
         expected = n.c.Generator.static.at[entity, attr]
         assert child.c.Generator.static.at[entity, attr] == expected
+
+    def test_a_full_export_over_base_keeps_a_property_base_declares(self, exported):
+        """Issue #164.
+
+        Notes
+        -----
+        - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
+        """
+        root = exported.commit()
+        tagged = root.store.commit(_SnapshotCluster(root.record), parent=root)
+        n = PyPSA.build(tagged.record)
+        n.add("Generator", "Newcomer", bus="Manchester")
+        layer = PyPSA.to_datarecord(n, tagged.record.con, base=tagged.record)
+        child = tagged.store.commit(layer, parent=tagged)
+        clusters = "SELECT cluster FROM rel ORDER BY ALL"
+        expected = tagged.record.properties["snapshot"].query("rel", clusters)
+        got = child.record.properties["snapshot"].query("rel", clusters)
+        assert got.fetchall() == expected.fetchall(), "each snapshot keeps its cluster"
 
     @pytest.mark.slow
     @pytest.mark.parametrize(

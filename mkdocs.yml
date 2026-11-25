@@ -106,6 +106,7 @@ nav:
           - "DEP 34: `register` creates one view per relation": development/proposals/dep-0034-a-record-registers-as-views.md
           - "DEP 35: the workspace keeps the tables a record reads": development/proposals/dep-0035-a-record-holds-the-tables-it-reads.md
           - "DEP 39: query templates avoid rebinding a read": development/proposals/dep-0039-query-templates-avoid-rebinding-a-read.md
+          - "DEP 40: a commit keeps its parent's properties": development/proposals/dep-0040-a-commit-keeps-its-parents-properties.md
   - Changelog: changelog.md
 
 theme:

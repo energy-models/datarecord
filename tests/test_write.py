@@ -1588,6 +1588,132 @@ def test_names_needing_quotes_round_trip_through_layers(store, workspace, tmp_pa
     )
 
 
+# -- property columns a layer omits (https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits) -------
+
+
+def _declaring(base: Schema, **properties: dict[str, PropertySpec]) -> Schema:
+    """`base` declaring `properties` beside its own, keyed by their subject."""
+    return Schema(
+        **{**base.model_dump(), "properties": {**base.properties, **properties}}
+    )
+
+
+_AGG = _declaring(_SCHEMA, scenario={"agg": PropertySpec(dtype="int")})
+
+
+def _scenarios_with(schema: Schema, order: list[str], **properties: list) -> _Source:
+    """A source whose `scenario` axis is `order`, with `properties` on it."""
+    frame = pd.DataFrame({"scenario": order, **properties})
+    return _Source(
+        schema, dims={"scenario": frame[["scenario"]]}, properties={"scenario": frame}
+    )
+
+
+def _agg_root(store):
+    """A root whose `scenario` axis is `x, y, z`, with `agg` 1, 2 and 3."""
+    return store.commit(
+        _scenarios_with(_AGG, ["x", "y", "z"], agg=[1, 2, 3]), parent=None
+    )
+
+
+def _aggs(revision) -> list[tuple]:
+    return revision.record.properties["scenario"].project("scenario, agg").fetchall()
+
+
+@pytest.mark.parametrize(
+    ("properties", "expected"),
+    [
+        ({"agg": [10, 20, 30]}, [("x", 10), ("new", 20), ("z", 30)]),
+        (
+            {"agg": pd.array([None] * 3, dtype="Int64")},
+            [("x", None), ("new", None), ("z", None)],
+        ),
+        ({}, [("x", 1), ("new", None), ("z", 3)]),
+    ],
+    ids=["written", "blanked", "column-omitted"],
+)
+def test_a_declared_property_takes_the_parents_values_only_without_its_column(
+    store, properties, expected
+):
+    """The source restates `scenario` as `x, new, z`, removing `y`.
+
+    Notes
+    -----
+    - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
+    """
+    source = _scenarios_with(_AGG, ["x", "new", "z"], **properties)
+    child = store.commit(source, parent=_agg_root(store))
+    assert _aggs(child) == expected, (
+        "a column the source writes applies, NULLs included; one it omits takes the"
+        " parent's value by label, NULL on a new label, in the source's order"
+    )
+
+
+def test_a_kept_property_naming_a_removed_label_is_refused(store):
+    """`home` on entity `b` is bus `b1`, which the child removes.
+
+    Notes
+    -----
+    - [removing labels](https://energy-models.github.io/datarecord/reference/layers/#removing-labels)
+    """
+    homed = _declaring(
+        _SCHEMA,
+        entity={**_SCHEMA.properties["entity"], "home": PropertySpec(one_of="bus")},
+    )
+    entities = pd.DataFrame({"entity": ["a", "b"], "home": ["b0", "b1"]})
+    root = store.commit(
+        _Source(
+            homed,
+            dims={
+                "entity": entities[["entity"]],
+                "bus": pd.DataFrame({"bus": ["b0", "b1"]}),
+            },
+            properties={"entity": entities},
+        ),
+        parent=None,
+    )
+    dims = {"bus": pd.DataFrame({"bus": ["b0"]}), "entity": entities[["entity"]]}
+    with pytest.raises(ValueError, match="removing a label removes"):
+        store.commit(_Source(homed, dims=dims), parent=root)
+
+
+def test_edits_keep_the_parent_property_without_carrying_it(store):
+    root = _agg_root(store)
+    w = WorkingRecord(root.record)
+    w.add("scenario", ["new"])
+    child = store.commit(w)
+    assert _aggs(child) == [("x", 1), ("y", 2), ("z", 3), ("new", None)]
+
+
+def test_a_commit_keeps_a_multi_dims_property_by_label(store):
+    length = _declaring(_SCHEMA, connection={"length": PropertySpec(dtype="float")})
+    ab, bb, cb = (
+        {"entity": "a", "bus": "b0"},
+        {"entity": "b", "bus": "b0"},
+        {"entity": "c", "bus": "b0"},
+    )
+    root = store.commit(
+        _Source(
+            length,
+            connections={"connection": pd.DataFrame({"connection": [ab, bb]})},
+            properties={
+                "connection": pd.DataFrame(
+                    {"connection": [ab, bb], "length": [1.0, 2.0]}
+                )
+            },
+        ),
+        parent=None,
+    )
+    source = _Source(
+        length, connections={"connection": pd.DataFrame({"connection": [ab, cb]})}
+    )
+    child = store.commit(source, parent=root)
+    rows = child.record.properties["connection"].project("connection, length")
+    assert rows.fetchall() == [(ab, 1.0), (cb, None)], (
+        "a tuple the child keeps has the parent's length, a new one NULL"
+    )
+
+
 # -- the PyPSA source (https://energy-models.github.io/datarecord/reference/format/) ------------------------------------------------
 
 

@@ -290,6 +290,8 @@ A value with `scenario` NULL is left out only where `base` resolves the same val
 An input at a port or a custom column placed as an attribute is written wherever `base` has no value for it.
 A value set back to its default over a `base` with another is written.
 Values compare exactly, and NULL equals NULL.
+The schema declares each property that `base` declares on a dimension of the network and the network lacks, such as a snapshot property another tool added.
+The network has no column for it, so the store fills it from `base` on commit ([property columns a layer omits](layers.md#property-columns-a-layer-omits)).
 `to_datarecord` raises `ValueError` where `base` is a selection, has a dimension of its own, or has other investment periods than the network.
 
 `to_datarecord(n, con, results_only=True, base=record)` presents only the solve's results:

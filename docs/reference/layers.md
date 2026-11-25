@@ -6,7 +6,7 @@ SPDX-License-Identifier: CC-BY-4.0
 
 # Layers
 
-This page describes revisions, the tree they form, `partial`, what a layer may contain and how a layer removes a label.
+This page describes revisions, the tree they form, `partial` and what a layer may contain. It also describes how a layer removes a label and how a commit fills the property columns a layer omits.
 How datarecord reads the layers of a revision as one record is on [the resolution page](resolution.md).
 
 ## Revisions
@@ -187,3 +187,30 @@ So where an ancestor left such a reference, the writer refuses the next layer th
 
     [Edit a record](../howto/edit-a-record.md) shows `add` and `remove`.
     [Layers and `partial`](../about/layers.md) argues for removal as restatement.
+
+## Property columns a layer omits
+
+When a layer writes an axis file without the column of a property its schema declares, the commit writes the parent's values into that column, by label.
+Here the parent's `snapshot` axis has a property `agg_3h`, the three-hour block of each snapshot, and `source` declares it but restates the axis without its column:
+
+```python
+child = store.commit(source, parent=root)
+```
+
+<figure class="diagram">
+--8<-- "docs/static/layers-keep-properties.svg"
+</figure>
+
+The child's axis file has the parent's `agg_3h` at snapshots 0 and 3, and NULL at snapshot 4, which the parent does not hold.
+Snapshot 1 has no row, so its value goes with it.
+
+- The source's schema still declares every property of the parent. A schema that omits one fails [`compatible_with`](schema.md#compatibility), and the commit refuses the layer.
+- To set a property to NULL, a source writes its column with NULLs.
+- The commit writes the parent's values in the layer's row order. A property the parent does not declare has no values to take, so its column stays out of the file and reads NULL.
+- An axis the layer does not write has no file, and the fold reads the parent's axis, its properties included.
+- The writer checks a taken value as it checks any column of the file. It refuses a property that refers to a dimension while its value is a label the layer removes, as in [removing labels](#removing-labels).
+- A root has no parent, so its axis files are as the source writes them.
+
+!!! info "See also"
+
+    [The store page](store.md#a-revision-exists-only-by-its-manifest) lists the checks a commit makes before it writes data.

@@ -859,6 +859,7 @@ class Store:
         -----
         - [writing a whole record](https://energy-models.github.io/datarecord/reference/layers/)
         - [edits](https://energy-models.github.io/datarecord/reference/editing/#edits)
+        - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
         """
         if isinstance(source, WorkingRecord):
             if parent is not _Base.OF_WORKING_RECORD:
@@ -1295,7 +1296,8 @@ class Claim(_OfStore):
         The data goes straight into the layer directory; the manifest, written
         create-only and last, lists its files, its full schema, the claim's
         parent and the claim's `meta` with `meta` added. A `WorkingRecord` is
-        written as its edits.
+        written as its edits. A declared property column an axis file lacks
+        takes the parent's values.
 
         Parameters
         ----------
@@ -1333,6 +1335,7 @@ class Claim(_OfStore):
         -----
         - [a revision exists only by its file](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
         - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
+        - [property columns a layer omits](https://energy-models.github.io/datarecord/reference/layers/#property-columns-a-layer-omits)
         """
         meta = merge_meta(self.meta, validate_meta(meta))
         if isinstance(source, WorkingRecord):
