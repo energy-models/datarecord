@@ -23,11 +23,24 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, runtime_checkable
 from uuid import UUID
 
+from duckdb import ColumnExpression as col
+
+from datarecord.duck import pattern
 from datarecord.resolve.fold import Fold
+from datarecord.resolve.owner_map_rows import (
+    SHAPE_COLUMN,
+    _isin,
+    _mask,
+    _owned_by,
+)
+from datarecord.schema.schema import cast_declared
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from duckdb import DuckDBPyRelation
 
+    from datarecord.resolve.owner_map_rows import Shape
     from datarecord.schema.schema import Schema
     from datarecord.store.manifest import LayerFiles, Manifest
     from datarecord.store.store import Store, Workspace
@@ -39,7 +52,7 @@ class LayerSource(Protocol):
 
     "The layer as it would be written", not "the rows as stored": a source
     hands over what `write_layer` would persist, so however a staging area
-    reaches one row per key happens behind it and the fold never learns about it.
+    reaches one row per coordinate happens behind it and the fold never learns about it.
     `None` means this layer wrote nothing of that kind.
 
     Rows only. Everything the fold does to them - padding to the long schema,
@@ -103,26 +116,26 @@ class LayerSource(Protocol):
         """This layer's resolved `Fold` if it is materialised, else `None`.
 
         A filesystem fact, distinct from `frozen`: `frozen` says the rows cannot
-        change under a reader, `materialised` says a `resolved/` cache exists on
-        disk. The deepest materialised source in a fold's list is its base - the
+        change under a reader, `materialised` says the layer's `resolved/` files exist
+        on disk. The deepest materialised source in a fold's list is its base - the
         prior fold it starts from rather than re-folds. Only a `ParquetLayer`
-        ever answers non-`None`; a directory or a staging area has no cache.
+        ever answers non-`None`; a directory or a staging area has no `resolved/`.
         """
         ...
 
     def axes(self) -> set[str]:
-        """Which dims this layer has an axis file for.
+        """Which dimensions this layer has an axis file for.
 
-        Asked once per source rather than probed per declared dim:
-        `Coords.resolve` folds only the dims some source holds.
+        Asked once per source rather than probed per declared dimension:
+        `Axes.resolve` folds only the dimensions some source holds.
         """
         ...
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        """`dims/<dim>.parquet` - one axis's full row, not the key alone.
+        """`dimensions/<dim>.parquet` - one axis's full row, not its column alone.
 
         Its properties ride along as columns. A file restates the axis whole,
-        in order; a multi-dim's is keyed by its struct column.
+        in order; a multi-dimension's column is its struct column.
         """
         ...
 
@@ -137,8 +150,7 @@ class LayerSource(Protocol):
     def attribute(self, name: str) -> DuckDBPyRelation | None:
         """`attributes/<name>.parquet` - one attribute's own columns, unpadded.
 
-        Not the singular of `all_attributes`: this is the *owned* read, and it
-        must keep exactly the columns the file has, a padded one being ambiguous
+        It must keep exactly the columns the file has, a padded one being ambiguous
         against the broadcast rule.
 
         Notes
@@ -147,29 +159,43 @@ class LayerSource(Protocol):
         """
         ...
 
-    def owners(self, name: str) -> DuckDBPyRelation | None:
-        """One attribute's owner-map rows, where this layer keeps them; `None` where the fold aggregates `attribute(name)`.
+    def rows(self, names: Sequence[str]) -> DuckDBPyRelation | None:
+        """The rows of those of `names` this layer has, as one relation by column name; `None` where it has none.
 
-        A staging area keeps them in a table each edit refreshes, so that a
-        fold reading them does not aggregate every staged row once per use.
+        An attribute without a column of another reads NULL there.
         """
         ...
 
-    def all_attributes(self) -> DuckDBPyRelation | None:
-        """Every `attributes/*.parquet` unioned by name, unprojected.
+    def owner_map_rows(
+        self, shape: Shape, names: Sequence[str]
+    ) -> DuckDBPyRelation | None:
+        """The owner-map rows of those of `names` this layer has, attributes of one `shape`, where it keeps them; `None` where the fold aggregates `rows(names)`.
 
-        Only attributes have one: they share `owner_map_key`, so a single scan
-        answers the ownership `GROUP BY` for every attribute at once. An axis
-        folds on a key of its own, so a union across them would have
-        nothing to fold on.
+        A staging area keeps them in a table per attribute each edit
+        refreshes, so that a fold reading them does not aggregate every staged
+        row once per use. A file layer keeps those of each shape its manifest
+        lists in `files.owner_map_rows`, in `owner_map_rows.parquet`.
+
+        Notes
+        -----
+        - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
         """
         ...
+
+
+OWNER_MAP_ROWS_FILE = "owner_map_rows.parquet"
+"""A layer's owner-map rows of the shapes it keeps them for, at its root.
+
+Notes
+-----
+- [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
+"""
 
 
 class _FileLayer:
     """The layer layout over a URI, shared by every file-backed source.
 
-    Each member is one file, addressed by what keys it, and opened only where
+    Each member is one file, addressed by the dimension or attribute it holds, and opened only where
     the layer's manifest lists it: a file it does not list is no part of the
     layer. A subclass supplies where the layer root is (`uri`), the workspace
     to read it through, and the manifest, and inherits every accessor
@@ -195,6 +221,9 @@ class _FileLayer:
         @property
         def workspace(self) -> Workspace: ...
 
+        @property
+        def layer_id(self) -> UUID: ...
+
     @property
     def schema(self) -> Schema:
         return self.manifest.schema
@@ -215,13 +244,13 @@ class _FileLayer:
         return self.workspace.con.read_parquet(uris, union_by_name=True)
 
     def axes(self) -> set[str]:
-        return set(self.files.dims)
+        return set(self.files.dimensions)
 
     def axis(self, dim: str) -> DuckDBPyRelation | None:
-        if dim not in self.files.dims:
+        if dim not in self.files.dimensions:
             return None
-        rel = self._read("dims", [dim])
-        file = f"dims/{dim}.parquet"
+        rel = self._read("dimensions", [dim])
+        file = f"dimensions/{dim}.parquet"
         refuse_foreign_columns(set(rel.columns), {dim}, self.schema, dim, file)
         return rel
 
@@ -233,16 +262,24 @@ class _FileLayer:
             return None
         return self._read("attributes", [name])
 
-    def owners(self, name: str) -> DuckDBPyRelation | None:
-        return None
+    def rows(self, names: Sequence[str]) -> DuckDBPyRelation | None:
+        listed = [name for name in names if name in self.files.attributes]
+        return self._read("attributes", listed) if listed else None
 
-    def all_attributes(self) -> DuckDBPyRelation | None:
-        if not self.files.attributes:
+    def owner_map_rows(
+        self, shape: Shape, names: Sequence[str]
+    ) -> DuckDBPyRelation | None:
+        listed = [name for name in names if name in self.files.attributes]
+        stored = self.files.owner_map_rows
+        if not listed or pattern(self.schema.dimensions, shape) not in stored:
             return None
-        return self._read("attributes", list(self.files.attributes))
+        rel = self.workspace.con.read_parquet(self.uri(OWNER_MAP_ROWS_FILE))
+        rel = rel.filter(col(SHAPE_COLUMN) == _mask(self.schema, shape))
+        rel = cast_declared(self.schema, rel.filter(_isin(listed)))
+        return _owned_by(rel, self.schema, self.layer_id)
 
     def materialised(self) -> Fold | None:
-        """No cache by default: only a `ParquetLayer` has a revision to key one by."""
+        """Not materialised by default: only a `ParquetLayer` has a revision to materialise."""
         return None
 
 
@@ -251,8 +288,8 @@ def refuse_foreign_columns(
 ) -> None:
     """Refuse a column of an axis file beyond `structural` and `subject`'s properties.
 
-    `structural` is the key, and at write an explicit order key, which the
-    write drops.
+    `structural` is the dimension's column, and at write an explicit `order_key`,
+    which the write drops.
 
     Raises
     ------
@@ -277,7 +314,7 @@ def refuse_foreign_columns(
     )
     msg = (
         f"{file} carries columns {extra} the schema does not declare as "
-        f"properties of {subject!r}; the file holds only its key and those "
+        f"properties of {subject!r}; the file holds only its column {subject!r} and those "
         f"properties, {sorted(known)}{hint} (https://energy-models.github.io/datarecord/reference/format/#where-a-value-lives)"
     )
     raise ValueError(msg)
@@ -311,7 +348,7 @@ class ParquetLayer(_FileLayer):
         return self.store.layer_dir(self.layer_id) + path
 
     def materialised(self) -> Fold | None:
-        """This node's resolved `Fold` if its `resolved/` cache exists, else `None`."""
+        """This node's resolved `Fold` if its `resolved/` files exist, else `None`."""
         return Fold.read(self)
 
     def sibling(self, layer_id: UUID) -> ParquetLayer:

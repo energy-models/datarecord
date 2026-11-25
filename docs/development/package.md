@@ -12,29 +12,30 @@ datarecord is a core of subpackages that import each other in one direction, and
 datarecord/
 ├── __init__.py        # every public name, which a user imports from here
 ├── duck.py            # relation helpers, transactions and shared tables
+├── templates.py       # Plan, Templates, Templated: a read built once per plan and slot types
 ├── protocols.py       # RecordLike, LayerData, Relations, LazyRelations, EMPTY, Flags
 ├── schema/
 │   ├── __init__.py    # re-exports Schema, Dimension, AttributeSpec, PropertySpec
 │   ├── dtypes.py      # DUCK_TYPES, enum_type, enum_labels, takes
 │   ├── specs.py       # Dimension, AttributeSpec, PropertySpec
-│   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED, packed, unpacked
-│   └── categories.py  # selecting a categorised dim's labels, and their defaults
-├── settle.py          # settle, the broadcast rule over long rows
+│   ├── schema.py      # Schema, flag_type, LAYER_COLUMN, LONG_TAIL, DERIVED, packed, unpacked, cast_declared, with_columns
+│   └── categories.py  # selecting a categorised dimension's labels, and their defaults
+├── settle.py          # settle, uncovered, unsettled: the broadcast rule over long rows
 ├── select.py          # select, Selection
 ├── resolve/
 │   ├── __init__.py    # re-exports Record
 │   ├── sources.py     # LayerSource, ParquetLayer, DirectorySource
-│   ├── coords.py      # Coords, mortal: folded axes and dead labels
-│   ├── owner_keys.py  # owner_keys: one layer's keys as it wrote them
+│   ├── axes.py        # Axes, mortal: folded axes and dead labels
+│   ├── owner_map_rows.py  # owner_map_rows, shape_of: one layer's map rows as it wrote them
 │   ├── fold.py        # Fold: a revision's folded axes, owner map and reads
-│   ├── owner_map.py   # fold_layer, uncovered: the owner map folded one layer at a time
+│   ├── owner_map.py   # fold_layer: the owner map folded one layer and one shape at a time
 │   └── record.py      # Record
 ├── mutable.py         # WorkingRecord, StagedSource
 ├── store/
-│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest
-│   ├── files.py       # Files, LocalFiles, RemoteFiles
+│   ├── __init__.py    # re-exports Workspace, Store, Claim, Revision, Manifest, S3Credentials
+│   ├── files.py       # Files, LocalFiles, RemoteFiles, S3Credentials
 │   ├── manifest.py    # Manifest, LayerFiles, ClaimFile
-│   ├── cache.py       # materialise, materialised, sources_to_read
+│   ├── materialise.py # materialise, materialised, sources_to_read
 │   ├── write.py       # write_layer, layer_data
 │   └── store.py       # Workspace, Store, Claim, Revision, ancestry
 └── tools/
@@ -45,7 +46,7 @@ datarecord/
 
 ## The import order
 
-Runtime imports follow the order `duck` → `schema` → `protocols` → `settle` → `select` → `resolve` → `mutable` → `store` → `tools`. A module imports at runtime only from modules earlier in that order or in its own subpackage. An import under `TYPE_CHECKING` may point the other way, as when `resolve/record.py` names `Workspace` in an annotation.
+Runtime imports follow the order `duck` → `templates` → `schema` → `protocols` → `settle` → `select` → `resolve` → `mutable` → `store` → `tools`. A module imports at runtime only from modules earlier in that order or in its own subpackage. An import under `TYPE_CHECKING` may point the other way, as when `resolve/record.py` names `Workspace` in an annotation.
 
 A subpackage's `__init__.py` re-exports its public names, and `datarecord/__init__.py` imports them from there, so a user imports from `datarecord` alone. Code inside the package imports a name from the module that defines it, so no internal import runs through an `__init__.py`.
 
@@ -55,7 +56,7 @@ Some modules are one module because their classes need each other at runtime:
 - `mutable.py` contains `WorkingRecord` and `StagedSource`, because `StagedSource` reads private members of `WorkingRecord`.
 - `protocols.py` contains the protocols apart from `Record`, because `resolve/fold.py` imports `Flags`, and a module that defined both would import the fold back.
 
-`store/` sets where a connection and a location come from, so `duck.py` contains no state. The modules in `resolve/` take a `Workspace` and read `workspace.con` on each call, so each call runs on the calling thread's cursor.
+`store/` sets where a connection and a location come from, so `duck.py` contains no state. `Workspace.templates` is the cache of the reads that `templates.py` builds. The modules in `resolve/` take a `Workspace` and read `workspace.con` on each call, so each call runs on the calling thread's cursor.
 
 ## Core and tools
 

@@ -2,7 +2,7 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""The typed schema: declarations, derived keys, validation, versioning.
+"""The typed schema: declarations, derived dim sets, validation, versioning.
 
 Notes
 -----
@@ -10,8 +10,11 @@ Notes
 """
 
 import json
+import math
+from datetime import timedelta
 from typing import Any
 
+import numpy as np
 import pytest
 from duckdb import sqltypes
 from duckdb.sqltypes import DuckDBPyType
@@ -64,7 +67,7 @@ def _listing_dims(**labels: list[str]) -> dict[str, Dimension]:
     }
 
 
-# -- derived keys (https://energy-models.github.io/datarecord/reference/layers/#partial) -----------------------------------------------------
+# -- derived dim sets (https://energy-models.github.io/datarecord/reference/layers/#partial) -----------------------------------------------------
 
 
 def test_ownership_is_derived_not_declared():
@@ -81,23 +84,26 @@ def test_ownership_is_derived_not_declared():
     assert s.owned_per("carrier") == frozenset({"entity"})
 
 
-def test_partial_dims_is_the_union_over_attributes():
-    """The fold's key is one fixed tuple, so an unowned dim is NULL rather than absent."""
+def test_partial_dimensions_is_the_union_over_attributes():
+    """The owner map's index is one fixed tuple, so an unowned dim is NULL rather than absent."""
     s = _schema()
-    assert s.partial_dims == ("entity", "scenario"), "only what `partial` lists"
+    assert s.partial_dimensions == ("entity", "scenario"), "only what `partial` lists"
 
     wider = _schema(partial=frozenset({"entity", "scenario", "timestep", "connection"}))
-    assert wider.partial_dims == ("entity", "timestep", "scenario", "connection"), (
-        "a `partial` dim joins the key"
-    )
+    assert wider.partial_dimensions == (
+        "entity",
+        "timestep",
+        "scenario",
+        "connection",
+    ), "a `partial` dim joins the index"
 
     dims = {
         "entity": Dimension(dtype="str"),
         "scenario": Dimension(dtype="str"),
     }
     unlisted = Schema(dimensions=dims, partial=frozenset({"scenario"}))
-    assert unlisted.partial_dims == ("scenario",), (
-        "no dim is keyed by name: `entity` is owned whole where not partial"
+    assert unlisted.partial_dimensions == ("scenario",), (
+        "no dim is in the index by name: `entity`, outside `partial`, is not in it"
     )
 
 
@@ -112,7 +118,7 @@ def test_partial_dims_is_the_union_over_attributes():
 def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
     attribute, addresses
 ):
-    """`efficiency` is over `connection`, whose coordinates include `entity`."""
+    """`efficiency` is over `connection`, whose fields include `entity`."""
     s = _schema(
         attributes={
             **_schema().attributes,
@@ -120,6 +126,20 @@ def test_an_attribute_addresses_entity_through_its_dims_or_a_multi_dim(
         }
     )
     assert s.addresses(attribute, "entity") is addresses
+
+
+@pytest.mark.parametrize(
+    "lookup",
+    [
+        lambda s: s.multi_dimensions_of("absent"),
+        lambda s: s.dimensions_of("absent"),
+        lambda s: s.addresses("absent", "entity"),
+    ],
+    ids=["multi_dimensions_of", "dimensions_of", "addresses"],
+)
+def test_a_per_attribute_lookup_refuses_an_undeclared_attribute(lookup):
+    with pytest.raises(KeyError, match="the schema declares no attribute 'absent'"):
+        lookup(_schema())
 
 
 def _with_entity_property(name: str, spec: PropertySpec) -> dict:
@@ -142,11 +162,11 @@ def test_the_section_decides_where_a_value_lives():
         "a property that refers to a dim takes its type"
     )
     assert s.categorizing("entity") == ("ctype",)
-    assert "ctype" not in s.partial_dims
+    assert "ctype" not in s.partial_dimensions
 
 
 def test_a_multi_dim_may_have_properties_and_categories():
-    """A column of `dims/<multi-dim>.parquet`, typed and categorizing like a dim's property."""
+    """A column of `dimensions/<multi-dim>.parquet`, typed and categorizing like a dim's property."""
     s = _schema(
         dimensions=_listing_dims(role=["in", "out"]),
         properties={
@@ -209,19 +229,19 @@ def test_a_dim_with_one_of_carries_no_property():
         )
 
 
-def test_a_coordinate_is_addressed_as_a_property_is():
-    """`connection.bus` resolves to the dim the coordinate draws on, and carries no default.
+def test_a_field_is_addressed_as_a_property_is():
+    """`connection.bus` resolves to the dim the field draws on, and carries no default.
 
     Notes
     -----
-    - [coordinates](https://energy-models.github.io/datarecord/reference/data-model/#multi-dims)
+    - [fields](https://energy-models.github.io/datarecord/reference/data-model/#multi-dimensions)
     """
     s = _schema()
     assert s.resolve("connection.bus") == ("connection", s.dimensions["bus"])
     assert s.column_type("connection") == DuckDBPyType(
         "STRUCT(entity VARCHAR, bus VARCHAR)"
-    ), "a multi-dim's column is the struct of its coordinates"
-    with pytest.raises(KeyError, match="is a coordinate"):
+    ), "a multi-dim's column is the struct of its fields"
+    with pytest.raises(KeyError, match="is a field"):
         s.default_for("connection.bus")
     with pytest.raises(KeyError, match="declares no property 'connection.port'"):
         s.resolve("connection.port")
@@ -242,25 +262,27 @@ def test_a_coordinate_is_addressed_as_a_property_is():
         ),
         pytest.param(
             {"bus": {}, "c": {"over": ["bus"]}, "d": {"over": ["bus", "c"]}},
-            "is over the multi-dims",
+            "is over the multi-dimensions",
             id="over-a-multi-dim",
         ),
         pytest.param(
             {"bus": {}, "c": {"over": ["nope"]}},
-            "over undeclared dims",
+            "over undeclared dimensions",
             id="over-an-undeclared-dim",
         ),
     ],
 )
 def test_a_multi_dim_draws_on_dims(dimensions, match):
-    """`over` is a multi-dim's whole declaration, each coordinate on a dim that is no multi-dim."""
+    """`over` is a multi-dim's whole declaration, each field on a dim that is no multi-dim."""
     with pytest.raises(ValidationError, match=match):
         Schema.model_validate({"dimensions": dimensions})
 
 
 def test_a_property_refers_to_no_multi_dim():
     """A property's value is a label of a dim that is no multi-dim."""
-    with pytest.raises(ValidationError, match="refers to the multi-dim 'connection'"):
+    with pytest.raises(
+        ValidationError, match="refers to the multi-dimension 'connection'"
+    ):
         _schema(properties={"entity": {"port": PropertySpec(one_of="connection")}})
 
 
@@ -297,7 +319,7 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
             lambda: _schema(
                 properties=_with_entity_property("entity", PropertySpec(dtype="str"))
             ),
-            "named like a column of its key",
+            "named like its column 'entity'",
             id="its-dims-name",
         ),
         pytest.param(
@@ -315,12 +337,12 @@ def test_a_property_taking_one_of_labels_categorizes_only_a_partial_dim():
                 },
                 properties={"corridor": {"from": PropertySpec(dtype="str")}},
             ),
-            "share their names with its coordinates",
-            id="a-multi-dim-coordinates-name",
+            "share their names with its fields",
+            id="a-multi-dim-fields-name",
         ),
         pytest.param(
             lambda: _schema(properties={"nope": {"kind": PropertySpec(dtype="str")}}),
-            "undeclared dims",
+            "undeclared dimensions",
             id="on-an-undeclared-dim",
         ),
     ],
@@ -478,7 +500,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     default_by={"entity.ctype": {"Link": 1.0}},
                 )
             ),
-            "does not reach its dim 'entity'",
+            "does not reach its dimension 'entity'",
             id="a-dim-out-of-reach",
         ),
         pytest.param(
@@ -508,7 +530,7 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     **kw,
                 ),
             ),
-            "refers to no dim",
+            "refers to no dimension",
             id="a-string-property",
         ),
         pytest.param(
@@ -541,8 +563,8 @@ def _with_x(spec: AttributeSpec, base=_schema) -> Schema:
                     partial=frozenset({"entity", "scenario", "connection"}), **kw
                 ),
             ),
-            "is a coordinate of the multi-dim 'connection'",
-            id="a-coordinate",
+            "is a field of the multi-dimension 'connection'",
+            id="a-field",
         ),
     ],
 )
@@ -635,26 +657,81 @@ def test_a_dim_reference_must_resolve(build, match):
 # -- defaults through the manifest (https://energy-models.github.io/datarecord/reference/schema/#attributes, https://energy-models.github.io/datarecord/reference/schema/#one-schema-per-record) ------------------------------
 
 
-@pytest.mark.parametrize("value", [float("inf"), None])
-def test_a_default_survives_the_manifest_round_trip(value):
-    """An `inf` default must read back as `inf`, not as "no default".
+@pytest.mark.parametrize(
+    ("value", "written"),
+    [
+        (math.inf, "Infinity"),
+        (-math.inf, "-Infinity"),
+        (math.nan, "NaN"),
+        (None, "null"),
+    ],
+    ids=["inf", "-inf", "nan", "null"],
+)
+def test_a_default_survives_the_manifest_round_trip(value, written):
+    """A non-finite default is written as the bare word `meta` uses and reads back, not as "no default".
 
-    JSON has no literal for a non-finite float, and pydantic's own serialiser
-    emits `null` for one - which would silently turn an unbounded capacity into
-    an absent bound. PyPSA declares `inf` defaults (`p_nom_max`), so this is the
-    ordinary case rather than an edge one, and it is only the encoding in
-    `AttributeSpec` that keeps it.
+    PyPSA declares `inf` defaults (`p_nom_max`), where `null` would turn an
+    unbounded capacity into an absent bound.
 
     Notes
     -----
     - [AttributeSpec](https://energy-models.github.io/datarecord/reference/schema/#attributes)
+    - [the record format](https://energy-models.github.io/datarecord/reference/format/#manifestjson)
     """
     schema = Schema(
         dimensions={"scenario": Dimension(dtype="str")},
         attributes={"p_nom_max": AttributeSpec(dtype="float", default=value)},
     )
-    back = Schema.model_validate_json(schema.model_dump_json())
+    raw = schema.model_dump_json()
+    assert f'"default":{written}' in raw, "the bare word, no sentinel string"
+    back = Schema.model_validate_json(raw)
     assert repr(back.attributes["p_nom_max"].default) == repr(value)
+
+
+# -- meta (https://energy-models.github.io/datarecord/reference/schema/#meta) --
+
+
+@pytest.mark.parametrize(
+    ("meta", "match"),
+    [
+        ({"x": (1, 2)}, r"meta\['x'\] is \(1, 2\) of type tuple"),
+        ({"x": {"y": timedelta(1)}}, r"meta\['x'\]\['y'\] is .* of type timedelta"),
+        (
+            {"x": {(2030, 2040): 0.4}},
+            r"meta\['x'\] has the key \(2030, 2040\) of type tuple",
+        ),
+        (
+            {"x": {2030: 0.4, "2030": 0.1}},
+            r"meta\['x'\] has the key '2030' and another that is also '2030'",
+        ),
+        ({"x": [{1, 2}]}, r"meta\['x'\]\[0\] is .* of type set"),
+        ({"x": np.datetime64(1, "D")}, r"meta\['x'\] is .* of type datetime64"),
+    ],
+    ids=["tuple", "timedelta", "tuple-key", "colliding-keys", "set", "np.datetime64"],
+)
+def test_a_schema_meta_value_that_is_no_json_names_its_path(meta, match):
+    """Refused at construction by the rule a revision's `meta` follows, not converted at the write.
+
+    Notes
+    -----
+    - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+    """
+    with pytest.raises(TypeError, match=match):
+        Schema(meta=meta)
+
+
+@pytest.mark.parametrize(
+    ("key", "name"),
+    [(2030, "2030"), (1.5, "1.5"), (True, "true"), (None, "null"), (np.int64(7), "7")],
+)
+def test_a_schema_meta_key_becomes_the_string_json_writes(key, name):
+    """Nested too, so a PyPSA-Eur `n.meta` keyed by planning horizon is kept.
+
+    Notes
+    -----
+    - [meta](https://energy-models.github.io/datarecord/reference/schema/#meta)
+    """
+    assert Schema(meta={"x": {key: 1}}).meta == {"x": {name: 1}}
 
 
 # -- versioning (https://energy-models.github.io/datarecord/reference/schema/#compatibility) -------------------------------------------------------
@@ -814,7 +891,7 @@ def test_column_types_cover_structural_dims_and_flags():
     # the map's column set does not widen when a dim is declared.
     for column in ("varies", "broadcast"):
         column_type = s.column_type(column)
-        assert column_type == flag_type(s.broadcast_dims)
+        assert column_type == flag_type(tuple(s.dimensions))
         assert "scenario BOOLEAN" in str(column_type)
     assert s.column_type("value") is None
     assert s.value_type("p_nom") == sqltypes.DOUBLE
@@ -832,7 +909,7 @@ def test_attributes_need_at_least_one_dim():
     -----
     - [dimensions](https://energy-models.github.io/datarecord/reference/data-model/)
     """
-    with pytest.raises(ValidationError, match="at least one dim"):
+    with pytest.raises(ValidationError, match="at least one dimension"):
         Schema(attributes={"p_nom": AttributeSpec(dtype="float")})
 
 
@@ -845,7 +922,7 @@ def _declaring(position: str, name: str) -> Schema:
     attr = AttributeSpec(dtype="float", dims={"entity"})
     if position == "dim":
         return Schema(dimensions={"entity": dim, name: dim}, partial={name})
-    if position == "coordinate":
+    if position == "field":
         return Schema(
             dimensions={
                 "entity": dim,
@@ -868,7 +945,7 @@ WRITTEN = {
     ("name", "position"),
     [
         ("value", "dim"),
-        ("value", "coordinate"),
+        ("value", "field"),
         ("value", "attribute"),
         ("Value", "dim"),
         ("_row", "dim"),

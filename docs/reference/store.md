@@ -23,19 +23,20 @@ record = ws.write(source, "out/")
 
 ## `Workspace`
 
-| Member                                                           | Does                                                                                                             |
-| ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
-| `Workspace(database=":memory:", *, con=None, name="datarecord")` | attaches the DuckDB database, in memory or in a file, as `name`, on a connection of its own or on `con`          |
-| `name`                                                           | returns the database's name in SQL                                                                               |
-| `qualified(table)`                                               | names a table of the database's `main` schema in full, `datarecord.main.<table>`                                 |
-| `con`                                                            | returns the calling thread's cursor on the connection the database is attached to                                |
-| `store(uri)`                                                     | returns the workspace's one `Store` for the normalised location                                                  |
-| `write(source, uri, *, meta=None)`                               | writes `source` as a standalone directory and returns it as a `Record`                                           |
-| `at(uri)`                                                        | reads the standalone directory at `uri` as a `Record`                                                            |
-| `registered()`                                                   | returns the [`registered` table](format.md#the-registered-table)                                                 |
-| `unregister(name)`                                               | drops a [registration](format.md#registered-views)                                                               |
-| `Workspace.process()`                                            | returns the process's default workspace, created on first use                                                    |
-| `close()`                                                        | closes every thread's cursor, detaches the database and closes the connection only where the workspace opened it |
+| Member                                                                             | Does                                                                                                             |
+| ---------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `Workspace(database=":memory:", *, con=None, name="datarecord", credentials=None)` | attaches the DuckDB database, in memory or in a file, as `name`, on a connection of its own or on `con`          |
+| `name`                                                                             | returns the database's name in SQL                                                                               |
+| `qualified(table)`                                                                 | names a table of the database's `main` schema in full, `datarecord.main.<table>`                                 |
+| `con`                                                                              | returns the calling thread's cursor on the connection the database is attached to                                |
+| `store(uri)`                                                                       | returns the workspace's one `Store` for the normalised location                                                  |
+| `write(source, uri, *, meta=None)`                                                 | writes `source` as a standalone directory and returns it as a `Record`                                           |
+| `at(uri)`                                                                          | reads the standalone directory at `uri` as a `Record`                                                            |
+| `set_credentials(credentials)`                                                     | replaces the [S3 credentials](#s3-credentials) on a live workspace, or returns to the AWS environment for `None` |
+| `registered()`                                                                     | returns the [`registered` table](format.md#the-registered-table)                                                 |
+| `unregister(name)`                                                                 | drops a [registration](format.md#registered-views)                                                               |
+| `Workspace.process()`                                                              | returns the process's default workspace, created on first use                                                    |
+| `close()`                                                                          | closes every thread's cursor, detaches the database and closes the connection only where the workspace opened it |
 
 A location is a local path or an `s3://` URI, and any other scheme raises `ValueError`.
 `store("")` raises, and a local path is resolved when you call `store`, `write` or `at`, so a later `chdir` does not change the location.
@@ -71,7 +72,7 @@ ws = Workspace(con=server, name="dr")  # on the server's connection, attached as
 ```
 
 The cursors of a passed connection see the attached database, and their transactions are their own, not the caller's.
-SQL names what lies there in full, `datarecord.main.revisions` or `datarecord.edit.dims.bus`, since a name without its database resolves in the cursor's default database.
+SQL names what lies there in full, `datarecord.main.revisions` or `datarecord.edit.dimensions.bus`, since a name without its database resolves in the cursor's default database.
 datarecord's own SQL always does and never runs `USE`.
 A relation or frame that datarecord's SQL reads goes by a Python local named `_dr_<role>`, because a table or view of the same name in the cursor's temp schema or default database binds first.
 So create no table or view whose name starts with `_dr_` in the default database or temp schema of the workspace's connection.
@@ -126,9 +127,114 @@ Locally it writes under a temporary name and hard-links the file into place, so 
 
 An `s3://` URI needs the optional extra `datarecord[remote]`, which installs the boto3 package.
 Remotely, `create` is a `put_object` with `IfNoneMatch="*"`, which the server must honour, as AWS S3 does and SeaweedFS does from version 4.18 on.
-Credentials and the endpoint come from the AWS environment and config files.
+Remotely, a key the server answers with `404` is a miss, and a call it answers with `403` raises `PermissionError` naming the key or prefix.
+So does a `delete` whose every failed key S3 reports as `AccessDenied`.
+A caller needs `s3:ListBucket` on the store's prefix.
+Without it S3 refuses every listing, so `revisions`, `claims` and `cleanup`, which each list `layers/`, always raise.
+S3 then answers `403` for every absent key too, so every miss raises.
+A fold looks for the owner map of the revision it folds, and that map is absent unless the revision was materialised, so folding such a revision, the usual case, raises too.
+On S3 a denied read never counts as absent data, so `cleanup` deletes no layer after one.
+
+#### S3 credentials
+
+Without `credentials`, a workspace takes the S3 key and the endpoint from the AWS environment and config files.
 Where `AWS_ENDPOINT_URL` is set, DuckDB's S3 secret takes its endpoint with path-style URLs, for a self-hosted server.
-The secret is named `datarecord_s3`, so on a connection shared with its caller it replaces none of the caller's secrets.
+Where boto3 finds no key in the AWS environment, the workspace reaches S3 anonymously: boto3 sends its requests unsigned, and DuckDB's secret holds no key, so DuckDB sends its requests unsigned too.
+You then read a bucket that grants reads to anyone, and a commit whose only key is [a key for its layer](#a-commit-with-a-key-for-its-layer) writes the layer with that key.
+A call that the bucket grants to no anonymous caller raises `PermissionError`, as above.
+
+A key that the process environment must not contain, such as a token from AWS Security Token Service (STS), goes to the workspace as `S3Credentials`:
+
+```python
+from dataclasses import replace
+
+from datarecord import S3Credentials, Workspace
+
+credentials = S3Credentials(
+    key_id,
+    secret,
+    session_token=token,
+    endpoint="http://localhost:8333",
+    region="eu-central-1",
+    url_style="path",
+)
+ws = Workspace(credentials=credentials)
+ws.set_credentials(
+    replace(credentials, key_id=new_key_id, secret=new_secret, session_token=new_token)
+)
+```
+
+The workspace builds both its boto3 client and DuckDB's secret, with `PROVIDER config`, from the same `S3Credentials`, so the key and the endpoint come from them, not from the AWS environment.
+`endpoint` is the server's URL, or `None` for AWS, `region` is `"eu-central-1"` by default, and `url_style` is `"path"` for a self-hosted server and `"vhost"` by default.
+`S3Credentials` raises `ValueError` for an empty key or secret, an endpoint without a scheme or with a user, a path, a query or a fragment, and any other URL style.
+Its `repr` leaves out the secret and the session token.
+
+`set_credentials` replaces the boto3 client and the secret together, so open records and registered views read with the new key from the next query on.
+A call already running may finish with the old key.
+`set_credentials(None)` returns to the AWS environment, read afresh.
+Where `set_credentials` raises, the workspace keeps the old key.
+Credentials do not cross a process boundary: a pickled store, revision or claim loads onto `Workspace.process()`, so the worker calls `Workspace.process().set_credentials(...)` before it unpickles one.
+
+DuckDB's secret is named `datarecord_s3` and has no scope, so on a connection shared with its caller it replaces none of the caller's secrets.
+Where the caller holds a secret for all of `s3://` too, DuckDB picks between the two by name: a caller's secret named before `datarecord_s3` in sort order, such as `aws`, is read in its place, and one named after it, or unnamed, is not read.
+`close()` drops `datarecord_s3` from a connection passed in.
+DuckDB's secrets belong to the whole connection, so only one workspace on a connection may reach S3, with a key or anonymously.
+The first `s3://` URI of a second one raises `duckdb.InvalidInputException`, and the first keeps its key; open the second on its own connection.
+
+#### A commit with a key for its layer
+
+A commit can write its layer with a second key, one that reaches only the layer's directory `layers/<id>/`.
+Pass it to [`Claim.commit`](#claim) as `S3Credentials`, built for instance from the workspace's:
+
+```python
+claim = store.claim(parent=root)
+revision = claim.commit(
+    source,
+    credentials=replace(credentials, key_id=key_id, secret=secret, session_token=token),
+)
+```
+
+The commit returns the revision, which you then read with the workspace's key.
+
+While the commit runs, datarecord reaches every key under `layers/<id>/` with `credentials`, through boto3 and through DuckDB, and every other key with the workspace's.
+For DuckDB, datarecord creates a secret `datarecord_claim_<id>_<nonce>`, new for each commit, with its `SCOPE` set to the layer directory, and drops it when the commit returns or raises.
+DuckDB reaches a URI with the secret whose `SCOPE` matches it longest, so two commits running at once in one workspace each write with their own key.
+With a local store, `credentials` raise `ValueError`.
+`Store.claim` and `materialise()` take no such key, so the workspace's key writes `claim.json` and the `resolved/` files.
+
+A commit with a key for its layer makes these S3 calls, where `<store>` is the store's prefix in its bucket:
+
+| Key         | Action                    | Resource                                                  | Calls                                                                                                                                                     |
+| ----------- | ------------------------- | --------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| layer's     | `s3:GetObject`            | `<store>/layers/<id>/*`                                   | `HEAD` of `claim.json` and `manifest.json`, DuckDB's two `HEAD`s of each parquet file before it writes it, and reads of the parquet the commit just wrote |
+| layer's     | `s3:PutObject`            | `<store>/layers/<id>/*`                                   | DuckDB's upload of each parquet file, one `PUT` for a small file and a multipart upload for a large one, and the create-only `PUT` of `manifest.json`     |
+| layer's     | `s3:AbortMultipartUpload` | `<store>/layers/<id>/*`                                   | DuckDB's `DELETE` of a multipart upload that fails                                                                                                        |
+| layer's     | `s3:ListBucket`           | the bucket, with `s3:prefix` like `<store>/layers/<id>/*` | the listing under `manifest.json`, and a `404` rather than a `403` for a `HEAD` of an absent key                                                          |
+| workspace's | `s3:GetObject`            | `<store>/layers/*`                                        | the ancestors' manifests the workspace does not hold yet, their parquet and `resolved/` files                                                             |
+| workspace's | `s3:ListBucket`           | the bucket, with `s3:prefix` like `<store>/layers/*`      | whether an ancestor is materialised, and a `404` rather than a `403` for its owner map                                                                    |
+
+A policy for the layer's key grants the first four rows and nothing else:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": ["s3:GetObject", "s3:PutObject", "s3:AbortMultipartUpload"],
+      "Resource": "arn:aws:s3:::<bucket>/<store>/layers/<id>/*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "s3:ListBucket",
+      "Resource": "arn:aws:s3:::<bucket>",
+      "Condition": { "StringLike": { "s3:prefix": "<store>/layers/<id>/*" } }
+    }
+  ]
+}
+```
+
+Without `s3:ListBucket`, S3 answers `403` for the absent manifest, and the commit raises `PermissionError` before it writes any data.
 
 ### Threads
 
@@ -144,36 +250,59 @@ ValueError: this relation was built on another connection or thread; build it on
 
 When two threads fold one revision at once, both fold and datarecord keeps one of the two tables, so each reads the same answer.
 
+The first read of a record in a workspace creates the shared tables of its fold.
+A rollback drops a table created inside the transaction, so datarecord refuses that read while you hold a transaction open on `ws.con`:
+
+```text
+TransactionException: this would create the record's shared tables inside the open transaction on this cursor, and a rollback would drop them; call `record.prepare()` before opening the transaction (https://energy-models.github.io/datarecord/reference/store/#threads)
+```
+
+`record.prepare()` creates those tables and commits them, and calling it again does nothing.
+After it, you can read the record on any thread inside a transaction that you roll back later.
+
 !!! info "See also"
 
     [Store a record](../howto/store-a-record.md) shows a store, a directory, S3 and threads in use.
 
 ## `Store`
 
-| Member                                  | Does                                                                          |
-| --------------------------------------- | ----------------------------------------------------------------------------- |
-| `uri`                                   | the absolute location                                                         |
-| `claim(*, parent, meta=None)`           | hands out a new layer id under `parent` and returns a `Claim`                 |
-| `commit(source, *, parent, meta=None)`  | claims and commits in one call, and returns the `Revision`                    |
-| `commit(w, *, meta=None)`               | writes a `WorkingRecord`'s edits as a child of the revision it was built over |
-| `revision(id)`                          | returns one revision, and raises `KeyError` for an id with no manifest        |
-| `revisions(*, meta=None)`               | returns every revision, unordered, or those whose `meta` has every pair given |
-| `claims()`                              | returns the pending layers, oldest first                                      |
-| `cleanup(*, ids=None, older_than=None)` | deletes pending layers and returns their ids                                  |
-| `layer(id)`                             | reads one layer alone as a `Record`                                           |
+| Member                                  | Does                                                                             |
+| --------------------------------------- | -------------------------------------------------------------------------------- |
+| `uri`                                   | the absolute location                                                            |
+| `claim(*, parent, meta=None)`           | hands out a new layer id under `parent` and returns a `Claim`                    |
+| `commit(source, *, parent, meta=None)`  | claims and commits in one call, and returns the `Revision`                       |
+| `commit(w, *, meta=None)`               | writes a `WorkingRecord`'s edits as a child of the revision it was built over    |
+| `revision(id)`                          | returns one revision, and raises `KeyError` for an id with no manifest           |
+| `revisions(*, meta=None)`               | returns every revision, unordered, or those whose `meta` contains the given meta |
+| `claims()`                              | returns the pending layers, oldest first                                         |
+| `claim_from(payload)`                   | rebuilds a serialised `Claim` on this store                                      |
+| `cleanup(*, ids=None, older_than=None)` | deletes pending layers and returns their ids                                     |
+| `layer(id)`                             | reads one layer alone as a `Record`                                              |
 
 `parent` is a required keyword, so a new root is `parent=None`.
-`revisions(meta={"run": 1})` matches a value of the same type only, so `1` matches neither `1.0` nor `True`.
+A revision's `meta` is a JSON object whose values are strings, numbers, booleans, null, and arrays and objects of these.
+A NumPy integer, float or bool is stored as the Python value it holds.
+Any other value, such as a date or a tuple, or a key that is no string, is refused with its path, as in `meta['run']['started']`.
+`revisions(meta=...)` matches by containment, key by key from the top: an object contains each pair of the given object, an array contains each element of the given array in some element of its own, and any other value is equal.
+So `revisions(meta={"changes": {"rows": [3, 1]}})` matches a stored `{"changes": {"rows": [1, 2, 3], "n": 4}}`: a given array matches as a set, in any order and with duplicates counting once, so `{"a": [1, 1]}` matches a stored `{"a": [1]}`.
+A value matches one of the same type only, so `1` matches neither `1.0` nor `True`.
+An empty object or array matches any stored object or array, so `revisions(meta={"changes": {}})` matches every revision with a `changes` object.
+
+!!! note
+
+    A float in `meta` may be `inf`, `-inf` or `nan`, written as the bare `Infinity`, `-Infinity` and `NaN` that Python's `json` writes and reads.
+    These are not standard JSON, so a strict JSON parser in another language reads `claim.json` and `manifest.json` only when told to accept them.
+    A lookup compares JSON rather than floats, so `revisions(meta={"x": float("nan")})` finds a stored `NaN`, though NaN equals no float, itself included.
 
 ### The steps of a commit { #a-revision-exists-only-by-its-manifest }
 
 A write to a store runs in three steps:
 
-| Step   | File                   | Write         | Contains                                  |
-| ------ | ---------------------- | ------------- | ----------------------------------------- |
-| claim  | `claim.json`           | create-only   | `id`, `parent`, `meta`, when it was taken |
-| data   | `dims/`, `attributes/` | unconditional | the layer's parquet                       |
-| commit | `manifest.json`        | create-only   | the [manifest](format.md#manifestjson)    |
+| Step   | File                         | Write         | Contains                                  |
+| ------ | ---------------------------- | ------------- | ----------------------------------------- |
+| claim  | `claim.json`                 | create-only   | `id`, `parent`, `meta`, when it was taken |
+| data   | `dimensions/`, `attributes/` | unconditional | the layer's parquet                       |
+| commit | `manifest.json`              | create-only   | the [manifest](format.md#manifestjson)    |
 
 A layer with a claim and no manifest is pending, and no read, listing or `ancestry()` finds it.
 A commit that fails leaves its layer pending with the files it wrote, and a retried commit writes them again.
@@ -181,8 +310,10 @@ A commit that fails leaves its layer pending with the files it wrote, and a retr
 Before it writes data, a commit checks three things and refuses the layer otherwise:
 
 - The layer's schema passes [`compatible_with`](schema.md) against the parent's manifest's schema.
-- Its `meta` has every key of the claim's `meta` with the same value, and may add keys.
-- Its parent is a revision of this store.
+- Its `meta` has every key of the claim's `meta` with the same value, and may add keys. Values compare as JSON, so `1`, `1.0` and `True` differ, and an object differs once any key inside it does.
+- Its parent, the claim's `parent`, is a revision of this store.
+
+The commit takes `parent` and `meta` from the `Claim` object, and reads `claim.json` only to check that the claim is still there.
 
 `store.commit(w)` takes `w`'s base as the parent and raises `TypeError` for a `parent` passed beside it.
 Over a base that is no revision of this store, such as a standalone directory, it refuses `w` and names `ws.write(w, uri)`, which writes `w` whole.
@@ -190,10 +321,33 @@ Over a base that is no revision of this store, such as a standalone directory, i
 ### `Claim`
 
 A `Claim` is a revision id that a store reserves before the layer is written.
-It has `id`, `store`, `parent`, `meta` and `created`, and `claim.commit(source, *, meta=None)` writes the layer and returns the `Revision`.
+It has `id`, `store`, `parent`, `meta` and `created`, and `claim.commit(source, *, meta=None, credentials=None)` writes the layer and returns the `Revision`.
+`credentials` are a [key for the layer alone](#a-commit-with-a-key-for-its-layer).
 
-A claim serialises as its store's location and its id, and pickles the same way.
+A claim serialises as all five fields, with its store's location for `store`, and pickles the same way:
+
+```python
+payload = claim.model_dump_json()
+claim = ws.store("/data/my-record").claim_from(payload)  # in another process
+```
+
+```json
+{ "id": "4731e41b-…", "store": "/data/my-record", "parent": "9716e2ef-…", "meta": { "run": "a" }, "created": "2026-11-05T17:37:14.912772Z" }
+```
+
 A job in another process can then commit it, days later if need be.
+`store.claim_from(payload)` rebuilds the claim on `store`, so on its workspace and its key, and raises `ValueError` for a payload of another store.
+`Claim.model_validate_json(payload)` and an unpickled claim land on `Workspace.process()` instead.
+Each takes the five fields as they stand, without reading `claim.json`.
+A payload whose keys are exactly `id` and `store` is the short form, and the fields it lacks are read from `claim.json`.
+
+A commit checks the `meta` it is passed against the claim's `meta`, and writes the claim's `parent` to the manifest.
+Those are the object's values, so they match `claim.json` where the object came from `Store.claim`, `store.claims()` or the short form.
+A claim rebuilt from the five fields commits what they say, whatever `claim.json` holds.
+
+A claim's parent may be another pending claim, so a chain of layers is claimed before any of them is written.
+The child commits only once its parent has, and raises `KeyError` before then.
+A child whose parent's claim was cleaned up raises `KeyError` on every commit and stays in `store.claims()` until a cleanup deletes it too.
 A claim has one committer at a time.
 A commit raises `ValueError` once a cleanup deleted its claim.
 
@@ -207,6 +361,7 @@ store.cleanup(older_than=timedelta(days=14))
 ```
 
 `cleanup` takes exactly one of `ids` and `older_than`, and raises `ValueError` before it deletes anything if an id is not pending.
+On S3, a layer directory holding no key, as SeaweedFS keeps one after a cleanup, is no pending layer.
 It checks each layer for a manifest again right before deleting it, without a lock.
 A cleanup that races a commit can still delete a layer that is committing, so pass ids or an age that match no running job.
 

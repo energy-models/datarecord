@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status   | Implemented (2026-10-13, steps 1 and 2)                                                                      |
 | Requires | [DEP 10](dep-0010-a-group-is-a-struct-column.md), [DEP 11](dep-0011-deletion-cascades-through-tombstones.md) |
 | Created  | 2026-10-12                                                                                                   |
-| Version  | Unreleased                                                                                                   |
+| Version  | v0.1.0a2                                                                                                     |
 | Replaces | [DEP 6](dep-0006-a-member-file-holds-values.md)                                                              |
 
 The design landed in [the data model](../../reference/data-model.md), [the schema](../../reference/schema.md), [the record format](../../reference/format.md), [the `RecordLike` protocol](../../reference/record.md) and [`WorkingRecord`](../../reference/editing.md). Where they and this DEP differ, follow those pages.

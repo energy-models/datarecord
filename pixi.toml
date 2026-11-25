@@ -6,6 +6,7 @@
 name = "datarecord"
 channels = ["conda-forge"]
 exclude-newer = "7d"
+pypi-exclude-newer = { exemptions = { mathspec = "*" } }
 platforms = ["osx-arm64", "osx-64", "linux-64", "win-64"]
 preview = ["pixi-build"]
 
@@ -27,7 +28,7 @@ duckdb = ">=2.0.0,<=2.0.0"
 pydantic = ">=2.12"
 
 [pypi-dependencies]
-mathspec = { git = "https://github.com/energy-models/mathspec.git", rev = "8982c556114992d149a83b3c6f3604c72e569829" }
+mathspec = ">=0.5.0a1"
 
 [feature.test.dependencies]
 pytest = "*"

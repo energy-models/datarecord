@@ -17,7 +17,7 @@ The examples read the record of the running example that the [data model](data-m
 ## `schema`
 
 `schema` is the record's [schema](schema.md).
-A `Record` returns the schema of the deepest revision's data (its last [layer](layers.md)), and a `Selection` returns its base's schema without the dims it squeezed.
+A `Record` returns the schema of the deepest revision's data (its last [layer](layers.md)), and a `Selection` returns its base's schema without the dimensions it squeezed.
 
 ## `con`
 
@@ -25,46 +25,46 @@ A `Record` returns the schema of the deepest revision's data (its last [layer](l
 A `Record` returns the calling thread's cursor of its workspace, so a relation belongs to the thread that built it ([store](store.md)).
 A reader plans its own frames and SQL on `con` beside the record's relations.
 
-## `dims`
+## `dimensions`
 
-`dims` maps every dim the schema declares to a relation of its axis: the label column alone, one row per label, in axis order.
-A multi-dim's relation is its one struct column, such as `connection STRUCT(entity, bus)`.
-A dim with `one_of` returns its list, and a dim that no layer has labels for returns an empty relation with its declared column.
+`dimensions` maps every dimension the schema declares to a relation of its axis: the label column alone, one row per label, in axis order.
+A multi-dimension's relation is its one struct column, such as `connection STRUCT(entity, bus)`.
+A dimension with `one_of` returns its list, and a dimension that no layer has labels for returns an empty relation with its declared column.
 
 ## `properties`
 
-`properties` maps every subject that declares properties to a relation of the subject's key and one column per property, named by the property's plain name.
+`properties` maps every subject that declares properties to a relation of the subject's column and one column per property, named by the property's plain name.
 The values are as stored, with no default applied, so NULL means that no layer wrote a value.
 `Schema.default_for("entity.carrier", **categories)` returns a property's default.
 
 ## `attributes`
 
-`attributes` maps every attribute the schema declares to a relation of its long rows: the attribute's coordinates, then `attribute`, `breakpoint` and `value`.
+`attributes` maps every attribute the schema declares to a relation of its long rows: a column per dimension of the attribute, then `attribute`, `breakpoint` and `value`.
 The rows are as written, in no promised order:
 
-- A NULL coordinate stays NULL, and a reader applies [the broadcast rule](data-model.md#the-broadcast-rule) itself, with [`settle`](#settle) or its own SQL.
-- Two rows may cover one point, of one layer or of two. Where they do, the record has one row there that leaves no dim NULL that another row there sets.
-- A point that no row covers has no row, and `Schema.default_for` gives its default.
+- A NULL in a dimension's column stays NULL, and a reader applies [the broadcast rule](data-model.md#the-broadcast-rule) itself, with [`settle`](#settle) or its own SQL.
+- Two rows may cover one coordinate, of one layer or of two. Where they do, the record has one row there that leaves no dimension NULL that another row there sets.
+- A coordinate that no row covers has no row, and `Schema.default_for` gives its default.
 
 An attribute that no layer has rows for returns an empty relation with its declared columns.
 
 ## `flags`
 
-**Flags** are what `record.flags(**categories)` returns: per attribute, which dims its rows set and which they leave NULL.
+**Flags** are what `record.flags(**categories)` returns: per attribute, which dimensions its rows set and which they leave NULL.
 
-| Field         | Value                                        |
-| ------------- | -------------------------------------------- |
-| `varies`      | the dims that some row of the attribute sets |
-| `broadcast`   | the dims that some row leaves NULL           |
-| `breakpoints` | whether any row has a breakpoint             |
+| Field         | Value                                              |
+| ------------- | -------------------------------------------------- |
+| `varies`      | the dimensions that some row of the attribute sets |
+| `broadcast`   | the dimensions that some row leaves NULL           |
+| `breakpoints` | whether any row has a breakpoint                   |
 
 `flags()` answers for the whole record in one query.
 Only attributes with rows have an entry, so `set(record.flags())` lists the attributes the record has rows for.
-Each set has only dims that the attribute is addressed by, multi-dims included, and a dim outside its `dims` is in neither set.
+Each set has only dimensions that the attribute is addressed by, multi-dimensions included, and a dimension outside its `dims` is in neither set.
 
 `flags(**categories)` answers for the labels of one category.
-Each keyword is a [categorising property](data-model.md#categories) of one dim, by its plain name, with one category or a list.
-Only rows that apply to a matching label count: a row that has the label, and a row that leaves its dim NULL.
+Each keyword is a [categorising property](data-model.md#categories) of one dimension, by its plain name, with one category or a list.
+Only rows that apply to a matching label count: a row that has the label, and a row that leaves its dimension NULL.
 
 ```python
 record.flags(ctype="Generator")["p_max_pu"]
@@ -75,17 +75,17 @@ Flags(varies=frozenset({'snapshot', 'entity'}), broadcast=frozenset({'snapshot',
 ```
 
 `snapshot` is in both sets, because `wind` has a row per snapshot and `gas` takes its value at every snapshot from the NULL row.
-The flags describe the rows as written, so a NULL row that more specific rows cover at every label still puts its dim in `broadcast`.
+The flags describe the rows as written, so a NULL row that more specific rows cover at every label still puts its dimension in `broadcast`.
 
-`flags` raises `ValueError` when the keywords categorise several dims, or none:
+`flags` raises `ValueError` when the keywords categorise several dimensions, or none:
 
 ```text
-['carrier'] categorize no dim; a categorizing property is a property of a `partial` dim that refers to a dim with `one_of`
+['carrier'] categorize no dimension; a categorizing property is a property of a `partial` dimension that refers to a dimension with `one_of`
 ```
 
 ## Relations
 
-`Relations` is `Mapping[str, DuckDBPyRelation]`, the type of `dims`, `properties` and `attributes`.
+`Relations` is `Mapping[str, DuckDBPyRelation]`, the type of `dimensions`, `properties` and `attributes`.
 A `Record` returns `LazyRelations`, which builds each relation when a reader first looks it up.
 Listing the keys reads no file, and building a relation reads the file's footer, which is one round trip on a remote store.
 
@@ -113,13 +113,13 @@ The next record over the same revision folds its ancestry again, so a process th
 
 ### `register`
 
-`record.register(name)` creates a DuckDB view per dim, property subject and attribute, for a SQL client ([format](format.md)).
+`record.register(name)` creates a DuckDB view per dimension, property subject and attribute, and one of the owner map, for a SQL client ([format](format.md#registered-views)).
 
 ## `settle`
 
-**To settle rows** is to apply the broadcast rule to long rows with `settle(rel, labels, flags)`, giving one row per label passed at each point.
-`settle` expands each NULL on a coordinate in `labels` over the labels passed, and drops a row with a label outside them.
-At each point it keeps the row that leaves no coordinate in `labels` NULL that another row there sets.
+**To settle rows** is to apply the broadcast rule to long rows with `settle(rel, labels, flags)`, giving one row per label passed at each coordinate.
+`settle` expands each NULL on a dimension in `labels` over the labels passed, and drops a row with a label outside them.
+At each coordinate it keeps the row that leaves no dimension in `labels` NULL that another row there sets.
 
 <figure class="diagram">
 --8<-- "docs/static/record-settle.svg"
@@ -127,7 +127,7 @@ At each point it keeps the row that leaves no coordinate in `labels` NULL that a
 
 Over the generators `wind` and `gas`, the NULL row gives each a row at `snapshot` NULL, beside `wind`'s series.
 
-A coordinate left out of `labels` stays as written, and its NULL counts as one more label:
+A dimension left out of `labels` stays as written, and its NULL counts as one more label:
 
 ```python
 from datarecord import settle
@@ -146,23 +146,47 @@ rows.order("entity, snapshot").fetchall()
 
 `dc` is no generator, so its rows are gone.
 `snapshot` is not in `labels`, so `gas` keeps one constant row, and `wind` keeps its series beside a row at `snapshot` NULL.
-Passing `"snapshot": record.dims["snapshot"]` as well gives one row per generator and snapshot.
+Passing `"snapshot": record.dimensions["snapshot"]` as well gives one row per generator and snapshot.
 
-`labels` maps each coordinate to a relation of its labels, or of a multi-dim's tuples, in a column of the coordinate's name.
+`labels` maps each dimension to a relation of its labels, or of a multi-dimension's tuples, in a column of the dimension's name.
 `flags` sets how much work the query does, and flags that overstate the rows give the same result more slowly:
 
-| The coordinate is in     | `settle`                                  |
+| The dimension is in      | `settle`                                  |
 | ------------------------ | ----------------------------------------- |
 | `varies` only            | keeps the rows with a label passed        |
 | `broadcast` only         | expands each row over the labels passed   |
 | `varies` and `broadcast` | expands, then keeps the most specific row |
 
 `filter=False` keeps a row with a label outside `labels` as written, for a reader whose own join on the labels drops it.
-Where every row at a point leaves NULL a coordinate that another row there sets, the query raises `duckdb.Error` on fetch, naming the point.
+Where every row at a coordinate leaves NULL a dimension that another row there sets, the query raises `duckdb.Error` on fetch, naming the coordinate.
+`settle` groups rows by every column but `breakpoint` and `value`, so `attribute` and a dimension left out of `labels` count too.
+A [curve](data-model.md#attributes) is kept or dropped whole.
+
+### Cases for a port
+
+A case of `settle` is a set of rows and labels with the rows `settle` returns for them, or the error it raises.
+datarecord keeps its cases in [`tests/settle_cases.json`](https://github.com/energy-models/datarecord/blob/main/tests/settle_cases.json), so a reader that settles rows in its own SQL can run them against its port.
+The file is not part of the package: pin it by fetching it from the repository at the tag of a datarecord release.
+
+The file is a JSON list of cases, and each case is an object with these keys:
+
+| Key        | Value                                                                                                              |
+| ---------- | ------------------------------------------------------------------------------------------------------------------ |
+| `name`     | a unique name                                                                                                      |
+| `doc`      | one sentence stating the rule the case checks                                                                      |
+| `columns`  | the columns of the rows in order, each a `name` and a DuckDB `type`, such as `STRUCT(entity VARCHAR, bus VARCHAR)` |
+| `rows`     | the rows, a list per row in the order of `columns`, with a struct as an object and NULL as `null`                  |
+| `labels`   | per dimension, the list of its labels, typed as the column of that name; a port ignores a dimension with no column |
+| `filter`   | the `filter` argument of `settle`                                                                                  |
+| `expected` | the rows `settle` returns, in the shape of `rows`                                                                  |
+| `error`    | in place of `expected`, the kind of error: `crossed`, where two rows cross and no row sets both                    |
+
+The order of `rows` and `expected` has no meaning, and the text of an error is not part of a case.
+A case has no flags, because flags change no value: datarecord runs each case with the flags of its rows, and again with every dimension in both sets.
 
 !!! info "See also"
 
-    - [The data model](data-model.md) defines dims, properties, attributes and the broadcast rule.
+    - [The data model](data-model.md) defines dimensions, properties, attributes and the broadcast rule.
     - [Selecting](selecting.md) describes `select` and `Selection`.
     - [Editing](editing.md) describes `WorkingRecord`.
     - [Read a record](../howto/read-a-record.md) shows the steps.

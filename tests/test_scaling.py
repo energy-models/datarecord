@@ -24,11 +24,11 @@ pytestmark = pytest.mark.slow
 
 @pytest.fixture(scope="module")
 def carbon():
-    """`carbon_management`, with its entity types renamed off one another.
+    """`carbon_management`, with its component types renamed off one another.
 
     The network names its `Load`s, `Store`s, `Link`s and `Generator`s after the
     `Bus` they sit on, so two of them may share a name, which a record cannot
-    represent: names are unique across entity types.
+    represent: names are unique across component types.
     """
     import pypsa
 

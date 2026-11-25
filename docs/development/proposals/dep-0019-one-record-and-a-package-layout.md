@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status        | Implemented (2026-10-21)                                                                                                                                         |
 | Requires      | [DEP 18](dep-0018-drop-narwhals.md)                                                                                                                              |
 | Created       | 2026-10-21                                                                                                                                                       |
-| Version       | Unreleased                                                                                                                                                       |
+| Version       | v0.1.0a2                                                                                                                                                         |
 | Replaces      | [DEP 5](dep-0005-one-record-over-a-node-cache.md) (`Record` over a `NodeCache`), [DEP 8](dep-0008-one-interface-source-and-fold.md) (a fold that is `LayerData`) |
 | Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its re-added key introduced where it is re-added)                                                          |
 

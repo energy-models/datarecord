@@ -35,8 +35,8 @@ class Requirements:
 
     Parameters
     ----------
-    dims : frozenset of str
-        Dims the tool cannot build a model without.
+    dimensions : frozenset of str
+        Dimensions the tool cannot build a model without.
     categories : frozenset of str
         Categories the tool requires the record to define labels of, or, in a
         `verify` result, ones it has no counterpart for.
@@ -46,19 +46,18 @@ class Requirements:
         vocabulary, not the tool's, so a caller can act on them: an attribute
         the tool renames or computes (`Schema`) is reported by the source
         attribute it is missing.
-    unsupported_keys : frozenset of tuple of (str, str)
-        `(key, dim)` pairs the schema declares that this tool cannot honour;
-        `key` is `"owner_map_key"`, the fold's unit of ownership. The record layer
-        trusts every declared key, so this is a tool's verdict on the record it
-        was handed, not a schema rejection.
-    unsupported_dims : frozenset of str
-        Dims the record declares that this tool has no place for in the model
+    unsupported_partial
+        Dimensions the schema declares in `partial` that this tool cannot honour.
+        The record layer trusts every `partial`, so this is a tool's verdict
+        on the record it was handed, not a schema rejection.
+    unsupported_dimensions : frozenset of str
+        Dimensions the record declares that this tool has no place for in the model
         it builds.
     unsupported_values : frozenset of tuple of (str, str)
         `(category, attribute)` pairs whose stored *shape* this tool
         cannot represent, as opposed to a value it is missing - a
         piecewise-linear attribute where the tool takes a scalar, or one
-        whose rows differ along a dim the tool holds it without.
+        whose rows differ along a dimension the tool holds it without.
     names : frozenset of str
         Labels the framework scopes per category and two of its categories
         claim, where a record has one axis row per label.
@@ -70,15 +69,15 @@ class Requirements:
     Notes
     -----
     - [wide and long rows](https://energy-models.github.io/datarecord/reference/data-model/#wide-and-long-rows)
-    - [a label is unique within its dim](https://energy-models.github.io/datarecord/reference/format/#labels)
+    - [a label is unique within its dimension](https://energy-models.github.io/datarecord/reference/format/#labels)
     - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
     """
 
-    dims: frozenset[str] = frozenset()
+    dimensions: frozenset[str] = frozenset()
     categories: frozenset[str] = frozenset()
     attributes: frozenset[tuple[str, str]] = frozenset()
-    unsupported_keys: frozenset[tuple[str, str]] = frozenset()
-    unsupported_dims: frozenset[str] = frozenset()
+    unsupported_partial: frozenset[str] = frozenset()
+    unsupported_dimensions: frozenset[str] = frozenset()
     unsupported_values: frozenset[tuple[str, str]] = frozenset()
     names: frozenset[str] = frozenset()
     ignored: frozenset[tuple[str, str]] = frozenset()
@@ -86,11 +85,11 @@ class Requirements:
     def __bool__(self) -> bool:
         """Whether anything is required (or, for a `verify` result, missing); `ignored` aside."""
         return bool(
-            self.dims
+            self.dimensions
             or self.categories
             or self.attributes
-            or self.unsupported_keys
-            or self.unsupported_dims
+            or self.unsupported_partial
+            or self.unsupported_dimensions
             or self.unsupported_values
             or self.names
         )
@@ -103,19 +102,18 @@ class Requirements:
     def describe(self) -> str:
         """A one-line summary, for an error message or a log line."""
         parts = []
-        if self.dims:
-            parts.append(f"dims {sorted(self.dims)}")
+        if self.dimensions:
+            parts.append(f"dimensions {sorted(self.dimensions)}")
         if self.categories:
             parts.append(f"categories {sorted(self.categories)}")
         if self.attributes:
             parts.append(f"attributes {sorted(self.attributes)}")
-        if self.unsupported_keys:
-            unsupported = ", ".join(
-                f"{dim} as {key}" for key, dim in sorted(self.unsupported_keys)
+        if self.unsupported_partial:
+            parts.append(f"unsupported partial {sorted(self.unsupported_partial)}")
+        if self.unsupported_dimensions:
+            parts.append(
+                f"unsupported dimensions {sorted(self.unsupported_dimensions)}"
             )
-            parts.append(f"unsupported keys ({unsupported})")
-        if self.unsupported_dims:
-            parts.append(f"unsupported dims {sorted(self.unsupported_dims)}")
         if self.unsupported_values:
             parts.append(f"unsupported values {sorted(self.unsupported_values)}")
         if self.names:
@@ -207,7 +205,7 @@ class Schema:
     Parameters
     ----------
     attrs : dict of str to tuple of Attr
-        Per entity type, the attributes that are renamed or computed.
+        Per `ctype`, the attributes that are renamed or computed.
 
     Notes
     -----

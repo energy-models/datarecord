@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status   | Implemented (2026-10-20)                     |
 | Requires | [DEP 17](dep-0017-results-are-attributes.md) |
 | Created  | 2026-10-20                                   |
-| Version  | Unreleased                                   |
+| Version  | v0.1.0a2                                     |
 
 The design landed in [the schema](../../reference/schema.md), [the record](../../reference/record.md), [editing](../../reference/editing.md), [the format](../../reference/format.md) and [tools](../../reference/tools.md). Where they and this DEP differ, follow those pages.
 
