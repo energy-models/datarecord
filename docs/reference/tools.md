@@ -96,22 +96,24 @@ Their `schema` is empty, because the record's names are PyPSA's.
 | `entity`                         | a component of any type but `Shape` and those with a dimension of their own |
 | `ctype`                          | a dimension with `one_of`: the component types                              |
 | `bus`, `carrier`, `sub_network`  | a bus, a carrier, a SubNetwork as PyPSA numbers it                          |
+| `global_constraint`              | a GlobalConstraint                                                          |
 | `line_type`, `transformer_type`  | a standard type                                                             |
 | `port`                           | a port's number, as in PyPSA's `bus0`, `bus1`, …                            |
 | `connection`                     | a multi-dimension over `(entity, port)`: one port of a component            |
 | `snapshot`                       | a timestamp, or a multi-dimension over `(period, timestep)` if multi-period |
 | `timestep`, `period`, `scenario` | a timestep, an investment period by its year, a scenario                    |
 
-| Subject                         | Properties                                      |
-| ------------------------------- | ----------------------------------------------- |
-| `entity`                        | `ctype`, `carrier`, `sign`, `type`              |
-| `bus`                           | `carrier`, `type`, `x`, `y`, `unit`, `location` |
-| `carrier`                       | `color`, `nice_name`                            |
-| `sub_network`                   | `carrier`                                       |
-| `line_type`, `transformer_type` | every registry input of the type                |
-| `connection`                    | `bus`                                           |
+| Subject                         | Properties                                                       |
+| ------------------------------- | ---------------------------------------------------------------- |
+| `entity`                        | `ctype`, `carrier`, `sign`, `type`                               |
+| `bus`                           | `carrier`, `type`, `x`, `y`, `unit`, `location`                  |
+| `carrier`                       | `color`, `nice_name`                                             |
+| `sub_network`                   | `carrier`                                                        |
+| `global_constraint`             | `bus`, `type`, `sense`, `carrier_attribute`, `investment_period` |
+| `line_type`, `transformer_type` | every registry input of the type                                 |
+| `connection`                    | `bus`                                                            |
 
-`partial` is `{"entity", "bus", "port", "scenario", "connection"}`.
+`partial` is `{"entity", "bus", "global_constraint", "port", "scenario", "connection"}`.
 `to_datarecord` writes no axis of `ctype`, since a dimension with `one_of` lists its labels.
 Its `port` axis lists ports 0 and 1, which PyPSA's registry declares, and any further port a connection has, in ascending order.
 So you can add a component's connections at ports 0 and 1 without adding a port first.
@@ -161,6 +163,20 @@ A bus is a label of `bus`, and a carrier is a label of `carrier`:
 
 `bus.x` is a bus's x position, and `x` a line's reactance.
 `bus.carrier` defaults to `AC`.
+
+### Global constraints
+
+A GlobalConstraint is a label of `global_constraint`:
+
+| PyPSA                                                 | Record                                                          |
+| ----------------------------------------------------- | --------------------------------------------------------------- |
+| `GlobalConstraint.bus`                                | `global_constraint.bus`, which refers to `bus`                  |
+| `GlobalConstraint.investment_period`                  | `global_constraint.investment_period`, which refers to `period` |
+| `GlobalConstraint.type`, `sense`, `carrier_attribute` | properties of `global_constraint`                               |
+| `GlobalConstraint.constant`                           | an attribute over `global_constraint`                           |
+| `GlobalConstraint.mu`                                 | a result attribute over `global_constraint`                     |
+
+`to_datarecord` writes PyPSA's `""` bus as NULL, and `build` writes NULL back as `""`, which applies the constraint at every bus.
 
 ### Standard types
 
@@ -264,11 +280,12 @@ It also raises for an `idx` that names no label its type writes, and for a `comp
 `build` then drops each period left without snapshots, and each entity attached to a dropped bus.
 Over fewer periods than the record has, it drops each entity active in none, where `build_year <= period < build_year + lifetime`.
 An entity without a row of `build_year` or `lifetime` takes the declared default, else `0` or infinity.
-`build` also drops each `GlobalConstraint` whose `investment_period` names a dropped period, and keeps one with `investment_period` NULL.
+`build` drops each global constraint whose `bus` or `investment_period` names a dropped label, as [`select`](selecting.md#what-goes-with-a-dropped-label) drops any label whose property names a dropped one.
+It keeps a global constraint with that property NULL.
 A kept scenario that no `scenario_weight` row applies to takes its equal share of the record's scenarios before the renormalisation.
 `build` raises `ValueError` for a selection with no snapshot, and for kept scenarios whose weights sum to 0.
 It raises for an attribute whose rows name several labels of a dimension PyPSA holds it without, such as `marginal_cost` over `period`.
-Over fewer periods, it raises where `build_year`, `lifetime` or `investment_period` varies along a dimension the selection keeps.
+Over fewer periods, it raises where `build_year` or `lifetime` varies along a dimension the selection keeps.
 
 ### Writing results
 
@@ -300,7 +317,7 @@ solved = store.commit(results, parent=inputs)
 ```
 
 - The layer has the results and the intermediate results they need, at their defaults too. It has no input, shape or standard type.
-- A result of `base` that the solve does not write again is NULL, at the scenarios, buses, entities and connections the network has.
+- A result of `base` that the solve does not write again is NULL, at the scenarios, buses, global constraints, entities and connections the network has.
 - A series is written at the network's snapshots, and `base`'s values stand at the others.
 - Over a multi-period `base`, a result such as `p_nom_opt` is written for the entities active in the network's periods.
 - Over a selection, [`lift`](selecting.md#lift) puts each row back at the squeezed labels.
@@ -310,7 +327,7 @@ solved = store.commit(results, parent=inputs)
 With `results_only=True`, `to_datarecord` raises `ValueError` for:
 
 - a missing `base`.
-- a network with a snapshot, bus or entity that `base` lacks.
+- a network with a snapshot, bus, global constraint or entity that `base` lacks.
 - a deterministic network over a `base` with scenarios, rather than over the selection at one scenario.
 - a result over no `scenario` from fewer scenarios than the record has.
 - a multi-period network over a single-period `base`, or a single-period one over a multi-period `base` that squeezes no period.

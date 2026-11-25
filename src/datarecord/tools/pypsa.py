@@ -86,6 +86,7 @@ ENTITY, BUS, CARRIER, CONNECTION = "entity", "bus", "carrier", "connection"
 #: A field of `connection`: PyPSA's number in `bus0`, `bus1`, ..., and a one-port type's `bus` port `0`.
 PORT = "port"
 SUB_NETWORK = "sub_network"
+GLOBAL_CONSTRAINT = "global_constraint"
 LINE_TYPE, TRANSFORMER_TYPE = "line_type", "transformer_type"
 CTYPE = "ctype"
 #: `ctype` as a `default_by` names it, by its subject.
@@ -97,6 +98,7 @@ _AXIS_TYPES = {
     "Bus": BUS,
     "Carrier": CARRIER,
     "SubNetwork": SUB_NETWORK,
+    "GlobalConstraint": GLOBAL_CONSTRAINT,
     **_CATALOG_TYPES,
 }
 #: The PyPSA type of each `_AXIS_TYPES` dimension, the `component` a shape on it names.
@@ -107,16 +109,23 @@ _SHAPE = "Shape"
 _SHAPE_PREFIX = "shape_"
 #: The dimensions of a record's rows, which no custom column may be named like.
 _ROW_DIMS = frozenset({SNAPSHOT, TIMESTEP, PERIOD, SCENARIO, ENTITY, CONNECTION})
+#: The period a `GlobalConstraint` applies in, NULL applying in every period.
+_INVESTMENT_PERIOD = "investment_period"
 #: The registry inputs declared as properties, by subject: what describes a
 #: label rather than data a model optimises against. `entity` also has
-#: `ctype`, a `carrier` property is one of the `carrier` dimension, and a
+#: `ctype`, a property of `_REFERS` is one of its dimension, and a
 #: `_CATALOG_TYPES` dimension takes every registry input as a property.
 _PROPERTIES = {
     ENTITY: ("carrier", "sign", "type"),
     BUS: ("carrier", "type", "x", "y", "unit", "location"),
     CARRIER: ("color", "nice_name"),
     SUB_NETWORK: (CARRIER,),
+    GLOBAL_CONSTRAINT: (BUS, "type", "sense", "carrier_attribute", _INVESTMENT_PERIOD),
 }
+#: The registry inputs naming a label, by the dimension they name it of.
+_REFERS = {CARRIER: CARRIER, BUS: BUS, _INVESTMENT_PERIOD: PERIOD}
+#: The text inputs of `_REFERS` whose PyPSA `""` names no label, stored as NULL.
+_EMPTY_IS_NONE = frozenset({CARRIER, BUS})
 #: How a SubNetwork's `carrier` is described, PyPSA registering it as an output.
 _SUB_NETWORK_CARRIER = "The carrier of a sub-network's buses."
 #: How a shape's geometry and a dimension shapes make are described.
@@ -310,8 +319,6 @@ def _rebuilt(schema: RecordSchema, **fields: Any) -> RecordSchema:
 
 #: PyPSA's `build_year` and `lifetime` where a record declares no default.
 _ACTIVE_FALLBACK = {"build_year": 0, "lifetime": math.inf}
-#: The period a `GlobalConstraint` applies in, NULL applying in every period.
-_INVESTMENT_PERIOD = "investment_period"
 #: The dimensions a network is built from a selection squeezing, beside a record's own.
 _SQUEEZABLE = frozenset({PERIOD, SCENARIO})
 #: The keywords selecting snapshots, at all of which a results layer restates a series.
@@ -336,8 +343,7 @@ def _narrowed(record: RecordLike) -> RecordLike:
 
     A period holding no kept snapshot goes, and an entity attached to a bus
     the selection drops. Where the selection holds fewer periods than its
-    base, an entity active in none of them goes, and one whose
-    `investment_period` names another (`_active`). A selection keeping a
+    base, an entity active in none of them goes (`_active`). A selection keeping a
     dimension of the record's own is left as it is: `verify` reports the dimension, and
     `PyPSACollection` narrows each member.
 
@@ -484,7 +490,7 @@ def _active_in(
 
 
 def _active(record: RecordLike, periods: list[Any]) -> set[Any]:
-    """The entities PyPSA holds active in one of `periods` (`_active_in`) whose `investment_period` is NULL or one of them.
+    """The entities PyPSA holds active in one of `periods` (`_active_in`).
 
     An entity with no row takes the declared default, else PyPSA's.
 
@@ -493,11 +499,8 @@ def _active(record: RecordLike, periods: list[Any]) -> set[Any]:
     ValueError
         If an entity holds several values of one: the selection keeps a dimension it varies over.
     """
-    resolved = _resolved(record, {**_ACTIVE_FALLBACK, _INVESTMENT_PERIOD: math.nan})
-    invested = resolved[_INVESTMENT_PERIOD]
-    kept = _active_in(resolved["build_year"], resolved["lifetime"], periods) & (
-        invested.isna() | invested.isin(periods)
-    )
+    resolved = _resolved(record, _ACTIVE_FALLBACK)
+    kept = _active_in(resolved["build_year"], resolved["lifetime"], periods)
     return set(kept.index[kept])
 
 
@@ -887,20 +890,17 @@ def _keyed_as_entity(rel: DuckDBPyRelation, dim: str) -> DuckDBPyRelation:
     )
 
 
-def _none_for_empty(frame: pd.DataFrame) -> pd.DataFrame:
-    """`frame` with an empty `carrier`, PyPSA's "none", as NULL: it names no label."""
-    if CARRIER not in frame:
-        return frame
-    return frame.assign(**{CARRIER: frame[CARRIER].where(frame[CARRIER] != "", None)})
+def _none_for_empty(frame: pd.DataFrame, names: Iterable[str]) -> pd.DataFrame:
+    """`frame` with an empty value of each of `names` in `_EMPTY_IS_NONE`, PyPSA's "none", as NULL: it names no label."""
+    empty = {n: frame[n].where(frame[n] != "", None) for n in _EMPTY_IS_NONE & {*names}}
+    return frame.assign(**empty)
 
 
 def _empty_for_none(rel: DuckDBPyRelation) -> DuckDBPyRelation:
-    """`rel` with a NULL `carrier` as PyPSA's `""`, the inverse of `_none_for_empty`."""
-    if CARRIER not in rel.columns:
-        return rel
+    """`rel` with a NULL in a column of `_EMPTY_IS_NONE` as PyPSA's `""`, the inverse of `_none_for_empty`."""
     return rel.project(
         *(
-            coalesce(col(c), lit("")).alias(c) if c == CARRIER else col(c)
+            coalesce(col(c), lit("")).alias(c) if c in _EMPTY_IS_NONE else col(c)
             for c in rel.columns
         )
     )
@@ -1794,7 +1794,7 @@ class _PortTable:
     registered: frozenset[str]
     #: Whether the type attaches at one bus, by its category: a Generator, Load, Store, StorageUnit or ShuntImpedance.
     one_port: bool
-    #: The ports the registry declares a bus at: `0` of a one-port type, `0` and `1` of a branch, none of a GlobalConstraint, whose `bus` is no port.
+    #: The ports the registry declares a bus at: `0` of a one-port type, `0` and `1` of a branch, none of a GlobalConstraint, whose `bus` is no port but a property of `global_constraint`.
     ports: frozenset[int]
     #: Whether the type takes ports beyond `ports`, as a Link's or Process's `bus2`.
     extends: bool
@@ -2119,12 +2119,7 @@ class PyPSATool(Tool):
         shape = NetworkShape(schema, record.dimensions)
         n = _new_network(record, shape)
 
-        periodless = {_INVESTMENT_PERIOD} if PERIOD in _squeezed(record) else set()
-        over_entity = [
-            a
-            for a in schema.attributes
-            if schema.addresses(a, ENTITY) and a not in periodless
-        ]
+        over_entity = [a for a in schema.attributes if schema.addresses(a, ENTITY)]
         settled = _one_labelled(record)
         if shape.stochastic:
             settled[SCENARIO] = record.dimensions[SCENARIO]
@@ -2226,7 +2221,7 @@ class PyPSATool(Tool):
 
         With `results_only` the record is a thin layer over `base`: the
         outputs, at their default too, `base`'s output rows at the scenarios,
-        buses, entities and connections the network holds that it does not
+        buses, entities, global constraints and connections the network holds that it does not
         write again restated as NULL, and this solve's SubNetworks as the
         `sub_network` axis, unless it holds fewer buses or entities than
         `base`, whose SubNetworks it then leaves. A series is written at the
@@ -2250,7 +2245,8 @@ class PyPSATool(Tool):
             a record keeping one. If a deterministic network's results are
             written over a `base` holding scenarios, results over no
             `scenario` of fewer scenarios than the record holds, or a
-            network's results holding a snapshot, bus or entity `base` lacks.
+            network's results holding a snapshot, bus, entity or global
+            constraint `base` lacks.
             On a full export: if types of one dimension carry a custom property
             with different dtypes, a custom column is named `shape_...` or
             like `snapshot`, `timestep`, `period`, `scenario`, `entity` or
@@ -2414,12 +2410,12 @@ def _with_default_by(
 
 
 def _property(name: str, spec: AttributeSpec) -> PropertySpec:
-    """The property spec of registry input `name`; a `carrier` names a label of `carrier`, `""` none."""
+    """The property spec of registry input `name`; one of `_REFERS` names a label of its dimension, `""` none."""
     fields = spec.model_dump(exclude={"dims", "breakpoints"})
-    if name == CARRIER:
+    if name in _REFERS:
         fields |= {
             "dtype": None,
-            "one_of": CARRIER,
+            "one_of": _REFERS[name],
             "default": fields["default"] or None,
         }
     return PropertySpec(**fields)
@@ -2443,9 +2439,9 @@ def _registry() -> _Registry:
     Every network exports against this one schema. One spec per name
     record-wide: the first type declaring it gives the spec, a default
     differing per type is `default_by`, and a per-port column collapses to
-    its stem over `connection`. `Bus`, `Carrier`, `SubNetwork`, `LineType`
-    and `TransformerType` members are labels of their own dimension
-    (`_AXIS_TYPES`); a `Shape` declares nothing here, being a property
+    its stem over `connection`. `Bus`, `Carrier`, `SubNetwork`,
+    `GlobalConstraint`, `LineType` and `TransformerType` members are labels
+    of their own dimension (`_AXIS_TYPES`); a `Shape` declares nothing here, being a property
     of the label it outlines (`_outlined`).
 
     Notes
@@ -2566,6 +2562,9 @@ def _registry() -> _Registry:
                 dtype="str",
                 description="A connected part of the network, as PyPSA numbers them.",
             ),
+            GLOBAL_CONSTRAINT: Dimension(
+                dtype="str", description="A constraint over the whole network."
+            ),
             LINE_TYPE: Dimension(dtype="str", description="A standard type of line."),
             TRANSFORMER_TYPE: Dimension(
                 dtype="str", description="A standard type of transformer."
@@ -2584,7 +2583,7 @@ def _registry() -> _Registry:
         },
         properties=properties,
         attributes=attributes | results,
-        partial=frozenset({ENTITY, BUS, PORT, SCENARIO, CONNECTION}),
+        partial=frozenset({ENTITY, BUS, GLOBAL_CONSTRAINT, PORT, SCENARIO, CONNECTION}),
     )
     return _Registry(schema, carries, inputs)
 
@@ -2655,7 +2654,8 @@ class _NetworkSource:
             columns = [p for p in self.schema.properties[dim] if p in static.columns]
             frame = static[[*columns, *_port_table(ctype).buses(c).values()]]
             frame = frame.rename_axis(index={"name": dim}).reset_index()
-            members[ctype] = _unscoped(_none_for_empty(frame), [dim], ctype, self.con)
+            frame = _none_for_empty(frame, columns)
+            members[ctype] = _unscoped(frame, [dim], ctype, self.con)
         return members
 
     @cached_property
@@ -2838,6 +2838,7 @@ class _NetworkSource:
             BUS: buses,
             CARRIER: pd.concat([listed, added], ignore_index=True),
             SUB_NETWORK: self._sub_networks,
+            GLOBAL_CONSTRAINT: self._labels("GlobalConstraint"),
             PORT: pd.DataFrame({PORT: range(max([1, *self._connections[PORT]]) + 1)}),
             **{dim: self._labels(ctype) for ctype, dim in _CATALOG_TYPES.items()},
             **{dim: self._shapes[dim] for dim in self._shape_dims},
@@ -3539,7 +3540,7 @@ class _ResultsSource(_NetworkSource):
         return pd.DataFrame({PERIOD: self._periods[0], TIMESTEP: snapshots})
 
     def check(self) -> None:
-        """Refuse a network holding a snapshot, bus or entity `base` lacks, or first-stage results of fewer scenarios than the record, at the call rather than the write.
+        """Refuse a network holding a snapshot, bus, global constraint or entity `base` lacks, or first-stage results of fewer scenarios than the record, at the call rather than the write.
 
         Raises
         ------
@@ -3550,7 +3551,11 @@ class _ResultsSource(_NetworkSource):
         snapshots = _lacking(
             self._snapshot_rel, self.base.dimensions[SNAPSHOT], SNAPSHOT
         )
-        held = {BUS: self._labels("Bus")[BUS], ENTITY: self._entity_frame[ENTITY]}
+        held = {
+            BUS: self._labels("Bus")[BUS],
+            GLOBAL_CONSTRAINT: self._labels("GlobalConstraint")[GLOBAL_CONSTRAINT],
+            ENTITY: self._entity_frame[ENTITY],
+        }
         unknown = {
             SNAPSHOT: [label for (label,) in snapshots.fetchall()],
             **{
@@ -3612,7 +3617,11 @@ class _ResultsSource(_NetworkSource):
     @cached_property
     def _holds(self) -> dict[str, DuckDBPyRelation]:
         """The labels the network holds of each dimension a result is over, to which it restates `base`'s results."""
-        frames = {ENTITY: self._entity_frame[[ENTITY]], BUS: self._labels("Bus")[[BUS]]}
+        frames = {
+            ENTITY: self._entity_frame[[ENTITY]],
+            BUS: self._labels("Bus")[[BUS]],
+            GLOBAL_CONSTRAINT: self._labels("GlobalConstraint")[[GLOBAL_CONSTRAINT]],
+        }
         if self.n.has_scenarios:
             frames[SCENARIO] = self.n.scenarios.to_frame(index=False)
         labels = {

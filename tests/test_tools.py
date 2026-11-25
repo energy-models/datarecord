@@ -17,6 +17,7 @@ from types import SimpleNamespace
 import duckdb
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import pypsa
 import pytest
 from duckdb import DuckDBPyRelation
@@ -159,20 +160,32 @@ def _with_schema(layer: HandBuilt, **kwargs) -> Revision:
     labelled = {d: spec for d, spec in was.dimensions.items() if d not in _DIMS}
     redeclared = {d: s for d, s in now.dimensions.items() if d not in labelled}
     now = now.model_copy(update={"dimensions": {**labelled, **redeclared}})
-    # Keep the old attributes, but drop any dim a redeclaration removed from
-    # their address - an attribute over a dim the schema no longer declares is
-    # rejected at construction, and the point here is the redeclared dims, not a
-    # stale attribute reference to a gone one.
+    # Keep the old attributes and properties, but drop any dim a redeclaration
+    # removed from their address or reference - one over or naming a dim the
+    # schema no longer declares is rejected at construction, and the point here
+    # is the redeclared dims, not a stale reference to a gone one.
     addressable = set(now.dimensions)
     attributes = {
         name: pruned
         for name, spec in was.attributes.items()
         if (pruned := spec.model_copy(update={"dims": spec.dims & addressable})).dims
     }
+    properties = {
+        subject: {
+            name: spec
+            for name, spec in specs.items()
+            if spec.one_of is None or spec.one_of in addressable
+        }
+        for subject, specs in was.properties.items()
+    }
+    for subject, specs in was.properties.items():
+        if gone := set(specs) - set(properties[subject]):
+            path = layer.dir / "dimensions" / f"{subject}.parquet"
+            pq.write_table(pq.read_table(path).drop_columns(list(gone)), path)
     now = now.model_copy(
         update={
             "attributes": attributes,
-            "properties": was.properties,
+            "properties": properties,
             "meta": was.meta,
         }
     )
@@ -209,6 +222,21 @@ def _north():
     n.set_snapshots(pd.date_range("2030-01-01", periods=2, freq="h"))
     n.add("Bus", "north")
     n.add("Generator", "gen", bus="north")
+    return n
+
+
+def _constrained():
+    """`_north` with a bus `south` and a generator at it, a global constraint at each bus and `co2` at every bus."""
+    n = _north()
+    n.add("Bus", "south")
+    n.add("Generator", "gen_south", bus="south")
+    n.add(
+        "GlobalConstraint",
+        ["cap_north", "cap_south", "co2"],
+        bus=["north", "south", ""],
+        sense="<=",
+        constant=[5.0, 6.0, 100.0],
+    )
     return n
 
 
@@ -774,6 +802,66 @@ class TestPyPSA:
             "gen": "",
             "wind": "wind",
         }
+
+    def test_a_global_constraint_is_a_label_with_its_bus(self, store):
+        """A GlobalConstraint is a label of `global_constraint`, its `bus` a property referring to `bus`, `""` NULL.
+
+        Notes
+        -----
+        - [global constraints](https://energy-models.github.io/datarecord/reference/tools/#global-constraints)
+        """
+        n = _constrained()
+
+        record = export_network(n, store).record
+        assert "GlobalConstraint" not in (record.schema.dimensions[CTYPE].one_of or ())
+        buses = record.properties["global_constraint"].project("global_constraint, bus")
+        assert dict(buses.fetchall()) == {
+            "cap_north": "north",
+            "cap_south": "south",
+            "co2": None,
+        }, "an empty bus is stored as NULL"
+        assert_networks_equal(PyPSA.build(record), n)
+
+    @pytest.mark.parametrize(
+        ("bus", "kept"),
+        [("north", ["cap_north", "co2"]), ("south", ["cap_south", "co2"])],
+    )
+    def test_a_bus_selection_drops_the_global_constraints_at_buses_it_drops(
+        self, store, bus, kept
+    ):
+        """A global constraint at a dropped bus goes, as `select` drops a label whose property names a dropped one; one at every bus stays.
+
+        Notes
+        -----
+        - [selecting before a build](https://energy-models.github.io/datarecord/reference/tools/#selecting-before-a-build)
+        """
+        record = export_network(_constrained(), store).record
+
+        built = PyPSA.build(record.select(bus=[bus]))
+        assert built.c.GlobalConstraint.static.index.tolist() == kept
+
+    @pytest.mark.parametrize("results_only", [False, True], ids=["export", "results"])
+    def test_mu_is_over_global_constraint(self, store, results_only):
+        """A solve's `mu` is written over `global_constraint`, by a full export and by a results layer.
+
+        Notes
+        -----
+        - [global constraints](https://energy-models.github.io/datarecord/reference/tools/#global-constraints)
+        """
+        n = _constrained()
+        revision = export_network(n, store)
+        n.c.GlobalConstraint.static["mu"] = [1.0, 2.0, -3.0]
+        revision = (
+            _results_over(revision, n) if results_only else export_network(n, store)
+        )
+
+        mu = revision.record.attributes["mu"].df()
+        assert mu.set_index("global_constraint")["value"].to_dict() == {
+            "cap_north": 1.0,
+            "cap_south": 2.0,
+            "co2": -3.0,
+        }
+        assert_networks_equal(PyPSA.build(revision.record), n)
 
     def test_a_property_is_addressed_by_its_subject(self, single_revision):
         """`x` is a line's reactance and `bus.x` a bus's coordinate; `carrier` alone is neither.
@@ -2424,18 +2512,31 @@ class TestPyPSA:
             ("high", "gen"): 2.0,
         }, "each scenario keeps its value"
 
-    def test_a_custom_property_differing_per_scenario_is_refused(self, workspace):
-        """A text custom column is a property, which has no `scenario` dim.
+    @pytest.mark.parametrize(
+        ("ctype", "name", "column", "low", "high"),
+        [
+            ("Bus", "north", "country", "DE", "FR"),
+            ("GlobalConstraint", "co2", "sense", "<=", ">="),
+        ],
+        ids=["custom", "global-constraint"],
+    )
+    def test_a_property_differing_per_scenario_is_refused(
+        self, workspace, ctype, name, column, low, high
+    ):
+        """A text custom column and a global constraint's `sense` are properties, which have no `scenario` dim.
 
         Notes
         -----
         - [custom columns](https://energy-models.github.io/datarecord/reference/tools/#custom-columns)
+        - [writing results](https://energy-models.github.io/datarecord/reference/tools/#writing-results)
         """
-        n = _north()
+        n = _constrained()
         n.set_scenarios({"low": 0.5, "high": 0.5})
-        n.c.Bus.static["country"] = ["DE", "FR"]
+        static = n.c[ctype].static
+        static.loc[("low", name), column] = low
+        static.loc[("high", name), column] = high
 
-        with pytest.raises(ValueError, match="'north' has `country` .* by scenario"):
+        with pytest.raises(ValueError, match=f"'{name}' has `{column}` .* by scenario"):
             PyPSA.to_datarecord(n, workspace.con)
 
     @pytest.mark.parametrize("attr", ["p_nom_extendable", "p_nom_opt"])

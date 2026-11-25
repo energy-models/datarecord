@@ -9,6 +9,29 @@ SPDX-License-Identifier: CC-BY-4.0
 All notable changes to datarecord are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- Breaking: the PyPSA tool writes each GlobalConstraint as a label of the
+  dimension `global_constraint`, no longer of `entity`, and `GlobalConstraint`
+  leaves `entity.ctype`'s categories. Its `bus`, `type`, `sense`,
+  `carrier_attribute` and `investment_period` are properties of
+  `global_constraint`, where `bus` refers to `bus` and `investment_period` to
+  `period`. `constant` and the result `mu` are attributes over
+  `global_constraint`, which is in `partial`. A selection that drops a bus
+  drops each global constraint at it, and a selection that drops a period
+  drops each global constraint whose `investment_period` names it. A network
+  whose global constraint differs by scenario or between collection members
+  in `bus`, `sense`, `carrier_attribute` or `investment_period` is refused, as
+  for any property. Export a network again to rewrite a record that the PyPSA
+  tool wrote before.
+
+### Fixed
+
+- A GlobalConstraint keeps its `bus` on a round trip through
+  `PyPSA.to_datarecord` and `PyPSA.build`, where `build` returned `""` (#162).
+
 ## v0.1.0a2 (2026-11-24)
 
 ### Added
