@@ -9,6 +9,13 @@ SPDX-License-Identifier: CC-BY-4.0
 All notable changes to datarecord are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Fixed
+
+- The PyPSA tool keeps a `GlobalConstraint`'s `bus` on a round trip. It is
+  the constraint's connection at port 0, as for a one-port component.
+
 ## v0.1.0a2 (2026-11-24)
 
 ### Added

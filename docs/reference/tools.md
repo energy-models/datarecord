@@ -173,7 +173,7 @@ A library type has the library's values in the built network.
 ### Ports
 
 Each port of a component is a `connection` tuple `(entity, port)`, and the property `connection.bus` is the bus the port attaches to.
-The port is PyPSA's number in `bus0`, `bus1`, …, and a one-port component has its `bus` at port 0.
+The port is PyPSA's number in `bus0`, `bus1`, …, and a one-port component or a GlobalConstraint has its `bus` at port 0.
 A per-port input or result is an attribute over `connection`.
 `build` turns the tuples of a component back into PyPSA's numbered columns:
 

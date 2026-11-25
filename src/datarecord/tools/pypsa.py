@@ -1792,9 +1792,9 @@ class _PortTable:
 
     #: The type's attribute names in PyPSA's bare registry.
     registered: frozenset[str]
-    #: Whether the type attaches at one bus, by its category: a Generator, Load, Store, StorageUnit or ShuntImpedance.
+    #: Whether the type attaches at one bus, by its category or as a GlobalConstraint: a Generator, Load, Store, StorageUnit, ShuntImpedance or GlobalConstraint.
     one_port: bool
-    #: The ports the registry declares a bus at: `0` of a one-port type, `0` and `1` of a branch, none of a GlobalConstraint, whose `bus` is no port.
+    #: The ports the registry declares a bus at: `0` of a one-port type, `0` and `1` of a branch.
     ports: frozenset[int]
     #: Whether the type takes ports beyond `ports`, as a Link's or Process's `bus2`.
     extends: bool
@@ -1837,7 +1837,10 @@ def _port_table(ctype: str) -> _PortTable:
 
     component = get_component_type(ctype)
     registered = frozenset(component.defaults.index)
-    one_port = component.category in {"controllable_one_port", "passive_one_port"}
+    one_port = (
+        component.category in {"controllable_one_port", "passive_one_port"}
+        or ctype == "GlobalConstraint"
+    )
     suffixed = [
         (stem, int(port))
         for attr in registered
