@@ -34,7 +34,7 @@ store = ws.store(tempfile.mkdtemp())
 
 n = pypsa.Network(snapshots=pd.date_range("2030-01-01", periods=3, freq="h"))
 root = store.commit(PyPSA.to_datarecord(n, ws.con), parent=None)
-print(root.record.dims["snapshot"].df())
+print(root.record.dimensions["snapshot"].df())
 print(list(root.record.schema.properties["entity"]))
 ```
 
@@ -52,7 +52,7 @@ The root has the three snapshots, and every entity takes the four properties tha
 
 ## The components
 
-A component is a label of `entity`, its type is its `ctype`, and each of its ports is a `connection` tuple with a `role`. Stage them over the root, with their values:
+A component is a label of `entity`, and its type is its `ctype`. Each of its ports is a `connection` tuple of the entity and a port number, with the bus it attaches to as `connection.bus`. A generator or a load has one port, port 0. Stage them over the root, with their values:
 
 ```python
 from datarecord import WorkingRecord
@@ -64,8 +64,8 @@ w.add("entity", ["wind1", "gas1"], ctype="Generator", carrier=["wind", "gas"])
 w.add("entity", ["load1"], ctype="Load")
 w.add(
     "connection",
-    [{"entity": e, "bus": "north"} for e in ["wind1", "gas1", "load1"]],
-    role="attached",
+    [{"entity": e, "port": 0} for e in ["wind1", "gas1", "load1"]],
+    bus="north",
 )
 w.set("p_nom", [100.0, 80.0], entity=["wind1", "gas1"])
 w.set("marginal_cost", 50.0, entity="gas1")
@@ -167,7 +167,7 @@ print(solved.record.attributes["p_nom"].df())
 1     None   gas1     p_nom         NaN   80.0
 ```
 
-`p_nom` comes from `inputs`, with the `scenario` coordinate that the tool's schema declares left NULL.
+`p_nom` comes from `inputs`, with the `scenario` dimension that the tool's schema declares left NULL.
 
 ## What you have built
 

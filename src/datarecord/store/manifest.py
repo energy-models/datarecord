@@ -5,7 +5,7 @@
 """A layer's `manifest.json`, which makes it a revision, and its `claim.json`.
 
 A layer carries its own manifest: its id, its parent, the full schema it was
-written under, the files it wrote and a flat `meta`. A claim reserves the id
+written under, the files it wrote and its `meta`. A claim reserves the id
 before any data is written, and is kept.
 
 Notes
@@ -18,36 +18,46 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Self
 from uuid import UUID
 
-from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter
+from pydantic import ConfigDict, Field, InstanceOf, TypeAdapter, model_validator
 from pydantic.dataclasses import dataclass
 
+from datarecord.duck import pattern
+from datarecord.schema.meta import Meta, MetaValue
 from datarecord.schema.schema import Schema, schema_digest
 
 if TYPE_CHECKING:
     from datarecord.store.files import Files
 
-Meta = dict[str, str | int | Annotated[float, Field(allow_inf_nan=False)] | bool]
-"""A revision's own `meta`: flat, set at its write, and not inherited.
-
-A float is finite, since JSON has no NaN or infinity to store it as.
-"""
+_CONFIG = ConfigDict(extra="forbid", ser_json_inf_nan="constants")
 
 
-@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@dataclass(frozen=True, config=_CONFIG)
 class LayerFiles:
-    """What a layer wrote, by declared name: `dims/<dim>.parquet`, `attributes/<attr>.parquet`.
+    """What a layer wrote, by declared name: `dimensions/<dim>.parquet`, `attributes/<attr>.parquet`.
 
     A read opens exactly these and ignores any other file in the layer.
+
+    Attributes
+    ----------
+    owner_map_rows
+        The `_shape` of each shape whose owner-map rows the layer wrote to
+        `owner_map_rows.parquet`, ascending: bit `i` for the `i`-th dimension of
+        its schema. Empty where it wrote no such file.
+
+    Notes
+    -----
+    - [`owner_map_rows.parquet`](https://energy-models.github.io/datarecord/reference/format/#owner_map_rowsparquet)
     """
 
-    dims: tuple[str, ...] = ()
+    dimensions: tuple[str, ...] = ()
     attributes: tuple[str, ...] = ()
+    owner_map_rows: tuple[int, ...] = ()
 
 
-@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@dataclass(frozen=True, config=_CONFIG)
 class Manifest:
     """A layer's `manifest.json`: written last and create-only, it makes the revision exist.
 
@@ -74,6 +84,32 @@ class Manifest:
     schema: InstanceOf[Schema]
     files: LayerFiles
     meta: Meta = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _declared_files(self) -> Self:
+        """Refuse an attribute file whose name `schema` does not declare, and an `owner_map_rows` entry out of order or no listed attribute's shape."""
+        undeclared = sorted(set(self.files.attributes) - set(self.schema.attributes))
+        if undeclared:
+            msg = (
+                f"layer {self.id} lists attribute files {undeclared} its schema "
+                f"does not declare"
+            )
+            raise ValueError(msg)
+        masks = self.files.owner_map_rows
+        if list(masks) != sorted(set(masks)):
+            msg = f"layer {self.id} lists owner_map_rows {list(masks)} not ascending"
+            raise ValueError(msg)
+        dims = self.schema.dimensions
+        held = {
+            pattern(dims, self.schema.dimensions_of(a)) for a in self.files.attributes
+        }
+        if strays := sorted(set(masks) - held):
+            msg = (
+                f"layer {self.id} lists owner_map_rows {strays}, the shape of no "
+                f"attribute file it lists"
+            )
+            raise ValueError(msg)
+        return self
 
     def write(self, files: Files, uri: str) -> None:
         """Write this manifest at `uri`, create-only.
@@ -109,7 +145,7 @@ class Manifest:
         return _MANIFEST.validate_python({**raw, "schema": schemas[digest]})
 
 
-@dataclass(frozen=True, config=ConfigDict(extra="forbid"))
+@dataclass(frozen=True, config=_CONFIG)
 class ClaimFile:
     """A layer's `claim.json`: written create-only when its id is handed out, and kept.
 
@@ -145,7 +181,6 @@ class ClaimFile:
 
 _MANIFEST = TypeAdapter(Manifest)
 _CLAIM = TypeAdapter(ClaimFile)
-_META = TypeAdapter(Meta)
 
 
 def _create[T](files: Files, uri: str, adapter: TypeAdapter[T], value: T) -> None:
@@ -157,26 +192,24 @@ def _read[T](files: Files, uri: str, adapter: TypeAdapter[T]) -> T | None:
     return None if found is None else adapter.validate_json(found)
 
 
-def validate_meta(meta: Meta | None) -> Meta:
-    """`meta` checked flat, each value a string, finite number or boolean.
-
-    Raises
-    ------
-    pydantic.ValidationError
-        For any other value.
-    """
-    return _META.validate_python(meta or {}, strict=True)
-
-
 def merge_meta(claimed: Meta, given: Meta) -> Meta:
     """`given` added to `claimed`, which a commit may extend and never change.
+
+    A claimed key may be restated with an equal value, compared as JSON, so
+    `1`, `1.0` and `True` differ, inside an array or object too.
 
     Raises
     ------
     ValueError
         Naming each claimed key `given` sets otherwise.
+
+    Notes
+    -----
+    - [the steps of a commit](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
     """
-    changed = sorted(k for k, v in given.items() if k in claimed and claimed[k] != v)
+    changed = sorted(
+        k for k, v in given.items() if k in claimed and _json(claimed[k]) != _json(v)
+    )
     if changed:
         msg = (
             f"the commit changes the claimed meta {changed}; a commit keeps every "
@@ -184,3 +217,8 @@ def merge_meta(claimed: Meta, given: Meta) -> Meta:
         )
         raise ValueError(msg)
     return {**claimed, **given}
+
+
+def _json(value: MetaValue) -> str:
+    """`value` as canonical JSON, which tells `1`, `1.0` and `True` apart at any depth."""
+    return json.dumps(value, sort_keys=True)

@@ -7,7 +7,19 @@ import os
 import duckdb
 import pytest
 
-from datarecord import Workspace
+from datarecord import Workspace, templates
+
+
+def pytest_addoption(parser: pytest.Parser) -> None:
+    parser.addoption(
+        "--check-templates",
+        action="store_true",
+        help="render every templated statement afresh too, and fail where it differs from the filled template",
+    )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    templates.CHECKED = config.getoption("--check-templates")
 
 
 def pytest_sessionstart(session: pytest.Session) -> None:

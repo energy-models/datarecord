@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status   | Implemented (2026-10-20)                          |
 | Requires | [DEP 13](dep-0013-buses-and-carriers-are-dims.md) |
 | Created  | 2026-10-19                                        |
-| Version  | Unreleased                                        |
+| Version  | v0.1.0a2                                          |
 
 The design landed in [the schema](../../reference/schema.md), [the data model](../../reference/data-model.md), [the fold](../../reference/resolution.md) and [the tools reference](../../reference/tools.md). Where they and this DEP differ, follow those pages.
 

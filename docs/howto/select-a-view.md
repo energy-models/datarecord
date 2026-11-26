@@ -10,16 +10,16 @@ This guide shows how to read a record at some of its labels with [`select`](../r
 
 `select(record, **labels)` takes any [`RecordLike`](../reference/record.md) and returns a selection, which is a record too. `record.select(**labels)` is the same call. `select` writes nothing, and the selection's attributes stay plans on `record.con`.
 
-## Keep some labels of a dim
+## Keep some labels of a dimension
 
-Pass a list to keep those labels and the dim:
+Pass a list to keep those labels and the dimension:
 
 ```python
 from datarecord import select
 
 view = select(record, bus=["north"])
-print(view.dims["connection"].df())
-print(view.dims["entity"].df())
+print(view.dimensions["connection"].df())
+print(view.dimensions["entity"].df())
 ```
 
 ```text
@@ -30,25 +30,25 @@ print(view.dims["entity"].df())
 1   gas1
 ```
 
-`select` drops the connection at `south` with its bus. `gas1` stays, because `select` drops the tuples over a dropped label and keeps the other labels of those tuples. A `slice(start, stop)` on a number or datetime axis, or a partial date string such as `"2013-02"`, keeps the dim too.
+`select` drops the connection at `south` with its bus. `gas1` stays, because `select` drops the tuples over a dropped label and keeps the other labels of those tuples. A `slice(start, stop)` on a number or datetime axis, or a partial date string such as `"2013-02"`, keeps the dimension too.
 
-## Squeeze a dim
+## Squeeze a dimension
 
-Pass one label to squeeze its dim out of the selection's schema:
+Pass one label to squeeze its dimension out of the selection's schema:
 
 ```python
 view = select(record, carrier="wind")
-print(view.schema.dims)
+print(tuple(view.schema.dimensions))
 print(view.properties["entity"].df())
 ```
 
 ```text
-('entity', 'ctype', 'bus', 'snapshot')
+('entity', 'ctype', 'bus', 'snapshot', 'connection')
   entity      ctype
 0  wind1  Generator
 ```
 
-`carrier` and the property `entity.carrier` are gone, and so is `gas1`, whose carrier was dropped. On an attribute, `select` settles rows along the squeezed dim and drops its column:
+`carrier` and the property `entity.carrier` are gone, and so is `gas1`, whose carrier was dropped. On an attribute, `select` settles rows along the squeezed dimension and drops its column:
 
 ```python
 view = record.select(snapshot=1)
@@ -61,7 +61,7 @@ print(view.attributes["p_max_pu"].df())
 1  wind1  p_max_pu         NaN    0.8
 ```
 
-`gas1`'s value, stored with `snapshot` NULL, applies at snapshot 1. To keep the dim at one label, pass a list of one:
+`gas1`'s value, stored with `snapshot` NULL, applies at snapshot 1. To keep the dimension at one label, pass a list of one:
 
 ```python
 print(record.select(snapshot=[1]).attributes["p_max_pu"].df())
@@ -73,7 +73,7 @@ print(record.select(snapshot=[1]).attributes["p_max_pu"].df())
 1  wind1         1  p_max_pu         NaN    0.8
 ```
 
-The dim stays, and `gas1`'s row keeps its NULL `snapshot`.
+The dimension stays, and `gas1`'s row keeps its NULL `snapshot`.
 
 ## Narrow a selection
 
@@ -82,7 +82,7 @@ Call `select` on a selection to add keywords. `labels` returns what you asked fo
 ```python
 narrow = view.select(carrier=["gas"])
 print(narrow.labels, narrow.base is record)
-print(narrow.dims["entity"].df())
+print(narrow.dimensions["entity"].df())
 ```
 
 ```text
@@ -95,7 +95,7 @@ The keywords merge, and `base` is the record you started from, never a selection
 
 ## Lift rows back to the base
 
-Rows computed over a selection lack the squeezed dims. `lift` adds each squeezed label back on the columns that the base declares the attribute over:
+Rows computed over a selection lack the squeezed dimensions. `lift` adds each squeezed label back on the columns that the base declares the attribute over:
 
 ```python
 doubled = view.attributes["p_max_pu"].project("entity, value * 2 AS value")
@@ -109,7 +109,7 @@ print(lifted.df())
 1   gas1         1    1.8
 ```
 
-The lifted rows have snapshot 1 again, so `w.set("p_max_pu", lifted)` stages them on a `WorkingRecord` over the base. An attribute that the base declares over no squeezed dim comes back unchanged.
+The lifted rows have snapshot 1 again, so `w.set("p_max_pu", lifted)` stages them on a `WorkingRecord` over the base. An attribute that the base declares over no squeezed dimension comes back unchanged.
 
 ## Check what `select` refuses
 

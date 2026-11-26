@@ -2,41 +2,58 @@
 #
 # SPDX-License-Identifier: MIT
 
-"""Settling long rows by the broadcast rule.
+"""Settling long rows by the broadcast rule, case by case from `settle_cases.json`.
 
 Notes
 -----
 - [settling rows](https://energy-models.github.io/datarecord/reference/record/#settle)
 """
 
+import json
+from pathlib import Path
+from typing import Any
+
 import duckdb
-import pandas as pd
 import pytest
 
 from datarecord import Flags, settle
 
-_FOREIGN = [("c", "x", 1.0), (None, "x", 2.0), ("a", "z", 3.0)]
-
-
-@pytest.mark.parametrize(
-    ("rows", "filtered"),
-    [
-        pytest.param(
-            [(None, None, 1.0), ("a", None, 2.0), ("a", "x", 3.0)],
-            True,
-            id="filter-nested",
-        ),
-        pytest.param(
-            [("a", None, 1.0), (None, "x", 2.0), ("a", "x", 3.0)],
-            True,
-            id="filter-crossing",
-        ),
-        pytest.param(_FOREIGN, True, id="filter-foreign"),
-        pytest.param(_FOREIGN, False, id="no-filter-foreign"),
-    ],
+CASES: list[dict[str, Any]] = json.loads(
+    (Path(__file__).parent / "settle_cases.json").read_text()
 )
-def test_settle_reads_the_same_whatever_flags_overstate(rows, filtered):
-    """Flags only let `settle` skip work: over-reporting them changes no value.
+
+
+def _table(
+    con: duckdb.DuckDBPyConnection,
+    name: str,
+    columns: list[dict[str, str]],
+    rows: list[list[Any]],
+) -> duckdb.DuckDBPyRelation:
+    typed = ", ".join(f'"{c["name"]}" {c["type"]}' for c in columns)
+    con.execute(f"CREATE TABLE {name} ({typed})")
+    if rows:
+        con.executemany(
+            f"INSERT INTO {name} VALUES ({', '.join('?' * len(columns))})", rows
+        )
+    return con.table(name)
+
+
+def _flags(case: dict[str, Any], every: bool) -> Flags:
+    names = [c["name"] for c in case["columns"]]
+    dims = [d for d in case["labels"] if d in names]
+    if every:
+        return Flags(frozenset(dims), frozenset(dims))
+    values = [{d: row[names.index(d)] for d in dims} for row in case["rows"]]
+    return Flags(
+        frozenset(d for d in dims if any(v[d] is not None for v in values)),
+        frozenset(d for d in dims if any(v[d] is None for v in values)),
+    )
+
+
+@pytest.mark.parametrize("every", [False, True], ids=["exact-flags", "every-dim-mixed"])
+@pytest.mark.parametrize("case", CASES, ids=[c["name"] for c in CASES])
+def test_settle_case(case: dict[str, Any], every: bool) -> None:
+    """`settle` returns a case's expected rows, or fails, whatever flags overstate.
 
     Notes
     -----
@@ -44,32 +61,19 @@ def test_settle_reads_the_same_whatever_flags_overstate(rows, filtered):
     - [flags](https://energy-models.github.io/datarecord/reference/record/#flags)
     """
     con = duckdb.connect()
-    frame = pd.DataFrame(rows, columns=["entity", "scenario", "value"])
-    rel = con.from_df(frame.astype({"entity": object, "scenario": object}))
+    column_of = {c["name"]: c for c in case["columns"]}
+    rel = _table(con, "rows", case["columns"], case["rows"])
     labels = {
-        "entity": con.from_df(pd.DataFrame({"entity": ["a", "b"]})),
-        "scenario": con.from_df(pd.DataFrame({"scenario": ["x", "y"]})),
+        d: _table(con, f"labels_{d}", [column_of[d]], [[label] for label in held])
+        for d, held in case["labels"].items()
+        if d in column_of
     }
-    dims = ("entity", "scenario")
-    exact = Flags(
-        frozenset(d for d in dims if frame[d].notna().any()),
-        frozenset(d for d in dims if frame[d].isna().any()),
-    )
-    every = Flags(frozenset(dims), frozenset(dims))
-    settled = [
-        sorted(settle(rel, labels, f, filter=filtered).fetchall())
-        for f in (exact, every)
-    ]
-    assert settled[0] == settled[1], "the flags of the rows read as every dim mixed"
-    if not filtered:
+    settled = settle(rel, labels, _flags(case, every), filter=case["filter"])
+    if "error" in case:
+        with pytest.raises(duckdb.Error):
+            settled.fetchall()
         return
-    reached = {
-        (e, s)
-        for named_e, named_s, _ in rows
-        for e in ("a", "b")
-        for s in ("x", "y")
-        if named_e in (None, e) and named_s in (None, s)
-    }
-    assert {(e, s) for e, s, _ in settled[0]} == reached, (
-        "a NULL reaches each passed label, a label not passed is dropped"
-    )
+    expected = _table(con, "expected", case["columns"], case["expected"])
+    assert sorted(settled.fetchall(), key=repr) == sorted(
+        expected.fetchall(), key=repr
+    ), case["doc"]

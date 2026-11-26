@@ -13,7 +13,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Status   | Implemented (2026-10-15)         |
 | Requires | [DEP 12](dep-0012-properties.md) |
 | Created  | 2026-10-14                       |
-| Version  | Unreleased                       |
+| Version  | v0.1.0a2                         |
 
 The design landed in [the tools reference](../../reference/tools.md), [the schema](../../reference/schema.md), [the data model](../../reference/data-model.md) and [the record format](../../reference/format.md). Where they and this DEP differ, follow those pages.
 

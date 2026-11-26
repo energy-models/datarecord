@@ -12,7 +12,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Author  | Jonas Hörsch                                                   |
 | Status  | Implemented (2026-10-10)                                       |
 | Created | 2026-10-09                                                     |
-| Version | Unreleased                                                     |
+| Version | v0.1.0a2                                                       |
 
 The design landed in [`Workspace` and `Store`](../../reference/store.md), [layers](../../reference/layers.md), [`WorkingRecord`](../../reference/editing.md), [tools](../../reference/tools.md) and [the package](../package.md). Where they and this DEP differ, follow those pages.
 

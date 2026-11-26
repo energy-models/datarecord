@@ -22,8 +22,8 @@ import json
 import os
 import threading
 import time
-from collections.abc import Hashable, Iterable, Mapping
-from contextlib import nullcontext
+from collections.abc import Hashable, Iterable, Iterator, Mapping
+from contextlib import contextmanager, nullcontext
 from dataclasses import asdict
 from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
@@ -38,9 +38,9 @@ from duckdb import ColumnExpression as col
 from duckdb import ConstantExpression as lit
 from duckdb import DuckDBPyConnection, DuckDBPyRelation
 from pydantic import (
+    AwareDatetime,
     BaseModel,
     ConfigDict,
-    Field,
     PlainSerializer,
     PrivateAttr,
     model_validator,
@@ -51,18 +51,18 @@ from datarecord.mutable import StagedSource, WorkingRecord
 from datarecord.protocols import LayerData, RecordLike
 from datarecord.resolve.record import Record
 from datarecord.resolve.sources import DirectorySource
+from datarecord.schema.meta import Meta, validate_meta
 from datarecord.schema.schema import Schema
-from datarecord.store.cache import materialise, sources_to_read
-from datarecord.store.files import Files, LocalFiles, RemoteFiles
+from datarecord.store.files import Files, LocalFiles, RemoteFiles, S3Credentials
 from datarecord.store.manifest import (
     ClaimFile,
     LayerFiles,
     Manifest,
-    Meta,
     merge_meta,
-    validate_meta,
 )
+from datarecord.store.materialise import materialise, sources_to_read
 from datarecord.store.write import layer_data, write_layer
+from datarecord.templates import Templates
 
 #: The S3 secret's name: an unnamed one would replace a caller's own on a shared instance.
 _SECRET = "datarecord_s3"
@@ -83,7 +83,7 @@ CREATE TABLE IF NOT EXISTS {revisions} (
   id       UUID,
   parent   UUID,
   meta     JSON,
-  files    STRUCT(dims VARCHAR[], attributes VARCHAR[]),
+  files    STRUCT(dimensions VARCHAR[], attributes VARCHAR[], owner_map_rows BIGINT[]),
   schema   VARCHAR,
   PRIMARY KEY (location, id)
 )
@@ -231,19 +231,31 @@ class Workspace:
     con
         A connection to attach `database` on, such as a server's; its default
         database and transactions stay its own. A fresh in-memory one by default.
+        DuckDB shares an S3 secret across the whole connection, so only one
+        workspace on it may reach `s3://` URIs.
     name
         What `database` is attached as, and named by in SQL.
+    credentials
+        The S3 key for `s3://` URIs, in place of the AWS environment's.
+        Without a key from either, the workspace reaches S3 anonymously.
 
     Raises
     ------
     duckdb.BinderException
         If `name` is a database already attached to the connection.
 
+    Attributes
+    ----------
+    templates
+        The SQL text of each read its records build, kept once for every
+        thread (`datarecord.templates`).
+
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
     """
 
     def __init__(
@@ -252,6 +264,7 @@ class Workspace:
         *,
         con: DuckDBPyConnection | None = None,
         name: str = "datarecord",
+        credentials: S3Credentials | None = None,
     ) -> None:
         self.name = name
         self._owned = con is None
@@ -274,8 +287,10 @@ class Workspace:
         self._stores: dict[str, Store] = {}
         self._schemas: dict[str, Schema] = {}
         self._local = LocalFiles()
+        self._credentials = credentials
         self._remote: Files | None = None
         self._remote_lock = threading.Lock()
+        self.templates = Templates(self)
 
     @property
     def con(self) -> DuckDBPyConnection:
@@ -365,42 +380,111 @@ class Workspace:
             raise ValueError(msg)
         with self._remote_lock:
             if self._remote is None:
-                self._remote = self._connect_remote()
+                self._remote = self._connect_remote(self._credentials)
             return self._remote
 
-    def _connect_remote(self) -> Files:
-        """Set up boto3 and DuckDB's `httpfs` from the AWS environment, once.
+    def set_credentials(self, credentials: S3Credentials | None) -> None:
+        """Reach `s3://` URIs with `credentials` from now on, or with the AWS environment for `None`.
 
-        Never for a local workspace: `PROVIDER credential_chain` probes
+        Open records and registered views read with the new key. A call that
+        is running when the key changes may finish with the old one.
+
+        Once the workspace has reached S3, a call that raises leaves it on the
+        old key.
+
+        Raises
+        ------
+        duckdb.Error
+            If DuckDB refuses the S3 secret, such as for `None` where boto3
+            finds a key that DuckDB's credential chain does not.
+
+        Notes
+        -----
+        - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
+        """
+        with self._remote_lock:
+            if self._remote is not None:
+                self._remote = self._connect_remote(credentials)
+            self._credentials = credentials
+
+    def _connect_remote(self, credentials: S3Credentials | None) -> Files:
+        """Set up boto3 and DuckDB's `httpfs` with `credentials`, or the AWS environment.
+
+        Where boto3 finds no key in the AWS environment, both send their
+        requests unsigned.
+
+        Runs on the first `s3://` URI and again on each `set_credentials`,
+        never for a local workspace: `PROVIDER credential_chain` probes
         instance-metadata endpoints that hang for minutes where none exist.
-        With `AWS_ENDPOINT_URL` set, the secret adds what the chain does not
-        supply - the endpoint, path-style addressing, SSL per its scheme - and
-        skips that probe, a self-hosted server having no metadata service.
 
         Raises
         ------
         ImportError
             If boto3, from `datarecord[remote]`, is missing.
+        duckdb.InvalidInputException
+            On the first `s3://` URI, if another workspace on this DuckDB
+            connection already reaches S3.
 
         Notes
         -----
+        - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
         - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
         """
-        files = RemoteFiles()
-        options = ["TYPE s3", "PROVIDER credential_chain"]
-        endpoint = os.environ.get("AWS_ENDPOINT_URL")
-        if endpoint:
-            url = urlparse(endpoint)
-            options += [
-                f"ENDPOINT '{url.netloc}'",
-                "URL_STYLE 'path'",
-                f"USE_SSL {str(url.scheme == 'https').lower()}",
-                "CHAIN 'env;config'",
-            ]
+        files = RemoteFiles(credentials)
+        parameters: list[str | bool] = []
+        if credentials is None:
+            options = _environment_options(anonymous=files.anonymous)
+        else:
+            options, parameters = _config_options(credentials)
         with self._db.cursor() as setup:
             setup.execute("INSTALL httpfs; LOAD httpfs;")
-            setup.execute(f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})")
+            if self._remote is None and _secret_exists(setup):
+                msg = (
+                    f"another workspace on this DuckDB connection already reaches "
+                    f"S3 with the secret `{_SECRET}`, and only one per connection "
+                    f"is supported; open workspace `{self.name}` on its own "
+                    f"connection"
+                )
+                raise duckdb.InvalidInputException(msg)
+            setup.execute(
+                f"CREATE OR REPLACE SECRET {_SECRET} ({', '.join(options)})", parameters
+            )
         return files
+
+    @contextmanager
+    def _scoped(
+        self, prefix: str, credentials: S3Credentials, name: str
+    ) -> Iterator[Files]:
+        """`Files` with `credentials`, and DuckDB's S3 secret `name` with them for `prefix`, while the block runs.
+
+        DuckDB reaches a URI with the secret whose `SCOPE` matches it longest,
+        so a URI under `prefix` with this one and any other with the
+        workspace's. The secret is dropped however the block ends.
+
+        Raises
+        ------
+        ValueError
+            If `prefix` is no `s3://` URI.
+
+        Notes
+        -----
+        - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
+        """
+        if not prefix.startswith("s3://"):
+            msg = f"{prefix} is local, so it takes no S3 credentials"
+            raise ValueError(msg)
+        files = RemoteFiles(credentials)
+        options, parameters = _config_options(credentials)
+        with self._db.cursor() as setup:
+            setup.execute(
+                f"CREATE SECRET {name} ({', '.join(options)}, SCOPE ?)",
+                [*parameters, prefix],
+            )
+        try:
+            yield files
+        finally:
+            with self._db.cursor() as teardown:
+                teardown.execute(f"DROP SECRET {name}")
 
     def store(self, uri: str) -> Store:
         """This workspace's store at `uri`, one object per normalised location.
@@ -496,7 +580,12 @@ class Workspace:
         """Close every thread's cursor and detach the database.
 
         The connection is closed with them only where the workspace opened it;
-        one passed in stays open for its owner.
+        one passed in stays open for its owner, without the workspace's S3
+        secret.
+
+        Notes
+        -----
+        - [S3 credentials](https://energy-models.github.io/datarecord/reference/store/#s3-credentials)
         """
         self._holds.close()
         with self._made_lock:
@@ -504,8 +593,67 @@ class Workspace:
                 cursor.close()
         with self._db.cursor() as teardown:
             teardown.execute(f"DETACH {col(self.name)}")
+            if not self._owned and self._remote is not None:
+                teardown.execute(f"DROP SECRET IF EXISTS {_SECRET}")
         if self._owned:
             self._db.close()
+
+
+def _secret_exists(con: DuckDBPyConnection) -> bool:
+    """Whether the connection holds a secret named `_SECRET`, whichever workspace made it."""
+    return bool(
+        con.execute(
+            "SELECT 1 FROM duckdb_secrets() WHERE name = ?", [_SECRET]
+        ).fetchall()
+    )
+
+
+def _environment_options(*, anonymous: bool) -> list[str]:
+    """The options of a DuckDB S3 secret from the AWS environment.
+
+    With a key, `PROVIDER credential_chain`: the chain is the AWS SDK's
+    default, as boto3's is. DuckDB 2.0 refuses any `CHAIN` naming `config`
+    unless the AWS config file holds the profile, even where the environment
+    or the credentials file holds the key. `anonymous`, where boto3's chain
+    finds no key, is `PROVIDER config` with no key, so DuckDB sends its
+    requests unsigned rather than refuse the empty chain, and still reaches
+    the environment's endpoint, which no secret at all would lose. With
+    `AWS_ENDPOINT_URL` set, the secret adds what the chain does not supply -
+    the endpoint, path-style addressing, SSL per its scheme.
+    """
+    provider = "config" if anonymous else "credential_chain"
+    options = ["TYPE s3", f"PROVIDER {provider}"]
+    endpoint = os.environ.get("AWS_ENDPOINT_URL")
+    if endpoint:
+        url = urlparse(endpoint)
+        options += [
+            f"ENDPOINT {lit(url.netloc)}",
+            "URL_STYLE 'path'",
+            f"USE_SSL {str(url.scheme == 'https').lower()}",
+        ]
+    return options
+
+
+def _config_options(credentials: S3Credentials) -> tuple[list[str], list[str | bool]]:
+    """The options of a DuckDB S3 secret, `PROVIDER config`, and the values they bind.
+
+    The values travel as prepared parameters, never in the statement's text,
+    which DuckDB's query log and parser errors repeat.
+    """
+    values: dict[str, str | bool | None] = {
+        "KEY_ID": credentials.key_id,
+        "SECRET": credentials.secret,
+        "SESSION_TOKEN": credentials.session_token,
+        "REGION": credentials.region,
+        "URL_STYLE": credentials.url_style,
+    }
+    if credentials.endpoint is not None:
+        url = urlparse(credentials.endpoint)
+        values["ENDPOINT"] = url.netloc
+        values["USE_SSL"] = url.scheme == "https"
+    given = {k: v for k, v in values.items() if v is not None}
+    options = ["TYPE s3", "PROVIDER config", *(f"{k} ?" for k in given)]
+    return options, list(given.values())
 
 
 _process: Workspace | None = None
@@ -574,14 +722,14 @@ class Store:
         -----
         - [the record format](https://energy-models.github.io/datarecord/reference/format/)
         """
-        return f"{self.layer_dir(id)}dims/{dim}.parquet"
+        return f"{self.layer_dir(id)}dimensions/{dim}.parquet"
 
     def resolved_dir(self, id: UUID | str) -> str:
-        """Revision `id`'s node caches, under its layer where no manifest lists them.
+        """Revision `id`'s resolved files, under its layer where no manifest lists them.
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         return f"{self.layer_dir(id)}resolved/"
 
@@ -590,34 +738,37 @@ class Store:
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         return f"{self.resolved_dir(id)}owner_map.parquet"
 
-    def dim_owners_uri(self, id: UUID | str) -> str:
-        """Where revision `id`'s dim owners are materialised.
+    def dimension_owners_uri(self, id: UUID | str) -> str:
+        """Where revision `id`'s dimension owners are materialised.
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
-        return f"{self.resolved_dir(id)}dim_owners.parquet"
+        return f"{self.resolved_dir(id)}dimension_owners.parquet"
 
     # -- writing -------------------------------------------------------------
 
-    def claim(self, *, parent: Revision | None, meta: Meta | None = None) -> Claim:
+    def claim(
+        self, *, parent: Revision | Claim | None, meta: Meta | None = None
+    ) -> Claim:
         """Hand out a new layer id under `parent`, by its create-only `claim.json`.
 
         The layer is pending, reached by no read, until `Claim.commit` writes
         its manifest; `meta` is the revision's, which the commit may extend
-        but not change.
+        but not change. A pending `parent` must be committed before this
+        claim is.
 
         Raises
         ------
         ValueError
-            If `parent` is a revision of another store, naming both locations.
-        pydantic.ValidationError
-            If `meta` is not flat, each value a string, finite number or boolean.
+            If `parent` is of another store, naming both locations.
+        TypeError
+            If `meta` holds a value that is no JSON value, naming its path.
 
         Notes
         -----
@@ -625,7 +776,7 @@ class Store:
         """
         if parent is not None and parent.store.uri != self.uri:
             msg = (
-                f"revision {parent.id} is of the store at {parent.store.uri}, so "
+                f"layer {parent.id} is of the store at {parent.store.uri}, so "
                 f"it is no parent in the store at {self.uri}"
             )
             raise ValueError(msg)
@@ -637,6 +788,35 @@ class Store:
         )
         claimed.write(self.files, self.claim_uri(claimed.id))
         return Claim(store=self, **asdict(claimed))
+
+    def claim_from(self, payload: str) -> Claim:
+        """Rebuild a claim serialised by `model_dump_json` on this store, so on its workspace.
+
+        A payload whose keys are exactly `id` and `store` is completed from
+        `claim.json`; any other is validated as it stands, without a read.
+
+        Raises
+        ------
+        ValueError
+            If `payload` is no JSON object, or names no store location or
+            another store's.
+        KeyError
+            If a payload of only the id and the location names a layer with
+            no claim, as after a cleanup.
+        pydantic.ValidationError
+            If a field of `payload` is missing or malformed, such as a
+            `created` without a time zone.
+
+        Notes
+        -----
+        - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
+        """
+        data = json.loads(payload)
+        location = data.get("store") if isinstance(data, dict) else None
+        if not isinstance(location, str) or _absolute(location) != self.uri:
+            msg = f"{payload} is no claim of the store at {self.uri}"
+            raise ValueError(msg)
+        return Claim.model_validate(Claim._complete(self, data))
 
     @overload
     def commit(
@@ -724,8 +904,9 @@ class Store:
             digest = schema.digest
             self.workspace._schemas.setdefault(digest, schema)
             files = {
-                "dims": list(manifest.files.dims),
+                "dimensions": list(manifest.files.dimensions),
                 "attributes": list(manifest.files.attributes),
+                "owner_map_rows": list(manifest.files.owner_map_rows),
             }
             self._insert(
                 _in(self.workspace, "INSERT OR IGNORE INTO {schemas} VALUES (?, ?)"),
@@ -844,7 +1025,9 @@ class Store:
     def _scan(self) -> set[UUID]:
         """List `layers/` once, cache each manifest not yet held, and return the pending ids.
 
-        A pending layer is one listed without a manifest.
+        A pending layer is one listed without a manifest whose directory
+        exists: SeaweedFS lists the directory a cleanup emptied, where S3
+        lists nothing.
         """
         held = {
             row[0]
@@ -858,32 +1041,35 @@ class Store:
         for id, manifest in read.items():
             if manifest is not None:
                 self._cache_upward(id, read)
-        return {id for id, m in read.items() if m is None}
+        unmanifested = [id for id, m in read.items() if m is None]
+        return {id for id in unmanifested if self.files.exists(self.layer_dir(id))}
 
     def revisions(self, *, meta: Meta | None = None) -> list[Revision]:
-        """Every revision in this store whose `meta` holds each pair of `meta`, unordered.
+        """Every revision in this store whose `meta` contains the given meta, unordered.
 
         A pending layer is none. One listing of `layers/`, reading only the
-        manifests the workspace does not already hold; a value matches only
-        one of its own type, so `1` matches neither `1.0` nor `True`.
+        manifests the workspace does not already hold.
 
         Raises
         ------
-        pydantic.ValidationError
-            If `meta` is not flat, each value a string, finite number or boolean.
+        TypeError
+            If `meta` holds a value that is no JSON value, naming its path.
 
         Notes
         -----
-        - [the layers](https://energy-models.github.io/datarecord/reference/store/)
+        - [containment](https://energy-models.github.io/datarecord/reference/store/#store)
         """
-        wanted = json.dumps(validate_meta(meta))
+        # json_contains matches at any depth; a fresh key anchors it at the top.
+        key = uuid4().hex
+        wanted = json.dumps({key: validate_meta(meta)})
         self._scan()
         rows = self.workspace.con.execute(
             _in(
                 self.workspace,
-                "SELECT id FROM {revisions} WHERE location = ? AND json_contains(meta, ?)",
+                "SELECT id FROM {revisions} WHERE location = ? "
+                "AND json_contains(json_object(?, meta), ?)",
             ),
-            [self.uri, wanted],
+            [self.uri, key, wanted],
         ).fetchall()
         return [Revision(id=id, store=self) for (id,) in rows]
 
@@ -999,14 +1185,16 @@ class Store:
 class _OfStore(BaseModel):
     """A layer of a store, one location and one id whatever it has read.
 
-    Serialises as them, and validates back through `Workspace.process()`.
+    Serialises with them, and validates back through `Workspace.process()`.
 
     Notes
     -----
     - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True, ser_json_inf_nan="constants"
+    )
 
     id: UUID
     store: Annotated[Store, PlainSerializer(lambda s: s.uri, return_type=str)]
@@ -1014,15 +1202,14 @@ class _OfStore(BaseModel):
     @model_validator(mode="before")
     @classmethod
     def _attach(cls, data: Any) -> Any:
-        """A location and id from the serialised form, completed by `_complete`."""
+        """The serialised form on the process's workspace, completed by `_complete`."""
         if isinstance(data, dict) and isinstance(data.get("store"), str):
-            store = Workspace.process().store(data["store"])
-            data = cls._complete(store, UUID(str(data["id"])))
+            data = cls._complete(Workspace.process().store(data["store"]), data)
         return data
 
     @classmethod
-    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
-        """The fields of layer `id` of `store`, read from its files."""
+    def _complete(cls, store: Store, data: dict[str, Any]) -> dict[str, Any]:
+        """The fields of the serialised `data` on `store`, read from its files where `data` lacks them."""
         raise NotImplementedError
 
     def __eq__(self, other: object) -> bool:
@@ -1037,9 +1224,11 @@ class _OfStore(BaseModel):
 class Claim(_OfStore):
     """A layer id handed out by `Store.claim`, whose layer is pending until `commit`.
 
-    Serialises as its store's location and its id, and validates or unpickles
-    back through `Workspace.process()` by reading its claim file, so a job in
-    another process commits it.
+    Serialises as its id, its store's location, `parent`, `meta` and
+    `created`, so a job in another process commits it. `Store.claim_from`
+    rebuilds it on a store the caller names; validating or unpickling rebuilds
+    it on `Workspace.process()`. Either takes the five fields as they stand,
+    and completes a form of only the id and location from the claim file.
 
     Attributes
     ----------
@@ -1053,28 +1242,30 @@ class Claim(_OfStore):
     Notes
     -----
     - [a revision exists only by its file](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
     """
 
-    parent: UUID | None = Field(exclude=True)
-    meta: Meta = Field(exclude=True)
-    created: datetime = Field(exclude=True)
+    parent: UUID | None
+    meta: Meta
+    created: AwareDatetime
 
     @classmethod
-    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
-        """Completed from the claim file.
+    def _complete(cls, store: Store, data: dict[str, Any]) -> dict[str, Any]:
+        """Completed from the claim file only where `data` is the id and location alone.
 
         Raises
         ------
         KeyError
             If the layer has no claim, as after a cleanup.
         """
-        return {"store": store, **asdict(store._read_claim(id))}
+        if data.keys() != {"id", "store"}:
+            return {**data, "store": store}
+        return {"store": store, **asdict(store._read_claim(UUID(str(data["id"]))))}
 
     def __reduce__(self) -> tuple[Any, ...]:
         return Claim.model_validate_json, (self.model_dump_json(),)
 
-    def _refuse_cleaned_up(self) -> None:
+    def _refuse_cleaned_up(self, files: Files) -> None:
         """Raise once `Store.cleanup` deleted this claim's layer.
 
         Checked before the data and again right before the manifest, which
@@ -1085,7 +1276,7 @@ class Claim(_OfStore):
         ValueError
             If the claim file is gone.
         """
-        if not self.store.files.exists(self.store.claim_uri(self.id)):
+        if not files.exists(self.store.claim_uri(self.id)):
             msg = (
                 f"layer {self.id} was cleaned up, so its claim commits no "
                 f"more; claim a new layer"
@@ -1093,7 +1284,11 @@ class Claim(_OfStore):
             raise ValueError(msg)
 
     def commit(
-        self, source: LayerData | RecordLike, *, meta: Meta | None = None
+        self,
+        source: LayerData | RecordLike,
+        *,
+        meta: Meta | None = None,
+        credentials: S3Credentials | None = None,
     ) -> Revision:
         """Write `source` as this claim's layer, then its manifest, which makes it a revision.
 
@@ -1101,6 +1296,13 @@ class Claim(_OfStore):
         create-only and last, lists its files, its full schema, the claim's
         parent and the claim's `meta` with `meta` added. A `WorkingRecord` is
         written as its edits.
+
+        Parameters
+        ----------
+        credentials
+            A key for this layer alone, which reaches every file under its
+            layer directory during the commit, while everything else, such
+            as the parent's layers, is read with the workspace's key.
 
         Raises
         ------
@@ -1115,29 +1317,57 @@ class Claim(_OfStore):
         PreconditionFailedError
             If another commit of this claim wrote the manifest first.
         KeyError
-            If the claim's parent is gone from the store.
-        pydantic.ValidationError
-            If `meta` is not flat, each value a string, finite number or boolean.
+            If the claim's parent is a pending claim not yet committed, or is
+            gone from the store.
+        ValueError
+            If `credentials` come with a local store.
+        PermissionError
+            If the server denies the layer's key a call on `claim.json` or
+            `manifest.json`.
+        duckdb.HTTPException
+            If the server denies the layer's key a write of the layer's data.
+        TypeError
+            If `meta` holds a value that is no JSON value, naming its path.
 
         Notes
         -----
         - [a revision exists only by its file](https://energy-models.github.io/datarecord/reference/store/#a-revision-exists-only-by-its-manifest)
+        - [a commit with a key for its layer](https://energy-models.github.io/datarecord/reference/store/#a-commit-with-a-key-for-its-layer)
         """
-        store = self.store
         meta = merge_meta(self.meta, validate_meta(meta))
         if isinstance(source, WorkingRecord):
             source = source.edits
-        if isinstance(source, StagedSource) and source.base != self.parent:
+        staged = source if isinstance(source, StagedSource) else None
+        if staged is not None and staged.base != self.parent:
             msg = (
-                f"these edits were staged over revision {source.base}, so they "
+                f"these edits were staged over revision {staged.base}, so they "
                 f"are a delta against it and not against {self.parent}; commit "
                 f"them as a child of the revision the `WorkingRecord` was built over"
             )
             raise ValueError(msg)
-        if store.files.exists(store.manifest_uri(self.id)):
+        store = self.store
+        if credentials is None:
+            return self._commit(source, meta, store.files)
+        name = f"datarecord_claim_{self.id.hex}_{uuid4().hex}"
+        with store.workspace._scoped(
+            store.layer_dir(self.id), credentials, name
+        ) as files:
+            return self._commit(source, meta, files)
+
+    def _commit(
+        self, source: LayerData | RecordLike, meta: Meta, files: Files
+    ) -> Revision:
+        """`commit` with `files` reaching the layer directory.
+
+        Every call under the layer goes through `files`, and every other
+        through the store's, so a key scoped to the layer is never asked for
+        an ancestor.
+        """
+        store = self.store
+        if files.exists(store.manifest_uri(self.id)):
             msg = f"revision {self.id} is committed already; a claim commits once"
             raise ValueError(msg)
-        self._refuse_cleaned_up()
+        self._refuse_cleaned_up(files)
         parent = None if self.parent is None else store.revision(self.parent)
         data = layer_data(source, store.workspace.con)
         schema = data.schema
@@ -1150,14 +1380,18 @@ class Claim(_OfStore):
                 )
                 raise ValueError(msg)
         with nullcontext() if parent is None else parent.record as base:
-            files = write_layer(
-                data, store.layer_dir(self.id), store.workspace, parent=base
+            written = write_layer(
+                data,
+                store.layer_dir(self.id),
+                store.workspace,
+                parent=base,
+                owner_rows_from=source if isinstance(source, StagedSource) else None,
             )
         manifest = Manifest(
-            id=self.id, parent=self.parent, schema=schema, files=files, meta=meta
+            id=self.id, parent=self.parent, schema=schema, files=written, meta=meta
         )
-        self._refuse_cleaned_up()
-        manifest.write(store.files, store.manifest_uri(self.id))
+        self._refuse_cleaned_up(files)
+        manifest.write(files, store.manifest_uri(self.id))
         store._cache([manifest])
         return Revision(id=self.id, store=store)
 
@@ -1193,8 +1427,8 @@ def ancestry(store: Store, revision_id: UUID) -> list[UUID]:
     """Revision ids along the root->node path, root first - resolution order.
 
     The whole path. Truncating it at the nearest materialised node is the
-    reader's business (`cache.sources_to_read`), since whether a node's
-    caches exist is a fact about the filesystem rather than about the tree.
+    reader's business (`materialise.sources_to_read`), since whether a node's
+    resolved files exist is a fact about the filesystem rather than about the tree.
 
     Raises
     ------
@@ -1203,7 +1437,7 @@ def ancestry(store: Store, revision_id: UUID) -> list[UUID]:
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     return [manifest.id for manifest in lineage(store, revision_id)]
 
@@ -1276,7 +1510,7 @@ class Revision(_OfStore):
     _manifest: Manifest | None = PrivateAttr(default=None)
 
     @classmethod
-    def _complete(cls, store: Store, id: UUID) -> dict[str, Any]:
+    def _complete(cls, store: Store, data: dict[str, Any]) -> dict[str, Any]:
         """Read with every parent's manifest the process does not yet hold.
 
         Raises
@@ -1284,6 +1518,7 @@ class Revision(_OfStore):
         KeyError
             If the store has no revision `id`.
         """
+        id = UUID(str(data["id"]))
         store.revision(id)
         return {"id": id, "store": store}
 
@@ -1306,7 +1541,7 @@ class Revision(_OfStore):
         - [the Record protocol](https://energy-models.github.io/datarecord/reference/record/)
         - [consuming a record](https://energy-models.github.io/datarecord/reference/tools/)
         - [a layer's data is write-once](https://energy-models.github.io/datarecord/reference/layers/#write-once)
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
         """
         if self._record is None or self._record.closed:
@@ -1346,7 +1581,7 @@ class Revision(_OfStore):
     # -- tree ---------------------------------------------------------------
 
     def materialise(self) -> None:
-        """Write this node's caches - owner map, dim owners and dead labels.
+        """Write this node's resolved files - owner map, dimension owners and dead labels.
 
         A policy rather than a lifecycle step, and purely additive: it changes
         no answer, only how many layers a descendant's read touches. Once these
@@ -1354,7 +1589,7 @@ class Revision(_OfStore):
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         materialise(self.id, self.record.sources, self.store)
 
@@ -1365,7 +1600,7 @@ class Revision(_OfStore):
 
         Notes
         -----
-        - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+        - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
         """
         return ancestry(self.store, self.id)
 

@@ -27,7 +27,7 @@ import operator
 import sys
 import time
 import weakref
-from collections.abc import Callable, Iterable, Iterator, Sequence
+from collections.abc import Callable, Container, Iterable, Iterator, Sequence
 from contextlib import AbstractContextManager, contextmanager, suppress
 from functools import partial, reduce
 from pathlib import Path
@@ -97,7 +97,7 @@ def anchored(rel: DuckDBPyRelation, owner: object) -> DuckDBPyRelation:
 
     Notes
     -----
-    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     """
     weakref.finalize(rel, _keep, owner)
     return rel
@@ -145,14 +145,11 @@ def transaction(
         Where `con` already holds an open transaction, which DuckDB cannot nest
         and the block could not roll back alone.
     """
-    try:
-        con.begin()
-    except TransactionException as e:
-        msg = (
-            f"`{operation}` runs in its own transaction, and this cursor already "
-            f"holds one open; commit or roll it back before calling it ({url})"
-        )
-        raise TransactionException(msg) from e
+    _begin(
+        con,
+        f"`{operation}` runs in its own transaction, and this cursor already "
+        f"holds one open; commit or roll it back before calling it ({url})",
+    )
     undo: list[Callable[[], object]] = []
     try:
         try:
@@ -179,12 +176,20 @@ def refuse_open_transaction(con: DuckDBPyConnection, operation: str, url: str) -
         pass
 
 
+def _begin(con: DuckDBPyConnection, refusal: str) -> None:
+    """Open a transaction on `con`, raising `TransactionException` with `refusal` where one is open already."""
+    try:
+        con.begin()
+    except TransactionException as e:
+        raise TransactionException(refusal) from e
+
+
 def union_all_by_name(rels: Sequence[DuckDBPyRelation]) -> DuckDBPyRelation:
     """Fold relations pairwise through `UNION ALL BY NAME`, an arm lacking a column reading NULL there.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     - [resolving a relation](https://energy-models.github.io/datarecord/reference/resolution/#reading-an-attribute)
     """
     return reduce(DuckDBPyRelation.union_by_name, rels)
@@ -205,8 +210,8 @@ def join_on(
 def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     """NULL-safe equality on `columns`, between two aliased relations.
 
-    What an address coordinate is matched on everywhere: a row exists or it does
-    not, so NULL means "this key has no value there" and must match the same
+    What a dimension's column is matched on everywhere: a row exists or it does
+    not, so NULL means every label of the dimension and must match the same
     NULL on the other side, which a plain `=` never does.
     """
     return ex_all(
@@ -215,8 +220,8 @@ def null_safe(alias_a: str, alias_b: str, columns: Iterable[str]) -> Expression:
     )
 
 
-def named_mask(dims: Sequence[str], alias: str | None = None) -> Expression:
-    """A row's named set over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
+def null_pattern(dims: Sequence[str], alias: str | None = None) -> Expression:
+    """A row's pattern over `dims` as a bitmask, bit `i` for `dims[i]`, its columns under `alias` where given."""
     return reduce(
         operator.add,
         (
@@ -228,6 +233,11 @@ def named_mask(dims: Sequence[str], alias: str | None = None) -> Expression:
         ),
         lit(0),
     )
+
+
+def pattern(dims: Iterable[str], named: Container[str]) -> int:
+    """The `null_pattern` of a row naming exactly those of `dims` in `named`."""
+    return sum(1 << i for i, d in enumerate(dims) if d in named)
 
 
 def is_frame(value: Any) -> bool:
@@ -365,7 +375,7 @@ def numbered_relation(
 
 
 def empty_relation(
-    con: DuckDBPyConnection, **columns: DuckDBPyType
+    con: DuckDBPyConnection, /, **columns: DuckDBPyType
 ) -> DuckDBPyRelation:
     """Return a relation with no rows and the names and types given in `columns`.
 
@@ -415,6 +425,15 @@ def tables_in(
     return {table for (table,) in rows}
 
 
+#: What `shared_table` raises where it would create a table in an open transaction.
+_CREATE_IN_TRANSACTION = (
+    "this would create the record's shared tables inside the open "
+    "transaction on this cursor, and a rollback would drop them; call "
+    "`record.prepare()` before opening the transaction "
+    "(https://energy-models.github.io/datarecord/reference/store/#threads)"
+)
+
+
 def shared_table(
     con: DuckDBPyConnection,
     database: str,
@@ -433,6 +452,12 @@ def shared_table(
     winner commits, when its schema or table is not yet visible, so each
     `create` is retried until it either lands or meets the committed one.
 
+    Raises
+    ------
+    TransactionException
+        Where the table is missing and `con` holds an open transaction, whose
+        rollback would drop it from under every relation read off it.
+
     Notes
     -----
     - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
@@ -441,6 +466,8 @@ def shared_table(
     name = f"{schema}.{table}"
     if table in tables_in(con, database, parent, id):
         return con.table(name)
+    _begin(con, _CREATE_IN_TRANSACTION)
+    con.commit()
     _past_conflicts(lambda: con.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}"))
     with build() as rel, suppress(duckdb.CatalogException):
         _past_conflicts(lambda: create_table(con, name, rel))
@@ -472,7 +499,7 @@ def scratch_table(
 
     Notes
     -----
-    - [the database's schemas](https://energy-models.github.io/datarecord/design/storage/store/#the-databases-schemas)
+    - [the database's schemas](https://energy-models.github.io/datarecord/reference/store/#the-database)
     """
     name = temp_table(con, rel, "t")
     try:

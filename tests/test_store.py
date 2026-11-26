@@ -12,23 +12,34 @@ Notes
 
 import json
 import math
+import os
 import pickle
+import re
+import subprocess
+import sys
 from collections import Counter
-from datetime import timedelta
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from pathlib import Path
+from textwrap import dedent
+from typing import Any
 from uuid import uuid4
 
 import duckdb
+import numpy as np
 import pandas as pd
 import pytest
+from botocore import UNSIGNED
+from botocore.stub import Stubber
 from pydantic import ValidationError
 
-from datarecord import Claim, Revision, Workspace
+from datarecord import Claim, Record, Revision, S3Credentials, Workspace
 from datarecord.mutable import WorkingRecord
+from datarecord.schema.schema import Schema
 from datarecord.schema.specs import Dimension
 from datarecord.store import write
-from datarecord.store.files import LocalFiles, PreconditionFailedError
+from datarecord.store.files import LocalFiles, PreconditionFailedError, RemoteFiles
 from tests.fixtures import (
     broadcast,
     empty_child,
@@ -138,7 +149,7 @@ class _Recording(LocalFiles):
 def test_a_commit_writes_each_file_once(workspace, store, monkeypatch):
     """A commit without a retry writes its claim, data and manifest once each.
 
-    Node caches are not counted.
+    Resolved files are not counted.
 
     Notes
     -----
@@ -187,6 +198,402 @@ def test_a_second_claim_of_an_id_fails(store, committed):
     uri = store.claim_uri(claim.id)
     with pytest.raises(PreconditionFailedError):
         store._read_claim(claim.id).write(store.files, uri)
+
+
+_KEY = "s3://bucket/record/layers/x/manifest.json"
+
+
+@pytest.fixture
+def s3(monkeypatch) -> Iterator[tuple[RemoteFiles, Stubber]]:
+    """`RemoteFiles` whose S3 client answers only what the test stubs."""
+    monkeypatch.delenv("AWS_ENDPOINT_URL", raising=False)
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "stub")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "stub")
+    files = RemoteFiles()
+    with Stubber(files._s3) as stub:
+        yield files, stub
+        stub.assert_no_pending_responses()
+
+
+def test_an_absent_s3_key_is_a_miss(s3):
+    """S3 answers 404 for a key it does not hold, to a caller with ListBucket.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    stub.add_client_error("get_object", "NoSuchKey", http_status_code=404)
+    stub.add_client_error("head_object", "404", http_status_code=404)
+    stub.add_response("list_objects_v2", {"KeyCount": 0})
+    assert files.read_text(_KEY) is None
+    assert not files.exists(_KEY), "a 404 on HEAD falls back to a listing"
+
+
+def test_an_s3_directory_holding_no_key_is_absent(s3):
+    """SeaweedFS keeps a directory once its keys are deleted, and answers a HEAD on it.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    stub.add_response("list_objects_v2", {"KeyCount": 0})
+    assert not files.exists("s3://bucket/record/layers/x/"), "only a listing decides"
+
+
+@pytest.mark.parametrize(
+    ("operations", "call"),
+    [
+        (["get_object"], lambda files: files.read_text(_KEY)),
+        (["put_object"], lambda files: files.create(_KEY, "{}")),
+        (["list_objects_v2"], lambda files: files.list(_KEY)),
+        (["head_object"], lambda files: files.exists(_KEY)),
+        (["head_object", "list_objects_v2"], lambda files: files.exists(_KEY)),
+        (["list_objects_v2"], lambda files: files.delete(f"{_KEY}/")),
+    ],
+    ids=["read_text", "create", "list", "exists", "exists-listing", "delete"],
+)
+def test_a_denied_s3_call_raises_naming_the_uri(
+    s3, operations: list[str], call: Callable[[RemoteFiles], object]
+):
+    """A 403 is no miss: a token scoped elsewhere fails loudly.
+
+    Every operation but the last answers 404, the last 403.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    *missed, denied = operations
+    for operation in missed:
+        stub.add_client_error(operation, "404", http_status_code=404)
+    stub.add_client_error(denied, "AccessDenied", http_status_code=403)
+    with pytest.raises(PermissionError, match=re.escape(_KEY)):
+        call(files)
+
+
+@pytest.mark.parametrize(
+    ("codes", "raised"),
+    [
+        (["AccessDenied", "AccessDenied"], PermissionError),
+        (["AccessDenied", "InternalError"], OSError),
+    ],
+    ids=["denied", "failed"],
+)
+def test_an_s3_delete_refused_key_by_key_raises(
+    s3, codes: list[str], raised: type[OSError]
+):
+    """S3 answers a batch delete with 200 and an error per key it refused.
+
+    Only where every refusal is `AccessDenied` is the delete denied.
+
+    Notes
+    -----
+    - [files, local and remote](https://energy-models.github.io/datarecord/reference/store/#files-local-and-remote)
+    """
+    files, stub = s3
+    keys = [f"record/layers/x/{i}" for i in range(len(codes))]
+    stub.add_response("list_objects_v2", {"Contents": [{"Key": k} for k in keys]})
+    errors = [{"Key": k, "Code": c} for k, c in zip(keys, codes, strict=True)]
+    stub.add_response("delete_objects", {"Errors": errors})
+    with pytest.raises(raised, match=re.escape("s3://bucket/record/layers/x/")) as e:
+        files.delete("s3://bucket/record/layers/x/")
+    assert type(e.value) is raised, "a mixed refusal is no PermissionError"
+
+
+_KEY_ID = "AKIAEXAMPLE"
+_SECRETS = ("wJalr-secret", "FwoGZ-token")
+
+
+def test_s3_credentials_keep_the_secret_and_token_out_of_their_repr():
+    credentials = S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1])
+    shown = f"{credentials!r} {credentials}"
+    assert _KEY_ID in shown
+    assert not any(s in shown for s in _SECRETS), "a log line shows no secret"
+
+
+@pytest.mark.parametrize(
+    ("given", "match"),
+    [
+        ({"key_id": ""}, "non-empty"),
+        ({"secret": ""}, "non-empty"),
+        ({"endpoint": "localhost:8333"}, "its scheme"),
+        ({"endpoint": "http://localhost:8333/bucket"}, "no user, path"),
+        ({"endpoint": "http://localhost:8333?x=1"}, "no user, path"),
+        ({"endpoint": "http://localhost:8333#x"}, "no user, path"),
+        ({"endpoint": "http://key:secret@localhost:8333"}, "no user, path"),
+        ({"url_style": "virtual"}, "`url_style` is 'virtual'"),
+    ],
+    ids=[
+        "key_id",
+        "secret",
+        "endpoint-scheme",
+        "endpoint-path",
+        "endpoint-query",
+        "endpoint-fragment",
+        "endpoint-userinfo",
+        "url_style",
+    ],
+)
+def test_s3_credentials_refuse_what_no_server_takes(given: dict[str, Any], match: str):
+    with pytest.raises(ValueError, match=match):
+        S3Credentials(**{"key_id": _KEY_ID, "secret": _SECRETS[0], **given})
+
+
+def _secret(workspace: Workspace) -> dict[str, str]:
+    """The workspace's DuckDB S3 secret, as DuckDB lists it with secrets redacted."""
+    ((listed,),) = workspace.con.execute(
+        "SELECT secret_string FROM duckdb_secrets() WHERE name = 'datarecord_s3'"
+    ).fetchall()
+    return dict(kv.split("=", 1) for kv in listed.split(";") if kv)
+
+
+@pytest.mark.parametrize(
+    "endpoint", ["http://localhost:8333", "http://localhost:8333/"]
+)
+def test_s3_credentials_take_an_endpoint_with_a_trailing_slash(
+    workspace, endpoint: str
+):
+    workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0], endpoint=endpoint))
+    workspace.files("s3://bucket/record")
+    assert _secret(workspace)["endpoint"] == "localhost:8333"
+
+
+def test_injected_credentials_set_up_boto3_and_duckdb_alike(workspace, monkeypatch):
+    """The environment's endpoint reaches neither, before or after the swap."""
+    monkeypatch.setenv("AWS_ENDPOINT_URL", "http://elsewhere:9000")
+    workspace.set_credentials(
+        S3Credentials(
+            _KEY_ID,
+            _SECRETS[0],
+            session_token=_SECRETS[1],
+            endpoint="https://s3.example.org",
+            region="eu-west-1",
+            url_style="path",
+        )
+    )
+    files = workspace.files("s3://bucket/record")
+    assert isinstance(files, RemoteFiles)
+    assert files._s3.meta.endpoint_url == "https://s3.example.org"
+    assert files._s3.meta.region_name == "eu-west-1"
+    secret = _secret(workspace)
+    assert {k: secret[k] for k in ("provider", "key_id", "endpoint", "use_ssl")} == {
+        "provider": "config",
+        "key_id": _KEY_ID,
+        "endpoint": "s3.example.org",
+        "use_ssl": "true",
+    }
+    assert secret["secret"] == secret["session_token"] == "redacted"
+
+    workspace.set_credentials(S3Credentials("other", "other"))
+    files = workspace.files("s3://bucket/record")
+    assert isinstance(files, RemoteFiles)
+    assert files._s3.meta.endpoint_url == "https://s3.eu-central-1.amazonaws.com"
+    secret = _secret(workspace)
+    assert (secret["key_id"], secret["url_style"]) == ("other", "vhost")
+    assert "endpoint" not in secret and "session_token" not in secret
+
+
+def _connect(workspace: Workspace, credentials: S3Credentials) -> None:
+    workspace.set_credentials(credentials)
+    workspace.files("s3://bucket/record")
+
+
+def _commit_with_a_key_for_its_layer(
+    workspace: Workspace, credentials: S3Credentials
+) -> None:
+    """Commit a claim on S3 with `credentials` for its layer, failing at its first S3 call."""
+    workspace.set_credentials(S3Credentials("reader", "reader"))
+    store = workspace.store("s3://bucket/record")
+    claim = Claim(
+        id=uuid4(), store=store, parent=None, meta={}, created=datetime.now(UTC)
+    )
+    with pytest.raises(ConnectionError, match="offline"):
+        claim.commit(_p_nom(), credentials=credentials)
+
+
+@pytest.mark.parametrize(
+    ("secret_by", "statement"),
+    [
+        (_connect, "CREATE OR REPLACE SECRET"),
+        (_commit_with_a_key_for_its_layer, "CREATE SECRET"),
+    ],
+)
+def test_credentials_stay_out_of_duckdbs_query_log(
+    workspace,
+    monkeypatch,
+    secret_by: Callable[[Workspace, S3Credentials], None],
+    statement: str,
+):
+    def offline(*_: object) -> bool:
+        raise ConnectionError("offline")
+
+    monkeypatch.setattr(RemoteFiles, "exists", offline)
+    workspace.con.execute("SET enable_logging = true")
+    secret_by(workspace, S3Credentials(_KEY_ID, _SECRETS[0], session_token=_SECRETS[1]))
+    logged = workspace.con.execute("SELECT message FROM duckdb_logs").fetchall()
+    assert any(statement in m for (m,) in logged), "the log holds the statement"
+    leaked = [m for (m,) in logged for s in (_KEY_ID, *_SECRETS) if s in m]
+    assert leaked == [], "credentials bind as parameters, out of the logged text"
+
+
+def _secret_in_a_fresh_process(script: str, **environment: str) -> dict[str, str]:
+    """The DuckDB S3 secret of `script`'s workspace `ws`, run in a process started with `environment`.
+
+    DuckDB's AWS SDK on Windows reads the environment as it was when the aws
+    extension loaded, so its credential chain never sees a `monkeypatch` made
+    after an earlier test loaded it. A fresh process reads `environment` from
+    the start, on every platform.
+    """
+    env = {k: v for k, v in os.environ.items() if not k.startswith("AWS_")}
+    env |= {"AWS_REGION": "us-east-1", "AWS_EC2_METADATA_DISABLED": "true"}
+    listing = (
+        'print(ws.con.execute("SELECT secret_string FROM duckdb_secrets() '
+        "WHERE name = 'datarecord_s3'\").fetchone()[0])"
+    )
+    done = subprocess.run(
+        [sys.executable, "-c", f"{dedent(script)}\n{listing}"],
+        env=env | environment,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    return dict(kv.split("=", 1) for kv in done.stdout.strip().split(";"))
+
+
+@pytest.mark.parametrize("source", ["environment", "credentials-file"])
+def test_the_environments_key_sets_up_duckdb_without_a_config_file(
+    tmp_path, source: str
+):
+    """A self-hosted server's key, from the environment or a profile, with no `~/.aws/config`."""
+    credentials = tmp_path / "credentials"
+    credentials.write_text(
+        f"[default]\naws_access_key_id = {_KEY_ID}\naws_secret_access_key = x\n"
+    )
+    environment = (
+        {"AWS_ACCESS_KEY_ID": _KEY_ID, "AWS_SECRET_ACCESS_KEY": _SECRETS[0]}
+        if source == "environment"
+        else {"AWS_SHARED_CREDENTIALS_FILE": str(credentials)}
+    )
+    secret = _secret_in_a_fresh_process(
+        """
+        from datarecord import Workspace
+        ws = Workspace()
+        ws.files("s3://bucket/record")
+        """,
+        **environment,
+        AWS_CONFIG_FILE=str(tmp_path / "missing"),
+        AWS_ENDPOINT_URL="http://localhost:8333",
+    )
+    assert (secret["provider"], secret["key_id"], secret["endpoint"]) == (
+        "credential_chain",
+        _KEY_ID,
+        "localhost:8333",
+    )
+
+
+@pytest.fixture
+def keyless(monkeypatch) -> None:
+    """An AWS environment in which boto3 finds no key."""
+    for name in [k for k in os.environ if k.startswith("AWS_")]:
+        monkeypatch.delenv(name)
+    monkeypatch.setenv("AWS_CONFIG_FILE", os.devnull)
+    monkeypatch.setenv("AWS_SHARED_CREDENTIALS_FILE", os.devnull)
+    monkeypatch.setenv("AWS_EC2_METADATA_DISABLED", "true")
+    monkeypatch.setenv("AWS_REGION", "us-east-1")
+
+
+def _unsigned(files: object) -> bool:
+    assert isinstance(files, RemoteFiles)
+    return files.anonymous and files._s3.meta.config.signature_version is UNSIGNED
+
+
+@pytest.mark.parametrize("before", [None, S3Credentials(_KEY_ID, _SECRETS[0])])
+def test_a_workspace_without_a_key_reaches_s3_anonymously(
+    workspace, keyless, before: S3Credentials | None
+):
+    """Without a key anywhere, boto3 and DuckDB both send unsigned requests, also after a key."""
+    workspace.set_credentials(before)
+    workspace.store("s3://bucket/record")
+    workspace.set_credentials(None)
+    assert _unsigned(workspace.files("s3://bucket/record")), "boto3 signs nothing"
+    secret = _secret(workspace)
+    assert secret["provider"] == "config", "DuckDB takes no credential chain"
+    assert "key_id" not in secret, "DuckDB signs nothing"
+
+
+def test_a_commit_without_a_workspace_key_writes_with_its_layers(
+    workspace, keyless, monkeypatch
+):
+    """A writer whose only key is the layer's commits with it, and reads the rest anonymously."""
+    seen: list[tuple[bool, list[str]]] = []
+
+    def offline(files: RemoteFiles, _: str) -> bool:
+        names = workspace.con.execute("SELECT name FROM duckdb_secrets()").fetchall()
+        seen.append((_unsigned(files), sorted(n.split("_")[1] for (n,) in names)))
+        raise ConnectionError("offline")
+
+    monkeypatch.setattr(RemoteFiles, "exists", offline)
+    store = workspace.store("s3://bucket/record")
+    claim = Claim(
+        id=uuid4(), store=store, parent=None, meta={}, created=datetime.now(UTC)
+    )
+    with pytest.raises(ConnectionError, match="offline"):
+        claim.commit(_p_nom(), credentials=S3Credentials(_KEY_ID, _SECRETS[0]))
+    assert _unsigned(store.files), "the store reads anonymously"
+    assert seen == [(False, ["claim", "s3"])], "the commit writes with its layer's key"
+    assert _secret(workspace)["provider"] == "config", "the layer's secret is dropped"
+
+
+def test_closing_a_workspace_drops_its_secret_from_a_callers_connection():
+    caller = duckdb.connect()
+    ws = Workspace(con=caller, credentials=S3Credentials(_KEY_ID, _SECRETS[0]))
+    ws.files("s3://bucket/record")
+    ws.close()
+    names = caller.execute("SELECT name FROM duckdb_secrets()").fetchall()
+    assert names == [], "the caller's connection outlives the workspace's secret"
+    caller.close()
+
+
+def test_a_second_workspace_on_a_connection_cannot_reach_s3():
+    """DuckDB's secrets belong to the whole connection, so a second would replace the first's key."""
+    caller = duckdb.connect()
+    first = Workspace(con=caller, name="a", credentials=S3Credentials(_KEY_ID, "x"))
+    second = Workspace(con=caller, name="b", credentials=S3Credentials("other", "y"))
+    first.files("s3://bucket/record")
+    with pytest.raises(duckdb.InvalidInputException, match="only one per connection"):
+        second.files("s3://bucket/record")
+    assert _secret(first)["key_id"] == _KEY_ID, "the first keeps its key"
+    first.set_credentials(S3Credentials("renewed", "z"))
+    assert _secret(first)["key_id"] == "renewed", "the first still replaces its own"
+    second.close()
+    assert _secret(first)["key_id"] == "renewed", "closing the second keeps it"
+    first.close()
+    caller.close()
+
+
+def test_credentials_on_a_local_workspace_set_up_no_secret(workspace, tmp_path):
+    """No `httpfs` and no secret until the first `s3://` URI."""
+    workspace.set_credentials(S3Credentials(_KEY_ID, _SECRETS[0]))
+    workspace.store(str(tmp_path)).commit(
+        _Source(_SCHEMA, attributes={"p_nom": _long()}), parent=None
+    )
+    names = workspace.con.execute("SELECT name FROM duckdb_secrets()").fetchall()
+    assert ("datarecord_s3",) not in names
+
+
+def test_a_key_for_its_layer_is_refused_on_a_local_store(store):
+    claim = store.claim(parent=None)
+    with pytest.raises(ValueError, match="is local, so it takes no S3 credentials"):
+        claim.commit(
+            _Source(_SCHEMA, attributes={"p_nom": _long()}),
+            credentials=S3Credentials(_KEY_ID, _SECRETS[0]),
+        )
+    assert store.claims() == [claim], "the layer stays pending"
 
 
 def test_a_pending_layer_is_invisible_to_every_read(workspace, store):
@@ -322,11 +729,14 @@ def test_a_layer_directory_without_a_claim_is_no_claim(store):
 
 @pytest.fixture(scope="module")
 def metas(module_store):
-    """Three revisions by their `meta`, and a pending claim carrying `a`'s."""
+    """Six revisions by their `meta`, and a pending claim carrying `a`'s."""
     metas = {
         "a": {"run": "a", "n": 1},
         "b": {"run": "b", "n": 1},
         "c": {"run": "c", "ok": True},
+        "d": {"run": "d", "changes": {"p_nom": {"n": 1, "rows": [1, 2, 3]}}},
+        "e": {"run": "e", "note": {"meta": {"run": "x"}}},
+        "f": {"run": "f", "notes": [{"meta": {"run": "x"}}]},
     }
     names = {
         module_store.commit(_p_nom(), parent=None, meta=m).id: name
@@ -339,15 +749,40 @@ def metas(module_store):
 @pytest.mark.parametrize(
     ("meta", "found"),
     [
-        ({}, {"a", "b", "c"}),
+        ({}, {"a", "b", "c", "d", "e", "f"}),
         ({"run": "a", "n": 1}, {"a"}),
         ({"run": "a", "n": 2}, set()),
         ({"n": 1.0}, set()),
+        ({"changes": {"p_nom": {"n": 1}}}, {"d"}),
+        ({"changes": {"p_nom": {"rows": [3, 1]}}}, {"d"}),
+        ({"changes": {"p_nom": {"rows": [1, 1]}}}, {"d"}),
+        ({"changes": {"p_nom": {"rows": [4]}}}, set()),
+        ({"changes": {"p_nom": {"n": 1.0}}}, set()),
+        ({"p_nom": {"n": 1}}, set()),
+        ({"changes": {}}, {"d"}),
+        ({"run": "x"}, set()),
     ],
-    ids=["none", "both", "one-off", "other-type"],
+    ids=[
+        "none",
+        "both",
+        "one-off",
+        "other-type",
+        "nested-pair",
+        "array-subset",
+        "array-repeated",
+        "array-other",
+        "nested-other-type",
+        "not-below-the-top",
+        "empty-object",
+        "not-a-nested-meta-key",
+    ],
 )
 def test_revisions_filter_by_meta(metas, meta, found):
-    """A revision is listed when its `meta` holds every pair given; a pending layer never.
+    """A revision is listed when its `meta` contains the given meta; a pending layer never.
+
+    Containment is key by key from the top, so a given array matches a
+    stored one holding its elements in any order, and a pair matches no
+    deeper object.
 
     Notes
     -----
@@ -363,68 +798,246 @@ def test_revisions_filter_by_meta(metas, meta, found):
         fresh.close()
 
 
-def test_a_meta_float_is_finite(store):
-    """JSON has no NaN or infinity, so either would be read back as null.
-
-    Refused before the claim or the manifest is written.
-
-    Notes
-    -----
-    - [the layers](https://energy-models.github.io/datarecord/reference/store/)
-    """
-    with pytest.raises(ValidationError, match="finite"):
-        store.claim(parent=None, meta={"x": math.nan})
-    assert not Path(store.uri, "layers").exists(), "no claim is written"
-    claim = store.claim(parent=None)
-    with pytest.raises(ValidationError, match="finite"):
-        claim.commit(_p_nom(), meta={"x": math.nan})
-    assert _pending(store) == [str(claim.id)], "no manifest is written"
-
-
-def test_a_claim_crosses_a_process_boundary(store):
-    """Serialised as its store's location and id, the rest read back from its claim file.
-
-    Notes
-    -----
-    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#revision)
-    """
-    root = store.commit(_p_nom(), parent=None)
-    claim = store.claim(parent=root, meta={"run": "a"})
-    dumped = claim.model_dump_json()
-    assert json.loads(dumped) == {"id": str(claim.id), "store": store.uri}
-
-    for back in (Claim.model_validate_json(dumped), pickle.loads(pickle.dumps(claim))):
-        assert back.store is Workspace.process().store(store.uri)
-        assert (back.id, back.parent, back.meta, back.created) == (
-            claim.id,
-            root.id,
-            {"run": "a"},
-            claim.created,
-        )
-    done = pickle.loads(pickle.dumps(claim)).commit(_p_nom(2.0), meta={"ok": True})
-    assert store.revision(done.id).meta == {"run": "a", "ok": True}
-    with pytest.raises(KeyError, match="No claim"):
-        Claim.model_validate({"id": str(uuid4()), "store": store.uri})
-
-
 @pytest.mark.parametrize(
-    ("given", "outcome"),
+    ("value", "written"),
     [
-        ({"status": "optimal"}, {"run": "a", "n": 3, "status": "optimal"}),
-        ({"run": "b"}, "changes the claimed meta \\['run'\\]"),
+        (None, "null"),
+        (math.inf, "Infinity"),
+        (-math.inf, "-Infinity"),
+        (math.nan, "NaN"),
+        (np.int64(3), "3"),
+        (np.float32(1.5), "1.5"),
+        (np.bool_(True), "true"),
     ],
-    ids=["adds", "changes"],
+    ids=["null", "inf", "-inf", "nan", "np.int64", "np.float32", "np.bool_"],
 )
-def test_a_commit_may_add_to_its_claims_meta_but_not_change_it(store, given, outcome):
-    """A job learns its outcome at its end, so it adds a key; a claimed key stays.
+def test_a_meta_value_may_be_null_non_finite_or_numpy(store, value, written):
+    """Written as Python's `json` writes it, read back equal, and found by a lookup, in the schema's `meta` too.
 
-    Read back by a new workspace, each value keeps its type.
+    A lookup compares JSON, so `NaN` finds `NaN` though the float equals nothing,
+    and a NumPy scalar is stored as the Python value it holds.
 
     Notes
     -----
     - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
     """
-    claim = store.claim(parent=None, meta={"run": "a", "n": 3})
+    meta = {"x": value, "nested": {"xs": [value]}}
+    stored = {"x": json.loads(written), "nested": {"xs": [json.loads(written)]}}
+    claim = store.claim(parent=None, meta=meta)
+    schema = Schema(**{**_SCHEMA.model_dump(), "meta": meta})
+    done = claim.commit(
+        _Source(schema, attributes={"p_nom": _long()}), meta={"y": value}
+    )
+    raw = Path(store.layer_dir(done.id), "manifest.json").read_text()
+    assert f'"x":{written}' in raw.replace(" ", ""), "the manifest keeps the bare word"
+    fresh = Workspace()
+    try:
+        for reader in (store, fresh.store(store.uri)):
+            back = reader.revision(done.id)
+            assert json.dumps(back.meta) == json.dumps({**stored, "y": stored["x"]})
+            assert json.dumps(back.manifest.schema.meta) == json.dumps(stored), (
+                "the schema's too"
+            )
+            listed = [r.id for r in reader.revisions(meta={"nested": {"xs": [value]}})]
+            assert listed == [done.id]
+        again = fresh.store(store.uri).claim_from(claim.model_dump_json())
+        assert json.dumps(again.meta) == json.dumps(stored), "a claim crosses too"
+    finally:
+        fresh.close()
+
+
+@pytest.mark.parametrize(
+    ("meta", "match"),
+    [
+        ({"x": timedelta(1)}, r"meta\['x'\] is .* of type timedelta"),
+        (
+            {"x": {"y": [1, (2, 3)]}},
+            r"meta\['x'\]\['y'\]\[1\] is \(2, 3\) of type tuple",
+        ),
+        ({"x": {1: "a"}}, r"meta\['x'\] has the key 1 of type int"),
+        ([("x", 1)], "meta is of type list"),
+        ([], "meta is of type list"),
+        ("", "meta is of type str"),
+        (0, "meta is of type int"),
+    ],
+    ids=[
+        "date",
+        "nested-tuple",
+        "int-key",
+        "no-object",
+        "empty-list",
+        "empty-str",
+        "zero",
+    ],
+)
+def test_a_meta_value_that_is_no_json_names_its_path(store, meta, match):
+    """Refused at any depth, before the claim or the manifest is written, with the path of the first one.
+
+    Notes
+    -----
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
+    """
+    with pytest.raises(TypeError, match=match):
+        store.claim(parent=None, meta=meta)
+    assert not Path(store.uri, "layers").exists(), "no claim is written"
+    claim = store.claim(parent=None)
+    with pytest.raises(TypeError, match=match):
+        claim.commit(_p_nom(), meta=meta)
+    assert _pending(store) == [str(claim.id)], "no manifest is written"
+
+
+def test_a_claim_crosses_a_process_boundary(store):
+    """Serialised with all five fields, or as its location and id read back from its claim file.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    claimed = {"run": "a", "by": {"names": ["x", "y"], "n": 1.5}}
+    claim = store.claim(parent=root, meta=claimed)
+    dumped = claim.model_dump_json()
+    assert json.loads(dumped).keys() == {"id", "store", "parent", "meta", "created"}
+    short = json.dumps({"id": str(claim.id), "store": store.uri})
+
+    for back in (
+        Claim.model_validate_json(dumped),
+        Claim.model_validate_json(short),
+        pickle.loads(pickle.dumps(claim)),
+    ):
+        assert back.store is Workspace.process().store(store.uri)
+        assert (back.id, back.parent, back.meta, back.created) == (
+            claim.id,
+            root.id,
+            claimed,
+            claim.created,
+        )
+    done = pickle.loads(pickle.dumps(claim)).commit(_p_nom(2.0), meta={"ok": True})
+    assert store.revision(done.id).meta == {**claimed, "ok": True}
+    with pytest.raises(KeyError, match="No claim"):
+        Claim.model_validate({"id": str(uuid4()), "store": store.uri})
+
+
+@pytest.mark.parametrize("form", ["full", "short"])
+def test_a_claim_rebuilds_on_a_store_the_caller_names(store, form):
+    """The full form is taken as it stands, without a read; the short form reads `claim.json`.
+
+    The payload's `meta` differs from the claim file's, so the commit shows
+    which one the rebuilt claim holds; its location has a trailing slash.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    claim = store.claim(parent=root, meta={"run": "a"})
+    full = {
+        **json.loads(claim.model_dump_json()),
+        "store": f"{store.uri}/",
+        "meta": {"run": "b"},
+    }
+    payload = full if form == "full" else {"id": full["id"], "store": full["store"]}
+    back = store.claim_from(json.dumps(payload))
+    assert back.store is store, "the named store, not the process workspace's"
+    assert (back.id, back.parent, back.created) == (claim.id, root.id, claim.created)
+    meta = {"run": "b"} if form == "full" else {"run": "a"}
+    assert back.meta == meta
+    assert back.commit(_p_nom(2.0)).meta == meta
+
+
+@pytest.mark.parametrize(
+    ("payload", "error"),
+    [
+        ({"store": "elsewhere"}, ValueError),
+        ({"store": None}, ValueError),
+        ({"store": 5}, ValueError),
+        ("[1]", ValueError),
+        ("5", ValueError),
+        ({"id": str(uuid4())}, KeyError),
+        ({"parent": None}, ValidationError),
+        (
+            {"parent": None, "meta": {}, "created": "2026-11-05T17:37:14"},
+            ValidationError,
+        ),
+    ],
+    ids=[
+        "another-store",
+        "no-store",
+        "store-no-string",
+        "a-list",
+        "a-number",
+        "no-claim",
+        "a-field-missing",
+        "created-naive",
+    ],
+)
+def test_a_claim_from_a_bad_payload_is_refused(store, payload, error):
+    """Over a short form `{id, store}` of a pending claim, or JSON text as it stands.
+
+    Notes
+    -----
+    - [crossing a process boundary](https://energy-models.github.io/datarecord/reference/store/#claim)
+    """
+    claim = store.claim(parent=None)
+    short = {"id": str(claim.id), "store": store.uri}
+    text = payload if isinstance(payload, str) else json.dumps({**short, **payload})
+    with pytest.raises(error):
+        store.claim_from(text)
+
+
+def test_a_claim_on_a_pending_parent_commits_after_it(store):
+    """A chain claimed up front commits in order, and a child before its parent waits.
+
+    Notes
+    -----
+    - [the claim](https://energy-models.github.io/datarecord/reference/store/#claim)
+    """
+    root = store.commit(_p_nom(), parent=None)
+    first = store.claim(parent=root)
+    second = store.claim(parent=first)
+    with pytest.raises(KeyError, match=str(first.id)):
+        second.commit(_p_nom(3.0))
+    assert sorted(_pending(store)) == sorted([str(first.id), str(second.id)])
+    first.commit(_p_nom(2.0))
+    assert second.commit(_p_nom(3.0)).ancestry() == [root.id, first.id, second.id]
+
+
+_CLAIMED = {"run": "a", "n": 3, "by": {"user": "u", "tags": ["a"]}}
+_CHANGES = {"p_nom_max": {"subjects": 412, "series_rows": 0, "median_ratio": 1.5}}
+
+
+@pytest.mark.parametrize(
+    ("given", "outcome"),
+    [
+        ({"status": "optimal"}, {**_CLAIMED, "status": "optimal"}),
+        ({"manta.changes": _CHANGES}, {**_CLAIMED, "manta.changes": _CHANGES}),
+        ({"by": {"user": "u", "tags": ["a"]}}, _CLAIMED),
+        ({"run": "b"}, "changes the claimed meta \\['run'\\]"),
+        ({"n": 3.0}, "changes the claimed meta \\['n'\\]"),
+        ({"by": {"user": "v", "tags": ["a"]}}, "changes the claimed meta \\['by'\\]"),
+        ({"by": {"user": "u", "tags": []}}, "changes the claimed meta \\['by'\\]"),
+    ],
+    ids=[
+        "adds",
+        "adds-nested",
+        "restates-nested",
+        "changes",
+        "changes-type",
+        "changes-nested",
+        "narrows-nested",
+    ],
+)
+def test_a_commit_may_add_to_its_claims_meta_but_not_change_it(store, given, outcome):
+    """A job learns its outcome at its end, so it adds a key; a claimed key stays.
+
+    Values compare as JSON, so `3` is no `3.0` and an object changes with
+    any key inside it. Read back by a new workspace, each value keeps its type.
+
+    Notes
+    -----
+    - [the store](https://energy-models.github.io/datarecord/reference/store/#store)
+    """
+    claim = store.claim(parent=None, meta=_CLAIMED)
     if isinstance(outcome, str):
         with pytest.raises(ValueError, match=outcome):
             claim.commit(_p_nom(), meta=given)
@@ -598,6 +1211,64 @@ def test_a_record_read_first_here_reads_alike_in_other_threads(tree, working):
     record = WorkingRecord(child.record) if working else child.record
     here = _read_all(record)
     assert in_threads(4, lambda _: _read_all(record)) == [here] * 4
+
+
+_READS = [
+    pytest.param(lambda r: r.attributes["p_max_pu"], id="attribute"),
+    pytest.param(lambda r: r.dimensions["entity"], id="dimension"),
+]
+
+
+@pytest.fixture(params=[False, True], ids=["folded", "materialised"])
+def unread(request, tree):
+    """The child of `tree` in a fresh workspace, whose fold tables no read has built yet."""
+    _, child = tree
+    if request.param:
+        child.materialise()
+    fresh = Workspace()
+    yield fresh.store(child.store.uri).revision(child.id).record
+    fresh.close()
+
+
+@pytest.mark.parametrize("read", _READS)
+def test_a_first_read_inside_an_open_transaction_is_refused(unread, read):
+    """Its shared tables would be created in the transaction, and a rollback would drop them from under the record.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    """
+    unread.con.begin()
+    try:
+        with pytest.raises(duckdb.TransactionException, match=r"`record\.prepare\(\)`"):
+            read(unread).fetchall()
+    finally:
+        unread.con.rollback()
+
+
+@pytest.mark.parametrize("read", _READS)
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(Record.prepare, id="prepare"),
+        pytest.param(lambda r: r.attributes["p_max_pu"].fetchall(), id="a-read"),
+    ],
+)
+def test_a_read_after_the_tables_exist_survives_a_rollback(unread, read, build):
+    """Once `prepare()` or a read outside a transaction built them, the tables are committed.
+
+    Notes
+    -----
+    - [a cursor per thread](https://energy-models.github.io/datarecord/reference/store/#threads)
+    """
+    build(unread)
+    con = unread.con
+    con.begin()
+    unread.prepare()
+    inside = read(unread).fetchall()
+    con.rollback()
+    assert read(unread).fetchall() == inside, "the rollback drops none of the tables"
+    assert inside, "the read finds rows"
 
 
 def test_two_threads_missing_the_fold_at_once_both_get_it(store, tree):
@@ -776,29 +1447,31 @@ def test_a_dim_listing_labels_resolves_after_a_widening(store):
     assert resolved(revision) == expected
     after = empty_child(revision, schema(dims={**dims, "region": "str"})).commit()
     assert resolved(after) == expected, "a child reads the root under the wider schema"
-    labels = after.record.dims["scenario"].df()["scenario"].tolist()
+    labels = after.record.dimensions["scenario"].df()["scenario"].tolist()
     assert labels == ["low", "high"], "the axis is the list, in its order"
 
 
 def test_a_failed_materialise_leaves_the_node_unmaterialised(store, tree, monkeypatch):
-    """`owner_map.parquet` is the cache's presence, so it is written last.
+    """`owner_map.parquet` marks a node materialised, so it is written last.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
-    from datarecord.store import cache
+    from datarecord.store import materialise
 
     root, _ = tree
 
     def fail(*args, **kwargs):
         raise RuntimeError("the owner map write fails")
 
-    monkeypatch.setattr(cache, "_checkpointed", fail)
+    monkeypatch.setattr(materialise, "_checkpointed", fail)
     with pytest.raises(RuntimeError):
         root.materialise()
-    assert Path(store.dim_owners_uri(root.id)).exists()
-    assert not cache.materialised(root.id, store), "the rest is no cache yet"
+    assert Path(store.dimension_owners_uri(root.id)).exists()
+    assert not materialise.materialised(root.id, store), (
+        "the rest does not make it materialised"
+    )
     assert not list(Path(store.resolved_dir(root.id)).rglob("*.tmp")), (
         "no temporary file is left behind"
     )
@@ -825,22 +1498,22 @@ def test_a_relation_from_another_connection_is_rejected(tree):
 def _read_all(record):
     """Every dim, attribute and flag of `record`, rows sorted so two folds compare."""
     return (
-        {d: sorted(r.fetchall(), key=str) for d, r in record.dims.items()},
+        {d: sorted(r.fetchall(), key=str) for d, r in record.dimensions.items()},
         {a: sorted(r.fetchall(), key=str) for a, r in record.attributes.items()},
         record.flags(),
     )
 
 
-@pytest.mark.parametrize("held", [("dims",), ("dims", "attributes")])
+@pytest.mark.parametrize("held", [("dimensions",), ("dimensions", "attributes")])
 def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
     """A record on a commit's child folds onto the fold its workspace holds of the parent.
 
-    The edits read before the commit leave the parent's coords, and with an
+    The edits read before the commit leave the parent's axes, and with an
     attribute its owner map, as the workspace's tables.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     _, child = tree
     w = WorkingRecord(child.record)
@@ -849,7 +1522,7 @@ def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
     w.set("p_max_pu", 0.7, entity="solar")
     w.set("p_max_pu", 0.9, scenario="high")
     w.remove("entity", ["wind"])
-    relations = {"dims": w.dims, "attributes": w.attributes}
+    relations = {"dimensions": w.dimensions, "attributes": w.attributes}
     for kind in held:
         for rel in relations[kind].values():
             rel.fetchall()
@@ -864,11 +1537,11 @@ def test_a_commits_child_reads_as_folded_afresh(workspace, store, tree, held):
 
 @pytest.mark.parametrize("read", [False, True], ids=["cold", "held"])
 def test_a_materialised_node_reads_as_folded_afresh(store, tree, read):
-    """A node materialises the fold its workspace holds, or folds afresh, to the same caches.
+    """A node materialises the fold its workspace holds, or folds afresh, to the same resolved files.
 
     Notes
     -----
-    - [materialised node caches](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
+    - [materialised revisions](https://energy-models.github.io/datarecord/reference/resolution/#materialised-revisions)
     """
     _, child = tree
     w = WorkingRecord(child.record)

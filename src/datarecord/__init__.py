@@ -4,7 +4,7 @@
 
 """Labeled data with a declared schema, stored as parquet, read as DuckDB relations.
 
-A record holds dims, properties and attributes. It is one directory or
+A record holds dimensions, properties and attributes. It is one directory or
 a tree of layers, and `RecordLike` is the interface a reader codes against.
 
 Notes
@@ -38,7 +38,14 @@ from datarecord.schema import (
 )
 from datarecord.select import Selection, select
 from datarecord.settle import settle
-from datarecord.store import Claim, Manifest, Revision, Store, Workspace
+from datarecord.store import (
+    Claim,
+    Manifest,
+    Revision,
+    S3Credentials,
+    Store,
+    Workspace,
+)
 
 __all__ = [
     "AttributeSpec",
@@ -52,6 +59,7 @@ __all__ = [
     "RecordLike",
     "Relations",
     "Revision",
+    "S3Credentials",
     "Schema",
     "Selection",
     "Store",

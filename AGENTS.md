@@ -92,10 +92,10 @@ whose docstring carries the sentence:
 
 ```python
 # no
-dead = _dead_keys(held, axis, dim)  # None, not empty, so _living adds no join
+dead = _dead_labels(held, axis, dim)  # None, not empty, so _living adds no join
 
-# yes — the sentence lives in _dead_keys's docstring
-dead = _dead_keys(held, axis, dim)
+# yes — the sentence lives in _dead_labels's docstring
+dead = _dead_labels(held, axis, dim)
 ```
 
 What stays inline, because it belongs where the eye lands rather than in a
@@ -134,7 +134,7 @@ name is the _caller_, not the implementer.
   inside belongs in the code, where anyone who needs it is already looking.
 - **A private helper is the exception** — there the reader _is_ a maintainer:
   write the constraint that made it exist, and the invariant a change could break
-  unknowingly. `resolve/coords.py`'s `_dead_keys` and `_base_and_above` are
+  unknowingly. `resolve/axes.py`'s `_dead_labels` and `_base_and_above` are
   the model.
 - **Cut** restatement of the signature, argument for a settled decision,
   narration of how the answer was found, and any tour of internals a caller
@@ -166,14 +166,14 @@ name is the _caller_, not the implementer.
 
 ```python
 def resolve_dims(schema: Schema, ancestry: list[UUID], con: DuckDBPyConnection) -> Dims:
-    """Fold every dim `schema` declares to its axis relation.
+    """Fold every dimension `schema` declares to its axis relation.
 
-    A dim's axis file is `{dim}s.parquet`.
+    A dimension's axis file is `{dim}s.parquet`.
 
     Parameters
     ----------
     schema
-        The record's schema, which declares the dims and their keys.
+        The record's schema, which declares the dimensions and their keys.
     ancestry : list of UUID
         Root first, ending in the record being resolved, truncated at the
         deepest materialised ancestor (`ancestry_to_read`).

@@ -10,19 +10,33 @@ Notes
 """
 
 import gc
+import json
 import threading
 from uuid import uuid4
 
 import duckdb
+import pandas as pd
 import pytest
 
 from datarecord import Workspace
 from datarecord.duck import transaction
 from datarecord.mutable import WorkingRecord
-from tests.fixtures import in_threads, nested_tables, scratch_tables
-from tests.test_mutable import _rows, _small, _staging
+from datarecord.schema.specs import AttributeSpec
+from tests.fixtures import (
+    empty_root,
+    in_threads,
+    nested_tables,
+    scratch_tables,
+    write_attribute,
+    write_component,
+)
+from tests.fixtures import schema as pypsa_schema
+from tests.test_mutable import GEN, _rows, _small, _staging
 
-KINDS = ("dims", "properties", "attributes")
+KINDS = ("dimensions", "properties", "attributes")
+
+ROW_GROUP = 2048
+"""The fewest rows DuckDB writes to a parquet row group."""
 
 EDITS = [
     lambda w: w.set("p_nom", 123.0, entity="Manchester Wind"),
@@ -35,7 +49,7 @@ EDITS = [
     lambda w: w.remove("entity", ["Manchester Wind"]),
     lambda w: w.rollback(),
 ]
-"""One edit script over `_small`: attribute, property, plain dim, multi-dim, rollback.
+"""One edit script over `_small`: attribute, property, flat dim, multi-dim, rollback.
 
 The last removal takes a label with its `connection` tuple.
 """
@@ -225,6 +239,7 @@ def test_a_reader_sees_only_whole_edits(workspace, working):
     ],
 )
 def test_register_and_unregister_refuse_an_open_transaction(workspace, small, call):
+    small.record.prepare()
     workspace.con.begin()
     try:
         with pytest.raises(duckdb.TransactionException, match="already holds one open"):
@@ -271,15 +286,15 @@ def test_unregister_leaves_a_schema_no_record_registered(workspace):
 def test_a_record_registers_under_a_database_name(workspace, small, name):
     """The workspace's database is always named, so a name that is also a database's is no catalog."""
     con = workspace.con
-    con.execute("CREATE SCHEMA memory.dims")
-    con.execute("CREATE TABLE memory.dims.bus AS SELECT 'decoy' AS bus")
+    con.execute("CREATE SCHEMA memory.dimensions")
+    con.execute("CREATE TABLE memory.dimensions.bus AS SELECT 'decoy' AS bus")
     small.record.register(name)
     declared = _declared(small.record)
     assert _views(con, name) == declared
     assert _read_views(con, name, declared) == _read_relations(small.record)
     workspace.unregister(name)
     assert _views(con, name) == dict.fromkeys(KINDS, [])
-    assert con.table("memory.dims.bus").fetchall() == [("decoy",)], (
+    assert con.table("memory.dimensions.bus").fetchall() == [("decoy",)], (
         "unregister drops the schema in the workspace's database alone"
     )
 
@@ -386,7 +401,7 @@ def test_use_lets_a_cursor_read_by_short_names(workspace, working):
             for view in views
         }
         assert short == _read_views(cur, "edit", declared), (
-            "`edit.dims.bus` reads as `datarecord.edit.dims.bus`"
+            "`edit.dimensions.bus` reads as `datarecord.edit.dimensions.bus`"
         )
         assert cur.sql("SELECT name, revision FROM registered").fetchall() == (
             workspace.registered().project("name, revision").fetchall()
@@ -592,3 +607,230 @@ def test_a_reopened_workspace_holds_and_unregisters_an_earlier_registration(
         assert small.id.hex not in _folds(reopened.con), "the fold goes on unregister"
     finally:
         reopened.close()
+
+
+def _operators(con, query):
+    """Every operator of `query` run, from `EXPLAIN ANALYZE`."""
+    plan = json.loads(
+        con.sql(f"EXPLAIN (ANALYZE, FORMAT json) {query}").fetchall()[0][1]
+    )
+    ops = list(plan["operator"])
+    while ops:
+        op = ops.pop()
+        ops += op.get("children", [])
+        yield op
+
+
+def _parquet_scans(con, query):
+    """Per parquet scan of `query` run: its filters, the row groups it read, and those of its files."""
+    return [
+        (
+            str(op["extra_info"].get("Filters", "")),
+            op["row_groups_scanned"],
+            op["total_row_groups_to_scan"],
+        )
+        for op in _operators(con, query)
+        if op["extra_info"].get("Function") == "PARQUET_SCAN"
+    ]
+
+
+@pytest.mark.parametrize("working", [False, True], ids=["record", "working"])
+@pytest.mark.parametrize(
+    ("attribute", "where", "named"),
+    [
+        ("p_max_pu", "entity = 'e1'", {}),
+        ("efficiency", "connection.entity = 'e1'", {"bus": "b"}),
+    ],
+    ids=["entity", "connection"],
+)
+def test_a_filter_on_a_dimension_in_partial_reaches_the_layer_scan(
+    store, attribute, where, named, working
+):
+    """Each scan of the layer's file reads at most one of its five row groups.
+
+    Four row groups of one entity each, DuckDB's smallest, then one holding a
+    row NULL on the dimension, which the view reads in a branch of its own.
+    """
+    layer = empty_root(store, pypsa_schema())
+    snapshots = pd.date_range("2030-01-01", periods=ROW_GROUP, freq="h")
+    rows = [
+        {"entity": f"e{i}", "snapshot": s, "value": i, **named}
+        for i in range(4)
+        for s in snapshots
+    ]
+    write_attribute(layer, attribute, [*rows, {"value": 9.0}], row_group_size=ROW_GROUP)
+    record = layer.commit().record
+    (WorkingRecord(record) if working else record).register("r")
+    con = store.workspace.con
+    query = f"FROM datarecord.r.attributes.{attribute} WHERE {where}"
+    scans = _parquet_scans(con, query)
+
+    assert len(con.sql(query).fetchall()) == ROW_GROUP
+    assert any("'e1'" in filters for filters, _, _ in scans), (
+        f"a scan of the layer's file carries the filter: {scans}"
+    )
+    assert all(n <= 1 and total == 5 for _, n, total in scans), (
+        f"each scan reads at most one row group of five: {scans}"
+    )
+
+
+@pytest.fixture
+def series(small):
+    """`small` with a `p_max_pu` series of one generator, a constant of the other, and a `weight`."""
+    index = pd.DatetimeIndex(["2030-01-01", "2030-01-02"], name="snapshot")
+    with small.record as base, WorkingRecord(base) as staged:
+        staged.add("snapshot", list(index))
+        staged.set(
+            "p_max_pu", pd.Series([0.4, 0.5], index=index), entity="Manchester Wind"
+        )
+        staged.set("p_max_pu", 0.9, entity="Norway Wind")
+        staged.set("weight", 1.0)
+        return small.store.commit(staged)
+
+
+def _owner_map(con, name):
+    return _rows(con.sql(f"FROM datarecord.{name}.owner_map"))
+
+
+def test_the_owner_map_view_follows_a_working_records_edits(workspace, small, working):
+    """Read on the cursor of another thread than the one that registered."""
+    small.record.register("base")
+    base = _owner_map(workspace.con, "base")
+    for step, edit in enumerate(EDITS):
+        edit(working)
+        [read] = in_threads(
+            1, lambda _: tuple(_owner_map(workspace.con, n) for n in ("base", "edit"))
+        )
+        assert read == (base, _rows(working._fold.owner_map)), (
+            f"after edit {step} the view reads as the map, the record's unchanged"
+        )
+
+
+def _set_efficiency(working):
+    working.add("connection", [{"entity": "Norway Wind", "bus": "Norway"}])
+    working.set("efficiency", 0.5, entity="Norway Wind", bus="Norway")
+
+
+@pytest.mark.parametrize(
+    ("attribute", "edit"),
+    [
+        ("p_nom", lambda w: w.set("p_nom", 1.0, entity="Norway Wind")),
+        ("e_nom", lambda w: w.set("e_nom", 10.0, entity="Norway Wind")),
+        ("efficiency", _set_efficiency),
+    ],
+    ids=["in the frozen map", "outside it", "over a multi-dimension"],
+)
+def test_the_owner_map_view_follows_an_attribute_staged_after_register(
+    working, attribute, edit
+):
+    """`working` registers before any edit, so its staged layer then holds no attribute."""
+    edit(working)
+    staged = working.con.sql(
+        "SELECT count(*) FROM datarecord.edit.owner_map"
+        " WHERE attribute = ? AND layer_uuid = ?",
+        params=[attribute, working._layer_id],
+    ).fetchall()
+
+    assert staged == [(1,)], "the view holds the staged layer's row"
+    assert _owner_map(working.con, "edit") == _rows(working._fold.owner_map)
+
+
+def test_a_working_record_of_many_attributes_registers_its_owner_map(store):
+    """An attribute a frozen layer holds adds some 16 CTEs to the map, which 70 take past DuckDB's default depth."""
+    many = {f"a{i}": AttributeSpec(dtype="float", dims={"entity"}) for i in range(70)}
+    layer = empty_root(store, pypsa_schema(attributes={GEN: many}))
+    write_component(layer, GEN, [{"entity": "g"}])
+    for attribute in many:
+        write_attribute(layer, attribute, [{"entity": "g", "value": 1.0}])
+    working = WorkingRecord(layer.commit().record)
+    con = working.con
+    working.register("r")
+    before = _owner_map(con, "r")
+    working.set("a0", 2.0, entity="g")
+    after = _owner_map(con, "r")
+
+    assert con.sql("SELECT current_setting('max_expression_depth')").fetchall() == [
+        (1000,)
+    ], "the binder runs at DuckDB's default depth"
+    assert before != after, "the view follows the edit"
+    assert after == _rows(working._fold.owner_map)
+
+
+@pytest.mark.parametrize("dimension", ["snapshot", "entity", "connection"])
+@pytest.mark.parametrize("working", [False, True], ids=["record", "working"])
+def test_flags_aggregate_off_the_owner_map_view(series, working, dimension):
+    """`weight` is over `scenario` alone, so a flag of `entity` on its map rows is stray."""
+    record = series.record
+    if working:
+        record = WorkingRecord(record)
+        record.set(
+            "p_max_pu",
+            pd.Series([0.1], index=pd.DatetimeIndex(["2030-01-01"], name="snapshot")),
+            entity="Norway Wind",
+        )
+    record.register("r")
+    rows = record.con.sql(
+        f"SELECT attribute, bool_or(varies.{dimension}), bool_or(broadcast.{dimension})"
+        " FROM datarecord.r.owner_map GROUP BY attribute"
+    ).fetchall()
+    assert {a: (v, b) for a, v, b in rows} == {
+        a: (dimension in f.varies, dimension in f.broadcast)
+        for a, f in record.flags().items()
+    }
+
+
+@pytest.mark.parametrize(
+    ("kind", "where", "reach"),
+    [
+        ("record", "attribute = 'p_max_pu'", all),
+        ("record", "entity = 'Norway Wind'", all),
+        ("materialised", "attribute = 'p_max_pu'", all),
+        ("materialised", "entity = 'Norway Wind'", all),
+        ("working", "attribute = 'p_max_pu'", all),
+        ("working", "attribute = 'p_nom'", all),
+        ("working", "entity = 'Norway Wind'", any),
+    ],
+)
+def test_a_filter_on_the_owner_map_view_reaches_the_maps_scan(
+    series, kind, where, reach
+):
+    """A WorkingRecord's fold also reads its base's whole map, to find overlap rows."""
+    if kind == "materialised":
+        series.materialise()
+    record = series.record
+    if kind == "working":
+        record = WorkingRecord(record)
+        record.set("p_nom", 1.0, entity="Norway Wind")
+    record.register("r")
+    query = f"FROM datarecord.r.owner_map WHERE {where}"
+    filters = [
+        str(op["extra_info"].get("Filters", ""))
+        for op in _operators(record.con, query)
+        if op["extra_info"].get("Function") == "PARQUET_SCAN"
+        or str(op["extra_info"].get("Table", "")).endswith(".owner_map")
+    ]
+    label = where.partition(" = ")[2]
+
+    assert filters, "the plan scans the map"
+    assert reach(label in f for f in filters), (
+        f"the scans of the map carry the filter: {filters}"
+    )
+
+
+@pytest.mark.parametrize("kind", ["record", "materialised", "working"])
+def test_a_schema_without_attributes_registers_an_empty_owner_map(store, kind):
+    schema = pypsa_schema().model_copy(update={"attributes": {}})
+    revision = empty_root(store, schema).commit()
+    if kind == "materialised":
+        revision.materialise()
+    record = revision.record
+    if kind == "working":
+        record = WorkingRecord(record)
+    record.register("r")
+    view = record.con.sql("DESCRIBE datarecord.r.owner_map")
+    declared = {c: str(schema.column_type(c)) for c in schema.owner_map_columns}
+
+    assert not record.con.sql("FROM datarecord.r.owner_map").fetchall()
+    assert dict(view.project("column_name, column_type").fetchall()) == declared, (
+        "the empty view has the map's declared types"
+    )

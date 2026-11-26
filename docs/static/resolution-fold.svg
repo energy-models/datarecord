@@ -4,7 +4,7 @@ SPDX-License-Identifier: CC-BY-4.0
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 780 300" width="780" height="300" style="max-width: 100%; height: auto" role="img" aria-labelledby="rf-t rf-d" font-family="ui-sans-serif, system-ui, sans-serif" font-size="13">
   <title id="rf-t">One layer folds onto its parent's owner map</title>
-  <desc id="rf-d">With partial dims entity and scenario, the parent's owner map contains the root's rows gas NULL, wind NULL and coal NULL. The child removes coal and writes gas NULL 60, NULL high 999 and gas high 999. The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas NULL covers. It adds the child's three rows and one overlap row, wind high, which the owner map assigns to the child, where the root's wind NULL crosses the child's NULL high.</desc>
+  <desc id="rf-d">With partial dimensions entity and scenario, the parent's owner map contains the root's rows gas NULL, wind NULL and coal NULL. The child removes coal and writes gas NULL 60, NULL high 999 and gas high 999. The fold drops the root's coal row, which has the removed label, and the root's gas row, which the child's gas NULL covers. It adds the child's three rows and one overlap row, wind high, which the owner map assigns to the child, where the root's wind NULL crosses the child's NULL high.</desc>
   <defs>
     <marker id="rf-arrow" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="8" markerHeight="8" orient="auto">
       <path d="M0,0 L8,4 L0,8 z" fill="currentColor"/>

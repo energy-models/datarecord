@@ -12,7 +12,7 @@ SPDX-License-Identifier: CC-BY-4.0
 | Author        | Jonas Hörsch                                                                                                                                                                                |
 | Status        | Superseded (2026-10-26, implemented 2026-10-12, [amended](#amendment-a-group-is-a-dim) 2026-10-13)                                                                                          |
 | Created       | 2026-10-12                                                                                                                                                                                  |
-| Version       | Unreleased                                                                                                                                                                                  |
+| Version       | v0.1.0a2                                                                                                                                                                                    |
 | Superseded-By | [DEP 20](dep-0020-a-layer-restates-an-axis-whole.md) (its group tombstones, by which the fold drops owner-map rows), [DEP 23](dep-0023-multi-dims.md) (its groups, which become multi-dims) |
 
 The design landed in [the data model](../../reference/data-model.md), [the record format](../../reference/format.md), [the fold](../../reference/resolution.md), [`WorkingRecord`](../../reference/editing.md) and [tools](../../reference/tools.md). Where they and this DEP differ, follow those pages.
